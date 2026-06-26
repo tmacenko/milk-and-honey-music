@@ -37,61 +37,14 @@ const flag = c => FLAG[(c||'').toLowerCase().trim()] || '';
 
 // ── Logo lookups (PRO, Publisher, Label) ──────────────────────────────────────
 // Using publicly hosted SVG/PNG logos via CDN
-// Logo URLs via Clearbit Logo API (by domain) -- reliable, no hotlink restrictions
-const PRO_LOGOS = {
-  "bmi":           "https://logo.clearbit.com/bmi.com",
-  "ascap":         "https://logo.clearbit.com/ascap.com",
-  "sesac":         "https://logo.clearbit.com/sesac.com",
-  "socan":         "https://logo.clearbit.com/socan.ca",
-  "prs":           "https://logo.clearbit.com/prsformusic.com",
-  "prs for music": "https://logo.clearbit.com/prsformusic.com",
-  "apra amcos":    "https://logo.clearbit.com/apraamcos.com.au",
-  "sacem":         "https://logo.clearbit.com/sacem.fr",
-  "gema":          "https://logo.clearbit.com/gema.de",
-  "soundexchange": "https://logo.clearbit.com/soundexchange.com",
-};
 
-const PUB_LOGOS = {
-  "kobalt":                    "https://logo.clearbit.com/kobaltmusic.com",
-  "sony music publishing":     "https://logo.clearbit.com/sonymusicpub.com",
-  "sony":                      "https://logo.clearbit.com/sonymusicpub.com",
-  "universal music publishing": "https://logo.clearbit.com/umpg.com",
-  "umpg":                      "https://logo.clearbit.com/umpg.com",
-  "warner chappell":           "https://logo.clearbit.com/warnerchappell.com",
-  "bmg":                       "https://logo.clearbit.com/bmg.com",
-  "bmg rights":                "https://logo.clearbit.com/bmg.com",
-  "concord":                   "https://logo.clearbit.com/concordmusic.com",
-  "primary wave":              "https://logo.clearbit.com/primarywave.com",
-  "peermusic":                 "https://logo.clearbit.com/peermusic.com",
-  "hipgnosis":                 "https://logo.clearbit.com/hipgnosissongs.com",
-};
-
-const LABEL_LOGOS = {
-  "atlantic":    "https://logo.clearbit.com/atlanticrecords.com",
-  "columbia":    "https://logo.clearbit.com/columbiarecords.com",
-  "republic":    "https://logo.clearbit.com/republicrecords.com",
-  "interscope":  "https://logo.clearbit.com/interscope.com",
-  "def jam":     "https://logo.clearbit.com/defjam.com",
-  "rca":         "https://logo.clearbit.com/rcarecords.com",
-  "capitol":     "https://logo.clearbit.com/capitolrecords.com",
-  "epic":        "https://logo.clearbit.com/epicrecords.com",
-  "island":      "https://logo.clearbit.com/islandrecords.com",
-  "warner":      "https://logo.clearbit.com/warnerrecords.com",
-  "motown":      "https://logo.clearbit.com/motown.com",
-  "virgin":      "https://logo.clearbit.com/virginmusic.com",
-  "geffen":      "https://logo.clearbit.com/geffen.com",
-  "roc nation":  "https://logo.clearbit.com/rocnation.com",
-  "empire":      "https://logo.clearbit.com/empire.com",
-  "300":         "https://logo.clearbit.com/300entertainment.com",
-  "believe":     "https://logo.clearbit.com/believemusic.com",
-  "concord":     "https://logo.clearbit.com/concordmusic.com",
-  "secretly group": "https://logo.clearbit.com/secretlygroup.com",
-};
-
-function lookupLogo(map, val) {
-  if (!val) return null;
+function lookupLogo(logos, val) {
+  if (!val || !logos) return null;
   const key = val.toLowerCase().trim();
-  return map[key] || Object.entries(map).find(([k]) => key.includes(k) || k.includes(key))?.[1] || null;
+  // Exact match first, then partial
+  if (logos[key]) return logos[key].url;
+  const match = Object.entries(logos).find(([k]) => key.includes(k) || k.includes(key));
+  return match ? match[1].url : null;
 }
 
 // ── Logo badge component ──────────────────────────────────────────────────────
@@ -499,12 +452,12 @@ function ClientForm({ initial, onSave, onCancel }) {
 }
 
 // ── Client card ───────────────────────────────────────────────────────────────
-function ClientCard({ client: c, onClick }) {
+function ClientCard({ client: c, logos, onClick }) {
   const [hov, setHov] = useState(false);
-  const proLogo = lookupLogo(PRO_LOGOS, c.pro);
-  const pubLogo = lookupLogo(PUB_LOGOS, c.publisher);
-  const lblLogo = lookupLogo(LABEL_LOGOS, c.label);
-  const logos = [
+  const proLogo = lookupLogo(logos, c.pro);
+  const pubLogo = lookupLogo(logos, c.publisher);
+  const lblLogo = lookupLogo(logos, c.label);
+  const logoList = [
     proLogo && { url: proLogo, label: c.pro },
     pubLogo && { url: pubLogo, label: c.publisher },
     lblLogo && { url: lblLogo, label: c.label },
@@ -531,9 +484,9 @@ function ClientCard({ client: c, onClick }) {
       </div>
 
       {/* Logo badges */}
-      {logos.length > 0 && (
+      {logoList.length > 0 && (
         <div style={{ position: "absolute", bottom: 46, right: 12, display: "flex", gap: 6 }}>
-          {logos.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={28} />)}
+          {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={28} />)}
         </div>
       )}
 
@@ -551,10 +504,10 @@ function ClientCard({ client: c, onClick }) {
 }
 
 // ── Client detail view ────────────────────────────────────────────────────────
-function ClientDetail({ client: c, onBack, onEdit }) {
-  const proLogo = lookupLogo(PRO_LOGOS, c.pro);
-  const pubLogo = lookupLogo(PUB_LOGOS, c.publisher);
-  const lblLogo = lookupLogo(LABEL_LOGOS, c.label);
+function ClientDetail({ client: c, logos, onBack, onEdit }) {
+  const proLogo = lookupLogo(logos, c.pro);
+  const pubLogo = lookupLogo(logos, c.publisher);
+  const lblLogo = lookupLogo(logos, c.label);
 
   return (
     <div style={{ flex: 1, overflow: "auto" }}>
@@ -649,6 +602,7 @@ function ClientDetail({ client: c, onBack, onEdit }) {
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
   const [clients, setClients] = useState([]);
+  const [logos, setLogos] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [view, setView] = useState('roster'); // roster | detail
@@ -663,7 +617,7 @@ function App() {
   useEffect(() => {
     fetch('/api/sheets')
       .then(r => r.json())
-      .then(d => { setClients(d.clients || []); setLoading(false); })
+      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
@@ -787,7 +741,7 @@ function App() {
           )}
 
           {!loading && !error && view === 'detail' && selected && (
-            <ClientDetail client={selected} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
+            <ClientDetail client={selected} logos={logos} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
           )}
 
           {!loading && !error && view === 'roster' && (
@@ -799,7 +753,7 @@ function App() {
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
                   {filtered.map((c, i) => (
-                    <ClientCard key={c.id || i} client={c} onClick={() => { setSelected(c); setView('detail'); }} />
+                    <ClientCard key={c.id || i} client={c} logos={logos} onClick={() => { setSelected(c); setView('detail'); }} />
                   ))}
                 </div>
               )}
