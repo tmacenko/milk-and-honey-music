@@ -210,6 +210,7 @@ module.exports = async (req, res) => {
       const spotifyClients = clients.filter(c =>
         c.spotifyUrl?.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/)
       );
+      console.log(`Spotify: token=${!!spotifyToken}, clients with artist URL=${spotifyClients.length}/${clients.length}`);
 
       // Process in batches of 5 to stay within Vercel's 10s function limit
       const batchSize = 5;
@@ -230,7 +231,7 @@ module.exports = async (req, res) => {
               ]);
               if (artistRes.ok) {
                 const a = await artistRes.json();
-                if (!c.photoUrl && a.images?.length) c.photoUrl = a.images[0].url;
+                if (!c.photoUrl?.trim() && a.images?.length) c.photoUrl = a.images[0].url;
                 if (a.popularity != null) c.spotifyPopularity = a.popularity;
                 if (a.genres?.length) c.spotifyGenres = a.genres;
                 if (a.followers?.total != null) c.spotifyFollowers = a.followers.total;
