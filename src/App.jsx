@@ -199,6 +199,10 @@ ${JSON.stringify(clients.map(c => ({
   credits: c.credits, bio: c.bio ? c.bio.slice(0, 200) : null,
   instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
   spotifyMonthly: c.spotifyMonthly,
+  spotifyFollowers: c.spotifyFollowers,
+  spotifyPopularity: c.spotifyPopularity,
+  spotifyGenres: c.spotifyGenres,
+  spotifyTopTracks: c.spotifyTopTracks?.map(t => t.name),
 })))}`;
 
       const priorMsgs = msgs.filter((m, i) => i > 0 && m.text);
@@ -492,7 +496,7 @@ function ClientCard({ client: c, logos, onClick }) {
   return (
     <div onClick={onClick}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, display: "flex", flexDirection: "column" }}>
+      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, display: "flex", flexDirection: "column", position: "relative" }}>
 
       <div style={{ padding: "16px 16px 14px", flex: 1 }}>
         {/* Avatar */}
@@ -511,6 +515,14 @@ function ClientCard({ client: c, logos, onClick }) {
         {logoList.length > 0 && (
           <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
             {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={26} />)}
+          </div>
+        )}
+
+        {/* Latest release artwork -- bottom right */}
+        {c.spotifyLatestRelease?.artwork && (
+          <div style={{ position: "absolute", bottom: 14, right: 14 }}>
+            <img src={c.spotifyLatestRelease.artwork} alt={c.spotifyLatestRelease.name}
+              style={{ width: 42, height: 42, borderRadius: 6, objectFit: "cover", boxShadow: "0 2px 8px rgba(0,0,0,0.4)" }} />
           </div>
         )}
       </div>
@@ -573,6 +585,18 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
               <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Monthly</div>
             </div>
           )}
+          {c.spotifyFollowers > 0 && (
+            <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px", minWidth: 90 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmt(c.spotifyFollowers)}</div>
+              <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Followers</div>
+            </div>
+          )}
+          {c.spotifyPopularity != null && (
+            <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px", minWidth: 90 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{c.spotifyPopularity}<span style={{ fontSize: 12, color: G.textTertiary }}>/100</span></div>
+              <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Popularity</div>
+            </div>
+          )}
           {[
             { icon: <IgIcon size={14} />, handle: c.instagram, url: c.instagram ? `https://instagram.com/${c.instagram}` : null },
             { icon: <TwIcon size={14} />, handle: c.twitter, url: c.twitter ? `https://x.com/${c.twitter}` : null },
@@ -594,6 +618,71 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
         {c.bio && (
           <div style={{ gridColumn: "1/-1" }}>
             <Sec title="Bio"><p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.65, margin: 0 }}>{c.bio}</p></Sec>
+          </div>
+        )}
+
+        {/* Latest Release */}
+        {c.spotifyLatestRelease && (
+          <div style={{ gridColumn: "1/-1" }}>
+            <Sec title="Latest Release">
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {c.spotifyLatestRelease.artwork && (
+                  <img src={c.spotifyLatestRelease.artwork} alt={c.spotifyLatestRelease.name}
+                    style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.4)" }} />
+                )}
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{c.spotifyLatestRelease.name}</div>
+                  <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 3, textTransform: "capitalize" }}>
+                    {c.spotifyLatestRelease.type} · {c.spotifyLatestRelease.releaseDate?.slice(0, 4)}
+                  </div>
+                  {c.spotifyLatestRelease.url && (
+                    <a href={c.spotifyLatestRelease.url} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 11, color: G.green, textDecoration: "none", marginTop: 4, display: "inline-block" }}>
+                      Listen on Spotify ↗
+                    </a>
+                  )}
+                </div>
+              </div>
+            </Sec>
+          </div>
+        )}
+
+        {/* Top Tracks */}
+        {c.spotifyTopTracks?.length > 0 && (
+          <div style={{ gridColumn: "1/-1" }}>
+            <Sec title="Top Tracks">
+              {c.spotifyTopTracks.map((t, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: i < c.spotifyTopTracks.length - 1 ? `1px solid ${G.surfaceBorder}` : "none" }}>
+                  <div style={{ fontSize: 11, color: G.textTertiary, fontWeight: 600, width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+                  {t.artwork && <img src={t.artwork} alt={t.album} style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                    <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.album}</div>
+                  </div>
+                  {t.url && (
+                    <a href={t.url} target="_blank" rel="noopener noreferrer"
+                      style={{ color: G.textTertiary, textDecoration: "none", flexShrink: 0, display: "flex", alignItems: "center" }}
+                      onMouseEnter={e => e.currentTarget.style.color = G.green}
+                      onMouseLeave={e => e.currentTarget.style.color = G.textTertiary}>
+                      <SpotifyIcon size={14} />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </Sec>
+          </div>
+        )}
+
+        {/* Genres */}
+        {c.spotifyGenres?.length > 0 && (
+          <div style={{ gridColumn: "1/-1" }}>
+            <Sec title="Genres">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {c.spotifyGenres.map((g, i) => (
+                  <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.textSecondary, textTransform: "capitalize" }}>{g}</span>
+                ))}
+              </div>
+            </Sec>
           </div>
         )}
         {c.credits?.length > 0 && (
