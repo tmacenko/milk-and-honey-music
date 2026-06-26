@@ -50,13 +50,18 @@ function lookupLogo(logos, val) {
 // ── Logo badge component ──────────────────────────────────────────────────────
 function LogoBadge({ url, label, size = 32 }) {
   const [err, setErr] = useState(false);
-  if (!url || err) {
+  // If URL looks like a website, use Google favicon service as fallback
+  const resolvedUrl = (!url || err) ? null
+    : (url.startsWith('http') && !url.match(/\.(png|jpg|jpeg|gif|svg|webp)(\?|$)/i))
+      ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url)}&sz=64`
+      : url;
+  if (!resolvedUrl) {
     if (!label) return null;
     return <span style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, fontWeight: 600, color: G.textSecondary, whiteSpace: "nowrap" }}>{label}</span>;
   }
   return (
-    <div style={{ width: size + 8, height: size + 8, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.3)", flexShrink: 0 }}>
-      <img src={url} alt={label} onError={() => setErr(true)} style={{ width: size, height: size, objectFit: "contain" }} />
+    <div style={{ width: size + 8, height: size + 8, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.3)", flexShrink: 0, overflow: "hidden" }}>
+      <img src={resolvedUrl} alt={label} onError={() => setErr(true)} style={{ width: size, height: size, objectFit: "contain", display: "block" }} />
     </div>
   );
 }
@@ -475,9 +480,9 @@ function ClientCard({ client: c, logos, onClick }) {
             {(c.types || []).map(t => <TypePill key={t} type={t} />)}
           </div>
           {(c.city || c.country) && (
-            <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 4 }}>
-              {[c.city, c.state].filter(Boolean).join(', ')}
-              {c.country && <span style={{ marginLeft: 5 }}>{flag(c.country)}</span>}
+            <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}>
+              <span>{[c.city, c.state].filter(Boolean).join(', ')}</span>
+              {c.country && <span style={{ fontSize: 13 }}>{flag(c.country)}</span>}
             </div>
           )}
         </div>
@@ -528,8 +533,8 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
             </div>
             {(c.city || c.country) && (
               <div style={{ fontSize: 13, color: G.textSecondary }}>
-                {[c.city, c.state, c.country].filter(Boolean).join(', ')}
-                {c.country && <span style={{ marginLeft: 6, fontSize: 16 }}>{flag(c.country)}</span>}
+                {[c.city, c.state].filter(Boolean).join(', ')}
+                {c.country && <span style={{ marginLeft: 6, fontSize: 15 }}>{flag(c.country)}</span>}
               </div>
             )}
           </div>
@@ -550,15 +555,16 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
             </div>
           )}
           {[
-            { icon: <IgIcon size={9} />, val: null, label: "Instagram", handle: c.instagram, url: c.instagram ? `https://instagram.com/${c.instagram}` : null },
-            { icon: <TwIcon size={9} />, val: null, label: "Twitter", handle: c.twitter, url: c.twitter ? `https://x.com/${c.twitter}` : null },
-            { icon: <TkIcon size={9} />, val: null, label: "TikTok", handle: c.tiktok, url: c.tiktok ? `https://tiktok.com/@${c.tiktok}` : null },
+            { icon: <IgIcon size={14} />, handle: c.instagram, url: c.instagram ? `https://instagram.com/${c.instagram}` : null },
+            { icon: <TwIcon size={14} />, handle: c.twitter, url: c.twitter ? `https://x.com/${c.twitter}` : null },
+            { icon: <TkIcon size={14} />, handle: c.tiktok, url: c.tiktok ? `https://tiktok.com/@${c.tiktok}` : null },
           ].filter(s => s.handle).map((s, i) => (
-            <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px", textDecoration: "none", cursor: "pointer", transition: `all 0.15s ${G.ease}`, minWidth: 90 }}
+            <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "9px 14px", textDecoration: "none", transition: `all 0.15s ${G.ease}` }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = G.surfaceBorderLight; e.currentTarget.style.background = G.surface; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = G.surfaceBorder; e.currentTarget.style.background = G.surfaceRaised; }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>@{s.handle}</div>
-              <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>{s.icon} {s.label}</div>
+              <span style={{ color: G.textSecondary, display: "flex" }}>{s.icon}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{s.handle}</span>
             </a>
           ))}
         </div>
@@ -583,7 +589,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
         <Sec title="Details">
           <IR label="Contact / MH Rep" value={c.contact} />
           <IR label="City" value={[c.city, c.state].filter(Boolean).join(', ')} />
-          <IR label="Country" value={c.country ? `${c.country} ${flag(c.country)}` : null} />
+          <IR label="Country" value={c.country ? `${flag(c.country)}  ${c.country}` : null} />
           <IR label="PRO" value={c.pro} />
           <IR label="Publisher" value={c.publisher} />
           <IR label="Record Label" value={c.label} />
