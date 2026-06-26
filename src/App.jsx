@@ -58,39 +58,6 @@ function lookupLogo(logos, val) {
 }
 
 // ── Logo badge component ──────────────────────────────────────────────────────
-// ── Spotify photo resolver ────────────────────────────────────────────────────
-function extractSpotifyId(url) {
-  if (!url) return null;
-  // https://open.spotify.com/artist/7fRabwYwLBgvOudI9GY2Op
-  const artistMatch = url.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
-  if (artistMatch) return { id: artistMatch[1], type: 'artist' };
-  // https://artists.spotify.com/songwriter/1uevgyw7oOXyF6P9zcfGLC
-  const swMatch = url.match(/artists\.spotify\.com\/songwriter\/([A-Za-z0-9]+)/);
-  if (swMatch) return { id: swMatch[1], type: 'songwriter' };
-  return null;
-}
-
-function useSpotifyPhoto(spotifyUrl) {
-  const [photoUrl, setPhotoUrl] = useState(null);
-  useEffect(() => {
-    const info = extractSpotifyId(spotifyUrl);
-    if (!info) return;
-    // Use oEmbed for artist pages -- returns thumbnail_url
-    if (info.type === 'artist') {
-      fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/artist/${info.id}`)
-        .then(r => r.json())
-        .then(d => { if (d.thumbnail_url) setPhotoUrl(d.thumbnail_url); })
-        .catch(() => {});
-    }
-    // Songwriter pages don't have oEmbed -- use Spotify image CDN pattern
-    if (info.type === 'songwriter') {
-      // Try fetching the songwriter page for image (best effort)
-      setPhotoUrl(null); // Will fall back to initials
-    }
-  }, [spotifyUrl]);
-  return photoUrl;
-}
-
 function LogoBadge({ url, label, size = 32 }) {
   const [err, setErr] = useState(false);
   // If URL looks like a website, use Google favicon service as fallback
@@ -110,19 +77,17 @@ function LogoBadge({ url, label, size = 32 }) {
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
-function Avatar({ name, photoUrl, spotifyUrl, size = 44 }) {
+function Avatar({ name, photoUrl, size = 44 }) {
   const [err, setErr] = useState(false);
-  const spotifyPhoto = useSpotifyPhoto(!photoUrl || err ? spotifyUrl : null);
   const initials = (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const hash = (name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const hue = (hash * 47) % 360;
   const grad = `linear-gradient(135deg,hsl(${hue},55%,38%),hsl(${hue},55%,52%))`;
-  const url = (!photoUrl || err) ? spotifyPhoto : photoUrl;
 
-  if (url) return (
-    <img src={url} alt={name} onError={() => setErr(true)}
+  if (photoUrl && !err) return (
+    <img src={photoUrl} alt={name} onError={() => setErr(true)}
       referrerPolicy="no-referrer" crossOrigin="anonymous"
-      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0, border: `1.5px solid ${G.surfaceBorderLight}` }} />
+      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0 }} />
   );
   return (
     <div style={{ width: size, height: size, borderRadius: "50%", background: grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.38, fontWeight: 700, color: "#fff", flexShrink: 0, border: `1.5px solid hsl(${hue},55%,58%)` }}>
@@ -523,7 +488,7 @@ function ClientCard({ client: c, logos, onClick }) {
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, position: "relative" }}>
       <div style={{ padding: "16px 16px 12px" }}>
-        <Avatar name={c.name} photoUrl={c.photoUrl} spotifyUrl={c.spotifyUrl} size={52} />
+        <Avatar name={c.name} photoUrl={c.photoUrl} size={52} />
         <div style={{ marginTop: 10 }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: G.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{c.name}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
@@ -583,7 +548,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
       {/* Header */}
       <div style={{ padding: "20px 28px 24px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 20, flexWrap: "wrap" }}>
-          <Avatar name={c.name} photoUrl={c.photoUrl} spotifyUrl={c.spotifyUrl} size={80} />
+          <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
           <div style={{ flex: 1, minWidth: 200 }}>
             <h1 style={{ fontSize: 30, fontWeight: 800, color: G.text, letterSpacing: "-0.04em", margin: "0 0 8px", lineHeight: 1.1 }}>{c.name}</h1>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
