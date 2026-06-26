@@ -62,25 +62,31 @@ async function sheetAppend(token, range, values) {
 // A  Name
 // B  Type                (Songwriter, Producer, Artist -- comma-separated)
 // C  Contact             (MH agent/rep)
-// D  City
-// E  State
-// F  Country
-// G  PRO                 (BMI, ASCAP, SESAC, etc.)
-// H  Publisher
-// I  Record Label
-// J  Artists Worked With (comma-separated)
-// K  Bio
-// L  Photo URL
-// M  Instagram
-// N  Twitter
-// O  TikTok
-// P  Spotify Monthly Listeners
-// Q  Spotify URL
-// R  Apple Music URL
-// S  SoundCloud URL
-// T  Notes               (internal only)
-// U  Onboarded At
-// V  Spotify Artist ID
+// D  City 1
+// E  State 1
+// F  Country 1
+// G  City 2
+// H  State 2
+// I  Country 2
+// J  City 3
+// K  State 3
+// L  Country 3
+// M  PRO                 (BMI, ASCAP, SESAC, etc.)
+// N  Publisher
+// O  Record Label
+// P  Artists Worked With (comma-separated)
+// Q  Bio
+// R  Photo URL
+// S  Instagram
+// T  Twitter/X
+// U  TikTok
+// V  Spotify Monthly Listeners
+// W  Spotify URL
+// X  Apple Music URL
+// Y  SoundCloud URL
+// Z  Notes               (internal only)
+// AA Onboarded At
+// AB Spotify Artist ID
 
 function parseClient(row, idx) {
   const g = col => String(row[col] ?? '').trim();
@@ -92,9 +98,15 @@ function parseClient(row, idx) {
     name,
     types:        g('Type') ? g('Type').split(',').map(s => s.trim()).filter(Boolean) : [],
     contact:      g('Contact'),
-    city:         g('City'),
-    state:        g('State'),
-    country:      g('Country'),
+    city:         g('City 1'),
+    state:        g('State 1'),
+    country:      g('Country 1'),
+    city2:        g('City 2'),
+    state2:       g('State 2'),
+    country2:     g('Country 2'),
+    city3:        g('City 3'),
+    state3:       g('State 3'),
+    country3:     g('Country 3'),
     pro:          g('PRO'),
     publisher:    g('Publisher'),
     label:        g('Record Label'),
@@ -102,7 +114,7 @@ function parseClient(row, idx) {
     bio:          g('Bio'),
     photoUrl:     g('Photo URL'),
     instagram:    g('Instagram').replace(/^@/, ''),
-    twitter:      g('Twitter').replace(/^@/, ''),
+    twitter:      g('Twitter/X').replace(/^@/, ''),
     tiktok:       g('TikTok').replace(/^@/, ''),
     spotifyMonthly: g('Spotify Monthly Listeners'),
     spotifyUrl:   g('Spotify URL'),
@@ -123,22 +135,28 @@ function clientRow(c) {
     c.city             || '',  // D
     c.state            || '',  // E
     c.country          || '',  // F
-    c.pro              || '',  // G
-    c.publisher        || '',  // H
-    c.label            || '',  // I
-    (c.credits || []).join(', '), // J
-    c.bio              || '',  // K
-    c.photoUrl         || '',  // L
-    handle(c.instagram),       // M
-    handle(c.twitter),         // N
-    handle(c.tiktok),          // O
-    c.spotifyMonthly   || '',  // P
-    c.spotifyUrl       || '',  // Q
-    c.appleMusicUrl    || '',  // R
-    c.soundcloudUrl    || '',  // S
-    c.notes            || '',  // T
-    c.onboardedAt      || '',  // U
-    c.spotifyId        || '',  // V
+    c.city2            || '',  // G
+    c.state2           || '',  // H
+    c.country2         || '',  // I
+    c.city3            || '',  // J
+    c.state3           || '',  // K
+    c.country3         || '',  // L
+    c.pro              || '',  // M
+    c.publisher        || '',  // N
+    c.label            || '',  // O
+    (c.credits || []).join(', '), // P
+    c.bio              || '',  // Q
+    c.photoUrl         || '',  // R
+    handle(c.instagram),       // S
+    handle(c.twitter),         // T
+    handle(c.tiktok),          // U
+    c.spotifyMonthly   || '',  // V
+    c.spotifyUrl       || '',  // W
+    c.appleMusicUrl    || '',  // X
+    c.soundcloudUrl    || '',  // Y
+    c.notes            || '',  // Z
+    c.onboardedAt      || '',  // AA
+    c.spotifyId        || '',  // AB
   ];
 }
 
@@ -155,7 +173,7 @@ module.exports = async (req, res) => {
     // ── GET: load clients + logos ────────────────────────────────────────────
     if (req.method === 'GET') {
       const [clientData, logoData] = await Promise.all([
-        sheetGet(token, 'Clients!A:V'),
+        sheetGet(token, 'Clients!A:AB'),
         sheetGet(token, 'Logos!A:C').catch(() => ({ values: [] })),
       ]);
 
@@ -224,10 +242,10 @@ module.exports = async (req, res) => {
       const row = clientRow(c);
 
       if (action === 'create') {
-        await sheetAppend(token, 'Clients!A:V', [row]);
+        await sheetAppend(token, 'Clients!A:AB', [row]);
       } else {
         if (!c._rowIndex) return res.status(400).json({ error: 'Missing row index' });
-        await sheetUpdate(token, `Clients!A${c._rowIndex}:V${c._rowIndex}`, [row]);
+        await sheetUpdate(token, `Clients!A${c._rowIndex}:AB${c._rowIndex}`, [row]);
       }
       return res.json({ success: true });
     }
