@@ -526,14 +526,8 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
 
   return (
     <div style={{ flex: 1, overflow: "auto" }}>
-      {/* Back */}
-      <div style={{ padding: "16px 28px 0" }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", color: G.textSecondary, fontSize: 13, fontWeight: 500, cursor: "pointer", padding: 0, fontFamily: ff, transition: `color 0.15s ${G.ease}` }}
-          onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>← Back</button>
-      </div>
-
       {/* Header */}
-      <div style={{ padding: "20px 28px 24px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+      <div style={{ padding: "24px 28px 24px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 20, flexWrap: "wrap" }}>
           <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
           <div style={{ flex: 1, minWidth: 200 }}>
@@ -568,7 +562,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
             {pubLogo && <LogoBadge url={pubLogo} label={c.publisher} size={36} />}
             {lblLogo && <LogoBadge url={lblLogo} label={c.label} size={36} />}
           </div>
-          <button onClick={onEdit} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>
+
         </div>
 
         {/* Streaming / social stats */}
@@ -655,7 +649,11 @@ function App() {
   const types = useMemo(() => {
     const all = new Set();
     clients.forEach(c => (c.types || []).forEach(t => all.add(t)));
-    return ['All', ...Array.from(all).sort()];
+    const sorted = Array.from(all).sort((a, b) => {
+      if (a === 'Artist') return -1; if (b === 'Artist') return 1;
+      return a.localeCompare(b);
+    });
+    return ['All', ...sorted];
   }, [clients]);
 
   const filtered = useMemo(() => {
@@ -727,22 +725,34 @@ function App() {
 
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Filter bar -- search, type filters, add client all in one row */}
+        {/* Top bar -- changes based on view */}
         <div style={{ padding: "14px 28px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
-          {(!sidebarOpen || isMobile) && (
-            <button onClick={() => setSidebarOpen(v => !v)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 10px", cursor: "pointer", color: G.textSecondary, fontFamily: ff, flexShrink: 0 }}>☰</button>
+          {view === 'detail' ? (
+            <>
+              <button onClick={() => setView('roster')} style={{ background: "none", border: "none", color: G.textSecondary, fontSize: 13, fontWeight: 500, cursor: "pointer", padding: 0, fontFamily: ff }}
+                onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>← Back</button>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>
+              <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
+            </>
+          ) : (
+            <>
+              {(!sidebarOpen || isMobile) && (
+                <button onClick={() => setSidebarOpen(v => !v)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 10px", cursor: "pointer", color: G.textSecondary, fontFamily: ff, flexShrink: 0 }}>☰</button>
+              )}
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
+                style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
+              <div style={{ display: "flex", gap: 6, flex: 1, flexWrap: "wrap" }}>
+                {types.map(t => (
+                  <button key={t} onClick={() => setFilterType(t)}
+                    style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${filterType === t ? G.green : G.surfaceBorder}`, background: filterType === t ? G.greenSubtle : G.surfaceRaised, color: filterType === t ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>
+            </>
           )}
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
-            style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
-          <div style={{ display: "flex", gap: 6, flex: 1, flexWrap: "wrap" }}>
-            {types.map(t => (
-              <button key={t} onClick={() => setFilterType(t)}
-                style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${filterType === t ? G.green : G.surfaceBorder}`, background: filterType === t ? G.greenSubtle : G.surfaceRaised, color: filterType === t ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
-                {t}
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>
         </div>
 
         {/* Content */}
