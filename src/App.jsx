@@ -11,7 +11,7 @@ const G = {
   bg: "#080809", surface: "#111113", surfaceRaised: "#18181b",
   surfaceGlass: "rgba(17,17,19,0.85)",
   surfaceBorder: "#1e1e22", surfaceBorderLight: "#28282d",
-  text: "#f4f4f5", textSecondary: "#71717a", textTertiary: "#3f3f46",
+  text: "#f4f4f5", textSecondary: "#b4b4be", textTertiary: "#8a8a98",
   shadow: "0 1px 2px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.35)",
   shadowLg: "0 4px 12px rgba(0,0,0,0.7), 0 20px 60px rgba(0,0,0,0.5)",
   ease: "cubic-bezier(0.4,0,0.2,1)",
@@ -717,9 +717,9 @@ function App() {
       {!isMobile && sidebarOpen && (
         <div style={{ width: 200, background: G.surface, borderRight: `1px solid ${G.surfaceBorder}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflow: "hidden", boxShadow: `2px 0 24px rgba(0,0,0,0.3)` }}>
           {/* Logo */}
-          <div style={{ padding: "20px 18px 16px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: G.text, letterSpacing: "-0.02em" }}>Milk & Honey</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: G.green, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 2 }}>Music</div>
+          <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", alignItems: "center", gap: 10 }}>
+            <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 32, objectFit: "contain", maxWidth: 120 }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: G.green, letterSpacing: "0.1em", textTransform: "uppercase", flexShrink: 0 }}>Music</span>
           </div>
           {/* Nav */}
           <div style={{ padding: "12px 10px", flex: 1 }}>
