@@ -1,5 +1,4 @@
 {
-  "outputDirectory": ".",
   "rewrites": [
     { "source": "/share/:id",  "destination": "/share.html" },
     { "source": "/roster/:id", "destination": "/roster-share.html" },
