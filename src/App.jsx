@@ -1,5 +1,5 @@
 // Milk & Honey Music — Client Management
-// API: /api/music (music-sheets.js), /api/share (share.js)
+// API: /api/sheets (music-sheets.js), /api/share (share.js)
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
@@ -234,7 +234,7 @@ ${JSON.stringify(clients.map(c => ({
         { role: "user", content: text },
       ];
 
-      const resp = await fetch("/api/music", {
+      const resp = await fetch("/api/sheets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "chat", system: systemPrompt, messages: history }),
@@ -410,7 +410,7 @@ function ClientForm({ initial, onSave, onCancel }) {
     if (!form.name.trim()) return alert('Name is required');
     setSaving(true);
     try {
-      const resp = await fetch('/api/music', {
+      const resp = await fetch('/api/sheets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: isNew ? 'create' : 'save', client: form }),
       });
@@ -654,7 +654,7 @@ function App() {
   const isMobile = window.innerWidth < 768;
 
   useEffect(() => {
-    fetch('/api/music')
+    fetch('/api/sheets')
       .then(r => r.json())
       .then(d => { setClients(d.clients || []); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
