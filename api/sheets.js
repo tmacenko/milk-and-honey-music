@@ -152,18 +152,34 @@ module.exports = async (req, res) => {
   try {
     const token = await getToken();
 
-    // ── GET: load clients ────────────────────────────────────────────────────
+    // ── GET: load clients + logos ────────────────────────────────────────────
     if (req.method === 'GET') {
-      const data = await sheetGet(token, 'Clients!A:V');
-      const rows = data?.values || [];
-      if (rows.length < 2) return res.json({ clients: [] });
+      const [clientData, logoData] = await Promise.all([
+        sheetGet(token, 'Clients!A:V'),
+        sheetGet(token, 'Logos!A:C').catch(() => ({ values: [] })),
+      ]);
+
+      // Parse clients
+      const rows = clientData?.values || [];
+      if (rows.length < 2) return res.json({ clients: [], logos: {} });
       const headers = rows[0].map(h => String(h || '').trim());
       const clients = rows.slice(1).map((row, i) => {
         const obj = { _rowIndex: i + 2 };
         headers.forEach((h, j) => { obj[h] = String(row[j] ?? '').trim(); });
         return parseClient(obj, i);
       }).filter(Boolean);
-      return res.json({ clients });
+
+      // Parse logos into a lookup map: { "bmi": { url, category }, ... }
+      const logoRows = logoData?.values || [];
+      const logos = {};
+      logoRows.slice(1).forEach(row => {
+        const company = String(row[0] ?? '').trim();
+        const url     = String(row[1] ?? '').trim();
+        const category = String(row[2] ?? '').trim();
+        if (company && url) logos[company.toLowerCase()] = { url, category };
+      });
+
+      return res.json({ clients, logos });
     }
 
     // ── POST ─────────────────────────────────────────────────────────────────
