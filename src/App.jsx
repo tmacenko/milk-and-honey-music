@@ -488,42 +488,31 @@ function ClientCard({ client: c, logos, onClick }) {
   const dedupedFlags = [c.country, c.country2, c.country3].filter(Boolean).filter(co => {
     const f = flag(co); if (!f || seenFlags.has(f)) return false; seenFlags.add(f); return true;
   });
-  const primaryLoc = [c.city, c.state].filter(Boolean).join(', ');
 
   return (
     <div onClick={onClick}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, display: "flex", flexDirection: "column" }}>
 
-      <div style={{ padding: "16px 16px 14px", flex: 1, position: "relative" }}>
-        {/* Logo badges -- top right */}
-        {logoList.length > 0 && (
-          <div style={{ position: "absolute", top: 14, right: 14, display: "flex", gap: 5 }}>
-            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={26} />)}
-          </div>
-        )}
-
+      <div style={{ padding: "16px 16px 14px", flex: 1 }}>
         {/* Avatar */}
         <Avatar name={c.name} photoUrl={c.photoUrl} size={52} />
 
         {/* Name */}
-        <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.03em", marginTop: 10, lineHeight: 1.2, paddingRight: logoList.length > 0 ? 100 : 0 }}>{c.name}</div>
+        <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.03em", marginTop: 10, marginBottom: 8, lineHeight: 1.2 }}>{c.name}</div>
 
-        {/* Flag + location */}
-        {(primaryLoc || dedupedFlags.length > 0) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5 }}>
-            {dedupedFlags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
-            {primaryLoc && <span style={{ fontSize: 12, color: G.textSecondary }}>{primaryLoc}</span>}
+        {/* Flag(s) + type pills on same line */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {dedupedFlags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
+          {(c.types || []).map(t => <TypePill key={t} type={t} />)}
+        </div>
+
+        {/* Logo badges */}
+        {logoList.length > 0 && (
+          <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={26} />)}
           </div>
         )}
-      </div>
-
-      {/* Type pills -- bottom strip */}
-      <div style={{ padding: "10px 16px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", flexWrap: "wrap", gap: 5 }}>
-        {(c.types || []).map(t => <TypePill key={t} type={t} />)}
-        {c.credits?.length > 0 && (c.types||[]).length === 0 &&
-          <span style={{ fontSize: 11, color: G.textSecondary }}>{c.credits.slice(0,3).join(', ')}{c.credits.length > 3 ? ` +${c.credits.length-3}` : ''}</span>
-        }
       </div>
     </div>
   );
@@ -738,25 +727,14 @@ function App() {
 
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Header */}
-        <div style={{ padding: "20px 28px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {(!sidebarOpen || isMobile) && (
-              <button onClick={() => setSidebarOpen(v => !v)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 10px", cursor: "pointer", color: G.textSecondary, fontFamily: ff }}>☰</button>
-            )}
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 22, color: G.text, letterSpacing: "-0.02em" }}>Client Roster</div>
-              <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{clients.length} clients</div>
-            </div>
-          </div>
-          <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>+ Add Client</button>
-        </div>
-
-        {/* Filters */}
+        {/* Filter bar -- search, type filters, add client all in one row */}
         <div style={{ padding: "14px 28px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
+          {(!sidebarOpen || isMobile) && (
+            <button onClick={() => setSidebarOpen(v => !v)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 10px", cursor: "pointer", color: G.textSecondary, fontFamily: ff, flexShrink: 0 }}>☰</button>
+          )}
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
-            style={{ ...inputBase, width: 240, padding: "8px 12px" }} />
-          <div style={{ display: "flex", gap: 6 }}>
+            style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
+          <div style={{ display: "flex", gap: 6, flex: 1, flexWrap: "wrap" }}>
             {types.map(t => (
               <button key={t} onClick={() => setFilterType(t)}
                 style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${filterType === t ? G.green : G.surfaceBorder}`, background: filterType === t ? G.greenSubtle : G.surfaceRaised, color: filterType === t ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
@@ -764,6 +742,7 @@ function App() {
               </button>
             ))}
           </div>
+          <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>
         </div>
 
         {/* Content */}
