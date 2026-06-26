@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/share/:id",  "destination": "/share.html" },
+    { "source": "/roster/:id", "destination": "/roster-share.html" },
+    { "source": "/api/:path*", "destination": "/api/:path*" },
+    { "source": "/(.*)",       "destination": "/index.html" }
+  ]
+}
