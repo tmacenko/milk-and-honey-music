@@ -717,9 +717,8 @@ function App() {
       {!isMobile && sidebarOpen && (
         <div style={{ width: 200, background: G.surface, borderRight: `1px solid ${G.surfaceBorder}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflow: "hidden", boxShadow: `2px 0 24px rgba(0,0,0,0.3)` }}>
           {/* Logo */}
-          <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", alignItems: "center", gap: 10 }}>
-            <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 32, objectFit: "contain", maxWidth: 120 }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: G.green, letterSpacing: "0.1em", textTransform: "uppercase", flexShrink: 0 }}>Music</span>
+          <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", alignItems: "center" }}>
+            <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 32, objectFit: "contain", maxWidth: 140 }} />
           </div>
           {/* Nav */}
           <div style={{ padding: "12px 10px", flex: 1 }}>
