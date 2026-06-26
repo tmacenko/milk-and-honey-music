@@ -21,8 +21,8 @@ const ff = "-apple-system,'SF Pro Display','Helvetica Neue',sans-serif";
 
 // ── Country flags (emoji) ─────────────────────────────────────────────────────
 const FLAG = {
-  "united states": "🇺🇸", "usa": "🇺🇸", "us": "🇺🇸",
-  "united kingdom": "🇬🇧", "uk": "🇬🇧", "england": "🇬🇧",
+  "united states": "🇺🇸", "usa": "🇺🇸", "us": "🇺🇸", "u.s.": "🇺🇸",
+  "united kingdom": "🇬🇧", "uk": "🇬🇧", "england": "🇬🇧", "britain": "🇬🇧",
   "canada": "🇨🇦", "australia": "🇦🇺", "germany": "🇩🇪",
   "france": "🇫🇷", "sweden": "🇸🇪", "norway": "🇳🇴",
   "denmark": "🇩🇰", "netherlands": "🇳🇱", "spain": "🇪🇸",
@@ -31,7 +31,17 @@ const FLAG = {
   "ireland": "🇮🇪", "scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "belgium": "🇧🇪",
   "switzerland": "🇨🇭", "austria": "🇦🇹", "portugal": "🇵🇹",
   "south africa": "🇿🇦", "nigeria": "🇳🇬", "ghana": "🇬🇭",
-  "jamaica": "🇯🇲", "trinidad": "🇹🇹",
+  "jamaica": "🇯🇲", "trinidad": "🇹🇹", "colombia": "🇨🇴",
+  "argentina": "🇦🇷", "chile": "🇨🇱", "peru": "🇵🇪",
+  "venezuela": "🇻🇪", "cuba": "🇨🇺", "puerto rico": "🇵🇷",
+  "dominican republic": "🇩🇴", "haiti": "🇭🇹", "bahamas": "🇧🇸",
+  "india": "🇮🇳", "china": "🇨🇳", "philippines": "🇵🇭",
+  "indonesia": "🇮🇩", "thailand": "🇹🇭", "vietnam": "🇻🇳",
+  "russia": "🇷🇺", "ukraine": "🇺🇦", "poland": "🇵🇱",
+  "finland": "🇫🇮", "greece": "🇬🇷", "turkey": "🇹🇷",
+  "israel": "🇮🇱", "saudi arabia": "🇸🇦", "uae": "🇦🇪",
+  "kenya": "🇰🇪", "ethiopia": "🇪🇹", "tanzania": "🇹🇿",
+  "new zealand": "🇳🇿", "singapore": "🇸🇬", "malaysia": "🇲🇾",
 };
 const flag = c => FLAG[(c||'').toLowerCase().trim()] || '';
 
@@ -48,6 +58,39 @@ function lookupLogo(logos, val) {
 }
 
 // ── Logo badge component ──────────────────────────────────────────────────────
+// ── Spotify photo resolver ────────────────────────────────────────────────────
+function extractSpotifyId(url) {
+  if (!url) return null;
+  // https://open.spotify.com/artist/7fRabwYwLBgvOudI9GY2Op
+  const artistMatch = url.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
+  if (artistMatch) return { id: artistMatch[1], type: 'artist' };
+  // https://artists.spotify.com/songwriter/1uevgyw7oOXyF6P9zcfGLC
+  const swMatch = url.match(/artists\.spotify\.com\/songwriter\/([A-Za-z0-9]+)/);
+  if (swMatch) return { id: swMatch[1], type: 'songwriter' };
+  return null;
+}
+
+function useSpotifyPhoto(spotifyUrl) {
+  const [photoUrl, setPhotoUrl] = useState(null);
+  useEffect(() => {
+    const info = extractSpotifyId(spotifyUrl);
+    if (!info) return;
+    // Use oEmbed for artist pages -- returns thumbnail_url
+    if (info.type === 'artist') {
+      fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/artist/${info.id}`)
+        .then(r => r.json())
+        .then(d => { if (d.thumbnail_url) setPhotoUrl(d.thumbnail_url); })
+        .catch(() => {});
+    }
+    // Songwriter pages don't have oEmbed -- use Spotify image CDN pattern
+    if (info.type === 'songwriter') {
+      // Try fetching the songwriter page for image (best effort)
+      setPhotoUrl(null); // Will fall back to initials
+    }
+  }, [spotifyUrl]);
+  return photoUrl;
+}
+
 function LogoBadge({ url, label, size = 32 }) {
   const [err, setErr] = useState(false);
   // If URL looks like a website, use Google favicon service as fallback
@@ -67,15 +110,17 @@ function LogoBadge({ url, label, size = 32 }) {
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
-function Avatar({ name, photoUrl, size = 44 }) {
+function Avatar({ name, photoUrl, spotifyUrl, size = 44 }) {
   const [err, setErr] = useState(false);
+  const spotifyPhoto = useSpotifyPhoto(!photoUrl || err ? spotifyUrl : null);
   const initials = (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const hash = (name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const hue = (hash * 47) % 360;
   const grad = `linear-gradient(135deg,hsl(${hue},55%,38%),hsl(${hue},55%,52%))`;
+  const url = (!photoUrl || err) ? spotifyPhoto : photoUrl;
 
-  if (photoUrl && !err) return (
-    <img src={photoUrl} alt={name} onError={() => setErr(true)}
+  if (url) return (
+    <img src={url} alt={name} onError={() => setErr(true)}
       referrerPolicy="no-referrer" crossOrigin="anonymous"
       style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0, border: `1.5px solid ${G.surfaceBorderLight}` }} />
   );
@@ -415,10 +460,15 @@ function ClientForm({ initial, onSave, onCancel }) {
             </div>
             <Field label="Contact / MH Rep"><Input value={form.contact} onChange={e => set('contact', e.target.value)} placeholder="Agent name" /></Field>
             <Field label="Photo URL"><Input value={form.photoUrl} onChange={e => set('photoUrl', e.target.value)} placeholder="https://..." /></Field>
-            <Field label="City"><Input value={form.city} onChange={e => set('city', e.target.value)} /></Field>
-            <Field label="State"><Input value={form.state} onChange={e => set('state', e.target.value)} /></Field>
             <div style={{ gridColumn: "1/-1" }}>
-              <Field label="Country"><Input value={form.country} onChange={e => set('country', e.target.value)} placeholder="United States" /></Field>
+              <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Locations (up to 3)</div>
+              {[['','',''],['2','2','2'],['3','3','3']].map(([s1,s2,s3],i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 12px", marginBottom: 8 }}>
+                  <Field label={`City ${i+1}`}><Input value={form[`city${s1}`] || ''} onChange={e => set(`city${s1}`, e.target.value)} /></Field>
+                  <Field label={`State ${i+1}`}><Input value={form[`state${s2}`] || ''} onChange={e => set(`state${s2}`, e.target.value)} /></Field>
+                  <Field label={`Country ${i+1}`}><Input value={form[`country${s3}`] || ''} onChange={e => set(`country${s3}`, e.target.value)} placeholder="United States" /></Field>
+                </div>
+              ))}
             </div>
             <Field label="PRO"><Input value={form.pro} onChange={e => set('pro', e.target.value)} placeholder="BMI, ASCAP, SESAC..." /></Field>
             <Field label="Publisher"><Input value={form.publisher} onChange={e => set('publisher', e.target.value)} placeholder="Kobalt, Warner Chappell..." /></Field>
@@ -473,18 +523,26 @@ function ClientCard({ client: c, logos, onClick }) {
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, position: "relative" }}>
       <div style={{ padding: "16px 16px 12px" }}>
-        <Avatar name={c.name} photoUrl={c.photoUrl} size={52} />
+        <Avatar name={c.name} photoUrl={c.photoUrl} spotifyUrl={c.spotifyUrl} size={52} />
         <div style={{ marginTop: 10 }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: G.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{c.name}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
             {(c.types || []).map(t => <TypePill key={t} type={t} />)}
           </div>
-          {(c.city || c.country) && (
-            <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}>
-              <span>{[c.city, c.state].filter(Boolean).join(', ')}</span>
-              {c.country && <span style={{ fontSize: 13 }}>{flag(c.country)}</span>}
-            </div>
-          )}
+          {(c.city || c.city2 || c.city3 || c.country) && (() => {
+            // Deduplicate flags -- only show each country once
+            const seen = new Set();
+            const flags = [c.country, c.country2, c.country3].filter(Boolean).filter(co => {
+              const f = flag(co); if (!f || seen.has(f)) return false; seen.add(f); return true;
+            });
+            const primaryLoc = [c.city, c.state].filter(Boolean).join(', ');
+            return (
+              <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                {primaryLoc && <span>{primaryLoc}</span>}
+                {flags.length > 0 && <span style={{ fontSize: 13 }}>{flags.map(co => flag(co)).join(' ')}</span>}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -525,18 +583,33 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
       {/* Header */}
       <div style={{ padding: "20px 28px 24px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 20, flexWrap: "wrap" }}>
-          <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
+          <Avatar name={c.name} photoUrl={c.photoUrl} spotifyUrl={c.spotifyUrl} size={80} />
           <div style={{ flex: 1, minWidth: 200 }}>
             <h1 style={{ fontSize: 30, fontWeight: 800, color: G.text, letterSpacing: "-0.04em", margin: "0 0 8px", lineHeight: 1.1 }}>{c.name}</h1>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
               {(c.types || []).map(t => <TypePill key={t} type={t} />)}
             </div>
-            {(c.city || c.country) && (
-              <div style={{ fontSize: 13, color: G.textSecondary }}>
-                {[c.city, c.state].filter(Boolean).join(', ')}
-                {c.country && <span style={{ marginLeft: 6, fontSize: 15 }}>{flag(c.country)}</span>}
-              </div>
-            )}
+            {(c.city || c.city2 || c.city3 || c.country) && (() => {
+              const locs = [
+                { city: c.city, state: c.state, country: c.country },
+                { city: c.city2, state: c.state2, country: c.country2 },
+                { city: c.city3, state: c.state3, country: c.country3 },
+              ].filter(l => l.city || l.country);
+              const seen = new Set();
+              return (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
+                  {locs.map((l, i) => {
+                    const f = flag(l.country); const dup = seen.has(f) && f; if (f) seen.add(f);
+                    return (
+                      <div key={i} style={{ fontSize: 13, color: G.textSecondary, display: "flex", alignItems: "center", gap: 5 }}>
+                        <span>{[l.city, l.state].filter(Boolean).join(', ')}</span>
+                        {f && !dup && <span style={{ fontSize: 15 }}>{f}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             {proLogo && <LogoBadge url={proLogo} label={c.pro} size={36} />}
