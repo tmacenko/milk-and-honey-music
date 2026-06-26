@@ -1,6 +1,9 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/sheets.js": { "maxDuration": 30 }
+  },
   "rewrites": [
     { "source": "/share/:id",  "destination": "/share.html" },
     { "source": "/roster/:id", "destination": "/roster-share.html" },
