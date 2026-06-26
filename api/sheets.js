@@ -187,18 +187,99 @@ module.exports = async (req, res) => {
         return parseClient(obj, i);
       }).filter(Boolean);
 
-      // Fetch Spotify photos server-side for clients without a manual photo
-      // so the front-end gets the URL immediately with no async flash
+      // ── Spotify Web API enrichment ─────────────────────────────────────────
+      // Get access token via Client Credentials (no user login needed)
+      let spotifyToken = null;
+      try {
+        const clientId     = process.env.SPOTIFY_CLIENT_ID;
+        const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+        if (clientId && clientSecret) {
+          const creds = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+          const tr = await fetch('https://accounts.spotify.com/api/token', {
+            method: 'POST',
+            headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'grant_type=client_credentials',
+          });
+          const td = await tr.json();
+          spotifyToken = td.access_token || null;
+        }
+      } catch(e) { console.error('Spotify auth error:', e.message); }
+
+      // Enrich each client that has a Spotify URL
       const spotifyFetches = clients.map(async c => {
-        if (c.photoUrl || !c.spotifyUrl) return;
-        const artistMatch = c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
-        if (!artistMatch) return;
-        try {
-          const r = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/artist/${artistMatch[1]}`);
-          if (!r.ok) return;
-          const d = await r.json();
-          if (d.thumbnail_url) c.photoUrl = d.thumbnail_url;
-        } catch(e) {}
+        const artistMatch = c.spotifyUrl?.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
+        if (!artistMatch) {
+          // No artist URL -- fall back to oEmbed for photo if needed
+          if (!c.photoUrl) {
+            try {
+              const r = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(c.spotifyUrl || '')}`);
+              if (r.ok) { const d = await r.json(); if (d.thumbnail_url) c.photoUrl = d.thumbnail_url; }
+            } catch(e) {}
+          }
+          return;
+        }
+
+        const artistId = artistMatch[1];
+
+        if (spotifyToken) {
+          try {
+            // Fetch artist data + top tracks in parallel
+            const [artistRes, tracksRes] = await Promise.all([
+              fetch(`https://api.spotify.com/v1/artists/${artistId}`, {
+                headers: { 'Authorization': `Bearer ${spotifyToken}` },
+              }),
+              fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`, {
+                headers: { 'Authorization': `Bearer ${spotifyToken}` },
+              }),
+            ]);
+
+            if (artistRes.ok) {
+              const a = await artistRes.json();
+              // Photo -- use highest res image if no manual photo set
+              if (!c.photoUrl && a.images?.length) {
+                c.photoUrl = a.images[0].url; // first image is highest res
+              }
+              // Popularity score (0-100)
+              if (a.popularity != null) c.spotifyPopularity = a.popularity;
+              // Genres
+              if (a.genres?.length) c.spotifyGenres = a.genres;
+              // Followers
+              if (a.followers?.total != null) c.spotifyFollowers = a.followers.total;
+            }
+
+            if (tracksRes.ok) {
+              const t = await tracksRes.json();
+              if (t.tracks?.length) {
+                // Top 5 tracks: name, album artwork, spotify URL
+                c.spotifyTopTracks = t.tracks.slice(0, 5).map(tr => ({
+                  name:     tr.name,
+                  album:    tr.album?.name,
+                  artwork:  tr.album?.images?.[1]?.url || tr.album?.images?.[0]?.url,
+                  url:      tr.external_urls?.spotify,
+                  preview:  tr.preview_url,
+                }));
+                // Latest release -- most recent album/single from top tracks
+                const albums = t.tracks.map(tr => tr.album).filter(Boolean);
+                const latest = albums.sort((a, b) => new Date(b.release_date) - new Date(a.release_date))[0];
+                if (latest) c.spotifyLatestRelease = {
+                  name:        latest.name,
+                  type:        latest.album_type, // album | single | compilation
+                  artwork:     latest.images?.[0]?.url,
+                  releaseDate: latest.release_date,
+                  url:         latest.external_urls?.spotify,
+                };
+              }
+            }
+          } catch(e) { console.error(`Spotify fetch error for ${c.name}:`, e.message); }
+        } else {
+          // No Spotify token -- fall back to oEmbed just for photo
+          if (!c.photoUrl) {
+            try {
+              const r = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/artist/${artistId}`);
+              if (r.ok) { const d = await r.json(); if (d.thumbnail_url) c.photoUrl = d.thumbnail_url; }
+            } catch(e) {}
+          }
+        }
       });
       await Promise.all(spotifyFetches);
 
