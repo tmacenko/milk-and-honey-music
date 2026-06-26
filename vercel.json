@@ -1,4 +1,6 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "rewrites": [
     { "source": "/share/:id",  "destination": "/share.html" },
     { "source": "/roster/:id", "destination": "/roster-share.html" },
