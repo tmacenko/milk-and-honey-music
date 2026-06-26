@@ -504,7 +504,7 @@ function ClientCard({ client: c, logos, onClick }) {
         {/* Flag(s) + type pills on same line */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           {dedupedFlags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
-          {(c.types || []).map(t => <TypePill key={t} type={t} />)}
+          {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
         </div>
 
         {/* Logo badges */}
@@ -533,7 +533,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
           <div style={{ flex: 1, minWidth: 200 }}>
             <h1 style={{ fontSize: 30, fontWeight: 800, color: G.text, letterSpacing: "-0.04em", margin: "0 0 8px", lineHeight: 1.1 }}>{c.name}</h1>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-              {(c.types || []).map(t => <TypePill key={t} type={t} />)}
+              {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
             </div>
             {(c.city || c.city2 || c.city3 || c.country) && (() => {
               const locs = [
@@ -729,8 +729,6 @@ function App() {
         <div style={{ padding: "14px 28px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
           {view === 'detail' ? (
             <>
-              <button onClick={() => setView('roster')} style={{ background: "none", border: "none", color: G.textSecondary, fontSize: 13, fontWeight: 500, cursor: "pointer", padding: 0, fontFamily: ff }}
-                onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>← Back</button>
               <div style={{ flex: 1 }} />
               <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
