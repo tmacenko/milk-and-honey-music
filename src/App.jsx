@@ -483,48 +483,46 @@ function ClientCard({ client: c, logos, onClick }) {
     lblLogo && { url: lblLogo, label: c.label },
   ].filter(Boolean);
 
+  // Deduplicate flags
+  const seenFlags = new Set();
+  const dedupedFlags = [c.country, c.country2, c.country3].filter(Boolean).filter(co => {
+    const f = flag(co); if (!f || seenFlags.has(f)) return false; seenFlags.add(f); return true;
+  });
+  const primaryLoc = [c.city, c.state].filter(Boolean).join(', ');
+
   return (
     <div onClick={onClick}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, position: "relative" }}>
-      <div style={{ padding: "16px 16px 12px" }}>
-        <Avatar name={c.name} photoUrl={c.photoUrl} size={52} />
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, color: G.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{c.name}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
-            {(c.types || []).map(t => <TypePill key={t} type={t} />)}
+      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, display: "flex", flexDirection: "column" }}>
+
+      <div style={{ padding: "16px 16px 14px", flex: 1, position: "relative" }}>
+        {/* Logo badges -- top right */}
+        {logoList.length > 0 && (
+          <div style={{ position: "absolute", top: 14, right: 14, display: "flex", gap: 5 }}>
+            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={26} />)}
           </div>
-          {(c.city || c.city2 || c.city3 || c.country) && (() => {
-            // Deduplicate flags -- only show each country once
-            const seen = new Set();
-            const flags = [c.country, c.country2, c.country3].filter(Boolean).filter(co => {
-              const f = flag(co); if (!f || seen.has(f)) return false; seen.add(f); return true;
-            });
-            const primaryLoc = [c.city, c.state].filter(Boolean).join(', ');
-            return (
-              <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                {primaryLoc && <span>{primaryLoc}</span>}
-                {flags.length > 0 && <span style={{ fontSize: 13 }}>{flags.map(co => flag(co)).join(' ')}</span>}
-              </div>
-            );
-          })()}
-        </div>
+        )}
+
+        {/* Avatar */}
+        <Avatar name={c.name} photoUrl={c.photoUrl} size={52} />
+
+        {/* Name */}
+        <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.03em", marginTop: 10, lineHeight: 1.2, paddingRight: logoList.length > 0 ? 100 : 0 }}>{c.name}</div>
+
+        {/* Flag + location */}
+        {(primaryLoc || dedupedFlags.length > 0) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5 }}>
+            {dedupedFlags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
+            {primaryLoc && <span style={{ fontSize: 12, color: G.textSecondary }}>{primaryLoc}</span>}
+          </div>
+        )}
       </div>
 
-      {/* Logo badges */}
-      {logoList.length > 0 && (
-        <div style={{ position: "absolute", bottom: 46, right: 12, display: "flex", gap: 6 }}>
-          {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={28} />)}
-        </div>
-      )}
-
-      {/* Credits / social */}
-      <div style={{ padding: "9px 16px", borderTop: `1px solid ${G.surfaceBorder}` }}>
-        {c.credits?.length > 0
-          ? <div style={{ fontSize: 11, color: G.textSecondary }}>{c.credits.slice(0, 3).join(', ')}{c.credits.length > 3 ? ` +${c.credits.length - 3}` : ''}</div>
-          : c.spotifyMonthly
-            ? <div style={{ display: "flex", alignItems: "center", gap: 5 }}><SpotifyIcon size={11} /><span style={{ fontSize: 11, color: G.textSecondary }}>{fmt(c.spotifyMonthly)}</span></div>
-            : null
+      {/* Type pills -- bottom strip */}
+      <div style={{ padding: "10px 16px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", flexWrap: "wrap", gap: 5 }}>
+        {(c.types || []).map(t => <TypePill key={t} type={t} />)}
+        {c.credits?.length > 0 && (c.types||[]).length === 0 &&
+          <span style={{ fontSize: 11, color: G.textSecondary }}>{c.credits.slice(0,3).join(', ')}{c.credits.length > 3 ? ` +${c.credits.length-3}` : ''}</span>
         }
       </div>
     </div>
