@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/favicon.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Milk & Honey Sports</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0a; transition: background .2s; font-family: -apple-system,'SF Pro Display','Helvetica Neue',sans-serif; min-height: 100vh; color: #f0f0f0; }
+
+    /* Top bar */
+    .topbar { background: #000; border-bottom: 1px solid #1c1c1c; padding: 0 40px; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .topbar-meta { color: #3a3a3a; font-size: 12px; }
+
+    /* Spinner */
+    .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; gap: 16px; color: #333; }
+    .spinner { font-size: 36px; color: #5BC898; animation: spin 1s linear infinite; display: inline-block; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* Full-width roster */
+    .roster-outer { width: 100%; }
+
+    /* Header */
+    .roster-header { background: #111; padding: 30px 48px; display: flex; align-items: center; justify-content: space-between; position: relative; overflow: hidden; border-bottom: 2px solid #5BC898; }
+    .roster-header::after { content:''; position:absolute; top:0; right:0; width:50%; height:100%; background: linear-gradient(to left, rgba(91,200,152,0.08), transparent); pointer-events:none; }
+    .roster-title { color: #fff; font-size: 30px; font-weight: 800; letter-spacing: -0.025em; }
+    .roster-subtitle { color: #5BC898; font-size: 14px; font-weight: 600; margin-top: 6px; letter-spacing: 0.04em; }
+    .header-logo { position: relative; z-index: 1; }
+
+    /* Athlete row */
+    .athlete-row { display: grid; grid-template-columns: 48px 120px 1fr 260px 130px 88px; align-items: center; border-bottom: 1px solid #151515; background: #111; transition: background .12s; min-height: 130px; }
+    .athlete-row:last-child { border-bottom: none; }
+    .athlete-row:nth-child(even) { background: #0e0e0e; }
+    .athlete-row:hover { background: #1c1c1c; }
+
+    .photo-col { width: 120px; height: 130px; overflow: hidden; flex-shrink: 0; }
+    .photo-col img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+    .photo-initials { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; color: #5BC898; background: rgba(91,200,152,0.06); }
+
+    .info-col { padding: 16px 28px 16px 20px; min-width: 0; }
+    .athlete-name { font-weight: 800; font-size: 24px; color: #ffffff; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .athlete-sub { font-size: 14px; color: #5BC898; font-weight: 600; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .socials-col { display: flex; align-items: center; gap: 20px; padding: 0 20px; flex-wrap: wrap; }
+    .social-link { display: flex; align-items: center; gap: 7px; text-decoration: none; transition: opacity .15s; }
+    .social-link:hover { opacity: 0.65; }
+    .social-val { font-size: 15px; font-weight: 700; }
+    .tk-wrap { display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.07); border-radius: 8px; padding: 5px 10px 5px 8px; }
+
+    .reach-col { text-align: right; padding-right: 24px; }
+    .reach-label { font-size: 9px; color: #3a3a3a; text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 3px; }
+    .reach-val { font-size: 26px; font-weight: 800; color: #5BC898; letter-spacing: -0.02em; line-height: 1; }
+
+    .logo-col { display: flex; align-items: center; justify-content: center; }
+    .logo-wrap { width: 62px; height: 62px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .logo-wrap img { width: 40px; height: 40px; object-fit: contain; }
+
+    .roster-footer { background: #000; padding: 16px 48px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #1a1a1a; }
+    .footer-brand { color: #5BC898; font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; }
+    .footer-year { color: #2a2a2a; font-size: 10px; }
+
+    @media (max-width: 900px) {
+      .topbar { padding: 0 16px; }
+      .roster-header { flex-direction: row; align-items: center; padding: 16px 20px; }
+      .roster-header img { height: 26px !important; flex-shrink: 0; }
+      .roster-title { font-size: 15px; }
+      .col-headers { display: none; }
+      .athlete-row { grid-template-columns: 62px 1fr auto 46px; min-height: 80px; }
+      .athlete-row > div:nth-child(1) { display: none; }
+      .photo-col { width: 62px; height: 80px; }
+      .info-col { padding: 8px 8px; }
+      .athlete-name { font-size: 14px; }
+      .athlete-sub { font-size: 10px; }
+      .socials-col { flex-direction: column; gap: 3px; padding: 8px 4px 8px 0; align-items: flex-end; justify-content: center; }
+      .social-val { font-size: 11px; }
+      .reach-col { display: none; }
+      .logo-col { display: flex; align-items: center; justify-content: center; padding-right: 6px; }
+      .logo-wrap { width: 36px; height: 36px; }
+      .logo-wrap img { width: 26px; height: 26px; }
+      .roster-footer { padding: 10px 16px; }
+    }
+    @media (max-width: 480px) {
+      .roster-header img { height: 22px !important; }
+      .roster-title { font-size: 13px; }
+      .athlete-row { grid-template-columns: 54px 1fr auto 40px; min-height: 70px; }
+      .photo-col { width: 54px; height: 70px; }
+      .athlete-name { font-size: 13px; }
+      .social-val { font-size: 10px; }
+      .logo-wrap { width: 28px; height: 28px; }
+      .logo-wrap img { width: 20px; height: 20px; }
+    }
+  </style>
+
+  <meta property="og:site_name" content="Milk & Honey Sports" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" id="og-title" content="Milk & Honey Sports — Athlete Roster" />
+  <meta property="og:description" id="og-desc" content="Athlete roster shared by Milk & Honey Sports Management" />
+  <meta property="og:image" content="/share-image.jpg" />
+  <meta property="og:image:width" content="1822" />
+  <meta property="og:image:height" content="921" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@milkhoneyla" />
+  <meta name="twitter:title" id="tw-title" content="Milk & Honey Sports — Athlete Roster" />
+  <meta name="twitter:description" id="tw-desc" content="Athlete roster shared by Milk & Honey Sports Management" />
+  <meta name="twitter:image" content="/share-image.jpg" />
+</head>
+<body>
+
+<div class="topbar">
+  <div></div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div class="topbar-meta" id="topbar-meta">Loading…</div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="loading">
+    <span class="spinner">⟳</span>
+    <div style="font-size:15px;font-weight:600;">Loading…</div>
+  </div>
+</div>
+
+<script>
+const NFL_LOGOS = {"arizona cardinals":"ari","atlanta falcons":"atl","baltimore ravens":"bal","buffalo bills":"buf","carolina panthers":"car","chicago bears":"chi","cincinnati bengals":"cin","cleveland browns":"cle","dallas cowboys":"dal","denver broncos":"den","detroit lions":"det","green bay packers":"gb","houston texans":"hou","indianapolis colts":"ind","jacksonville jaguars":"jax","kansas city chiefs":"kc","las vegas raiders":"lv","los angeles chargers":"lac","los angeles rams":"lar","miami dolphins":"mia","minnesota vikings":"min","new england patriots":"ne","new orleans saints":"no","new york giants":"nyg","new york jets":"nyj","philadelphia eagles":"phi","pittsburgh steelers":"pit","san francisco 49ers":"sf","seattle seahawks":"sea","tampa bay buccaneers":"tb","tennessee titans":"ten","washington commanders":"wsh"};
+const COLLEGE_LOGOS = {
+  "a&m": 245,
+  "aamu": 2010,
+  "abilene christian": 2000,
+  "abilene christian wildcats": 2000,
+  "acu": 2000,
+  "aggies nc a&t": 2448,
+  "air force": 2005,
+  "akron": 2006,
+  "alabama": 333,
+  "alabama a and m": 2010,
+  "alabama a&m": 2010,
+  "alabama a&m bulldogs": 2010,
+  "alabama birmingham": 5,
+  "alabama st": 2011,
+  "alabama st.": 2011,
+  "alabama state": 2011,
+  "alabama state hornets": 2011,
+  "albany": 399,
+  "albany great danes": 399,
+  "alcorn st": 2016,
+  "alcorn st.": 2016,
+  "alcorn state": 2016,
+  "alcorn state braves": 2016,
+  "app state": 2026,
+  "appalachian st": 2026,
+  "appalachian state": 2026,
+  "apsu": 2046,
+  "arizona": 12,
+  "arizona state": 9,
+  "arkansas": 8,
+  "arkansas pine bluff": 2029,
+  "arkansas pine-bluff": 2029,
+  "arkansas st": 2032,
+  "arkansas st.": 2032,
+  "arkansas state": 2032,
+  "arkansas-pine bluff": 2029,
+  "arkansas-pine-bluff": 2029,
+  "army": 349,
+  "army black knights": 349,
+  "army west point": 349,
+  "asu": 9,
+  "auburn": 2,
+  "austin peay": 2046,
+  "austin peay governors": 2046,
+  "ball st": 2050,
+  "ball st.": 2050,
+  "ball state": 2050,
+  "baylor": 239,
+  "bc": 103,
+  "bcu": 2065,
+  "bethune cookman": 2065,
+  "bethune-cookman": 2065,
+  "bethune-cookman wildcats": 2065,
+  "bgsu": 189,
+  "boise st": 68,
+  "boise st.": 68,
+  "boise state": 68,
+  "boston college": 103,
+  "bowling green": 189,
+  "brigham young": 252,
+  "brown": 225,
+  "brown bears": 225,
+  "bryant": 2803,
+  "bryant bulldogs": 2803,
+  "bucknell": 2083,
+  "bucknell bison": 2083,
+  "buffalo": 2084,
+  "butler": 2086,
+  "butler bulldogs": 2086,
+  "byu": 252,
+  "cal": 25,
+  "cal poly": 13,
+  "cal poly mustangs": 13,
+  "california": 25,
+  "california davis": 302,
+  "california polytechnic": 13,
+  "campbell": 2097,
+  "campbell fighting camels": 2097,
+  "ccsu": 2115,
+  "central arkansas": 2110,
+  "central arkansas bears": 2110,
+  "central connecticut": 2115,
+  "central connecticut blue devils": 2115,
+  "central connecticut state": 2115,
+  "central florida": 2116,
+  "central michigan": 2117,
+  "charleston southern": 2127,
+  "charleston southern buccaneers": 2127,
+  "charlotte": 2429,
+  "charlotte 49ers": 2429,
+  "chattanooga": 236,
+  "chattanooga mocs": 236,
+  "cincinnati": 2132,
+  "citadel": 2187,
+  "citadel bulldogs": 2187,
+  "clemson": 228,
+  "cmu": 2117,
+  "coastal carolina": 324,
+  "colgate": 2142,
+  "colgate raiders": 2142,
+  "college of the holy cross": 107,
+  "colorado": 38,
+  "colorado st": 36,
+  "colorado st.": 36,
+  "colorado state": 36,
+  "columbia": 171,
+  "columbia lions": 171,
+  "connecticut": 41,
+  "cornell": 172,
+  "cornell big red": 172,
+  "csu": 36,
+  "dartmouth": 159,
+  "dartmouth big green": 159,
+  "davidson": 2166,
+  "davidson wildcats": 2166,
+  "dayton": 2168,
+  "dayton flyers": 2168,
+  "delaware": 48,
+  "delaware blue hens": 48,
+  "delaware st": 2169,
+  "delaware st.": 2169,
+  "delaware state": 2169,
+  "delaware state hornets": 2169,
+  "dixie state": 3101,
+  "drake": 2181,
+  "drake bulldogs": 2181,
+  "duke": 150,
+  "duquesne": 2184,
+  "duquesne dukes": 2184,
+  "east carolina": 151,
+  "east tennessee st": 2193,
+  "east tennessee state": 2193,
+  "eastern illinois": 2197,
+  "eastern illinois panthers": 2197,
+  "eastern kentucky": 2198,
+  "eastern kentucky colonels": 2198,
+  "eastern michigan": 2199,
+  "eastern washington": 331,
+  "eastern washington eagles": 331,
+  "ecu": 151,
+  "eiu": 2197,
+  "eku": 2198,
+  "elon": 2210,
+  "elon phoenix": 2210,
+  "emu": 2199,
+  "etsu": 2193,
+  "etsu buccaneers": 2193,
+  "ewu": 331,
+  "famu": 50,
+  "fau": 2226,
+  "fightin blue hens": 48,
+  "fighting blue hens": 48,
+  "fiu": 2229,
+  "florida": 57,
+  "florida a and m": 50,
+  "florida a&m": 50,
+  "florida a&m rattlers": 50,
+  "florida atlantic": 2226,
+  "florida international": 2229,
+  "florida state": 52,
+  "fordham": 2230,
+  "fordham rams": 2230,
+  "fresno st": 278,
+  "fresno st.": 278,
+  "fresno state": 278,
+  "fsu": 52,
+  "furman": 231,
+  "furman paladins": 231,
+  "gardner webb": 2241,
+  "gardner-webb": 2241,
+  "gardner-webb runnin bulldogs": 2241,
+  "georgetown": 46,
+  "georgetown hoyas": 46,
+  "georgia": 61,
+  "georgia southern": 290,
+  "georgia state": 2247,
+  "georgia tech": 59,
+  "grambling": 2755,
+  "grambling st": 2755,
+  "grambling st.": 2755,
+  "grambling state": 2755,
+  "grambling state tigers": 2755,
+  "gt": 59,
+  "hampton": 2261,
+  "hampton pirates": 2261,
+  "harvard": 108,
+  "harvard crimson": 108,
+  "hawai'i": 62,
+  "hawai\\u02bbi": 62,
+  "hawaii": 62,
+  "hbu": 2277,
+  "hcu": 2277,
+  "holy cross": 107,
+  "holy cross crusaders": 107,
+  "houston": 248,
+  "houston baptist": 2277,
+  "houston christian": 2277,
+  "houston christian huskies": 2277,
+  "howard": 47,
+  "howard bison": 47,
+  "idaho": 70,
+  "idaho st": 304,
+  "idaho st.": 304,
+  "idaho state": 304,
+  "idaho state bengals": 304,
+  "idaho vandals": 70,
+  "illinois": 356,
+  "illinois st": 2287,
+  "illinois st.": 2287,
+  "illinois state": 2287,
+  "illinois state redbirds": 2287,
+  "incarnate word": 2916,
+  "incarnate word cardinals": 2916,
+  "indiana": 84,
+  "indiana st": 282,
+  "indiana st.": 282,
+  "indiana state": 282,
+  "indiana state sycamores": 282,
+  "iowa": 2294,
+  "iowa state": 66,
+  "jackson st": 2296,
+  "jackson st.": 2296,
+  "jackson state": 2296,
+  "jackson state tigers": 2296,
+  "jacksonville st": 2269,
+  "jacksonville st.": 2269,
+  "jacksonville state": 2269,
+  "james madison": 256,
+  "jax st": 2269,
+  "jax state": 2269,
+  "jmu": 256,
+  "jsu tigers": 2296,
+  "k-state": 2306,
+  "kansas": 2305,
+  "kansas state": 2306,
+  "kennesaw st": 338,
+  "kennesaw st.": 338,
+  "kennesaw state": 338,
+  "kennesaw state owls": 338,
+  "kent st": 2309,
+  "kent st.": 2309,
+  "kent state": 2309,
+  "kentucky": 96,
+  "ksu owls": 338,
+  "ksu wildcats": 2306,
+  "la tech": 2348,
+  "lafayette": 322,
+  "lafayette leopards": 322,
+  "lamar": 2320,
+  "lamar cardinals": 2320,
+  "lehigh": 2329,
+  "lehigh mountain hawks": 2329,
+  "liberty": 2335,
+  "lindenwood": 2815,
+  "lindenwood lions": 2815,
+  "liu": 112358,
+  "liu sharks": 112358,
+  "long island": 112358,
+  "long island university": 112358,
+  "louisiana": 309,
+  "louisiana lafayette": 309,
+  "louisiana monroe": 2433,
+  "louisiana monroe warhawks": 2433,
+  "louisiana ragin cajuns": 309,
+  "louisiana state": 99,
+  "louisiana state university": 99,
+  "louisiana tech": 2348,
+  "louisiana tech bulldogs": 2348,
+  "louisiana-lafayette": 309,
+  "louisiana-monroe": 2433,
+  "louisville": 97,
+  "lsu": 99,
+  "maine": 311,
+  "maine black bears": 311,
+  "marist": 2368,
+  "marist red foxes": 2368,
+  "marshall": 276,
+  "maryland": 120,
+  "massachusetts": 113,
+  "mcneese": 2377,
+  "mcneese cowboys": 2377,
+  "mcneese st": 2377,
+  "mcneese st.": 2377,
+  "mcneese state": 2377,
+  "memphis": 235,
+  "mercer": 2382,
+  "mercer bears": 2382,
+  "mercyhurst": 2776,
+  "mercyhurst lakers": 2776,
+  "merrimack": 2771,
+  "merrimack warriors": 2771,
+  "miami": 2390,
+  "miami (fl)": 2390,
+  "miami (oh)": 193,
+  "miami fl": 2390,
+  "miami florida": 2390,
+  "miami oh": 193,
+  "miami ohio": 193,
+  "miami redhawks": 193,
+  "miami university": 193,
+  "michigan": 130,
+  "michigan state": 127,
+  "middle tennessee": 2393,
+  "middle tennessee state": 2393,
+  "miners utep": 2638,
+  "minnesota": 135,
+  "mississippi": 145,
+  "mississippi st": 344,
+  "mississippi st.": 344,
+  "mississippi state": 344,
+  "mississippi valley st": 2400,
+  "mississippi valley state": 2400,
+  "mississippi valley state delta devils": 2400,
+  "missouri": 142,
+  "missouri st": 2623,
+  "missouri st.": 2623,
+  "missouri state": 2623,
+  "missouri state bears": 2623,
+  "mizzou": 142,
+  "mocs": 236,
+  "monmouth": 2405,
+  "monmouth hawks": 2405,
+  "montana": 149,
+  "montana grizzlies": 149,
+  "montana st": 147,
+  "montana st.": 147,
+  "montana state": 147,
+  "montana state bobcats": 147,
+  "morehead st": 2413,
+  "morehead st.": 2413,
+  "morehead state": 2413,
+  "morehead state eagles": 2413,
+  "morgan st": 2415,
+  "morgan st.": 2415,
+  "morgan state": 2415,
+  "morgan state bears": 2415,
+  "msu": 127,
+  "msu bobcats": 147,
+  "mtsu": 2393,
+  "murray st": 93,
+  "murray st.": 93,
+  "murray state": 93,
+  "murray state racers": 93,
+  "mvsu": 2400,
+  "n.c. a&t": 2448,
+  "n.c. state": 152,
+  "nau": 2464,
+  "navy": 2426,
+  "nc a&t": 2448,
+  "nc central": 2428,
+  "nc state": 152,
+  "ncat": 2448,
+  "nccu": 2428,
+  "ndsu": 2449,
+  "nebraska": 158,
+  "nevada": 2440,
+  "nevada las vegas": 2439,
+  "new hampshire": 160,
+  "new hampshire wildcats": 160,
+  "new haven": 2440,
+  "new haven chargers": 2440,
+  "new mexico": 167,
+  "new mexico state": 166,
+  "new york albany": 399,
+  "nicholls": 2447,
+  "nicholls colonels": 2447,
+  "nicholls st": 2447,
+  "nicholls st.": 2447,
+  "nicholls state": 2447,
+  "niu": 2459,
+  "nmsu": 166,
+  "norfolk st": 2450,
+  "norfolk st.": 2450,
+  "norfolk state": 2450,
+  "norfolk state spartans": 2450,
+  "north alabama": 2453,
+  "north alabama lions": 2453,
+  "north carolina": 153,
+  "north carolina a and t": 2448,
+  "north carolina a&t": 2448,
+  "north carolina central": 2428,
+  "north carolina central eagles": 2428,
+  "north carolina state": 152,
+  "north dakota": 155,
+  "north dakota fighting hawks": 155,
+  "north dakota st": 2449,
+  "north dakota st.": 2449,
+  "north dakota state": 2449,
+  "north dakota state bison": 2449,
+  "north texas": 249,
+  "northern arizona": 2464,
+  "northern arizona lumberjacks": 2464,
+  "northern colorado": 2458,
+  "northern colorado bears": 2458,
+  "northern illinois": 2459,
+  "northern iowa": 2460,
+  "northern iowa panthers": 2460,
+  "northwestern": 77,
+  "northwestern st": 2466,
+  "northwestern st.": 2466,
+  "northwestern state": 2466,
+  "northwestern state demons": 2466,
+  "notre dame": 87,
+  "odu": 295,
+  "ohio": 195,
+  "ohio bobcats": 195,
+  "ohio state": 194,
+  "ok state": 197,
+  "oklahoma": 201,
+  "oklahoma st": 197,
+  "oklahoma st.": 197,
+  "oklahoma state": 197,
+  "old dominion": 295,
+  "ole miss": 145,
+  "oregon": 2483,
+  "oregon st": 204,
+  "oregon st.": 204,
+  "oregon state": 204,
+  "osu": 194,
+  "penn": 219,
+  "penn quakers": 219,
+  "penn state": 213,
+  "pennsylvania": 219,
+  "pitt": 221,
+  "pittsburgh": 221,
+  "portland st": 2502,
+  "portland st.": 2502,
+  "portland state": 2502,
+  "portland state vikings": 2502,
+  "prairie view": 2504,
+  "prairie view a and m": 2504,
+  "prairie view a&m": 2504,
+  "presbyterian": 2506,
+  "presbyterian blue hose": 2506,
+  "princeton": 163,
+  "princeton tigers": 163,
+  "psu": 213,
+  "purdue": 2509,
+  "pvamu": 2504,
+  "ragin cajuns": 309,
+  "rhode island": 227,
+  "rhode island rams": 227,
+  "rice": 242,
+  "richmond": 257,
+  "richmond spiders": 257,
+  "rmu": 2523,
+  "robert morris": 2523,
+  "robert morris colonials": 2523,
+  "rutgers": 164,
+  "sac state": 16,
+  "sacramento st": 16,
+  "sacramento st.": 16,
+  "sacramento state": 16,
+  "sacramento state hornets": 16,
+  "saint francis": 2598,
+  "saint francis pa": 2598,
+  "saint francis red flash": 2598,
+  "saint thomas": 2900,
+  "sam houston": 55,
+  "sam houston st": 55,
+  "sam houston st.": 55,
+  "sam houston state": 55,
+  "samford": 2535,
+  "samford bulldogs": 2535,
+  "san diego": 301,
+  "san diego state": 21,
+  "san diego toreros": 301,
+  "san jos\\u00e9 state": 23,
+  "san jose state": 23,
+  "sc state": 2569,
+  "scsu bulldogs": 2569,
+  "sdsu": 21,
+  "sdsu jackrabbits": 2571,
+  "se missouri state": 2546,
+  "semo": 2546,
+  "sfa": 2617,
+  "shsu": 55,
+  "siu": 79,
+  "sjsu": 23,
+  "smu": 2567,
+  "south alabama": 6,
+  "south carolina": 2579,
+  "south carolina st": 2569,
+  "south carolina st.": 2569,
+  "south carolina state": 2569,
+  "south dakota": 233,
+  "south dakota coyotes": 233,
+  "south dakota st": 2571,
+  "south dakota st.": 2571,
+  "south dakota state": 2571,
+  "south dakota state jackrabbits": 2571,
+  "south florida": 58,
+  "southeast missouri": 2546,
+  "southeast missouri st": 2546,
+  "southeast missouri state": 2546,
+  "southeast missouri state redhawks": 2546,
+  "southeastern la": 2545,
+  "southeastern louisiana": 2545,
+  "southeastern louisiana lions": 2545,
+  "southern": 2582,
+  "southern california": 30,
+  "southern illinois": 79,
+  "southern illinois salukis": 79,
+  "southern jaguars": 2582,
+  "southern methodist": 2567,
+  "southern miss": 2572,
+  "southern mississippi": 2572,
+  "southern university": 2582,
+  "southern utah": 253,
+  "southern utah thunderbirds": 253,
+  "st francis pa": 2598,
+  "st thomas": 2900,
+  "st thomas minnesota": 2900,
+  "st thomas mn": 2900,
+  "st thomas tommies": 2900,
+  "st. francis pa": 2598,
+  "st. thomas": 2900,
+  "st. thomas minnesota": 2900,
+  "st. thomas mn": 2900,
+  "stanford": 24,
+  "stephen f austin": 2617,
+  "stephen f. austin": 2617,
+  "stephen f. austin lumberjacks": 2617,
+  "stetson": 56,
+  "stetson hatters": 56,
+  "stonehill": 2839,
+  "stonehill skyhawks": 2839,
+  "stony brook": 2619,
+  "stony brook seawolves": 2619,
+  "suu": 253,
+  "syracuse": 183,
+  "tamu commerce": 2837,
+  "tarleton": 2627,
+  "tarleton st": 2627,
+  "tarleton st.": 2627,
+  "tarleton state": 2627,
+  "tarleton state texans": 2627,
+  "tcu": 2628,
+  "temple": 218,
+  "tennessee": 2633,
+  "tennessee chattanooga": 236,
+  "tennessee martin": 2630,
+  "tennessee st": 2634,
+  "tennessee st.": 2634,
+  "tennessee state": 2634,
+  "tennessee state tigers": 2634,
+  "tennessee tech": 2635,
+  "tennessee tech golden eagles": 2635,
+  "tennessee technological": 2635,
+  "texas": 251,
+  "texas a and m": 245,
+  "texas a and m commerce": 2837,
+  "texas a&m": 245,
+  "texas a&m commerce": 2837,
+  "texas a&m commerce lions": 2837,
+  "texas a&m-commerce": 2837,
+  "texas am": 245,
+  "texas christian": 2628,
+  "texas el paso": 2638,
+  "texas san antonio": 2636,
+  "texas southern": 2640,
+  "texas southern tigers": 2640,
+  "texas st": 326,
+  "texas st.": 326,
+  "texas state": 326,
+  "texas tech": 2641,
+  "the citadel": 2187,
+  "the u": 2390,
+  "toledo": 2649,
+  "towson": 119,
+  "towson tigers": 119,
+  "troy": 2653,
+  "tsu tigers": 2640,
+  "tulane": 2655,
+  "tulsa": 202,
+  "u of a birmingham": 5,
+  "uab": 5,
+  "ualbany": 399,
+  "uapb": 2029,
+  "uc": 2132,
+  "uc berkeley": 25,
+  "uc davis": 302,
+  "uc davis aggies": 302,
+  "uca": 2110,
+  "ucf": 2116,
+  "ucla": 26,
+  "uconn": 41,
+  "uiw": 2916,
+  "ul lafayette": 309,
+  "ull": 309,
+  "ulm": 2433,
+  "umass": 113,
+  "una": 2453,
+  "unc": 153,
+  "unc bears": 2458,
+  "und": 155,
+  "unh": 160,
+  "uni": 2460,
+  "university of the incarnate word": 2916,
+  "unlv": 2439,
+  "unt": 249,
+  "uri": 227,
+  "usc": 30,
+  "usd coyotes": 233,
+  "usd toreros": 301,
+  "usf": 58,
+  "usu": 328,
+  "ut chattanooga": 236,
+  "ut el paso": 2638,
+  "ut martin": 2630,
+  "ut martin skyhawks": 2630,
+  "ut san antonio": 2636,
+  "utah": 254,
+  "utah state": 328,
+  "utah tech": 3101,
+  "utah tech trailblazers": 3101,
+  "utep": 2638,
+  "utsa": 2636,
+  "uva": 258,
+  "uwg": 2716,
+  "valparaiso": 2674,
+  "valparaiso beacons": 2674,
+  "valpo": 2674,
+  "vanderbilt": 238,
+  "villanova": 222,
+  "villanova wildcats": 222,
+  "virginia": 258,
+  "virginia military institute": 2678,
+  "virginia tech": 259,
+  "vmi": 2678,
+  "vmi keydets": 2678,
+  "vt": 259,
+  "w&m": 2729,
+  "wagner": 2681,
+  "wagner seahawks": 2681,
+  "wake forest": 154,
+  "washington": 264,
+  "washington st": 265,
+  "washington st.": 265,
+  "washington state": 265,
+  "wazzu": 265,
+  "wcu": 2717,
+  "weber st": 2692,
+  "weber st.": 2692,
+  "weber state": 2692,
+  "weber state wildcats": 2692,
+  "west georgia": 2716,
+  "west georgia wolves": 2716,
+  "west virginia": 277,
+  "western carolina": 2717,
+  "western carolina catamounts": 2717,
+  "western illinois": 2710,
+  "western illinois leathernecks": 2710,
+  "western kentucky": 98,
+  "western kentucky hilltoppers": 98,
+  "western michigan": 2711,
+  "william & mary": 2729,
+  "william & mary tribe": 2729,
+  "william and mary": 2729,
+  "william mary": 2729,
+  "wisconsin": 275,
+  "wiu": 2710,
+  "wku": 98,
+  "wmu": 2711,
+  "wofford": 2747,
+  "wofford terriers": 2747,
+  "wvu": 277,
+  "wyoming": 2751,
+  "yale": 43,
+  "yale bulldogs": 43,
+  "youngstown st": 2754,
+  "youngstown st.": 2754,
+  "youngstown state": 2754,
+  "youngstown state penguins": 2754,
+};
+
+
+function normalizeSchoolKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, "and")
+    .replace(/\./g, "")
+    .replace(/[’']/g, "")
+    .replace(/-/g, " ")
+    .replace(/\((.*?)\)/g, "$1")
+    .replace(/\b(university|college|the)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getCollegeLogoId(college) {
+  const raw = String(college || "").toLowerCase().trim();
+  const normalized = normalizeSchoolKey(college);
+
+  if (COLLEGE_LOGOS[raw]) return COLLEGE_LOGOS[raw];
+  if (COLLEGE_LOGOS[normalized]) return COLLEGE_LOGOS[normalized];
+
+  const key = Object.keys(COLLEGE_LOGOS).find(k => {
+    const nk = normalizeSchoolKey(k);
+    return normalized === nk || normalized.includes(nk) || nk.includes(normalized);
+  });
+
+  return key ? COLLEGE_LOGOS[key] : null;
+}
+
+function getLogoUrl(a) {
+  const team = (a.nflTeam || '').toLowerCase().trim();
+  const college = (a.college || '').toLowerCase().trim();
+  const level = (a.level || '').toLowerCase().trim();
+
+  if (team && NFL_LOGOS[team]) {
+    return `https://a.espncdn.com/i/teamlogos/nfl/500/${NFL_LOGOS[team]}.png`;
+  }
+
+  if (level === 'nfl') return null;
+
+  if (level === 'high school' && a.committedTo) {
+    const id = getCollegeLogoId(a.committedTo);
+    return id ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${id}.png` : null;
+  }
+
+  if (college) {
+    const collegeLogoId = getCollegeLogoId(college);
+    if (collegeLogoId) {
+      return `https://a.espncdn.com/i/teamlogos/ncaa/500/${collegeLogoId}.png`;
+    }
+  }
+
+  return null;
+}
+function photoUrl(a) {
+  if (a.photoUrl) return a.photoUrl;
+  if (!a.espnId) return null;
+  const sport = (a.espnSport||'nfl') === 'college' ? 'college-football' : 'nfl';
+  return `https://a.espncdn.com/i/headshots/${sport}/players/full/${a.espnId}.png`;
+}
+function totalReach(a) {
+  const p = s => { if (!s||s==='—') return 0; const n=parseFloat(s); return s.includes('M')?n*1e6:s.includes('K')?n*1e3:n; };
+  const t = p(a.igFollowers)+p(a.twitterFollowers)+p(a.tiktokFollowers);
+  if (t>=1e6) return (t/1e6).toFixed(1).replace(/\.0$/,'')+'M';
+  if (t>=1e3) return Math.round(t/1e3)+'K';
+  return t?t.toString():'—';
+}
+function initials(name) { return (name||'').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+function getDisplayTeam(a) { return a.nflTeam || a.college || ''; }
+function toArr(v) { if (Array.isArray(v)) return v; if (!v) return []; return String(v).split(',').map(s=>s.trim()).filter(Boolean); }
+function normalizeBodyFontSize(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 12;
+  return Math.min(24, Math.max(8, Math.round(n)));
+}
+
+const IG_SVG = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5.5" stroke="#e1306c" stroke-width="2"/><circle cx="12" cy="12" r="4.5" stroke="#e1306c" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="#e1306c"/></svg>`;
+const TW_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="#1da1f2"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`;
+const TK_SVG = `<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#ffffff" d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.73a8.17 8.17 0 004.78 1.52V6.79a4.85 4.85 0 01-1.01-.1z"/></svg>`;
+
+// ── THEME SYSTEM ──────────────────────────────────────────────────────────────
+const THEMES = {
+  dark: {
+    pageBg: '#0a0a0a', headerBg: '#111', headerBorder: '#5BC898',
+    border: '#1a1a1a', rowEven: '#141414', rowOdd: '#111',
+    text: '#ffffff', textSub: '#5BC898', textMeta: '#888',
+    green: '#5BC898', footerBg: '#000', footerText: '#5BC898', footerYear: '#333',
+    logoCircle: '#ffffff', topbarBg: '#000', topbarBorder: '#1c1c1c',
+    socialTkBg: 'rgba(255,255,255,0.07)',
+    surface: '#111', pitchBg: 'rgba(91,200,152,0.06)', pitchBorder: 'rgba(91,200,152,0.2)',
+    pitchTitle: '#5BC898', pitchBody: '#ccc',
+    tagBg: 'rgba(91,200,152,0.1)', tagText: '#5BC898', tagBorder: 'rgba(91,200,152,0.25)',
+  },
+  light: {
+    pageBg: '#f0f2f5', headerBg: '#0a0a0a', headerBorder: '#5BC898',
+    border: '#e8e8e8', rowEven: '#f9f9f9', rowOdd: '#ffffff',
+    text: '#111111', textSub: '#3eaa78', textMeta: '#555',
+    green: '#3eaa78', footerBg: '#0a0a0a', footerText: '#5BC898', footerYear: '#444',
+    logoCircle: '#f0f0f0', topbarBg: '#0a0a0a', topbarBorder: '#1a1a1a',
+    socialTkBg: 'rgba(0,0,0,0.07)',
+    surface: '#ffffff', pitchBg: '#f0faf5', pitchBorder: '#b8e8d0',
+    pitchTitle: '#2d8a60', pitchBody: '#1a4a30',
+    tagBg: 'rgba(62,170,120,0.1)', tagText: '#2d8a60', tagBorder: 'rgba(62,170,120,0.25)',
+  },
+};
+let currentTheme = 'dark';
+
+// ── GROUP ROSTER RENDER ───────────────────────────────────────────────────────
+function renderRoster(data) {
+  const { title, athletes, settings, createdAt } = data;
+  const { showSocials=true, showReach=true } = settings||{};
+  document.title = title || 'Milk & Honey Sports';
+  const meta = document.getElementById('topbar-meta');
+  if (meta && createdAt) {
+    const d = new Date(createdAt);
+    meta.textContent = `Shared ${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+  }
+
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  const outer = document.createElement('div');
+  outer.className = 'roster-outer';
+
+  outer.innerHTML = `
+    <div class="roster-header">
+      <div>
+        <div class="roster-title">${title||'Milk & Honey Sports'}</div>
+        <div class="roster-subtitle">${athletes.length} Athlete${athletes.length!==1?'s':''}</div>
+      </div>
+      <div class="header-logo" style="position:relative;z-index:1">
+        <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk &amp; Honey Sports" style="height:48px;object-fit:contain;display:block;" />
+      </div>
+    </div>
+  `;
+
+  const rowsWrap = document.createElement('div');
+  athletes.forEach((a) => {
+    const logo = getLogoUrl(a);
+    const photo = photoUrl(a);
+    const reach = totalReach(a);
+    let sub = [a.position, a.jerseyNumber&&`#${a.jerseyNumber}`, getDisplayTeam(a)].filter(Boolean).join(' · ');
+    if (a.level==='High School') sub = [a.position, a.college||getDisplayTeam(a), a.classOf?`Class of ${a.classOf}`:''].filter(Boolean).join(' · ');
+
+    const socialParts = [];
+    if (showSocials) {
+      if (a.igFollowers && a.instagram)
+        socialParts.push(`<a class="social-link" href="https://instagram.com/${a.instagram}" target="_blank" rel="noopener">${IG_SVG}<span class="social-val" style="color:#e1306c">${a.igFollowers}</span></a>`);
+      if (a.twitterFollowers && a.twitter)
+        socialParts.push(`<a class="social-link" href="https://x.com/${a.twitter.replace(/^@/,'')}" target="_blank" rel="noopener">${TW_SVG}<span class="social-val" style="color:#1da1f2">${a.twitterFollowers}</span></a>`);
+      if (a.tiktokFollowers && a.tiktok)
+        socialParts.push(`<a class="social-link tk-wrap" href="https://tiktok.com/@${a.tiktok}" target="_blank" rel="noopener">${TK_SVG}<span class="social-val" style="color:#fff">${a.tiktokFollowers}</span></a>`);
+    }
+
+    const row = document.createElement('div');
+    row.className = 'athlete-row';
+    row.innerHTML = `
+      <div></div>
+      <div class="photo-col">
+        ${photo ? `<img src="${photo}" alt="${a.name}" onerror="this.outerHTML='<div class=photo-initials>${initials(a.name)}</div>'" />` : `<div class="photo-initials">${initials(a.name)}</div>`}
+      </div>
+      <div class="info-col">
+        <div class="athlete-name">${a.name}</div>
+        <div class="athlete-sub">${sub}</div>
+      </div>
+      <div class="socials-col">${socialParts.join('')}</div>
+      <div class="reach-col">
+        ${showReach && reach!=='—' ? `<div class="reach-label">Total Reach</div><div class="reach-val">${reach}</div>` : ''}
+      </div>
+      <div class="logo-col">
+        ${logo ? `<div class="logo-wrap"><img src="${logo}" alt="" onerror="this.parentElement.style.display='none'" /></div>` : ''}
+      </div>
+    `;
+    rowsWrap.appendChild(row);
+  });
+  outer.appendChild(rowsWrap);
+
+  const footer = document.createElement('div');
+  footer.className = 'roster-footer';
+  footer.innerHTML = `<span class="footer-brand">Milk & Honey Sports</span><span class="footer-year">${new Date().getFullYear()}</span>`;
+  outer.appendChild(footer);
+  app.appendChild(outer);
+}
+
+// ── INDIVIDUAL ONE-PAGER RENDER ───────────────────────────────────────────────
+function renderOnePager(data) {
+  const {
+    athlete: a,
+    brandName, keywords, pitch, ideas,
+    aboutText, secondaryPhoto, brandLogo,
+    theme, createdAt,
+    // Section toggles — default true for backwards compat with old shares
+    toggles = {},
+    // Pitch mode + generic outreach
+    pitchMode = 'specific',
+    outreachTitle, outreachCards = [],
+    // Photo positioning
+    photoX = 50, photoY = 50, photoZoom = 100,
+    // Body font sizing
+    bodyFontSize,
+    fontScale = 1.0,
+  } = data || {};
+
+  if (!a || !a.name) {
+    const app = document.getElementById('app');
+    app.innerHTML = `
+      <div style="text-align:center;padding:100px 20px;color:#555">
+        <h2>One sheet not found</h2>
+        <p>This athlete does not have saved one sheet data yet.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const safeKeywords = Array.isArray(keywords) ? keywords : toArr(keywords);
+  const safeIdeas = Array.isArray(ideas) ? ideas : [];
+  const safeOutreachCards = Array.isArray(outreachCards) ? outreachCards : [];
+
+  const showSocials   = toggles.showSocials   !== false;
+  const showMusic     = toggles.showMusic     !== false;
+  const showInterests = toggles.showInterests !== false;
+  const showBrands    = toggles.showBrands    !== false;
+  const showPitch     = toggles.showPitch     !== false;
+
+  const T = THEMES[theme] || THEMES.dark;
+  const bodyFontPx = normalizeBodyFontSize(bodyFontSize ?? (12 * Number(fontScale || 1)));
+  const smallBodyFontPx = Math.max(9, bodyFontPx - 1);
+  const sectionHeaderFontPx = Math.max(11, bodyFontPx + 1);
+  document.title = a.name + ' — Milk & Honey Sports';
+
+  const meta = document.getElementById('topbar-meta');
+  if (meta && createdAt) {
+    const d = new Date(createdAt);
+    meta.textContent = `Shared ${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+  }
+
+  document.body.style.background = T.pageBg;
+  document.querySelector('.topbar').style.background = T.topbarBg;
+
+  const hasBrand    = showPitch && pitch && brandName && pitchMode === 'specific';
+  const hasOutreach = showPitch && pitchMode === 'generic' && safeOutreachCards.length > 0;
+
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'max-width:900px;margin:0 auto;padding:28px 20px 80px;';
+
+  const page = document.createElement('div');
+  page.style.cssText = `background:${T.surface};border-radius:16px;overflow:hidden;font-family:-apple-system,'Helvetica Neue',sans-serif;`;
+
+  // ── Header (always dark)
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'background:#0a0a0a;padding:26px 36px;position:relative;overflow:hidden;display:flex;gap:22px;align-items:center;';
+
+  // Build socials row for header — respects showSocials toggle
+  const socialsRow = showSocials ? `
+    <div style="display:flex;gap:14px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+      ${a.instagram && a.igFollowers ? `<a href="https://instagram.com/${a.instagram}" target="_blank" style="display:flex;align-items:center;gap:5px;text-decoration:none;">${IG_SVG}<span style="color:#e1306c;font-size:14px;font-weight:700;">${a.igFollowers}</span></a>` : ''}
+      ${a.twitter && a.twitterFollowers ? `<a href="https://x.com/${a.twitter}" target="_blank" style="display:flex;align-items:center;gap:5px;text-decoration:none;">${TW_SVG}<span style="color:#1da1f2;font-size:14px;font-weight:700;">${a.twitterFollowers}</span></a>` : ''}
+      ${a.tiktok && a.tiktokFollowers ? `<a href="https://tiktok.com/@${a.tiktok}" target="_blank" style="display:flex;align-items:center;gap:5px;text-decoration:none;background:rgba(255,255,255,0.08);border-radius:6px;padding:3px 8px;">${TK_SVG}<span style="color:#fff;font-size:14px;font-weight:700;">${a.tiktokFollowers}</span></a>` : ''}
+    </div>` : '';
+
+  hdr.innerHTML = `
+    <div style="position:absolute;top:0;right:0;width:40%;height:100%;background:linear-gradient(to left,rgba(91,200,152,0.12),transparent);pointer-events:none;"></div>
+    ${espnPhotoHtml(a)}
+    <div style="flex:1;display:flex;flex-direction:column;gap:4px;z-index:1;">
+      <div style="color:#5BC898;font-size:8px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;margin-bottom:4px;">
+        Athlete Profile${hasBrand ? ` · For ${brandName}` : ''}
+      </div>
+      <div style="color:#fff;font-size:28px;font-weight:800;letter-spacing:-0.025em;line-height:1.1;">${a.name}</div>
+      <div style="color:#5BC898;font-size:13px;font-weight:600;">${[a.position, a.jerseyNumber&&`#${a.jerseyNumber}`, getDisplayTeam(a)].filter(Boolean).join(' · ')}</div>
+      ${[a.hometown, a.height, a.weight?`${a.weight} lbs`:''].filter(Boolean).length ? `<div style="color:#888;font-size:11px;">${[a.hometown,a.height,a.weight?`${a.weight} lbs`:''].filter(Boolean).join(' · ')}</div>` : ''}
+      ${socialsRow}
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;z-index:1;flex-shrink:0;">
+      <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" style="height:40px;object-fit:contain;" onerror="this.style.display='none'" />
+      ${totalReach(a) !== '—' ? `<div style="text-align:right;"><div style="font-size:7px;color:#444;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:2px;">Total Reach</div><div style="font-size:24px;font-weight:800;color:#5BC898;letter-spacing:-0.02em;line-height:1;">${totalReach(a)}</div></div>` : ''}
+    </div>
+  `;
+  page.appendChild(hdr);
+
+  // ── Body
+  const body = document.createElement('div');
+  body.style.cssText = `padding:24px 36px;background:${T.surface};font-size:${bodyFontPx}px;`;
+
+  // About / Bio
+  if (aboutText) {
+    body.innerHTML += `
+      <div style="font-size:${sectionHeaderFontPx}px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#5BC898;margin-bottom:6px;">About</div>
+      <p style="font-size:${bodyFontPx}px;line-height:1.75;color:${T.textMeta};margin:0 0 16px;">${aboutText}</p>
+      <div style="height:1px;background:linear-gradient(to right,#5BC898,transparent);margin-bottom:16px;"></div>
+    `;
+  }
+
+  // Specific brand pitch
+  if (hasBrand) {
+    body.innerHTML += `
+      <div style="background:${T.pitchBg};border:1.5px solid ${T.pitchBorder};border-radius:10px;padding:14px 18px;margin-bottom:16px;">
+        <div style="font-size:${sectionHeaderFontPx}px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:${T.pitchTitle};margin-bottom:7px;">Why ${a.name.split(' ')[0]} & ${brandName}</div>
+        ${safeKeywords.length ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">${safeKeywords.map(k=>`<span style="background:rgba(91,200,152,0.15);color:${T.pitchTitle};border:1px solid rgba(91,200,152,0.3);border-radius:20px;padding:2px 9px;font-size:9px;font-weight:700;">${k}</span>`).join('')}</div>` : ''}
+        <p style="font-size:${bodyFontPx}px;line-height:1.7;color:${T.pitchBody};margin:0;">${pitch}</p>
+        ${safeIdeas.length ? `
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(91,200,152,0.2);">
+            <div style="font-size:${sectionHeaderFontPx}px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:${T.pitchTitle};margin-bottom:6px;">Marketing Ideas</div>
+            ${safeIdeas.map(i=>`<div style="display:flex;gap:7px;align-items:flex-start;margin-bottom:5px;"><span style="color:#5BC898;font-weight:700;font-size:10px;flex-shrink:0;">→</span><span style="font-size:${smallBodyFontPx}px;line-height:1.55;color:${T.pitchBody};">${typeof i === 'object' ? i.text : i}</span></div>`).join('')}
+          </div>` : ''}
+      </div>
+      <div style="height:1px;background:linear-gradient(to right,#5BC898,transparent);margin-bottom:16px;"></div>
+    `;
+  }
+
+  // Generic outreach section (dark card)
+  if (hasOutreach) {
+    const title = outreachTitle || `Why Brands Want to Work With ${a.name.split(' ')[0]}`;
+    body.innerHTML += `
+      <div style="background:#0a0a0a;border:1.5px solid #1e1e1e;border-radius:10px;padding:14px 18px;margin-bottom:16px;position:relative;overflow:hidden;">
+        <div style="position:absolute;top:0;right:0;width:40%;height:100%;background:linear-gradient(to left,rgba(91,200,152,0.08),transparent);pointer-events:none;"></div>
+        <div style="font-size:${sectionHeaderFontPx}px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#5BC898;margin-bottom:12px;">${title}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          ${safeOutreachCards.map((card, i) => `
+            <div style="${i < safeOutreachCards.length - 1 ? 'padding-bottom:10px;border-bottom:1px solid rgba(91,200,152,0.15);' : ''}">
+              <div style="font-size:${sectionHeaderFontPx}px;font-weight:800;color:#5BC898;letter-spacing:-0.01em;margin-bottom:3px;">${card.keyword}</div>
+              <p style="font-size:${smallBodyFontPx}px;line-height:1.65;color:#ccc;margin:0;">${card.description}</p>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div style="height:1px;background:linear-gradient(to right,#5BC898,transparent);margin-bottom:16px;"></div>
+    `;
+  }
+
+  // Music + Interests + Brands grid
+  const musicArtists = toArr(a.musicArtists);
+  const interests    = toArr(a.interests);
+  const brands       = toArr(a.brands);
+
+  const showGrid = (showMusic && musicArtists.length) || (showInterests && interests.length) || (showBrands);
+  if (showGrid) {
+    const cols = [];
+    if (showMusic && musicArtists.length) {
+      cols.push(`
+        <div>
+          <div style="font-size:${sectionHeaderFontPx}px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#5BC898;margin-bottom:7px;">Music Artists</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;">${musicArtists.map(m=>`<span style="background:${T.tagBg};color:${T.tagText};border:1px solid ${T.tagBorder};border-radius:20px;padding:4px 12px;font-size:${smallBodyFontPx}px;font-weight:600;">${m}</span>`).join('')}</div>
+        </div>`);
+    }
+    if (showInterests) {
+      cols.push(`
+        <div>
+          <div style="font-size:${sectionHeaderFontPx}px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#5BC898;margin-bottom:7px;">Interests</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;">${interests.length ? interests.map(i=>`<span style="background:${T.tagBg};color:${T.tagText};border:1px solid ${T.tagBorder};border-radius:20px;padding:4px 12px;font-size:${smallBodyFontPx}px;font-weight:600;">${i}</span>`).join('') : `<span style="color:${T.textMeta};font-size:${bodyFontPx}px;">—</span>`}</div>
+        </div>`);
+    }
+    if (showBrands) {
+      cols.push(`
+        <div>
+          <div style="font-size:${sectionHeaderFontPx}px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#5BC898;margin-bottom:7px;">Brand Partners</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;">${brands.length ? brands.map(b=>`<span style="background:${T.tagBg};color:${T.tagText};border:1px solid ${T.tagBorder};border-radius:20px;padding:4px 12px;font-size:${smallBodyFontPx}px;font-weight:600;">${b}</span>`).join('') : `<span style="color:${T.textMeta};font-size:${bodyFontPx}px;">No current partners</span>`}</div>
+        </div>`);
+    }
+    if (cols.length) {
+      body.innerHTML += `<div style="display:grid;grid-template-columns:${cols.length === 1 ? '1fr' : '1fr 1fr'};gap:20px;margin-bottom:16px;">${cols.join('')}</div>`;
+    }
+  }
+
+  // Action photo — respects crop settings
+  if (secondaryPhoto) {
+    const px = photoX ?? 50, py = photoY ?? 50, pz = photoZoom ?? 100;
+    body.innerHTML += `
+      <div style="border-radius:10px;overflow:hidden;margin-top:8px;">
+        <img src="${secondaryPhoto}"
+          style="width:100%;max-height:340px;object-fit:cover;display:block;
+            object-position:${px}% ${py}%;
+            transform:scale(${pz/100});
+            transform-origin:${px}% ${py}%;" />
+      </div>`;
+  }
+
+  // Brand logo
+  if (brandLogo) {
+    body.innerHTML += `<div style="margin-top:14px;display:flex;align-items:center;gap:10px;"><div style="font-size:9px;color:${T.textMeta};text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Brand</div><img src="${brandLogo}" style="height:32px;object-fit:contain;" /></div>`;
+  }
+
+  page.appendChild(body);
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.style.cssText = 'background:#0a0a0a;padding:12px 36px;display:flex;justify-content:space-between;align-items:center;';
+  footer.innerHTML = `<span style="color:#5BC898;font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;">Milk & Honey Sports</span><span style="color:#333;font-size:9px;">${new Date().getFullYear()}</span>`;
+  page.appendChild(footer);
+
+  wrap.appendChild(page);
+  app.appendChild(wrap);
+}
+
+function espnPhotoHtml(a) {
+  const url = a.photoUrl || (a.espnId ? `https://a.espncdn.com/i/headshots/${(a.espnSport||'nfl')==='college'?'college-football':'nfl'}/players/full/${a.espnId}.png` : null);
+  const fallback = `<div style="width:110px;height:140px;border-radius:10px;background:rgba(91,200,152,0.1);border:2px solid rgba(91,200,152,0.3);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;color:#5BC898;flex-shrink:0;">${initials(a.name)}</div>`;
+  if (!url) return fallback;
+  return `<img src="${url}" style="width:110px;height:140px;border-radius:10px;object-fit:cover;object-position:top center;border:2px solid rgba(91,200,152,0.35);flex-shrink:0;" onerror="this.outerHTML='${fallback.replace(/'/g,'"')}'" />`;
+}
+
+function setTheme(t) {
+  currentTheme = THEMES[t] ? t : 'dark';
+  const T = THEMES[currentTheme];
+  document.body.style.background = T.pageBg;
+  const topbar = document.querySelector('.topbar');
+  if (topbar) { topbar.style.background = T.topbarBg; topbar.style.borderBottomColor = T.topbarBorder; }
+  const outer = document.querySelector('.roster-outer');
+  if (outer) applyThemeToRoster(T);
+}
+
+function applyThemeToRoster(T) {
+  const outer = document.querySelector('.roster-outer');
+  if (!outer) return;
+  const hdr = outer.querySelector('.roster-header');
+  if (hdr) { hdr.style.background = T.headerBg; hdr.style.borderBottomColor = T.headerBorder; }
+  outer.querySelectorAll('.athlete-row').forEach((row, i) => {
+    row.style.background = i % 2 === 0 ? T.rowOdd : T.rowEven;
+    row.style.borderBottomColor = T.border;
+    const name = row.querySelector('.athlete-name');
+    if (name) name.style.color = T.text;
+    const sub = row.querySelector('.athlete-sub');
+    if (sub) sub.style.color = T.textSub;
+  });
+  outer.querySelectorAll('.logo-wrap').forEach(w => w.style.background = T.logoCircle);
+  outer.querySelectorAll('.tk-wrap').forEach(w => w.style.background = T.socialTkBg);
+  const footer = outer.querySelector('.roster-footer');
+  if (footer) footer.style.background = T.footerBg;
+  const footerBrand = footer?.querySelector('.footer-brand');
+  if (footerBrand) footerBrand.style.color = T.footerText;
+  outer.style.background = T.pageBg;
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const _parts = window.location.pathname.split('/').filter(Boolean);
+const shareId = _params.get('id') || _parts[_parts.indexOf('share') + 1] || _parts[_parts.length - 1] || '';
+
+if (!shareId) {
+  document.getElementById('app').innerHTML = '<div style="text-align:center;padding:100px 20px;color:#333"><h2 style="color:#555;margin-bottom:8px">Invalid link</h2></div>';
+} else {
+  fetch(`/api/share?id=${shareId}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) throw new Error(data.error);
+      currentTheme = data.theme || data.settings?.theme || 'dark';
+      if (data.type === 'individual') {
+        renderOnePager(data);
+      } else {
+        renderRoster(data);
+      }
+      setTimeout(() => setTheme(currentTheme), 50);
+    })
+    .catch((err) => {
+      console.error('Share page error:', err);
+      document.getElementById('app').innerHTML = `<div style="text-align:center;padding:100px 20px;color:#333"><h2 style="color:#555;margin-bottom:8px">Share page error</h2><p style="color:#2a2a2a">${err.message || 'This link may have expired.'}</p></div>`;
+    });
+}
+</script>
+</body>
+</html>
