@@ -1,8 +1,8 @@
 // Milk & Honey Music — Client Management
-// Stack: React (no build), served via index.html
 // API: /api/music (music-sheets.js), /api/share (share.js)
 
-const { useState, useEffect, useRef, useCallback, useMemo } = React;
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import ReactDOM from 'react-dom/client';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const G = {
@@ -810,3 +810,5 @@ function App() {
     </div>
   );
 }
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
