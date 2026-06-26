@@ -187,6 +187,21 @@ module.exports = async (req, res) => {
         return parseClient(obj, i);
       }).filter(Boolean);
 
+      // Fetch Spotify photos server-side for clients without a manual photo
+      // so the front-end gets the URL immediately with no async flash
+      const spotifyFetches = clients.map(async c => {
+        if (c.photoUrl || !c.spotifyUrl) return;
+        const artistMatch = c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
+        if (!artistMatch) return;
+        try {
+          const r = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/artist/${artistMatch[1]}`);
+          if (!r.ok) return;
+          const d = await r.json();
+          if (d.thumbnail_url) c.photoUrl = d.thumbnail_url;
+        } catch(e) {}
+      });
+      await Promise.all(spotifyFetches);
+
       // Parse logos into a lookup map: { "bmi": { url, category }, ... }
       const logoRows = logoData?.values || [];
       const logos = {};
