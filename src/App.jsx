@@ -499,10 +499,10 @@ function ClientCard({ client: c, logos, onClick }) {
 
       <div style={{ padding: "18px 18px 14px", flex: 1 }}>
         {/* Avatar */}
-        <Avatar name={c.name} photoUrl={c.photoUrl} size={64} />
+        <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
 
         {/* Name */}
-        <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.03em", marginTop: 12, marginBottom: 8, lineHeight: 1.2 }}>{c.name}</div>
+        <div style={{ fontWeight: 800, fontSize: 20, color: G.text, letterSpacing: "-0.03em", marginTop: 14, marginBottom: 8, lineHeight: 1.2 }}>{c.name}</div>
 
         {/* Flag(s) + type pills on same line */}
         <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
@@ -512,8 +512,8 @@ function ClientCard({ client: c, logos, onClick }) {
 
         {/* Logo badges */}
         {logoList.length > 0 && (
-          <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={32} />)}
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={42} />)}
           </div>
         )}
 
@@ -899,7 +899,7 @@ function App() {
                   <div style={{ fontSize: 15 }}>{search || filterType !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
                 </div>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
                   {filtered.map((c, i) => (
                     <ClientCard key={c.id || i} client={c} logos={logos} onClick={() => setView('detail', c)} />
                   ))}
