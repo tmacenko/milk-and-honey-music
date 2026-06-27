@@ -608,7 +608,8 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
     c.twitter && { icon: <TwIcon size={isMobile ? 18 : 14} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
     c.tiktok && { icon: <TkIcon size={isMobile ? 18 : 14} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
     c.spotifyUrl && { icon: <SpotifyIcon size={isMobile ? 18 : 14} />, label: 'Spotify', url: c.spotifyUrl },
-    c.appleMusicUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 24 24" fill="currentColor"><path d="M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.04-.003-.083-.01-.124-.013H5.986c-.152.01-.303.017-.455.026C4.786.07 4.043.15 3.34.428 2.004.958 1.04 1.88.475 3.208A5.494 5.494 0 00.05 5.09c-.013.593-.01 1.187-.01 1.781v10.282c0 .682-.01 1.365.017 2.045.055 1.515.56 2.796 1.578 3.846.01.01.017.024.027.033.02.024.04.05.06.072.45.503.987.908 1.582 1.21.704.35 1.46.508 2.243.55.464.026.928.03 1.393.03H18.55c.37 0 .742-.004 1.112-.018 1.23-.045 2.326-.39 3.25-1.165.942-.79 1.548-1.79 1.841-2.97.136-.535.186-1.085.197-1.633.012-.594.01-1.19.01-1.784V7.925c-.001-.6.001-1.2-.966-1.8zm-6.895 2.046l-6.5 3.75a.5.5 0 01-.5 0l-2-1.155V7.5a.5.5 0 01.75-.433l8 4.618a.5.5 0 010 .866l-8 4.618A.5.5 0 017 16.5v-2.346l2 1.154a.5.5 0 00.5 0l6.5-3.75V8.17a.5.5 0 00-.901-.3z"/></svg>, label: 'Apple Music', url: c.appleMusicUrl },
+    c.appleMusicUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 814 1000" fill="currentColor"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-42.4-150.3-109.1C77 488.8 40.9 388.1 40.9 293.5c0-19.5 1.3-39.5 4.5-59.5 19.5-121.5 111.5-197.5 213.8-197.5 54 0 99.5 36.5 133.5 36.5 32.9 0 84.5-38.5 148.3-38.5 23 0 106.9 2 167.8 63.5zm-109.3-60.5c-12.2-16.5-31.5-40.5-76.5-40.5-40.5 0-86.5 29.5-120.2 29.5-35.5 0-77.5-31.5-124.5-31.5-77.5 0-144.5 51.5-165.5 135.5-3.5 12.5-5.2 27.5-5.2 42.5 0 93.5 55.5 189.5 128.2 253.5 30.5 27 63.5 48 96.5 48 37.5 0 72-26.5 116.5-26.5 44.5 0 75.5 25 116.5 25 37 0 75.5-26.5 104.5-55.5V280.4z"/></svg>, label: 'Apple Music', url: c.appleMusicUrl },
+    c.soundcloudUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 24 24" fill="currentColor"><path d="M1.175 12.225c-.041 0-.082.006-.123.011.039-.194.063-.392.063-.596 0-1.861-1.494-3.371-3.338-3.371-.276 0-.544.037-.8.103C-3.42 6.699-4.93 5.5-6.667 5.5c-2.065 0-3.739 1.675-3.739 3.741 0 .204.019.405.05.602-.196-.033-.397-.052-.601-.052C-12.953 9.791-14 10.843-14 12.141c0 1.297 1.047 2.349 2.34 2.349h12.835C2.47 14.49 3.5 13.461 3.5 12.225c0-1.199-.97-2.197-2.325-2z"/></svg>, label: 'SoundCloud', url: c.soundcloudUrl },
   ].filter(Boolean);
 
   if (isMobile) return (
@@ -780,12 +781,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
           </div>
         )}
 
-        {(c.appleMusicUrl || c.soundcloudUrl) && (
-          <div style={{ display: "flex", gap: 8 }}>
-            {c.appleMusicUrl && <a href={c.appleMusicUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none" }}>Apple Music ↗</a>}
-            {c.soundcloudUrl && <a href={c.soundcloudUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none" }}>SoundCloud ↗</a>}
-          </div>
-        )}
+
       </div>
     </div>
   );
