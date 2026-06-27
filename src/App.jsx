@@ -603,8 +603,8 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
                 `https://tiktok.com/@${c.tiktok}`
               )}
               {c.spotifyUrl && actionBtn(
-                <><span style={{ color: G.green, display:"flex" }}><SpotifyIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>View Spotify</span></>,
-                c.spotifyUrl, true
+                <><span style={{ color: G.textSecondary, display:"flex" }}><SpotifyIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>View Spotify</span></>,
+                c.spotifyUrl, false
               )}
               {c.contact && actionBtn(
                 <><span style={{ color: G.green, display:"flex" }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
