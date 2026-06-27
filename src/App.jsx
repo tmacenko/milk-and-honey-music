@@ -523,23 +523,19 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
 
   const sortedTypes = [...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b));
   const isArtist = sortedTypes.includes('Artist');
+  const topLogos = logoList.slice(0, 5);
 
   // Bottom content -- top tracks for artists, credits for producers/songwriters
   const bottomContent = (() => {
     if (isArtist && c.spotifyTopTracks?.length) {
-      return c.spotifyTopTracks.slice(0, 2).map(t => t.name).join(' · ');
+      return c.spotifyTopTracks.slice(0, 6).map(t => t.name).join(' · ');
     }
     if (c.credits?.length) {
-      return c.credits.slice(0, 3).join(' · ') + (c.credits.length > 3 ? ` +${c.credits.length - 3}` : '');
+      const shown = c.credits.slice(0, 6);
+      return shown.join(' · ') + (c.credits.length > 6 ? ` +${c.credits.length - 6}` : '');
     }
     return null;
   })();
-
-  // Logo grid -- up to 2 rows of 3
-  const logoRows = [];
-  for (let i = 0; i < Math.min(logoList.length, 6); i += 3) {
-    logoRows.push(logoList.slice(i, i + 3));
-  }
 
   return (
     <div onClick={onClick}
@@ -547,18 +543,10 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow }}>
 
       <div style={{ padding: "18px 18px 16px" }}>
-        {/* Top row: avatar left, logos right */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+        {/* Top row: avatar + logos all on same horizontal line */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
-          {logoRows.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
-              {logoRows.map((row, ri) => (
-                <div key={ri} style={{ display: "flex", gap: 6 }}>
-                  {row.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={38} />)}
-                </div>
-              ))}
-            </div>
-          )}
+          {topLogos.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={38} />)}
         </div>
 
         {/* Name */}
@@ -573,7 +561,7 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
 
         {/* Bottom -- credits or top tracks */}
         {bottomContent && (
-          <div style={{ fontSize: 12, color: G.textTertiary, lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+          <div style={{ fontSize: 12, color: G.textTertiary, lineHeight: 1.5 }}>
             {bottomContent}
           </div>
         )}
