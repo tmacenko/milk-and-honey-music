@@ -773,6 +773,7 @@ function App() {
   const [shareRosterShowLogos, setShareRosterShowLogos] = useState(true);
   const [shareRosterShowCredits, setShareRosterShowCredits] = useState(true);
   const [shareRosterShowBio, setShareRosterShowBio] = useState(true);
+  const [shareFeaturesOpen, setShareFeaturesOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/sheets')
@@ -949,91 +950,106 @@ function App() {
           } catch(e) { alert('Share failed: ' + e.message); }
           setShareRosterLoading(false);
         };
-        const Toggle = ({ val, set }) => (
-          <div onClick={() => set(v => !v)} style={{ width: 34, height: 19, borderRadius: 10, background: val ? G.green : G.surfaceBorderLight, position: "relative", cursor: "pointer", flexShrink: 0, transition: `background 0.2s ${G.ease}` }}>
-            <div style={{ position: "absolute", top: 3, left: val ? 17 : 3, width: 13, height: 13, borderRadius: "50%", background: "#fff", transition: `left 0.2s ${G.ease}`, boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }} />
+        const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer'];
+        const featuresSummary = [
+          shareRosterShowLogos ? 'Logos' : null,
+          shareRosterShowCredits ? 'Credits' : null,
+          shareRosterShowBio ? 'Bio' : null,
+        ].filter(Boolean).join(', ') || 'None';
+        const sortLabel = shareRosterSort === 'alpha' ? 'A--Z' : 'Default';
+        const expiryLabel = shareRosterExpiry === 'never' ? 'Never' : shareRosterExpiry === '30' ? '30 Days' : shareRosterExpiry === '90' ? '90 Days' : '6 Months';
+        const Toggle = ({ val, set, label }) => (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: G.textSecondary }}>{label}</span>
+            <div onClick={() => set(v => !v)} style={{ width: 34, height: 19, borderRadius: 10, background: val ? G.green : G.surfaceBorderLight, position: "relative", cursor: "pointer", flexShrink: 0, transition: `background 0.2s ${G.ease}` }}>
+              <div style={{ position: "absolute", top: 3, left: val ? 17 : 3, width: 13, height: 13, borderRadius: "50%", background: "#fff", transition: `left 0.2s ${G.ease}`, boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }} />
+            </div>
           </div>
         );
-        const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer'];
-        return (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(20px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-            <div style={{ background: G.surfaceGlass, backdropFilter: "blur(24px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: G.shadowLg }}>
-              <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontWeight: 700, fontSize: 16, color: G.text }}>Share Roster</div>
-                <button onClick={() => { setShareRosterOpen(false); setShareRosterUrl(null); }}
-                  style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 14, fontFamily: ff }}>✕</button>
+        const DropBox = ({ label, value, children, open, onToggle }) => (
+          <div style={{ flex: 1, position: "relative" }}>
+            <div onClick={onToggle} style={{ background: G.surfaceRaised, border: `1px solid ${open ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", transition: `border-color 0.15s ${G.ease}` }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>{label}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: G.text }}>{value}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ transform: open ? "rotate(180deg)" : "none", transition: `transform 0.2s ${G.ease}`, flexShrink: 0 }}><path d="M6 9l6 6 6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
-              <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+            </div>
+            {open && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: G.surfaceGlass, backdropFilter: "blur(16px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: "10px 14px", zIndex: 10, boxShadow: G.shadowLg, display: "flex", flexDirection: "column", gap: 10 }}>
+                {children}
+              </div>
+            )}
+          </div>
+        );
+
+        return (
+          <div onClick={e => { if (e.target === e.currentTarget) { setShareRosterOpen(false); setShareRosterUrl(null); setShareFeaturesOpen(false); } }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(20px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <div style={{ background: "rgba(18,18,20,0.96)", backdropFilter: "blur(24px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 28, width: "100%", maxWidth: 520, boxShadow: G.shadowLg, overflow: "visible" }}>
+
+              {/* Close */}
+              <div style={{ display: "flex", justifyContent: "flex-end", padding: "16px 16px 0" }}>
+                <button onClick={() => { setShareRosterOpen(false); setShareRosterUrl(null); setShareFeaturesOpen(false); }}
+                  style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, color: G.textSecondary, cursor: "pointer", padding: "8px 14px", fontSize: 15, fontFamily: ff, lineHeight: 1 }}>✕</button>
+              </div>
+
+              <div style={{ padding: "12px 24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+
+                {/* Title */}
+                <input value={shareRosterTitle} onChange={e => setShareRosterTitle(e.target.value)}
+                  style={{ ...inputBase, fontSize: 18, fontWeight: 600, padding: "14px 16px", borderRadius: 14, background: G.surfaceRaised }} />
+
+                {/* Type pills */}
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 }}>Title</div>
-                  <input value={shareRosterTitle} onChange={e => setShareRosterTitle(e.target.value)} style={{ ...inputBase, width: "100%" }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 }}>Include Types</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {allTypes.map(t => {
                       const on = shareRosterTypes.includes(t);
                       return <button key={t} onClick={() => {
-                        const next = on ? shareRosterTypes.filter(x=>x!==t) : [...shareRosterTypes,t];
+                        const next = on ? shareRosterTypes.filter(x => x !== t) : [...shareRosterTypes, t];
                         if (next.length > 0) setShareRosterTypes(next);
-                      }} style={{ padding: "7px 14px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+                      }} style={{ padding: "10px 20px", border: `1.5px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 12, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textSecondary, fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
                         {t}
                       </button>;
                     })}
                   </div>
-                  <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 5 }}>
+                  <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 8 }}>
                     {clients.filter(c => (c.types||[]).some(t => shareRosterTypes.includes(t))).length} clients
                   </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Include</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {[
-                      ['PRO / Publisher / Label logos', shareRosterShowLogos, setShareRosterShowLogos],
-                      ['Credits / Artists worked with', shareRosterShowCredits, setShareRosterShowCredits],
-                      ['Bio', shareRosterShowBio, setShareRosterShowBio],
-                    ].map(([label, val, set]) => (
-                      <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: 13, color: G.textSecondary }}>{label}</span>
-                        <div onClick={() => set(v => !v)} style={{ width: 34, height: 19, borderRadius: 10, background: val ? G.green : G.surfaceBorderLight, position: "relative", cursor: "pointer", flexShrink: 0, transition: `background 0.2s ${G.ease}` }}>
-                          <div style={{ position: "absolute", top: 3, left: val ? 17 : 3, width: 13, height: 13, borderRadius: "50%", background: "#fff", transition: `left 0.2s ${G.ease}`, boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }} />
-                        </div>
-                      </div>
+
+                {/* Three dropboxes */}
+                <div style={{ display: "flex", gap: 10, position: "relative" }}>
+                  <DropBox label="Features" value={featuresSummary} open={shareFeaturesOpen === 'features'} onToggle={() => setShareFeaturesOpen(v => v === 'features' ? false : 'features')}>
+                    <Toggle label="Logos" val={shareRosterShowLogos} set={setShareRosterShowLogos} />
+                    <Toggle label="Credits" val={shareRosterShowCredits} set={setShareRosterShowCredits} />
+                    <Toggle label="Bio" val={shareRosterShowBio} set={setShareRosterShowBio} />
+                  </DropBox>
+                  <DropBox label="Sort" value={sortLabel} open={shareFeaturesOpen === 'sort'} onToggle={() => setShareFeaturesOpen(v => v === 'sort' ? false : 'sort')}>
+                    {[['default','Default'],['alpha','A--Z']].map(([val, lbl]) => (
+                      <div key={val} onClick={() => { setShareRosterSort(val); setShareFeaturesOpen(false); }}
+                        style={{ padding: "6px 0", fontSize: 13, fontWeight: shareRosterSort === val ? 700 : 400, color: shareRosterSort === val ? G.green : G.textSecondary, cursor: "pointer" }}>{lbl}</div>
                     ))}
-                  </div>
+                  </DropBox>
+                  <DropBox label="Expires" value={expiryLabel} open={shareFeaturesOpen === 'expires'} onToggle={() => setShareFeaturesOpen(v => v === 'expires' ? false : 'expires')}>
+                    {[['30','30 Days'],['90','90 Days'],['180','6 Months'],['never','Never']].map(([val, lbl]) => (
+                      <div key={val} onClick={() => { setShareRosterExpiry(val); setShareFeaturesOpen(false); }}
+                        style={{ padding: "6px 0", fontSize: 13, fontWeight: shareRosterExpiry === val ? 700 : 400, color: shareRosterExpiry === val ? G.green : G.textSecondary, cursor: "pointer" }}>{lbl}</div>
+                    ))}
+                  </DropBox>
                 </div>
 
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 }}>Sort</div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {[['default','Default'],['alpha','A–Z']].map(([val,label]) => (
-                      <button key={val} onClick={() => setShareRosterSort(val)}
-                        style={{ flex: 1, padding: "7px 0", border: `1px solid ${shareRosterSort===val ? G.green : G.surfaceBorder}`, borderRadius: 9, background: shareRosterSort===val ? G.greenSubtle : G.surfaceRaised, color: shareRosterSort===val ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 }}>Link Expires</div>
-                  <select value={shareRosterExpiry} onChange={e => setShareRosterExpiry(e.target.value)} style={{ ...inputBase, width: "100%" }}>
-                    <option value="30">30 days</option>
-                    <option value="90">90 days</option>
-                    <option value="180">6 months</option>
-                    <option value="never">Never</option>
-                  </select>
-                </div>
+                {/* URL / Generate */}
                 {shareRosterUrl ? (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <div style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "10px 14px", fontSize: 12, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareRosterUrl}</div>
-                    <button onClick={() => { navigator.clipboard.writeText(shareRosterUrl); setShareRosterCopied(true); setTimeout(()=>setShareRosterCopied(false),2000); }}
-                      style={{ background: shareRosterCopied ? G.green : G.surfaceRaised, color: shareRosterCopied ? "#0a0a0a" : G.text, border: `1px solid ${shareRosterCopied ? G.green : G.surfaceBorder}`, borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                    <div style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: "14px 16px", fontSize: 13, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareRosterUrl}</div>
+                    <button onClick={() => { navigator.clipboard.writeText(shareRosterUrl); setShareRosterCopied(true); setTimeout(() => setShareRosterCopied(false), 2000); }}
+                      style={{ background: shareRosterCopied ? G.green : "transparent", color: shareRosterCopied ? "#0a0a0a" : G.green, border: `1.5px solid ${G.green}`, borderRadius: 14, padding: "14px 22px", fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap", transition: `all 0.2s ${G.ease}` }}>
                       {shareRosterCopied ? "✓ Copied" : "Copy"}
                     </button>
                   </div>
                 ) : (
                   <button onClick={doShare} disabled={shareRosterLoading}
-                    style={{ background: shareRosterLoading ? G.surfaceRaised : G.green, color: shareRosterLoading ? G.textTertiary : "#0a0a0a", border: "none", borderRadius: 12, padding: "12px", fontWeight: 700, fontSize: 14, cursor: shareRosterLoading ? "not-allowed" : "pointer", fontFamily: ff, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    style={{ background: shareRosterLoading ? G.surfaceRaised : G.green, color: shareRosterLoading ? G.textTertiary : "#0a0a0a", border: "none", borderRadius: 14, padding: "14px", fontWeight: 700, fontSize: 15, cursor: shareRosterLoading ? "not-allowed" : "pointer", fontFamily: ff, transition: `all 0.2s ${G.ease}` }}>
                     {shareRosterLoading ? "Generating..." : "Generate Share Link"}
                   </button>
                 )}
