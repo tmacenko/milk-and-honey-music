@@ -68,6 +68,8 @@
     .modal-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
     .btn-action{display:flex;align-items:center;gap:7px;background:var(--raised);border:1px solid var(--border);border-radius:10px;padding:9px 14px;text-decoration:none;font-family:var(--ff);font-size:13px;font-weight:600;color:var(--text);transition:all 0.15s}
     .btn-action:hover{border-color:var(--border-l);background:var(--surface)}
+    .btn-action.btn-icon{padding:8px}
+    .modal-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
     .btn-action-icon{color:var(--text3);display:flex}
     @media(max-width:768px){
       .modal-actions{display:grid;grid-template-columns:1fr 1fr}
@@ -125,10 +127,11 @@ function logoItems(a){
   split(a.label).forEach(v=>items.push({name:v,url:a.labelLogoUrl||null}));
   return items;
 }
-const IG=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5.5" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>`;
-const TW=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`;
-const TK=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.73a4.85 4.85 0 01-1.01-.04z"/></svg>`;
-const SP=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>`;
+function favicon(domain,size){return `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=64" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block" />`;}
+const IG=favicon('instagram.com',32);
+const TW=favicon('x.com',32);
+const TK=favicon('tiktok.com',32);
+const SP=favicon('spotify.com',32);
 
 const state={data:null,level:'All',selected:null,error:null,bioExpanded:false};
 
@@ -154,10 +157,12 @@ function buildModal(a){
   const bioTrunc=bio.length>BIO_LIMIT&&!state.bioExpanded;
   const bioText=bioTrunc?bio.slice(0,BIO_LIMIT).trimEnd()+'...':bio;
   const socialBtns=[
-    a.instagram&&`<a class="btn-action" href="https://instagram.com/${a.instagram}" target="_blank" rel="noopener"><span class="btn-action-icon">${IG}</span>@${a.instagram}</a>`,
-    a.twitter&&`<a class="btn-action" href="https://x.com/${a.twitter}" target="_blank" rel="noopener"><span class="btn-action-icon">${TW}</span>@${a.twitter}</a>`,
-    a.tiktok&&`<a class="btn-action" href="https://tiktok.com/@${a.tiktok}" target="_blank" rel="noopener"><span class="btn-action-icon">${TK}</span>@${a.tiktok}</a>`,
-    a.spotifyUrl&&`<a class="btn-action" href="${a.spotifyUrl}" target="_blank" rel="noopener"><span class="btn-action-icon">${SP}</span>View Spotify</a>`,
+    a.instagram&&`<a class="btn-action btn-icon" href="https://instagram.com/${a.instagram}" target="_blank" rel="noopener">${IG}</a>`,
+    a.twitter&&`<a class="btn-action btn-icon" href="https://x.com/${a.twitter}" target="_blank" rel="noopener">${TW}</a>`,
+    a.tiktok&&`<a class="btn-action btn-icon" href="https://tiktok.com/@${a.tiktok}" target="_blank" rel="noopener">${TK}</a>`,
+    a.spotifyUrl&&`<a class="btn-action btn-icon" href="${a.spotifyUrl}" target="_blank" rel="noopener">${SP}</a>`,
+    a.appleMusicUrl&&`<a class="btn-action btn-icon" href="${a.appleMusicUrl}" target="_blank" rel="noopener">${favicon('music.apple.com',32)}</a>`,
+    a.soundcloudUrl&&`<a class="btn-action btn-icon" href="${a.soundcloudUrl}" target="_blank" rel="noopener">${favicon('soundcloud.com',32)}</a>`,
   ].filter(Boolean).join('');
   return `<div class="overlay" id="overlay"><div class="modal">
     <div class="modal-topbar"><button class="btn-close" id="modal-close">&#x2715;</button></div>
@@ -165,7 +170,9 @@ function buildModal(a){
       <div class="modal-hdr-top">
         <div class="modal-avatar" style="${a.photoUrl?'':avatarStyle(a.name)+';font-size:24px'}">${a.photoUrl?`<img src="${a.photoUrl}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:`<span>${initials(a.name)}</span>`}</div>
         <div class="modal-info">
-          <div class="modal-name">${a.name||''}</div>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px">
+            <div class="modal-name" style="margin-bottom:0;flex:1">${a.name||''}</div>
+          </div>
           <div class="modal-pills">${types.map(t=>`<span class="pill">${t}</span>`).join('')}</div>
           ${(loc.flags||loc.cities)?`<div class="modal-location">${loc.flags?`<span style="font-size:16px">${loc.flags}</span>`:''} ${loc.cities?`<span>${loc.cities}</span>`:''}</div>`:''}
         </div>
