@@ -60,7 +60,6 @@ function lookupLogo(logos, val) {
 // ── Logo badge component ──────────────────────────────────────────────────────
 function LogoBadge({ url, label, size = 32 }) {
   const [err, setErr] = useState(false);
-  // If URL looks like a website, use Google favicon service as fallback
   const resolvedUrl = (!url || err) ? null
     : (url.startsWith('http') && !url.match(/\.(png|jpg|jpeg|gif|svg|webp)(\?|$)/i))
       ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url)}&sz=64`
@@ -70,8 +69,8 @@ function LogoBadge({ url, label, size = 32 }) {
     return <span style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, fontWeight: 600, color: G.textSecondary, whiteSpace: "nowrap" }}>{label}</span>;
   }
   return (
-    <div style={{ width: size + 16, height: size + 16, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.3)", flexShrink: 0, overflow: "hidden" }}>
-      <img src={resolvedUrl} alt={label} onError={() => setErr(true)} style={{ width: size * 0.72, height: size * 0.72, objectFit: "contain", display: "block" }} />
+    <div style={{ width: size, height: size, borderRadius: "50%", background: "#fff", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.3)", flexShrink: 0 }}>
+      <img src={resolvedUrl} alt={label} onError={() => setErr(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
     </div>
   );
 }
@@ -498,23 +497,23 @@ function ClientCard({ client: c, logos, onClick }) {
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, display: "flex", flexDirection: "column", position: "relative" }}>
 
-      <div style={{ padding: "16px 16px 14px", flex: 1 }}>
+      <div style={{ padding: "12px 14px 10px", flex: 1 }}>
         {/* Avatar */}
-        <Avatar name={c.name} photoUrl={c.photoUrl} size={64} />
+        <Avatar name={c.name} photoUrl={c.photoUrl} size={48} />
 
         {/* Name */}
-        <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.03em", marginTop: 10, marginBottom: 8, lineHeight: 1.2 }}>{c.name}</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: G.text, letterSpacing: "-0.02em", marginTop: 8, marginBottom: 6, lineHeight: 1.2 }}>{c.name}</div>
 
         {/* Flag(s) + type pills on same line */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
           {dedupedFlags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
           {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
         </div>
 
         {/* Logo badges */}
         {logoList.length > 0 && (
-          <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={26} />)}
+          <div style={{ display: "flex", gap: 5, marginTop: 8 }}>
+            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={24} />)}
           </div>
         )}
 
@@ -717,12 +716,52 @@ function App() {
   const [logos, setLogos] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [view, setView] = useState('roster'); // roster | detail
+  // URL-based navigation -- persist state across refresh and enable browser back
+  const getClientFromUrl = (clients) => {
+    const id = new URLSearchParams(window.location.search).get('client');
+    return id ? clients.find(c => c.id === id) || null : null;
+  };
+  const [view, setViewState] = useState(() => window.location.search.includes('client=') ? 'detail' : 'roster');
   const [selected, setSelected] = useState(null);
+
+  const setView = (v, client) => {
+    if (v === 'detail' && client) {
+      window.history.pushState({ view: 'detail', clientId: client.id }, '', `?client=${client.id}`);
+      setSelected(client);
+      setViewState('detail');
+    } else {
+      window.history.pushState({ view: 'roster' }, '', window.location.pathname);
+      setViewState('roster');
+    }
+  };
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
   const isMobile = window.innerWidth < 768;
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const onPop = (e) => {
+      const id = new URLSearchParams(window.location.search).get('client');
+      if (id && clients.length) {
+        const c = clients.find(c => c.id === id);
+        if (c) { setSelected(c); setViewState('detail'); return; }
+      }
+      setViewState('roster');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [clients]);
+
+  // On load, if URL has a client param, select it once clients load
+  useEffect(() => {
+    if (!clients.length) return;
+    const id = new URLSearchParams(window.location.search).get('client');
+    if (id) {
+      const c = clients.find(c => c.id === id);
+      if (c) { setSelected(c); setViewState('detail'); }
+    }
+  }, [clients]);
   const [shareRosterOpen, setShareRosterOpen] = useState(false);
   const [shareRosterUrl, setShareRosterUrl] = useState(null);
   const [shareRosterCopied, setShareRosterCopied] = useState(false);
@@ -731,6 +770,9 @@ function App() {
   const [shareRosterTypes, setShareRosterTypes] = useState(['Songwriter','Producer','Artist']);
   const [shareRosterSort, setShareRosterSort] = useState('default');
   const [shareRosterExpiry, setShareRosterExpiry] = useState('90');
+  const [shareRosterShowLogos, setShareRosterShowLogos] = useState(true);
+  const [shareRosterShowCredits, setShareRosterShowCredits] = useState(true);
+  const [shareRosterShowBio, setShareRosterShowBio] = useState(true);
 
   useEffect(() => {
     fetch('/api/sheets')
@@ -797,7 +839,7 @@ function App() {
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* Top bar -- changes based on view */}
-        <div style={{ padding: "14px 28px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
+        <div style={{ padding: "10px 20px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
           {/* Logo always visible */}
           <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
           <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
@@ -851,15 +893,15 @@ function App() {
           )}
 
           {!loading && !error && view === 'roster' && (
-            <div style={{ padding: "20px 28px 48px" }}>
+            <div style={{ padding: "14px 20px 40px" }}>
               {filtered.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
                   <div style={{ fontSize: 15 }}>{search || filterType !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
                 </div>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
                   {filtered.map((c, i) => (
-                    <ClientCard key={c.id || i} client={c} logos={logos} onClick={() => { setSelected(c); setView('detail'); }} />
+                    <ClientCard key={c.id || i} client={c} logos={logos} onClick={() => setView('detail', c)} />
                   ))}
                 </div>
               )}
@@ -881,11 +923,17 @@ function App() {
               name: c.name, types: c.types, level: (c.types||[])[0] || 'Client',
               photoUrl: c.photoUrl,
               logoUrl: lookupLogo(logos, c.pro) || lookupLogo(logos, c.publisher) || lookupLogo(logos, c.label),
+              proLogoUrl: shareRosterShowLogos ? lookupLogo(logos, c.pro) : null,
+              pubLogoUrl: shareRosterShowLogos ? lookupLogo(logos, c.publisher) : null,
+              labelLogoUrl: shareRosterShowLogos ? lookupLogo(logos, c.label) : null,
+              pro: shareRosterShowLogos ? c.pro : null,
+              publisher: shareRosterShowLogos ? c.publisher : null,
+              label: shareRosterShowLogos ? c.label : null,
               city: c.city, state: c.state, country: c.country,
               city2: c.city2, state2: c.state2, country2: c.country2,
               city3: c.city3, state3: c.state3, country3: c.country3,
-              pro: c.pro, publisher: c.publisher, label: c.label,
-              credits: c.credits, bio: c.bio,
+              credits: shareRosterShowCredits ? c.credits : null,
+              bio: shareRosterShowBio ? c.bio : null,
               instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
               spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
             }));
@@ -937,6 +985,24 @@ function App() {
                     {clients.filter(c => (c.types||[]).some(t => shareRosterTypes.includes(t))).length} clients
                   </div>
                 </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Include</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {[
+                      ['PRO / Publisher / Label logos', shareRosterShowLogos, setShareRosterShowLogos],
+                      ['Credits / Artists worked with', shareRosterShowCredits, setShareRosterShowCredits],
+                      ['Bio', shareRosterShowBio, setShareRosterShowBio],
+                    ].map(([label, val, set]) => (
+                      <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: 13, color: G.textSecondary }}>{label}</span>
+                        <div onClick={() => set(v => !v)} style={{ width: 34, height: 19, borderRadius: 10, background: val ? G.green : G.surfaceBorderLight, position: "relative", cursor: "pointer", flexShrink: 0, transition: `background 0.2s ${G.ease}` }}>
+                          <div style={{ position: "absolute", top: 3, left: val ? 17 : 3, width: 13, height: 13, borderRadius: "50%", background: "#fff", transition: `left 0.2s ${G.ease}`, boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 }}>Sort</div>
                   <div style={{ display: "flex", gap: 6 }}>
