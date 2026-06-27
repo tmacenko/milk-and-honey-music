@@ -106,6 +106,16 @@ function TwIcon({ size = 13 }) { return <svg width={size} height={size} viewBox=
 function TkIcon({ size = 13 }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.73a4.85 4.85 0 01-1.01-.04z"/></svg>; }
 function SpotifyIcon({ size = 13 }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>; }
 
+function FaviconIcon({ domain, size = 14 }) {
+  return (
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+      alt={domain}
+      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", display: "block", flexShrink: 0 }}
+    />
+  );
+}
+
 function fmt(n) {
   if (!n) return null;
   const s = String(n).trim();
@@ -604,9 +614,9 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
     c.instagram && { icon: <IgIcon size={isMobile ? 18 : 14} />, label: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}` },
     c.twitter && { icon: <TwIcon size={isMobile ? 18 : 14} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
     c.tiktok && { icon: <TkIcon size={isMobile ? 18 : 14} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
-    c.spotifyUrl && { icon: <SpotifyIcon size={isMobile ? 18 : 14} />, label: 'Spotify', url: c.spotifyUrl },
-    c.appleMusicUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 24 24" fill="currentColor"><path d="M23.997 6.124c0-.738-.065-1.47-.24-2.19-.317-1.307-1.062-2.31-2.18-3.043C21.003.517 20.373.285 19.7.164c-.517-.093-1.043-.137-1.568-.152-.038-.002-.076-.01-.114-.013H5.981c-.152.01-.303.017-.454.026C4.786.07 4.043.15 3.34.428 2.004.958 1.04 1.88.475 3.208A5.49 5.49 0 00.05 5.09C.035 5.694.03 6.3.03 6.907v10.276c0 .681-.01 1.364.018 2.045.055 1.516.56 2.797 1.578 3.847.01.01.017.024.027.033.02.023.04.047.06.07.45.503.987.908 1.582 1.21.704.35 1.46.508 2.244.55.464.026.927.03 1.393.03H18.55c.37 0 .74-.005 1.112-.02 1.23-.045 2.327-.39 3.25-1.164.94-.79 1.547-1.79 1.842-2.97.135-.535.185-1.084.196-1.632.013-.594.01-1.19.01-1.784V6.124zm-6.003 7.858c0 .658-.528 1.19-1.18 1.19H7.166c-.652 0-1.18-.532-1.18-1.19V9.158c0-.658.528-1.19 1.18-1.19H16.8c.657 0 1.185.532 1.185 1.19l.01 4.824zm-5.03-6.93L9.2 8.698v2.046l3.764-1.542V6.053zm0 2.456L9.2 10.065v2.045l3.764-1.542V8.51zm0 2.456L9.2 12.52v2.046l3.764-1.542v-2.057z"/></svg>, label: 'Apple Music', url: c.appleMusicUrl },
-    c.soundcloudUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 24 24" fill="currentColor"><path d="M11.56 8.87V17h8.76c1-.09 1.68-.64 1.68-1.54 0-.8-.63-1.46-1.43-1.5-.2 0-.4.04-.57.1-.1-2.17-1.9-3.91-4.1-3.91-.65 0-1.27.15-1.82.44-.28-1.46-1.58-2.57-3.12-2.57-.99 0-1.88.43-2.5 1.12A3.2 3.2 0 006.5 9C4.57 9 3 10.57 3 12.5S4.57 16 6.5 16h5.06V8.87h0z"/></svg>, label: 'SoundCloud', url: c.soundcloudUrl },
+    c.spotifyUrl && { icon: <FaviconIcon domain="spotify.com" size={isMobile ? 18 : 14} />, label: 'Spotify', url: c.spotifyUrl },
+    c.appleMusicUrl && { icon: <FaviconIcon domain="music.apple.com" size={isMobile ? 18 : 14} />, label: 'Apple Music', url: c.appleMusicUrl },
+    c.soundcloudUrl && { icon: <FaviconIcon domain="soundcloud.com" size={isMobile ? 18 : 14} />, label: 'SoundCloud', url: c.soundcloudUrl },
   ].filter(Boolean);
 
   if (isMobile) return (
