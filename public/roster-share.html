@@ -332,7 +332,14 @@ function buildCard(a, i) {
         <div class="card-pos">${[a.position, a.jerseyNumber?'#'+a.jerseyNumber:''].filter(Boolean).join(' ')}</div>
         <div class="card-team">${team}</div>
       </div>
-      ${a.logoUrl ? `<div class="card-logo"><img src="${a.logoUrl}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>` : ''}
+      ${(a.logoUrl || a.proLogoUrl || a.pubLogoUrl || a.labelLogoUrl) ? `
+        <div style="position:absolute;bottom:42px;right:10px;display:flex;gap:4px">
+          ${[a.proLogoUrl, a.pubLogoUrl, a.labelLogoUrl].filter(Boolean).map(u =>
+            `<div class="card-logo"><img src="${u}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`
+          ).join('')}
+          ${(!a.proLogoUrl && !a.pubLogoUrl && !a.labelLogoUrl && a.logoUrl) ?
+            `<div class="card-logo"><img src="${a.logoUrl}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>` : ''}
+        </div>` : ''}
       ${socials.length ? `<div class="card-social">${socials.map(s=>`<div class="cs">${icons[s.t]}<span>${s.v}</span></div>`).join('')}</div>` : ''}
     </div>`;
 }
