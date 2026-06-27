@@ -535,176 +535,139 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
   const pubLogo = lookupLogo(logos, c.publisher);
   const lblLogo = lookupLogo(logos, c.label);
 
+  // Build deduplicated location string -- one flag per country, cities separated by bullet
+  const locationEl = (() => {
+    const locs = [
+      { city: c.city, state: c.state, country: c.country },
+      { city: c.city2, state: c.state2, country: c.country2 },
+      { city: c.city3, state: c.state3, country: c.country3 },
+    ].filter(l => l.city || l.country);
+    if (!locs.length) return null;
+    const seen = new Set();
+    // Collect unique flags
+    const flags = locs.map(l => flag(l.country)).filter(f => { if (!f || seen.has(f)) return false; seen.add(f); return true; });
+    // All city strings
+    const cities = locs.map(l => [l.city, l.state].filter(Boolean).join(', ')).filter(Boolean);
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+        {flags.length > 0 && <span style={{ fontSize: 16 }}>{flags.join(' ')}</span>}
+        <span style={{ fontSize: 14, color: G.textSecondary }}>{cities.join(' \u00b7 ')}</span>
+      </div>
+    );
+  })();
+
+  // Action buttons row
+  const actionBtn = (content, href, green = false) => href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 7, background: green ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${green ? G.green : G.surfaceBorder}`, borderRadius: 10, padding: "9px 16px", textDecoration: "none", transition: `all 0.15s ${G.ease}`, flexShrink: 0 }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = green ? G.green : G.surfaceBorderLight; e.currentTarget.style.background = green ? "rgba(62,170,120,0.15)" : G.surface; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = green ? G.green : G.surfaceBorder; e.currentTarget.style.background = green ? G.greenSubtle : G.surfaceRaised; }}>
+      {content}
+    </a>
+  ) : null;
+
+  // Logo strip items -- only show if logo or name exists
+  const logoItems = [
+    c.pro && { logo: proLogo, name: c.pro },
+    c.publisher && { logo: pubLogo, name: c.publisher },
+    c.label && { logo: lblLogo, name: c.label },
+  ].filter(Boolean);
+
   return (
     <div style={{ flex: 1, overflow: "auto" }}>
       {/* Header */}
-      <div style={{ padding: "24px 28px 24px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 20, flexWrap: "wrap" }}>
-          <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <h1 style={{ fontSize: 30, fontWeight: 800, color: G.text, letterSpacing: "-0.04em", margin: "0 0 8px", lineHeight: 1.1 }}>{c.name}</h1>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+      <div style={{ padding: "28px 32px 24px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 24 }}>
+          {/* Avatar with circle border */}
+          <div style={{ flexShrink: 0, width: 120, height: 120, borderRadius: "50%", overflow: "hidden", border: `2px solid ${G.surfaceBorderLight}` }}>
+            <Avatar name={c.name} photoUrl={c.photoUrl} size={120} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{ fontSize: 38, fontWeight: 800, color: G.text, letterSpacing: "-0.04em", margin: "0 0 10px", lineHeight: 1.05 }}>{c.name}</h1>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
               {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
             </div>
-            {(c.city || c.city2 || c.city3 || c.country) && (() => {
-              const locs = [
-                { city: c.city, state: c.state, country: c.country },
-                { city: c.city2, state: c.state2, country: c.country2 },
-                { city: c.city3, state: c.state3, country: c.country3 },
-              ].filter(l => l.city || l.country);
-              const seen = new Set();
-              return (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
-                  {locs.map((l, i) => {
-                    const f = flag(l.country); const dup = seen.has(f) && f; if (f) seen.add(f);
-                    return (
-                      <div key={i} style={{ fontSize: 13, color: G.textSecondary, display: "flex", alignItems: "center", gap: 5 }}>
-                        <span>{[l.city, l.state].filter(Boolean).join(', ')}</span>
-                        {f && !dup && <span style={{ fontSize: 15 }}>{f}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            {proLogo && <LogoBadge url={proLogo} label={c.pro} size={42} />}
-            {pubLogo && <LogoBadge url={pubLogo} label={c.publisher} size={42} />}
-            {lblLogo && <LogoBadge url={lblLogo} label={c.label} size={42} />}
-          </div>
+            {locationEl}
 
-        </div>
-
-        {/* Streaming / social stats */}
-        <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
-          {c.spotifyMonthly && (
-            <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px", minWidth: 90 }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmt(c.spotifyMonthly)}</div>
-              <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Monthly</div>
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+              {c.instagram && actionBtn(
+                <><IgIcon size={14} /><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.instagram}</span></>,
+                `https://instagram.com/${c.instagram}`
+              )}
+              {c.twitter && actionBtn(
+                <><TwIcon size={14} /><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.twitter}</span></>,
+                `https://x.com/${c.twitter}`
+              )}
+              {c.tiktok && actionBtn(
+                <><TkIcon size={14} /><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.tiktok}</span></>,
+                `https://tiktok.com/@${c.tiktok}`
+              )}
+              {c.spotifyUrl && actionBtn(
+                <><SpotifyIcon size={14} /><span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>View Spotify</span></>,
+                c.spotifyUrl, true
+              )}
+              {c.contact && actionBtn(
+                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke={G.green} strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke={G.green} strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke={G.green} strokeWidth="2" strokeLinecap="round"/></svg>
+                <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact Milk &amp; Honey Rep ({c.contact})</span></>,
+                `mailto:`, true
+              )}
             </div>
-          )}
-          {c.spotifyFollowers > 0 && (
-            <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px", minWidth: 90 }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmt(c.spotifyFollowers)}</div>
-              <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Followers</div>
-            </div>
-          )}
-          {c.spotifyPopularity != null && (
-            <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px", minWidth: 90 }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{c.spotifyPopularity}<span style={{ fontSize: 12, color: G.textTertiary }}>/100</span></div>
-              <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Popularity</div>
-            </div>
-          )}
-          {[
-            { icon: <IgIcon size={14} />, handle: c.instagram, url: c.instagram ? `https://instagram.com/${c.instagram}` : null },
-            { icon: <TwIcon size={14} />, handle: c.twitter, url: c.twitter ? `https://x.com/${c.twitter}` : null },
-            { icon: <TkIcon size={14} />, handle: c.tiktok, url: c.tiktok ? `https://tiktok.com/@${c.tiktok}` : null },
-          ].filter(s => s.handle).map((s, i) => (
-            <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "9px 14px", textDecoration: "none", transition: `all 0.15s ${G.ease}` }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = G.surfaceBorderLight; e.currentTarget.style.background = G.surface; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = G.surfaceBorder; e.currentTarget.style.background = G.surfaceRaised; }}>
-              <span style={{ color: G.textSecondary, display: "flex" }}>{s.icon}</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{s.handle}</span>
-            </a>
-          ))}
+          </div>
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ padding: "24px 28px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
+
+        {/* Bio */}
         {c.bio && (
-          <div style={{ gridColumn: "1/-1" }}>
-            <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "18px 20px" }}><p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.65, margin: 0 }}>{c.bio}</p></div>
-          </div>
+          <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{c.bio}</p>
         )}
 
-        {/* Latest Release */}
-        {c.spotifyLatestRelease && (
-          <div style={{ gridColumn: "1/-1" }}>
-            <Sec title="">
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                {c.spotifyLatestRelease.artwork && (
-                  <img src={c.spotifyLatestRelease.artwork} alt={c.spotifyLatestRelease.name}
-                    style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.4)" }} />
-                )}
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{c.spotifyLatestRelease.name}</div>
-                  <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 3, textTransform: "capitalize" }}>
-                    {c.spotifyLatestRelease.type} · {c.spotifyLatestRelease.releaseDate?.slice(0, 4)}
-                  </div>
-                  {c.spotifyLatestRelease.url && (
-                    <a href={c.spotifyLatestRelease.url} target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: 11, color: G.green, textDecoration: "none", marginTop: 4, display: "inline-block" }}>
-                      Listen on Spotify ↗
-                    </a>
-                  )}
-                </div>
-              </div>
-            </Sec>
-          </div>
-        )}
-
-        {/* Top Tracks */}
-        {c.spotifyTopTracks?.length > 0 && (
-          <div style={{ gridColumn: "1/-1" }}>
-            <Sec title="">
-              {c.spotifyTopTracks.map((t, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: i < c.spotifyTopTracks.length - 1 ? `1px solid ${G.surfaceBorder}` : "none" }}>
-                  <div style={{ fontSize: 11, color: G.textTertiary, fontWeight: 600, width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
-                  {t.artwork && <img src={t.artwork} alt={t.album} style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
-                    <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.album}</div>
-                  </div>
-                  {t.url && (
-                    <a href={t.url} target="_blank" rel="noopener noreferrer"
-                      style={{ color: G.textTertiary, textDecoration: "none", flexShrink: 0, display: "flex", alignItems: "center" }}
-                      onMouseEnter={e => e.currentTarget.style.color = G.green}
-                      onMouseLeave={e => e.currentTarget.style.color = G.textTertiary}>
-                      <SpotifyIcon size={14} />
-                    </a>
-                  )}
-                </div>
-              ))}
-            </Sec>
-          </div>
-        )}
-
-        {/* Genres */}
-        {c.spotifyGenres?.length > 0 && (
-          <div style={{ gridColumn: "1/-1" }}>
-            <Sec title="">
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                {c.spotifyGenres.map((g, i) => (
-                  <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.textSecondary, textTransform: "capitalize" }}>{g}</span>
-                ))}
-              </div>
-            </Sec>
-          </div>
-        )}
+        {/* Credits */}
         {c.credits?.length > 0 && (
-          <div style={{ gridColumn: "1/-1" }}>
-            <Sec title="">
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
-              </div>
-            </Sec>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 14px", fontSize: 13, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
           </div>
         )}
-        <Sec title="">
-          <IR label="Contact / MH Rep" value={c.contact} />
-          <IR label="PRO" value={c.pro} />
-          <IR label="Publisher" value={c.publisher} />
-          <IR label="Record Label" value={c.label} />
-        </Sec>
-        <Sec title="">
-          {c.spotifyUrl && <div style={{ marginBottom: 8 }}><a href={c.spotifyUrl} target="_blank" rel="noopener noreferrer" style={{ color: G.green, fontSize: 13, textDecoration: "none" }}>Spotify Profile ↗</a></div>}
-          {c.appleMusicUrl && <div style={{ marginBottom: 8 }}><a href={c.appleMusicUrl} target="_blank" rel="noopener noreferrer" style={{ color: G.green, fontSize: 13, textDecoration: "none" }}>Apple Music ↗</a></div>}
-          {c.soundcloudUrl && <div style={{ marginBottom: 8 }}><a href={c.soundcloudUrl} target="_blank" rel="noopener noreferrer" style={{ color: G.green, fontSize: 13, textDecoration: "none" }}>SoundCloud ↗</a></div>}
-          {!c.spotifyUrl && !c.appleMusicUrl && !c.soundcloudUrl && <div style={{ color: G.textTertiary, fontSize: 12 }}>No links added</div>}
-        </Sec>
+
+        {/* Logo strip -- PRO / Publisher / Label with dividers */}
+        {logoItems.length > 0 && (
+          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, display: "flex", overflow: "hidden" }}>
+            {logoItems.map((item, i) => (
+              <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "20px 16px", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none" }}>
+                {item.logo && <LogoBadge url={item.logo} label={item.name} size={36} />}
+                <span style={{ fontSize: 15, fontWeight: 600, color: G.text }}>{item.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Spotify stats if available */}
+        {(c.spotifyMonthly || c.spotifyFollowers || c.spotifyPopularity != null) && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {c.spotifyMonthly && (
+              <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px" }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmt(c.spotifyMonthly)}</div>
+                <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Monthly Listeners</div>
+              </div>
+            )}
+            {c.spotifyFollowers > 0 && (
+              <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px" }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmt(c.spotifyFollowers)}</div>
+                <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Followers</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Apple Music / SoundCloud links if no Spotify shown above */}
+        {(c.appleMusicUrl || c.soundcloudUrl) && (
+          <div style={{ display: "flex", gap: 8 }}>
+            {c.appleMusicUrl && <a href={c.appleMusicUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none" }}>Apple Music ↗</a>}
+            {c.soundcloudUrl && <a href={c.soundcloudUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none" }}>SoundCloud ↗</a>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -952,13 +915,7 @@ function App() {
         };
         const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer'];
 
-        const featuresSummary = [
-          shareRosterShowLogos ? 'Logos' : null,
-          shareRosterShowCredits ? 'Credits' : null,
-          shareRosterShowBio ? 'Bio' : null,
-        ].filter(Boolean).join(', ') || 'None';
-        const sortLabel = shareRosterSort === 'alpha' ? 'A--Z' : 'Default';
-        const expiryLabel = shareRosterExpiry === 'never' ? 'Never' : shareRosterExpiry === '30' ? '30 Days' : shareRosterExpiry === '90' ? '90 Days' : '6 Months';
+
         const Toggle = ({ val, set, label }) => (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, color: G.textSecondary }}>{label}</span>
@@ -970,9 +927,8 @@ function App() {
         const DropBox = ({ label, value, children, open, onToggle }) => (
           <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column" }}>
             <div onClick={onToggle} style={{ background: G.surfaceRaised, border: `1px solid ${open ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", transition: `border-color 0.15s ${G.ease}`, height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>{label}</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: G.text }}>{value}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: G.text, textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ transform: open ? "rotate(180deg)" : "none", transition: `transform 0.2s ${G.ease}`, flexShrink: 0 }}><path d="M6 9l6 6 6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
             </div>
@@ -1018,18 +974,18 @@ function App() {
 
                 {/* Three dropboxes */}
                 <div style={{ display: "flex", gap: 10, position: "relative", alignItems: "stretch" }}>
-                  <DropBox label="Features" value={featuresSummary} open={shareFeaturesOpen === 'features'} onToggle={() => setShareFeaturesOpen(v => v === 'features' ? false : 'features')}>
+                  <DropBox label="Features" value="" open={shareFeaturesOpen === 'features'} onToggle={() => setShareFeaturesOpen(v => v === 'features' ? false : 'features')}>
                     <Toggle label="Logos" val={shareRosterShowLogos} set={setShareRosterShowLogos} />
                     <Toggle label="Credits" val={shareRosterShowCredits} set={setShareRosterShowCredits} />
                     <Toggle label="Bio" val={shareRosterShowBio} set={setShareRosterShowBio} />
                   </DropBox>
-                  <DropBox label="Sort" value={sortLabel} open={shareFeaturesOpen === 'sort'} onToggle={() => setShareFeaturesOpen(v => v === 'sort' ? false : 'sort')}>
+                  <DropBox label="Sort" value="" open={shareFeaturesOpen === 'sort'} onToggle={() => setShareFeaturesOpen(v => v === 'sort' ? false : 'sort')}>
                     {[['default','Default'],['alpha','A--Z']].map(([val, lbl]) => (
                       <div key={val} onClick={() => { setShareRosterSort(val); setShareFeaturesOpen(false); }}
                         style={{ padding: "6px 0", fontSize: 13, fontWeight: shareRosterSort === val ? 700 : 400, color: shareRosterSort === val ? G.green : G.textSecondary, cursor: "pointer" }}>{lbl}</div>
                     ))}
                   </DropBox>
-                  <DropBox label="Expires" value={expiryLabel} open={shareFeaturesOpen === 'expires'} onToggle={() => setShareFeaturesOpen(v => v === 'expires' ? false : 'expires')}>
+                  <DropBox label="Expires" value="" open={shareFeaturesOpen === 'expires'} onToggle={() => setShareFeaturesOpen(v => v === 'expires' ? false : 'expires')}>
                     {[['30','30 Days'],['90','90 Days'],['180','6 Months'],['never','Never']].map(([val, lbl]) => (
                       <div key={val} onClick={() => { setShareRosterExpiry(val); setShareFeaturesOpen(false); }}
                         style={{ padding: "6px 0", fontSize: 13, fontWeight: shareRosterExpiry === val ? 700 : 400, color: shareRosterExpiry === val ? G.green : G.textSecondary, cursor: "pointer" }}>{lbl}</div>
