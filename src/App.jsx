@@ -951,11 +951,7 @@ function App() {
           setShareRosterLoading(false);
         };
         const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer'];
-        const featuresSummary = [
-          shareRosterShowLogos ? 'Logos' : null,
-          shareRosterShowCredits ? 'Credits' : null,
-          shareRosterShowBio ? 'Bio' : null,
-        ].filter(Boolean).join(', ') || 'None';
+
         const sortLabel = shareRosterSort === 'alpha' ? 'A--Z' : 'Default';
         const expiryLabel = shareRosterExpiry === 'never' ? 'Never' : shareRosterExpiry === '30' ? '30 Days' : shareRosterExpiry === '90' ? '90 Days' : '6 Months';
         const Toggle = ({ val, set, label }) => (
@@ -1012,14 +1008,12 @@ function App() {
                       </button>;
                     })}
                   </div>
-                  <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 8 }}>
-                    {clients.filter(c => (c.types||[]).some(t => shareRosterTypes.includes(t))).length} clients
-                  </div>
+
                 </div>
 
                 {/* Three dropboxes */}
                 <div style={{ display: "flex", gap: 10, position: "relative" }}>
-                  <DropBox label="Features" value={featuresSummary} open={shareFeaturesOpen === 'features'} onToggle={() => setShareFeaturesOpen(v => v === 'features' ? false : 'features')}>
+                  <DropBox label="Features" value="" open={shareFeaturesOpen === 'features'} onToggle={() => setShareFeaturesOpen(v => v === 'features' ? false : 'features')}>
                     <Toggle label="Logos" val={shareRosterShowLogos} set={setShareRosterShowLogos} />
                     <Toggle label="Credits" val={shareRosterShowCredits} set={setShareRosterShowCredits} />
                     <Toggle label="Bio" val={shareRosterShowBio} set={setShareRosterShowBio} />
