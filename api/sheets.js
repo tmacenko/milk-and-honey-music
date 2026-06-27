@@ -205,52 +205,88 @@ module.exports = async (req, res) => {
         }
       } catch(e) { console.error('Spotify auth error:', e.message); }
 
+      // Photo fallback via oEmbed for clients with Spotify artist URL but no manual photo
+      await Promise.all(clients.filter(c => !c.photoUrl?.trim() && c.spotifyUrl?.includes('open.spotify.com/artist/')).map(async c => {
+        const m = c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
+        if (!m) return;
+        try {
+          const r = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/artist/${m[1]}`);
+          if (r.ok) { const d = await r.json(); if (d.thumbnail_url) c.photoUrl = d.thumbnail_url; }
+        } catch(e) {}
+      }));
+
       if (spotifyToken) {
         const spotifyClients = clients.filter(c => c.spotifyUrl?.includes('open.spotify.com/artist/'));
-        // Batch 5 at a time to stay within Vercel timeout
-        for (let i = 0; i < spotifyClients.length; i += 5) {
-          const batch = spotifyClients.slice(i, i + 5);
-          await Promise.all(batch.map(async c => {
-            const m = c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
-            if (!m) return;
-            const artistId = m[1];
-            try {
-              const [ar, tr] = await Promise.all([
-                fetch(`https://api.spotify.com/v1/artists/${artistId}`, { headers: { Authorization: `Bearer ${spotifyToken}` } }),
-                fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`, { headers: { Authorization: `Bearer ${spotifyToken}` } }),
-              ]);
-              if (ar.ok) {
-                const a = await ar.json();
-                // Always prefer Web API photo (highest res) over any manual URL
-                if (a.images?.[0]?.url) c.photoUrl = a.images[0].url;
+        console.log(`Spotify: token OK, enriching ${spotifyClients.length} clients`);
+
+        // Fetch all artist IDs in one batch call (up to 50 per request -- much faster)
+        const artistIds = spotifyClients
+          .map(c => (c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/) || [])[1])
+          .filter(Boolean);
+
+        if (artistIds.length) {
+          try {
+            // Batch artist lookup -- up to 50 at once
+            const chunks = [];
+            for (let i = 0; i < artistIds.length; i += 50) chunks.push(artistIds.slice(i, i + 50));
+            const artistMap = {};
+            for (const chunk of chunks) {
+              const r = await fetch(`https://api.spotify.com/v1/artists?ids=${chunk.join(',')}`, {
+                headers: { Authorization: `Bearer ${spotifyToken}` }
+              });
+              if (r.ok) {
+                const d = await r.json();
+                (d.artists || []).forEach(a => { if (a?.id) artistMap[a.id] = a; });
+              } else {
+                console.error('Spotify batch artists failed:', r.status, await r.text());
+              }
+            }
+
+            // Apply artist data + fetch top tracks per client (still need individual calls)
+            await Promise.all(spotifyClients.map(async c => {
+              const m = c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
+              if (!m) return;
+              const artistId = m[1];
+              const a = artistMap[artistId];
+              if (a) {
+                // Don't override photo -- use whatever is in the sheet or oEmbed
                 c.spotifyPopularity = a.popularity ?? null;
                 c.spotifyGenres    = a.genres || [];
                 c.spotifyFollowers = a.followers?.total ?? null;
               }
-              if (tr.ok) {
-                const t = await tr.json();
-                if (t.tracks?.length) {
-                  c.spotifyTopTracks = t.tracks.slice(0, 5).map(tk => ({
-                    name:    tk.name,
-                    album:   tk.album?.name,
-                    artwork: tk.album?.images?.[1]?.url || tk.album?.images?.[0]?.url,
-                    url:     tk.external_urls?.spotify,
-                  }));
-                  const latestAlbum = t.tracks
-                    .map(tk => tk.album).filter(Boolean)
-                    .sort((a, b) => new Date(b.release_date) - new Date(a.release_date))[0];
-                  if (latestAlbum) c.spotifyLatestRelease = {
-                    name:        latestAlbum.name,
-                    type:        latestAlbum.album_type,
-                    artwork:     latestAlbum.images?.[0]?.url,
-                    releaseDate: latestAlbum.release_date,
-                    url:         latestAlbum.external_urls?.spotify,
-                  };
+              // Top tracks
+              try {
+                const tr = await fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`, {
+                  headers: { Authorization: `Bearer ${spotifyToken}` }
+                });
+                if (tr.ok) {
+                  const t = await tr.json();
+                  if (t.tracks?.length) {
+                    c.spotifyTopTracks = t.tracks.slice(0, 5).map(tk => ({
+                      name:    tk.name,
+                      album:   tk.album?.name,
+                      artwork: tk.album?.images?.[1]?.url || tk.album?.images?.[0]?.url,
+                      url:     tk.external_urls?.spotify,
+                    }));
+                    const latestAlbum = t.tracks
+                      .map(tk => tk.album).filter(Boolean)
+                      .sort((x, y) => new Date(y.release_date) - new Date(x.release_date))[0];
+                    if (latestAlbum) c.spotifyLatestRelease = {
+                      name:        latestAlbum.name,
+                      type:        latestAlbum.album_type,
+                      artwork:     latestAlbum.images?.[0]?.url,
+                      releaseDate: latestAlbum.release_date,
+                      url:         latestAlbum.external_urls?.spotify,
+                    };
+                  }
                 }
-              }
-            } catch(e) { console.error(`Spotify error for ${c.name}:`, e.message); }
-          }));
+              } catch(e) { console.error(`Top tracks error for ${c.name}:`, e.message); }
+            }));
+            console.log(`Spotify enrichment complete for ${spotifyClients.length} clients`);
+          } catch(e) { console.error('Spotify batch error:', e.message); }
         }
+      } else {
+        console.log('No Spotify token -- skipping enrichment');
       }
 
       // Parse logos -- structure: Record Label | Label URL | Publishing Company | Pub URL | PRO | PRO URL
