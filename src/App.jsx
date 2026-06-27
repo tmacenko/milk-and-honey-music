@@ -651,12 +651,12 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
   const bioText = bioTruncated ? c.bio.slice(0, BIO_LIMIT).trimEnd() + '...' : c.bio;
 
   const socialBtns = [
-    c.instagram && { icon: <FaviconIcon domain="instagram.com" size={isMobile ? 40 : 42} />, label: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}` },
-    c.twitter && { icon: <FaviconIcon domain="x.com" size={isMobile ? 40 : 42} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
-    c.tiktok && { icon: <FaviconIcon domain="tiktok.com" size={isMobile ? 40 : 42} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
-    c.spotifyUrl && { icon: <FaviconIcon domain="spotify.com" size={isMobile ? 40 : 42} />, label: 'Spotify', url: c.spotifyUrl },
-    c.appleMusicUrl && { icon: <FaviconIcon domain="music.apple.com" size={isMobile ? 40 : 42} />, label: 'Apple Music', url: c.appleMusicUrl },
-    c.soundcloudUrl && { icon: <FaviconIcon domain="soundcloud.com" size={isMobile ? 40 : 42} />, label: 'SoundCloud', url: c.soundcloudUrl },
+    c.instagram && { icon: <FaviconIcon domain="instagram.com" size={isMobile ? 32 : 34} />, label: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}` },
+    c.twitter && { icon: <FaviconIcon domain="x.com" size={isMobile ? 32 : 34} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
+    c.tiktok && { icon: <FaviconIcon domain="tiktok.com" size={isMobile ? 32 : 34} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
+    c.spotifyUrl && { icon: <FaviconIcon domain="spotify.com" size={isMobile ? 32 : 34} />, label: 'Spotify', url: c.spotifyUrl },
+    c.appleMusicUrl && { icon: <FaviconIcon domain="music.apple.com" size={isMobile ? 32 : 34} />, label: 'Apple Music', url: c.appleMusicUrl },
+    c.soundcloudUrl && { icon: <FaviconIcon domain="soundcloud.com" size={isMobile ? 32 : 34} />, label: 'SoundCloud', url: c.soundcloudUrl },
   ].filter(Boolean);
 
   if (isMobile) return (
@@ -682,10 +682,10 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
           </div>
         </div>
         {socialBtns.length > 0 && (
-          <div style={{ display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
             {socialBtns.map((btn, i) => (
               <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" aria-label={btn.label}
-                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: "50%", background: "transparent", border: "none", padding: 0, textDecoration: "none", flexShrink: 0, transition: `transform 0.15s ${G.ease}, opacity 0.15s ${G.ease}` }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: "50%", background: "transparent", border: "none", padding: 0, textDecoration: "none", flexShrink: 0, transition: `transform 0.15s ${G.ease}, opacity 0.15s ${G.ease}` }}
                 onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.opacity = "0.85"; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.opacity = "1"; }}>
                 {btn.icon}
@@ -748,10 +748,10 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
               {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
             </div>
             {locationEl}
-            <div style={{ display: "flex", gap: 14, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 11, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
               {socialBtns.map((btn, i) => (
                 <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" aria-label={btn.label}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 42, height: 42, borderRadius: "50%", background: "transparent", border: "none", padding: 0, textDecoration: "none", flexShrink: 0, transition: `transform 0.15s ${G.ease}, opacity 0.15s ${G.ease}` }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: "50%", background: "transparent", border: "none", padding: 0, textDecoration: "none", flexShrink: 0, transition: `transform 0.15s ${G.ease}, opacity 0.15s ${G.ease}` }}
                   onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.opacity = "0.85"; }}
                   onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.opacity = "1"; }}>
                   {btn.icon}
