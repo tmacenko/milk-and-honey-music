@@ -651,12 +651,12 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
   const bioText = bioTruncated ? c.bio.slice(0, BIO_LIMIT).trimEnd() + '...' : c.bio;
 
   const socialBtns = [
-    c.instagram && { icon: <FaviconIcon domain="instagram.com" size={isMobile ? 18 : 14} />, label: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}` },
-    c.twitter && { icon: <FaviconIcon domain="x.com" size={isMobile ? 18 : 14} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
-    c.tiktok && { icon: <FaviconIcon domain="tiktok.com" size={isMobile ? 18 : 14} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
-    c.spotifyUrl && { icon: <FaviconIcon domain="spotify.com" size={isMobile ? 18 : 14} />, label: 'Spotify', url: c.spotifyUrl },
-    c.appleMusicUrl && { icon: <FaviconIcon domain="music.apple.com" size={isMobile ? 18 : 14} />, label: 'Apple Music', url: c.appleMusicUrl },
-    c.soundcloudUrl && { icon: <FaviconIcon domain="soundcloud.com" size={isMobile ? 18 : 14} />, label: 'SoundCloud', url: c.soundcloudUrl },
+    c.instagram && { icon: <FaviconIcon domain="instagram.com" size={isMobile ? 32 : 32} />, label: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}` },
+    c.twitter && { icon: <FaviconIcon domain="x.com" size={isMobile ? 32 : 32} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
+    c.tiktok && { icon: <FaviconIcon domain="tiktok.com" size={isMobile ? 32 : 32} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
+    c.spotifyUrl && { icon: <FaviconIcon domain="spotify.com" size={isMobile ? 32 : 32} />, label: 'Spotify', url: c.spotifyUrl },
+    c.appleMusicUrl && { icon: <FaviconIcon domain="music.apple.com" size={isMobile ? 32 : 32} />, label: 'Apple Music', url: c.appleMusicUrl },
+    c.soundcloudUrl && { icon: <FaviconIcon domain="soundcloud.com" size={isMobile ? 32 : 32} />, label: 'SoundCloud', url: c.soundcloudUrl },
   ].filter(Boolean);
 
   if (isMobile) return (
@@ -667,7 +667,14 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             <Avatar name={c.name} photoUrl={c.photoUrl} size={90} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: G.text, letterSpacing: "-0.03em", margin: "0 0 8px", lineHeight: 1.1 }}>{c.name}</h1>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+              <h1 style={{ fontSize: 28, fontWeight: 800, color: G.text, letterSpacing: "-0.03em", margin: 0, lineHeight: 1.1, flex: 1 }}>{c.name}</h1>
+              {c.contact && (
+                <a href={contactMailto} style={{ display: "flex", alignItems: "center", justifyContent: "center", background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: "8px 10px", textDecoration: "none", flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke={G.green} strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke={G.green} strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke={G.green} strokeWidth="2" strokeLinecap="round"/></svg>
+                </a>
+              )}
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
               {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
             </div>
@@ -675,12 +682,11 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
           </div>
         </div>
         {socialBtns.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
+          <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
             {socialBtns.map((btn, i) => (
               <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer"
-                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "12px 16px", textDecoration: "none" }}>
-                <span style={{ color: G.textSecondary, display: "flex" }}>{btn.icon}</span>
-                <span style={{ fontSize: 14, fontWeight: 600, color: G.text }}>{btn.label}</span>
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 10, textDecoration: "none" }}>
+                <span style={{ display: "flex" }}>{btn.icon}</span>
               </a>
             ))}
           </div>
@@ -714,12 +720,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             ))}
           </div>
         )}
-        {c.contact && (
-          <a href={contactMailto} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "transparent", border: `1.5px solid ${G.green}`, borderRadius: 14, padding: "16px", textDecoration: "none", marginTop: 4 }}>
-            <span style={{ color: G.green, display: "flex" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: G.green }}>Contact Milk &amp; Honey Rep ({c.contact})</span>
-          </a>
-        )}
+
       </div>
     </div>
   );
@@ -732,21 +733,28 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             <Avatar name={c.name} photoUrl={c.photoUrl} size={120} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ fontSize: 38, fontWeight: 800, color: G.text, letterSpacing: "-0.04em", margin: "0 0 10px", lineHeight: 1.05 }}>{c.name}</h1>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+              <h1 style={{ fontSize: 38, fontWeight: 800, color: G.text, letterSpacing: "-0.04em", margin: 0, lineHeight: 1.05, flex: 1 }}>{c.name}</h1>
+              {c.contact && (
+                <a href={contactMailto} style={{ display: "flex", alignItems: "center", gap: 7, background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: "9px 14px", textDecoration: "none", flexShrink: 0, marginTop: 4 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke={G.green} strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke={G.green} strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke={G.green} strokeWidth="2" strokeLinecap="round"/></svg>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact Rep</span>
+                </a>
+              )}
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
               {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
             </div>
             {locationEl}
-            <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-              {socialBtns.map((btn, i) => actionBtn(
-                <><span style={{ color: G.textSecondary, display:"flex" }}>{btn.icon}</span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{btn.label}</span></>,
-                btn.url, false
+            <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
+              {socialBtns.map((btn, i) => (
+                <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: 10, textDecoration: "none", transition: `all 0.15s ${G.ease}` }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = G.surfaceBorderLight; e.currentTarget.style.background = G.surface; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = G.surfaceBorder; e.currentTarget.style.background = G.surfaceRaised; }}>
+                  <span style={{ display: "flex" }}>{btn.icon}</span>
+                </a>
               ))}
-              {c.contact && actionBtn(
-                <><span style={{ color: G.green, display:"flex" }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact Milk &amp; Honey Rep ({c.contact})</span></>,
-                contactMailto, true
-              )}
             </div>
           </div>
         </div>
