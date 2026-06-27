@@ -1,130 +1,217 @@
-// api/share.js — handles both group roster and individual one-pager shares
-const crypto = require('crypto');
-
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-const APP_URL = 'https://milkhoneysports.app';
-const BLOB_API = 'https://blob.vercel-storage.com';
-
-module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (!TOKEN) return res.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN not set' });
-
-  // ── POST: save share ────────────────────────────────────────────────────────
-  if (req.method === 'POST') {
-    try {
-      const body = req.body;
-      if (!body) return res.status(400).json({ error: 'No data provided' });
-
-      const id = crypto.randomBytes(8).toString('hex');
-      const filename = `share-${id}.json`;
-
-      let payload;
-      if (body.type === 'individual') {
-        if (!body.athlete?.name) return res.status(400).json({ error: 'No athlete provided' });
-        payload = JSON.stringify({
-          id,
-          type: 'individual',
-          createdAt: new Date().toISOString(),
-          athlete:       body.athlete,
-          brandName:     body.brandName     || '',
-          keywords:      body.keywords      || [],
-          pitch:         body.pitch         || '',
-          ideas:         body.ideas         || [],
-          aboutText:     body.aboutText     || '',
-          secondaryPhoto: body.secondaryPhoto || null,
-          brandLogo:     body.brandLogo     || null,
-          theme:         body.theme         || 'dark',
-          // Pitch mode + generic outreach
-          pitchMode:     body.pitchMode     || 'specific',
-          outreachTitle: body.outreachTitle || '',
-          outreachCards: body.outreachCards || [],
-          // Photo positioning
-          photoX:        body.photoX        ?? 50,
-          photoY:        body.photoY        ?? 50,
-          photoZoom:     body.photoZoom     ?? 100,
-          fontScale:     body.fontScale     ?? 1.0,
-          // Section toggles
-          toggles: {
-            showSocials:   body.toggles?.showSocials   ?? true,
-            showMusic:     body.toggles?.showMusic     ?? true,
-            showInterests: body.toggles?.showInterests ?? true,
-            showBrands:    body.toggles?.showBrands    ?? true,
-            showPitch:     body.toggles?.showPitch     ?? true,
-          },
-        });
-      } else if (body.type === 'roster-share') {
-        // Interactive shareable roster
-        const { athletes, title, expiresAt } = body;
-        if (!athletes?.length) return res.status(400).json({ error: 'No athletes provided' });
-        payload = JSON.stringify({
-          id, type: 'roster-share',
-          createdAt: new Date().toISOString(),
-          expiresAt: expiresAt || null,
-          title: title || 'Milk & Honey Sports — Athlete Roster',
-          athletes,
-        });
-      } else {
-        // Group roster
-        const { athletes, title, showSocials, showReach, showStats, showClassOf, cardSize, theme } = body;
-        if (!athletes?.length) return res.status(400).json({ error: 'No athletes provided' });
-        payload = JSON.stringify({
-          id, type: 'group', createdAt: new Date().toISOString(),
-          title: title || 'Milk & Honey Sports — Athlete Roster',
-          athletes, settings: { showSocials, showReach, showStats, showClassOf, cardSize, theme },
-        });
-      }
-
-      const uploadResp = await fetch(`${BLOB_API}/${filename}`, {
-        method: 'PUT',
-        headers: { 'authorization': `Bearer ${TOKEN}`, 'x-api-version': '7', 'content-type': 'application/json' },
-        body: payload,
-      });
-
-      const uploadText = await uploadResp.text();
-      if (!uploadResp.ok) throw new Error(`Blob upload failed (${uploadResp.status}): ${uploadText}`);
-
-      const url = body.type === 'roster-share'
-        ? `${APP_URL}/roster/${id}`
-        : `${APP_URL}/share/${id}`;
-      return res.json({ id, url });
-    } catch (err) {
-      console.error('Share create error:', err.message);
-      return res.status(500).json({ error: err.message });
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Milk & Honey Music</title>
+  <meta name="robots" content="noindex" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#080809; --surface:#111113; --raised:#18181b;
+      --border:#1e1e22; --border-l:#28282d;
+      --text:#f4f4f5; --text2:#b4b4be; --text3:#8a8a98; --text4:#6b6b78;
+      --green:#3eaa78; --green-s:rgba(62,170,120,0.09);
+      --shadow:0 1px 2px rgba(0,0,0,0.6),0 4px 16px rgba(0,0,0,0.35);
+      --shadow-lg:0 4px 12px rgba(0,0,0,0.7),0 20px 60px rgba(0,0,0,0.5);
+      --ease:cubic-bezier(0.4,0,0.2,1);
+      --ff:-apple-system,'SF Pro Display','Helvetica Neue',sans-serif;
     }
-  }
-
-  // ── GET: retrieve share ─────────────────────────────────────────────────────
-  if (req.method === 'GET') {
-    try {
-      const { id } = req.query;
-      if (!id) return res.status(400).json({ error: 'Missing id' });
-
-      const listParams = new URLSearchParams({ prefix: `share-${id}`, limit: '1' });
-      const listResp = await fetch(`${BLOB_API}?${listParams}`, {
-        headers: { 'authorization': `Bearer ${TOKEN}`, 'x-api-version': '7' },
-      });
-      if (!listResp.ok) return res.status(404).json({ error: 'Share not found' });
-
-      const listData = await listResp.json();
-      const blob = listData.blobs?.[0];
-      if (!blob) return res.status(404).json({ error: 'Share not found or expired' });
-
-      const dataResp = await fetch(blob.url);
-      if (!dataResp.ok) return res.status(404).json({ error: 'Share content unavailable' });
-
-      let data;
-      try { data = await dataResp.json(); }
-      catch(e) { return res.status(500).json({ error: 'Failed to parse share data' }); }
-
-      return res.json(data);
-    } catch (err) {
-      console.error('Share fetch error:', err.message);
-      return res.status(500).json({ error: err.message });
+    html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased}
+    .hdr{position:sticky;top:0;z-index:100;background:rgba(8,8,9,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .hdr-left{display:flex;align-items:center;gap:10px}
+    .hdr-logo{height:28px}
+    .hdr-title{font-size:12px;font-weight:600;color:var(--text3)}
+    .tabs-wrap{padding:14px 24px 0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+    .tabs-wrap::-webkit-scrollbar{display:none}
+    .tab{padding:7px 16px;border-radius:20px;border:1.5px solid var(--border);font-family:var(--ff);font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--text3);white-space:nowrap;transition:all 0.15s var(--ease);flex-shrink:0}
+    .tab.active{border-color:var(--green);background:var(--green-s);color:var(--green)}
+    .grid-wrap{padding:14px 24px 60px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+    @media(max-width:1100px){.grid{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:768px){.grid{grid-template-columns:1fr;gap:0}}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;cursor:pointer;position:relative;transition:all 0.2s var(--ease);box-shadow:var(--shadow);display:flex;flex-direction:column}
+    .card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);border-color:var(--border-l);background:var(--raised)}
+    .card-body{padding:18px 18px 14px;flex:1}
+    .card-avatar{width:80px;height:80px;border-radius:50%;overflow:hidden;flex-shrink:0;background:var(--raised);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;margin-bottom:14px}
+    .card-avatar img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+    .card-name{font-size:17px;font-weight:800;color:var(--text);letter-spacing:-0.03em;line-height:1.2;margin-bottom:8px}
+    .card-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+    .pill{background:var(--raised);border:1px solid var(--border);border-radius:7px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap}
+    .card-logos-row{display:flex;gap:8px;margin-top:12px}
+    @media(max-width:768px){
+      .card{border-radius:0;border:none;border-bottom:1px solid var(--border);background:transparent;box-shadow:none}
+      .card:hover{transform:none;box-shadow:none;background:var(--raised)}
+      .card-body{display:flex;align-items:center;gap:14px;padding:14px 16px}
+      .card-avatar{width:56px;height:56px;margin-bottom:0;flex-shrink:0}
+      .card-content{flex:1;min-width:0}
+      .card-name{font-size:16px;margin-bottom:4px}
+      .card-logos-row{margin-top:8px}
     }
-  }
+    .logo-badge{border-radius:22%;background:#fff;overflow:hidden;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center}
+    .logo-badge img{width:110%;height:110%;object-fit:cover;display:block;margin:-5%}
+    .overlay{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.75);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;align-items:flex-start;justify-content:center;padding:0;overflow-y:auto}
+    .modal{background:rgba(12,12,14,0.97);border:1px solid var(--border-l);border-radius:22px;width:100%;max-width:680px;margin:40px 20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-lg);animation:fadeUp 0.2s var(--ease)}
+    @media(max-width:768px){.modal{margin:0;border-radius:0;min-height:100vh}}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+    .modal-topbar{display:flex;justify-content:flex-end;gap:8px;padding:14px 16px 0}
+    .btn-close{background:var(--raised);border:1px solid var(--border);border-radius:10px;color:var(--text3);cursor:pointer;padding:8px 12px;font-size:14px;font-family:var(--ff);line-height:1}
+    .modal-hdr{padding:16px 24px 20px;border-bottom:1px solid var(--border)}
+    .modal-hdr-top{display:flex;gap:20px;align-items:flex-start}
+    .modal-avatar{width:90px;height:90px;border-radius:50%;overflow:hidden;flex-shrink:0;background:var(--raised);border:2px solid var(--border-l);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+    .modal-avatar img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+    .modal-info{flex:1;min-width:0}
+    .modal-name{font-size:32px;font-weight:800;color:var(--text);letter-spacing:-0.04em;line-height:1.05;margin-bottom:10px}
+    @media(max-width:768px){.modal-name{font-size:26px}.modal-avatar{width:80px;height:80px}}
+    .modal-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+    .modal-location{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:14px;color:var(--text2)}
+    .modal-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+    .btn-action{display:flex;align-items:center;gap:7px;background:var(--raised);border:1px solid var(--border);border-radius:10px;padding:9px 14px;text-decoration:none;font-family:var(--ff);font-size:13px;font-weight:600;color:var(--text);transition:all 0.15s}
+    .btn-action:hover{border-color:var(--border-l);background:var(--surface)}
+    .btn-action-icon{color:var(--text3);display:flex}
+    @media(max-width:768px){
+      .modal-actions{display:grid;grid-template-columns:1fr 1fr}
+      .btn-action{justify-content:center;padding:12px 14px;font-size:14px}
+    }
+    .modal-body{padding:20px 24px 28px;display:flex;flex-direction:column;gap:18px}
+    .bio{font-size:14px;color:var(--text2);line-height:1.7}
+    .btn-viewmore{background:none;border:none;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--ff);padding:6px 0 0;display:flex;align-items:center;gap:4px}
+    .tags{display:flex;flex-wrap:wrap;gap:7px}
+    .tag{background:var(--raised);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;color:var(--text2)}
+    .logo-strip{background:var(--surface);border:1px solid var(--border);border-radius:16px;display:grid;overflow:hidden}
+    .logo-strip-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px 12px;border-left:1px solid var(--border)}
+    .logo-strip-item:first-child{border-left:none}
+    .logo-strip-item-name{font-size:14px;font-weight:600;color:var(--text);text-align:center}
+    .logo-strip-logo{width:44px;height:44px;border-radius:22%;background:#fff;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center}
+    .logo-strip-logo img{width:110%;height:110%;object-fit:cover;display:block;margin:-5%}
+    .loading{display:flex;align-items:center;justify-content:center;height:60vh}
+    .dots{display:flex;gap:6px}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--text4);animation:dot 1.2s ease-in-out infinite}
+    .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+    @keyframes dot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+    .err{display:flex;align-items:center;justify-content:center;height:80vh;text-align:center;flex-direction:column;gap:8px}
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const MH_LOGO='https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png';
+const FLAGS={"united states":"🇺🇸","usa":"🇺🇸","us":"🇺🇸","united kingdom":"🇬🇧","uk":"🇬🇧","england":"🇬🇧","canada":"🇨🇦","australia":"🇦🇺","germany":"🇩🇪","france":"🇫🇷","sweden":"🇸🇪","norway":"🇳🇴","netherlands":"🇳🇱","spain":"🇪🇸","italy":"🇮🇹","brazil":"🇧🇷","mexico":"🇲🇽","japan":"🇯🇵","south korea":"🇰🇷","colombia":"🇨🇴","ireland":"🇮🇪","denmark":"🇩🇰","belgium":"🇧🇪","switzerland":"🇨🇭","austria":"🇦🇹","portugal":"🇵🇹","new zealand":"🇳🇿","argentina":"🇦🇷"};
+function flag(c){return FLAGS[(c||'').toLowerCase().trim()]||''}
+function initials(n){return(n||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+function avatarStyle(n){const h=(n||'').split('').reduce((a,c)=>a+c.charCodeAt(0),0);const hue=(h*47)%360;return `background:linear-gradient(135deg,hsl(${hue},55%,38%),hsl(${hue},55%,52%))`}
+function faviconUrl(url){if(!url)return null;if(/\.(png|jpg|jpeg|gif|svg|webp)(\?|$)/i.test(url))return url;return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url)}&sz=64`}
+function locationStr(a){
+  const locs=[{city:a.city,state:a.state,country:a.country},{city:a.city2,state:a.state2,country:a.country2},{city:a.city3,state:a.state3,country:a.country3}].filter(l=>l.city||l.country);
+  const seen=new Set();
+  const flags=locs.map(l=>flag(l.country)).filter(f=>{if(!f||seen.has(f))return false;seen.add(f);return true;});
+  const cities=locs.map(l=>[l.city,l.state].filter(Boolean).join(', ')).filter(Boolean);
+  return{flags:flags.join(' '),cities:cities.join(' \u00b7 ')};
+}
+function logoItems(a){
+  const items=[];
+  const split=v=>(v||'').split(',').map(s=>s.trim()).filter(Boolean);
+  split(a.pro).forEach(v=>items.push({name:v,url:a.proLogoUrl||null}));
+  split(a.publisher).forEach(v=>items.push({name:v,url:a.pubLogoUrl||null}));
+  split(a.label).forEach(v=>items.push({name:v,url:a.labelLogoUrl||null}));
+  return items;
+}
+const IG=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5.5" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>`;
+const TW=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`;
+const TK=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.73a4.85 4.85 0 01-1.01-.04z"/></svg>`;
+const SP=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>`;
 
-  return res.status(405).json({ error: 'Method not allowed' });
-};
+const state={data:null,level:'All',selected:null,error:null,bioExpanded:false};
+
+function buildCard(a,idx){
+  const isMobile=window.innerWidth<769;
+  const loc=locationStr(a);
+  const logos=logoItems(a);
+  const types=(a.types||[]).slice().sort((x,y)=>x==='Artist'?-1:y==='Artist'?1:x.localeCompare(y));
+  const avImg=a.photoUrl?`<img src="${a.photoUrl}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:`<span style="font-size:${isMobile?20:26}px">${initials(a.name)}</span>`;
+  const pillsHtml=types.map(t=>`<span class="pill">${t}</span>`).join('');
+  const logosHtml=logos.length?`<div class="card-logos-row">${logos.map(l=>{const sz=isMobile?28:36;const u=faviconUrl(l.url);return u?`<div class="logo-badge" style="width:${sz}px;height:${sz}px"><img src="${u}" alt="${l.name}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`:`<span class="pill">${l.name}</span>`;}).join('')}</div>`:'';
+
+  if(isMobile){return `<div class="card" data-idx="${idx}"><div class="card-body"><div class="card-avatar" style="${a.photoUrl?'':avatarStyle(a.name)}">${avImg}</div><div class="card-content"><div class="card-name">${a.name||''}</div><div class="card-row">${loc.flags?`<span style="font-size:14px">${loc.flags}</span>`:''} ${pillsHtml}</div>${logosHtml}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;color:var(--text4)"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>`;}
+  return `<div class="card" data-idx="${idx}"><div class="card-body"><div class="card-avatar" style="${a.photoUrl?'':avatarStyle(a.name)+';font-size:26px'}">${avImg}</div><div class="card-name">${a.name||''}</div><div class="card-row">${loc.flags?`<span style="font-size:16px">${loc.flags}</span>`:''} ${pillsHtml}</div>${logosHtml}</div></div>`;
+}
+
+function buildModal(a){
+  const loc=locationStr(a);
+  const logos=logoItems(a);
+  const types=(a.types||[]).slice().sort((x,y)=>x==='Artist'?-1:y==='Artist'?1:x.localeCompare(y));
+  const BIO_LIMIT=280;
+  const bio=a.bio||'';
+  const bioTrunc=bio.length>BIO_LIMIT&&!state.bioExpanded;
+  const bioText=bioTrunc?bio.slice(0,BIO_LIMIT).trimEnd()+'...':bio;
+  const socialBtns=[
+    a.instagram&&`<a class="btn-action" href="https://instagram.com/${a.instagram}" target="_blank" rel="noopener"><span class="btn-action-icon">${IG}</span>@${a.instagram}</a>`,
+    a.twitter&&`<a class="btn-action" href="https://x.com/${a.twitter}" target="_blank" rel="noopener"><span class="btn-action-icon">${TW}</span>@${a.twitter}</a>`,
+    a.tiktok&&`<a class="btn-action" href="https://tiktok.com/@${a.tiktok}" target="_blank" rel="noopener"><span class="btn-action-icon">${TK}</span>@${a.tiktok}</a>`,
+    a.spotifyUrl&&`<a class="btn-action" href="${a.spotifyUrl}" target="_blank" rel="noopener"><span class="btn-action-icon">${SP}</span>View Spotify</a>`,
+  ].filter(Boolean).join('');
+  return `<div class="overlay" id="overlay"><div class="modal">
+    <div class="modal-topbar"><button class="btn-close" id="modal-close">&#x2715;</button></div>
+    <div class="modal-hdr">
+      <div class="modal-hdr-top">
+        <div class="modal-avatar" style="${a.photoUrl?'':avatarStyle(a.name)+';font-size:24px'}">${a.photoUrl?`<img src="${a.photoUrl}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:`<span>${initials(a.name)}</span>`}</div>
+        <div class="modal-info">
+          <div class="modal-name">${a.name||''}</div>
+          <div class="modal-pills">${types.map(t=>`<span class="pill">${t}</span>`).join('')}</div>
+          ${(loc.flags||loc.cities)?`<div class="modal-location">${loc.flags?`<span style="font-size:16px">${loc.flags}</span>`:''} ${loc.cities?`<span>${loc.cities}</span>`:''}</div>`:''}
+        </div>
+      </div>
+      ${socialBtns?`<div class="modal-actions">${socialBtns}</div>`:''}
+    </div>
+    <div class="modal-body">
+      ${bio?`<div><p class="bio">${bioText}</p>${bio.length>BIO_LIMIT?`<button class="btn-viewmore" id="bio-toggle">${state.bioExpanded?'View less':'View more'} <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="transform:${state.bioExpanded?'rotate(90deg)':'none'}"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`:''}</div>`:''}
+      ${a.credits?.length?`<div class="tags">${a.credits.map(cr=>`<span class="tag">${cr}</span>`).join('')}</div>`:''}
+      ${logos.length?`<div class="logo-strip" style="grid-template-columns:repeat(${Math.min(logos.length,3)},1fr)">${logos.map(l=>`<div class="logo-strip-item">${l.url?`<div class="logo-strip-logo"><img src="${faviconUrl(l.url)}" alt="${l.name}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`:''}<div class="logo-strip-item-name">${l.name}</div></div>`).join('')}</div>`:''}
+    </div>
+  </div></div>`;
+}
+
+function getFiltered(){const a=state.data?.athletes||[];return state.level==='All'?a:a.filter(x=>(x.types||[]).includes(state.level));}
+
+function render(){
+  const app=document.getElementById('app');
+  if(state.error){const msgs={notfound:'This roster link could not be found.',expired:'This roster link has expired.',invalid:'Invalid link.',error:'Something went wrong.'};app.innerHTML=`<div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" /></div></div><div class="err"><h2>${msgs[state.error]||msgs.error}</h2></div>`;return;}
+  if(!state.data){app.innerHTML=`<div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" /></div></div><div class="loading"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`;return;}
+  const athletes=state.data.athletes||[];
+  const allTypes=[...new Set(athletes.flatMap(a=>a.types||[]))].sort((a,b)=>a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b));
+  const filtered=getFiltered();
+  app.innerHTML=`
+    <div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" />${state.data.title?`<span class="hdr-title">${state.data.title}</span>`:''}</div></div>
+    ${allTypes.length>1?`<div class="tabs-wrap"><button class="tab${state.level==='All'?' active':''}" data-level="All">All</button>${allTypes.map(t=>`<button class="tab${state.level===t?' active':''}" data-level="${t}">${t}</button>`).join('')}</div>`:''}
+    <div class="grid-wrap"><div class="grid">${filtered.map((a,i)=>buildCard(a,i)).join('')}</div></div>
+    ${state.selected?buildModal(state.selected):''}`;
+  document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.level=btn.dataset.level;state.selected=null;render();}));
+  document.querySelectorAll('.card').forEach(card=>card.addEventListener('click',()=>{state.selected=filtered[parseInt(card.dataset.idx)];state.bioExpanded=false;render();window.scrollTo(0,0);}));
+  const overlay=document.getElementById('overlay');
+  const closeBtn=document.getElementById('modal-close');
+  const bioToggle=document.getElementById('bio-toggle');
+  if(closeBtn)closeBtn.addEventListener('click',()=>{state.selected=null;render();});
+  if(overlay)overlay.addEventListener('click',e=>{if(e.target===overlay){state.selected=null;render();}});
+  if(bioToggle)bioToggle.addEventListener('click',()=>{state.bioExpanded=!state.bioExpanded;render();window.scrollTo(0,0);});
+  document.onkeydown=e=>{if(e.key==='Escape'&&state.selected){state.selected=null;render();}};
+}
+
+async function load(){
+  const id=location.pathname.split('/').pop();
+  if(!id){state.error='invalid';render();return;}
+  render();
+  try{
+    const resp=await fetch(`/api/share?id=${id}`);
+    if(!resp.ok){state.error='notfound';render();return;}
+    const data=await resp.json();
+    if(data.type!=='roster-share'){state.error='invalid';render();return;}
+    if(data.expiresAt&&new Date(data.expiresAt)<new Date()){state.error='expired';render();return;}
+    state.data=data;
+    document.title=(data.title||'Client Roster')+' -- Milk & Honey Music';
+    render();
+  }catch(e){state.error='error';render();}
+}
+load();
+</script>
+</body>
+</html>
