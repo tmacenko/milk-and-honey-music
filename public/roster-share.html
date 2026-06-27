@@ -79,13 +79,15 @@
     .card-name { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 2px; }
     .card-pos  { font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 2px; }
     .card-team { font-size: 11px; color: var(--text3); }
-    .card-logo {
-      position: absolute; bottom: 46px; right: 14px;
-      width: 38px; height: 38px; border-radius: 50%; background: #fff;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    .card-logos {
+      display: flex; gap: 6px; padding: 8px 14px; border-top: 1px solid var(--border);
     }
-    .card-logo img { width: 26px; height: 26px; object-fit: contain; display: block; }
+    .card-logo {
+      width: 36px; height: 36px; border-radius: 50%; background: #fff;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.35); overflow: hidden; flex-shrink: 0;
+    }
+    .card-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .card-social { display: flex; gap: 12px; padding: 9px 16px; border-top: 1px solid var(--border); }
     .cs { display: flex; align-items: center; gap: 4px; }
     .cs svg { color: var(--text3); flex-shrink: 0; }
@@ -332,14 +334,14 @@ function buildCard(a, i) {
         <div class="card-pos">${[a.position, a.jerseyNumber?'#'+a.jerseyNumber:''].filter(Boolean).join(' ')}</div>
         <div class="card-team">${team}</div>
       </div>
-      ${(a.logoUrl || a.proLogoUrl || a.pubLogoUrl || a.labelLogoUrl) ? `
-        <div style="position:absolute;bottom:42px;right:10px;display:flex;gap:4px">
-          ${[a.proLogoUrl, a.pubLogoUrl, a.labelLogoUrl].filter(Boolean).map(u =>
-            `<div class="card-logo"><img src="${u}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`
-          ).join('')}
-          ${(!a.proLogoUrl && !a.pubLogoUrl && !a.labelLogoUrl && a.logoUrl) ?
-            `<div class="card-logo"><img src="${a.logoUrl}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>` : ''}
-        </div>` : ''}
+      ${(() => {
+        const logoUrls = [a.proLogoUrl, a.pubLogoUrl, a.labelLogoUrl].filter(Boolean);
+        if (!logoUrls.length && a.logoUrl) logoUrls.push(a.logoUrl);
+        if (!logoUrls.length) return '';
+        return `<div class="card-logos">${logoUrls.map(u =>
+          `<div class="card-logo"><img src="${u}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`
+        ).join('')}</div>`;
+      })()}
       ${socials.length ? `<div class="card-social">${socials.map(s=>`<div class="cs">${icons[s.t]}<span>${s.v}</span></div>`).join('')}</div>` : ''}
     </div>`;
 }
