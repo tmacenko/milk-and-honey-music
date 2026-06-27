@@ -3,504 +3,213 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Milk & Honey Sports — Athlete Roster</title>
+  <title>Milk & Honey Music</title>
   <meta name="robots" content="noindex" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg:        #080809;
-      --surface:   #111113;
-      --raised:    #18181b;
-      --border:    #1e1e22;
-      --border-l:  #28282d;
-      --text:      #f4f4f5;
-      --text2:     #71717a;
-      --text3:     #3f3f46;
-      --green:     #3eaa78;
-      --green-s:   rgba(62,170,120,0.09);
-      --shadow:    0 1px 2px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.35);
-      --shadow-lg: 0 4px 12px rgba(0,0,0,0.7), 0 20px 60px rgba(0,0,0,0.5);
-      --ease:      cubic-bezier(0.4,0,0.2,1);
-      --ff:        -apple-system,'SF Pro Display','Helvetica Neue',sans-serif;
+      --bg:#080809; --surface:#111113; --raised:#18181b;
+      --border:#1e1e22; --border-l:#28282d;
+      --text:#f4f4f5; --text2:#b4b4be; --text3:#8a8a98; --text4:#6b6b78;
+      --green:#3eaa78; --green-s:rgba(62,170,120,0.09);
+      --shadow:0 1px 2px rgba(0,0,0,0.6),0 4px 16px rgba(0,0,0,0.35);
+      --shadow-lg:0 4px 12px rgba(0,0,0,0.7),0 20px 60px rgba(0,0,0,0.5);
+      --ease:cubic-bezier(0.4,0,0.2,1);
+      --ff:-apple-system,'SF Pro Display','Helvetica Neue',sans-serif;
     }
-    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--ff); -webkit-font-smoothing: antialiased; }
-
-    /* Header */
-    .header {
-      position: sticky; top: 0; z-index: 100;
-      background: rgba(8,8,9,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-      border-bottom: 1px solid var(--border);
-      padding: 0 28px; height: 56px;
-      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased}
+    .hdr{position:sticky;top:0;z-index:100;background:rgba(8,8,9,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .hdr-left{display:flex;align-items:center;gap:10px}
+    .hdr-logo{height:28px}
+    .hdr-title{font-size:12px;font-weight:600;color:var(--text3)}
+    .tabs-wrap{padding:14px 24px 0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+    .tabs-wrap::-webkit-scrollbar{display:none}
+    .tab{padding:7px 16px;border-radius:20px;border:1.5px solid var(--border);font-family:var(--ff);font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--text3);white-space:nowrap;transition:all 0.15s var(--ease);flex-shrink:0}
+    .tab.active{border-color:var(--green);background:var(--green-s);color:var(--green)}
+    .grid-wrap{padding:14px 24px 60px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+    @media(max-width:1100px){.grid{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:768px){.grid{grid-template-columns:1fr;gap:0}}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;cursor:pointer;position:relative;transition:all 0.2s var(--ease);box-shadow:var(--shadow);display:flex;flex-direction:column}
+    .card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);border-color:var(--border-l);background:var(--raised)}
+    .card-body{padding:18px 18px 14px;flex:1}
+    .card-avatar{width:80px;height:80px;border-radius:50%;overflow:hidden;flex-shrink:0;background:var(--raised);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;margin-bottom:14px}
+    .card-avatar img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+    .card-name{font-size:17px;font-weight:800;color:var(--text);letter-spacing:-0.03em;line-height:1.2;margin-bottom:8px}
+    .card-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+    .pill{background:var(--raised);border:1px solid var(--border);border-radius:7px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap}
+    .card-logos-row{display:flex;gap:8px;margin-top:12px}
+    @media(max-width:768px){
+      .card{border-radius:0;border:none;border-bottom:1px solid var(--border);background:transparent;box-shadow:none}
+      .card:hover{transform:none;box-shadow:none;background:var(--raised)}
+      .card-body{display:flex;align-items:center;gap:14px;padding:14px 16px}
+      .card-avatar{width:56px;height:56px;margin-bottom:0;flex-shrink:0}
+      .card-content{flex:1;min-width:0}
+      .card-name{font-size:16px;margin-bottom:4px}
+      .card-logos-row{margin-top:8px}
     }
-    .header-left { display: flex; align-items: center; gap: 12px; }
-    .header-logo { height: 30px; }
-    .header-divider { width: 1px; height: 18px; background: var(--border-l); }
-    .header-title { font-size: 13px; font-weight: 600; color: var(--text2); }
-    .btn-print {
-      display: flex; align-items: center; gap: 6px;
-      background: var(--surface); border: 1px solid var(--border-l); border-radius: 9px;
-      padding: 7px 14px; font-size: 12px; font-weight: 600; color: var(--text2);
-      cursor: pointer; font-family: var(--ff); transition: all 0.18s var(--ease);
+    .logo-badge{border-radius:50%;background:#fff;overflow:hidden;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center}
+    .logo-badge img{width:100%;height:100%;object-fit:cover;display:block}
+    .overlay{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.75);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;align-items:flex-start;justify-content:center;padding:0;overflow-y:auto}
+    .modal{background:rgba(12,12,14,0.97);border:1px solid var(--border-l);border-radius:22px;width:100%;max-width:680px;margin:40px 20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-lg);animation:fadeUp 0.2s var(--ease)}
+    @media(max-width:768px){.modal{margin:0;border-radius:0;min-height:100vh}}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+    .modal-topbar{display:flex;justify-content:flex-end;gap:8px;padding:14px 16px 0}
+    .btn-close{background:var(--raised);border:1px solid var(--border);border-radius:10px;color:var(--text3);cursor:pointer;padding:8px 12px;font-size:14px;font-family:var(--ff);line-height:1}
+    .modal-hdr{padding:16px 24px 20px;border-bottom:1px solid var(--border)}
+    .modal-hdr-top{display:flex;gap:20px;align-items:flex-start}
+    .modal-avatar{width:90px;height:90px;border-radius:50%;overflow:hidden;flex-shrink:0;background:var(--raised);border:2px solid var(--border-l);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+    .modal-avatar img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+    .modal-info{flex:1;min-width:0}
+    .modal-name{font-size:32px;font-weight:800;color:var(--text);letter-spacing:-0.04em;line-height:1.05;margin-bottom:10px}
+    @media(max-width:768px){.modal-name{font-size:26px}.modal-avatar{width:80px;height:80px}}
+    .modal-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+    .modal-location{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:14px;color:var(--text2)}
+    .modal-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+    .btn-action{display:flex;align-items:center;gap:7px;background:var(--raised);border:1px solid var(--border);border-radius:10px;padding:9px 14px;text-decoration:none;font-family:var(--ff);font-size:13px;font-weight:600;color:var(--text);transition:all 0.15s}
+    .btn-action:hover{border-color:var(--border-l);background:var(--surface)}
+    .btn-action-icon{color:var(--text3);display:flex}
+    @media(max-width:768px){
+      .modal-actions{display:grid;grid-template-columns:1fr 1fr}
+      .btn-action{justify-content:center;padding:12px 14px;font-size:14px}
     }
-    .btn-print:hover { color: var(--text); background: var(--raised); }
-
-    /* Tabs */
-    .tabs { padding: 20px 28px 0; display: flex; gap: 6px; }
-    .tab {
-      padding: 7px 16px; border-radius: 8px; border: none;
-      font-family: var(--ff); font-size: 13px; font-weight: 500;
-      cursor: pointer; transition: all 0.18s var(--ease);
-      background: transparent; color: var(--text2);
-    }
-    .tab.active { background: var(--raised); color: var(--text); font-weight: 600; }
-    .tab:hover:not(.active) { color: var(--text); }
-
-    /* Grid */
-    .grid-wrap { padding: 18px 28px 48px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-
-    /* Card */
-    .card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 16px; overflow: hidden; cursor: pointer;
-      transition: all 0.2s var(--ease); box-shadow: var(--shadow); position: relative;
-    }
-    .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: var(--border-l); background: var(--raised); }
-    .card-top { padding: 16px 16px 12px; }
-    .card-avatar {
-      width: 52px; height: 52px; border-radius: 50%;
-      background: var(--raised); border: 1px solid var(--border);
-      overflow: hidden; margin-bottom: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px; font-weight: 700; color: var(--text2);
-    }
-    .card-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .card-name { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 2px; }
-    .card-pos  { font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 2px; }
-    .card-team { font-size: 11px; color: var(--text3); }
-    .card-logos {
-      display: flex; gap: 6px; padding: 8px 14px; border-top: 1px solid var(--border);
-    }
-    .card-logo {
-      width: 36px; height: 36px; border-radius: 50%; background: #fff;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.35); overflow: hidden; flex-shrink: 0;
-    }
-    .card-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .card-social { display: flex; gap: 12px; padding: 9px 16px; border-top: 1px solid var(--border); }
-    .cs { display: flex; align-items: center; gap: 4px; }
-    .cs svg { color: var(--text3); flex-shrink: 0; }
-    .cs span { font-size: 12px; font-weight: 600; color: var(--text2); }
-
-    /* Modal overlay */
-    .modal-overlay {
-      position: fixed; inset: 0; z-index: 200;
-      background: rgba(0,0,0,0.75); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-      display: flex; align-items: center; justify-content: center; padding: 20px;
-    }
-    .modal {
-      background: rgba(17,17,19,0.95); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-      border: 1px solid var(--border-l); border-radius: 22px;
-      width: 100%; max-width: 560px; max-height: 92vh;
-      display: flex; flex-direction: column; overflow: hidden;
-      box-shadow: var(--shadow-lg);
-      animation: modalIn 0.22s var(--ease);
-    }
-    @keyframes modalIn { from { opacity:0; transform:translateY(10px) scale(0.98); } to { opacity:1; transform:none; } }
-
-    /* Modal header */
-    .modal-hdr {
-      padding: 22px 24px 18px; border-bottom: 1px solid var(--border);
-      display: flex; align-items: flex-start; gap: 16px; flex-shrink: 0;
-    }
-    .modal-av {
-      width: 68px; height: 68px; border-radius: 50%; flex-shrink: 0;
-      background: var(--raised); border: 1px solid var(--border);
-      overflow: hidden; display: flex; align-items: center; justify-content: center;
-      font-size: 22px; font-weight: 700; color: var(--text2);
-    }
-    .modal-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .modal-info { flex: 1; min-width: 0; }
-    .modal-name { font-size: 24px; font-weight: 800; color: var(--text); letter-spacing: -0.04em; line-height: 1.1; }
-    .modal-pos  { font-size: 13px; color: var(--text2); font-weight: 500; margin-top: 3px; }
-    .modal-team { font-size: 12px; color: var(--text3); margin-top: 2px; }
-    .modal-logo {
-      width: 52px; height: 52px; border-radius: 50%; background: #fff;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3); flex-shrink: 0;
-    }
-    .modal-logo img { width: 36px; height: 36px; object-fit: contain; display: block; }
-    .modal-close {
-      background: var(--raised); border: 1px solid var(--border); border-radius: 9px;
-      color: var(--text2); cursor: pointer; padding: 7px 11px; font-size: 15px;
-      font-family: var(--ff); transition: all 0.15s var(--ease); flex-shrink: 0;
-    }
-    .modal-close:hover { color: var(--text); border-color: var(--border-l); }
-
-    /* Modal body */
-    .modal-body { overflow-y: auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 14px; }
-
-    /* Section */
-    .sec { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
-    .sec-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
-    .sec-title span { font-size: 12px; color: var(--text2); font-weight: 600; letter-spacing: 0; text-transform: none; }
-
-    /* Social rows -- icon+username left, number right */
-    .social-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 9px 0; border-bottom: 1px solid var(--border);
-    }
-    .social-row:last-child { border-bottom: none; }
-    .social-left { display: flex; align-items: center; gap: 8px; }
-    .social-num { font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.03em; line-height: 1; }
-    .social-handle { font-size: 13px; color: var(--text2); text-decoration: none; font-weight: 500; }
-    .social-handle:hover { color: var(--text); }
-
-    /* Info rows */
-    .ir { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
-    .ir:last-child { border-bottom: none; }
-    .ir-l { font-size: 12px; color: var(--text2); }
-    .ir-v { font-size: 13px; color: var(--text); font-weight: 500; text-align: right; margin-left: 16px; }
-
-    /* Bio */
-    .bio { font-size: 13px; color: var(--text2); line-height: 1.65; }
-
-    /* Tags */
-    .tags { display: flex; flex-wrap: wrap; gap: 6px; }
-    .tag { background: var(--raised); border: 1px solid var(--border); border-radius: 8px; padding: 4px 11px; font-size: 12px; font-weight: 500; color: var(--text2); }
-
-    /* Download button */
-    .btn-dl {
-      display: flex; align-items: center; justify-content: center; gap: 7px;
-      background: var(--green); border: none; border-radius: 11px;
-      padding: 11px 20px; font-size: 13px; font-weight: 700; color: #0a0a0a;
-      cursor: pointer; font-family: var(--ff); transition: all 0.18s var(--ease); width: 100%;
-    }
-    .btn-dl:hover { opacity: 0.88; }
-
-    /* Loading */
-    .loading { display: flex; align-items: center; justify-content: center; height: 60vh; }
-    .dots { display: flex; gap: 6px; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); animation: dot 1.2s ease-in-out infinite; }
-    .dot:nth-child(2) { animation-delay: 0.2s; }
-    .dot:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes dot { 0%,80%,100%{opacity:.2;transform:scale(.8)} 40%{opacity:1;transform:scale(1)} }
-
-    /* Error */
-    .err { display: flex; align-items: center; justify-content: center; height: 80vh; text-align: center; flex-direction: column; gap: 8px; }
-    .err h2 { font-size: 22px; font-weight: 700; }
-    .err p  { font-size: 14px; color: var(--text2); }
-
-    /* Print */
-    @media print {
-      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      .header { position: static; backdrop-filter: none; }
-      .btn-print, .btn-dl { display: none !important; }
-      .modal-overlay { display: none !important; }
-      html, body { background: var(--bg) !important; }
-      .card { box-shadow: none !important; break-inside: avoid; }
-    }
-
-    /* Mobile */
-    @media (max-width: 600px) {
-      .header { padding: 0 16px; }
-      .header-title { font-size: 12px; }
-      .tabs { padding: 14px 16px 0; }
-      .grid-wrap { padding: 14px 16px 40px; }
-      .grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-      .modal { border-radius: 16px; }
-      .modal-hdr { padding: 18px 18px 14px; }
-      .modal-body { padding: 16px 18px 20px; }
-    }
+    .modal-body{padding:20px 24px 28px;display:flex;flex-direction:column;gap:18px}
+    .bio{font-size:14px;color:var(--text2);line-height:1.7}
+    .btn-viewmore{background:none;border:none;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--ff);padding:6px 0 0;display:flex;align-items:center;gap:4px}
+    .tags{display:flex;flex-wrap:wrap;gap:7px}
+    .tag{background:var(--raised);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;color:var(--text2)}
+    .logo-strip{background:var(--surface);border:1px solid var(--border);border-radius:16px;display:grid;overflow:hidden}
+    .logo-strip-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px 12px;border-left:1px solid var(--border)}
+    .logo-strip-item:first-child{border-left:none}
+    .logo-strip-item-name{font-size:14px;font-weight:600;color:var(--text);text-align:center}
+    .logo-strip-logo{width:44px;height:44px;border-radius:50%;background:#fff;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center}
+    .logo-strip-logo img{width:100%;height:100%;object-fit:cover;display:block}
+    .loading{display:flex;align-items:center;justify-content:center;height:60vh}
+    .dots{display:flex;gap:6px}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--text4);animation:dot 1.2s ease-in-out infinite}
+    .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+    @keyframes dot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+    .err{display:flex;align-items:center;justify-content:center;height:80vh;text-align:center;flex-direction:column;gap:8px}
   </style>
 </head>
 <body>
-<div id="root">
-  <div class="loading"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>
-</div>
+<div id="app"></div>
 <script>
-// MH logo as data URL (same as internal app)
-const MH_LOGO = 'data:image/png;base64,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';
-
-const icons = {
-  ig: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5.5" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>`,
-  tw: `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`,
-  tk: `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.73a4.85 4.85 0 01-1.01-.04z"/></svg>`,
-  print: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><polyline points="6 9 6 2 18 2 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="6" y="14" width="12" height="8" rx="1" stroke="currentColor" stroke-width="2"/></svg>`,
-  dl: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-};
-
-let state = { data: null, level: 'All', selected: null, error: null };
-
-const initials = n => (n||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-function avatarStyle(name) {
-  const hash = (name||'').split('').reduce((a,c) => a + c.charCodeAt(0), 0);
-  const hue = (hash * 47) % 360;
-  return `background:linear-gradient(135deg,hsl(${hue},55%,40%),hsl(${hue},55%,52%));border-color:hsl(${hue},55%,55%)`;
+const MH_LOGO='https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png';
+const FLAGS={"united states":"🇺🇸","usa":"🇺🇸","us":"🇺🇸","united kingdom":"🇬🇧","uk":"🇬🇧","england":"🇬🇧","canada":"🇨🇦","australia":"🇦🇺","germany":"🇩🇪","france":"🇫🇷","sweden":"🇸🇪","norway":"🇳🇴","netherlands":"🇳🇱","spain":"🇪🇸","italy":"🇮🇹","brazil":"🇧🇷","mexico":"🇲🇽","japan":"🇯🇵","south korea":"🇰🇷","colombia":"🇨🇴","ireland":"🇮🇪","denmark":"🇩🇰","belgium":"🇧🇪","switzerland":"🇨🇭","austria":"🇦🇹","portugal":"🇵🇹","new zealand":"🇳🇿","argentina":"🇦🇷"};
+function flag(c){return FLAGS[(c||'').toLowerCase().trim()]||''}
+function initials(n){return(n||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+function avatarStyle(n){const h=(n||'').split('').reduce((a,c)=>a+c.charCodeAt(0),0);const hue=(h*47)%360;return `background:linear-gradient(135deg,hsl(${hue},55%,38%),hsl(${hue},55%,52%))`}
+function faviconUrl(url){if(!url)return null;if(/\.(png|jpg|jpeg|gif|svg|webp)(\?|$)/i.test(url))return url;return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url)}&sz=64`}
+function locationStr(a){
+  const locs=[{city:a.city,state:a.state,country:a.country},{city:a.city2,state:a.state2,country:a.country2},{city:a.city3,state:a.state3,country:a.country3}].filter(l=>l.city||l.country);
+  const seen=new Set();
+  const flags=locs.map(l=>flag(l.country)).filter(f=>{if(!f||seen.has(f))return false;seen.add(f);return true;});
+  const cities=locs.map(l=>[l.city,l.state].filter(Boolean).join(', ')).filter(Boolean);
+  return{flags:flags.join(' '),cities:cities.join(' \u00b7 ')};
 }
-function onAvatarError(img, name) {
-  const hash = (name||'').split('').reduce((a,c) => a + c.charCodeAt(0), 0);
-  const hue = (hash * 47) % 360;
-  const p = img.parentElement;
-  p.style.background = `linear-gradient(135deg,hsl(${hue},55%,40%),hsl(${hue},55%,52%))`;
-  p.style.borderColor = `hsl(${hue},55%,55%)`;
-  img.style.display = 'none';
-  const s = document.createElement('span');
-  s.textContent = (name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-  s.style.cssText = 'font-weight:700;color:#fff;font-size:18px';
-  p.appendChild(s);
+function logoItems(a){
+  const items=[];
+  const split=v=>(v||'').split(',').map(s=>s.trim()).filter(Boolean);
+  split(a.pro).forEach(v=>items.push({name:v,url:a.proLogoUrl||null}));
+  split(a.publisher).forEach(v=>items.push({name:v,url:a.pubLogoUrl||null}));
+  split(a.label).forEach(v=>items.push({name:v,url:a.labelLogoUrl||null}));
+  return items;
 }
+const IG=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5.5" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>`;
+const TW=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`;
+const TK=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.73a4.85 4.85 0 01-1.01-.04z"/></svg>`;
+const SP=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>`;
 
-function fmt(n) {
-  if (!n && n !== 0) return null;
-  const s = String(n).trim();
-  if (/[KkMm]$/i.test(s)) return s.toUpperCase();
-  const num = parseInt(s.replace(/[^0-9]/g,''));
-  if (isNaN(num) || num === 0) return null;
-  if (num >= 1000000) return (num/1000000).toFixed(1).replace(/\.0$/,'') + 'M';
-  if (num >= 1000)    return (num/1000).toFixed(1).replace(/\.0$/,'') + 'K';
-  return String(num);
+const state={data:null,level:'All',selected:null,error:null,bioExpanded:false};
+
+function buildCard(a,idx){
+  const isMobile=window.innerWidth<769;
+  const loc=locationStr(a);
+  const logos=logoItems(a);
+  const types=(a.types||[]).slice().sort((x,y)=>x==='Artist'?-1:y==='Artist'?1:x.localeCompare(y));
+  const avImg=a.photoUrl?`<img src="${a.photoUrl}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:`<span style="font-size:${isMobile?20:26}px">${initials(a.name)}</span>`;
+  const pillsHtml=types.map(t=>`<span class="pill">${t}</span>`).join('');
+  const logosHtml=logos.length?`<div class="card-logos-row">${logos.map(l=>{const sz=isMobile?28:36;const u=faviconUrl(l.url);return u?`<div class="logo-badge" style="width:${sz}px;height:${sz}px"><img src="${u}" alt="${l.name}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`:`<span class="pill">${l.name}</span>`;}).join('')}</div>`:'';
+
+  if(isMobile){return `<div class="card" data-idx="${idx}"><div class="card-body"><div class="card-avatar" style="${a.photoUrl?'':avatarStyle(a.name)}">${avImg}</div><div class="card-content"><div class="card-name">${a.name||''}</div><div class="card-row">${loc.flags?`<span style="font-size:14px">${loc.flags}</span>`:''} ${pillsHtml}</div>${logosHtml}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;color:var(--text4)"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>`;}
+  return `<div class="card" data-idx="${idx}"><div class="card-body"><div class="card-avatar" style="${a.photoUrl?'':avatarStyle(a.name)+';font-size:26px'}">${avImg}</div><div class="card-name">${a.name||''}</div><div class="card-row">${loc.flags?`<span style="font-size:16px">${loc.flags}</span>`:''} ${pillsHtml}</div>${logosHtml}</div></div>`;
 }
 
-function parseNum(v) {
-  if (!v) return 0;
-  const s = String(v).trim().toUpperCase();
-  if (s.endsWith('M')) return parseFloat(s) * 1000000;
-  if (s.endsWith('K')) return parseFloat(s) * 1000;
-  return parseInt(s.replace(/[^0-9]/g,'')) || 0;
-}
-
-function calcReach(a) {
-  const t = parseNum(a.igFollowers) + parseNum(a.twitterFollowers) + parseNum(a.tiktokFollowers);
-  return t > 0 ? t : null;
-}
-
-function render() {
-  document.getElementById('root').innerHTML = buildHTML();
-  attachListeners();
-}
-
-function buildHTML() {
-  if (state.error) return `<div class="err"><h2>${state.error==='expired'?'Link expired':'Unavailable'}</h2><p>${state.error==='expired'?'Ask Milk & Honey Sports for a new link.':'Something went wrong.'}</p></div>`;
-  if (!state.data) return `<div class="loading"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`;
-
-  const { title, athletes } = state.data;
-  const levels = [...new Set((athletes||[]).map(a => a.level).filter(Boolean))];
-  const filtered = state.level === 'All' ? athletes : athletes.filter(a => a.level === state.level);
-
-  return `
-    <div class="header">
-      <div class="header-left">
-        <img class="header-logo" src="${MH_LOGO}" alt="Milk &amp; Honey Sports" onerror="this.style.display='none'" />
-        <div class="header-divider"></div>
-        <div class="header-title">${title || 'Athlete Roster'} &nbsp;<span style="color:var(--text3);font-weight:400">${filtered.length} athletes</span></div>
-      </div>
-      <button class="btn-print" onclick="window.print()">${icons.print} Print PDF</button>
-    </div>
-
-    ${levels.length > 1 ? `<div class="tabs">
-      ${['All',...levels].map(l => `<button class="tab${state.level===l?' active':''}" data-level="${l}">${l}</button>`).join('')}
-    </div>` : ''}
-
-    <div class="grid-wrap">
-      ${filtered.length === 0
-        ? `<div class="err" style="height:40vh"><p>No athletes in this view.</p></div>`
-        : `<div class="grid">${filtered.map((a,i) => buildCard(a,i)).join('')}</div>`
-      }
-    </div>
-
-    ${state.selected ? buildModal(state.selected) : ''}`;
-}
-
-function buildCard(a, i) {
-  const team = a.nflTeam || (a.level !== 'NFL' ? a.college : '') || '';
-  const socials = [
-    {t:'ig', v:fmt(a.igFollowers)},
-    {t:'tk', v:fmt(a.tiktokFollowers)},
-    {t:'tw', v:fmt(a.twitterFollowers)},
-  ].filter(s => s.v);
-
-  return `
-    <div class="card" data-idx="${i}">
-      <div class="card-top">
-        <div class="card-avatar" style="${a.photoUrl ? '' : avatarStyle(a.name)}">
-          ${a.photoUrl
-            ? `<img src="${a.photoUrl}" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="onAvatarError(this,'${(a.name||'').replace(/'/g,"\\'")}')"/>`
-            : `<span style="font-weight:700;color:#fff;font-size:18px">${initials(a.name)}</span>`
-          }
-        </div>
-        <div class="card-name">${a.name||''}</div>
-        <div class="card-pos">${[a.position, a.jerseyNumber?'#'+a.jerseyNumber:''].filter(Boolean).join(' ')}</div>
-        <div class="card-team">${team}</div>
-      </div>
-      ${(() => {
-        const logoUrls = [a.proLogoUrl, a.pubLogoUrl, a.labelLogoUrl].filter(Boolean);
-        if (!logoUrls.length && a.logoUrl) logoUrls.push(a.logoUrl);
-        if (!logoUrls.length) return '';
-        return `<div class="card-logos">${logoUrls.map(u =>
-          `<div class="card-logo"><img src="${u}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`
-        ).join('')}</div>`;
-      })()}
-      ${socials.length ? `<div class="card-social">${socials.map(s=>`<div class="cs">${icons[s.t]}<span>${s.v}</span></div>`).join('')}</div>` : ''}
-    </div>`;
-}
-
-function buildModal(a) {
-  const team = a.nflTeam || (a.level !== 'NFL' ? a.college : '') || '';
-  const reach = calcReach(a);
-
-  const socials = [
-    {icon:'ig', num:fmt(a.igFollowers), handle:a.instagram, url:a.instagram?`https://instagram.com/${(a.instagram||'').replace('@','')}`:'', platform:'Instagram'},
-    {icon:'tk', num:fmt(a.tiktokFollowers), handle:a.tiktok, url:a.tiktok?`https://tiktok.com/@${(a.tiktok||'').replace('@','')}`:'', platform:'TikTok'},
-    {icon:'tw', num:fmt(a.twitterFollowers), handle:a.twitter, url:a.twitter?`https://x.com/${(a.twitter||'').replace('@','')}`:'', platform:'X / Twitter'},
-  ].filter(s => s.num || s.handle);
-
-  const info = [
-    a.hometown ? {l:'Hometown',v:a.hometown} : null,
-    a.college && a.level!=='High School' ? {l:'College',v:a.college} : null,
-    a.yearInSchool ? {l:'Year',v:a.yearInSchool} : null,
-    a.height ? {l:'Height',v:a.height} : null,
-    a.weight ? {l:'Weight',v:a.weight+' lbs'} : null,
-  ].filter(Boolean);
-
-  // Build individual profile HTML for printing
-  const profileHtml = `
-    <!DOCTYPE html><html><head><meta charset="utf-8"/>
-    <style>
-      *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-      html,body{font-family:-apple-system,"Helvetica Neue",sans-serif;background:#080809;color:#f4f4f5}
-      @page{margin:0;size:letter portrait}
-      .hdr{background:#0a0a0a;padding:22px 56px;display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #5BC898}
-      .hdr-logo{height:28px;filter:brightness(0) invert(1)}
-      .hdr-date{font-size:10px;color:#555}
-      .body{padding:40px 56px}
-      .name{font-size:28px;font-weight:800;letter-spacing:-0.04em;margin-bottom:4px}
-      .pos{font-size:14px;color:#71717a;margin-bottom:2px}
-      .team{font-size:13px;color:#3f3f46;margin-bottom:24px}
-      .stats{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
-      .stat{background:#111113;border:1px solid #1e1e22;border-radius:12px;padding:14px 18px;min-width:90px}
-      .stat-num{font-size:22px;font-weight:800;letter-spacing:-0.03em}
-      .stat-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#3f3f46;margin-top:4px}
-      .bio{font-size:13px;color:#71717a;line-height:1.65;margin-bottom:20px}
-      h3{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#3f3f46;margin-bottom:10px;margin-top:20px}
-      .tags{display:flex;flex-wrap:wrap;gap:6px}
-      .tag{background:#18181b;border:1px solid #1e1e22;border-radius:8px;padding:4px 11px;font-size:12px;color:#71717a}
-    </style>
-    </head><body>
-    <div class="hdr">
-      <img class="hdr-logo" src="${MH_LOGO}" alt="Milk & Honey Sports"/>
-      <div class="hdr-date">${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
-    </div>
-    <div class="body">
-      <div class="name">${a.name||''}</div>
-      <div class="pos">${[a.position,a.jerseyNumber?'#'+a.jerseyNumber:''].filter(Boolean).join(' ')}</div>
-      <div class="team">${team}${a.yearInSchool?' · '+a.yearInSchool:''}</div>
-      ${socials.length ? `<div class="stats">${reach?`<div class="stat"><div class="stat-num">${fmt(reach)}</div><div class="stat-lbl">Total Reach</div></div>`:''}${socials.map(s=>`<div class="stat"><div class="stat-num">${s.num||'—'}</div><div class="stat-lbl">${s.platform}</div></div>`).join('')}</div>` : ''}
-      ${a.bio?`<div class="bio">${a.bio}</div>`:''}
-      ${info.length?`<h3>Info</h3>${info.map(r=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1e1e22"><span style="color:#71717a;font-size:12px">${r.l}</span><span style="font-size:13px;font-weight:500">${r.v}</span></div>`).join('')}`:''}
-      ${(a.interests||[]).length?`<h3>Interests</h3><div class="tags">${a.interests.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:''}
-      ${(a.brands||[]).length?`<h3>Current Partners</h3><div class="tags">${a.brands.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:''}
-    </div>
-    </body></html>`;
-
-  const encodedHtml = encodeURIComponent(profileHtml);
-
-  return `
-    <div class="modal-overlay" id="modal-overlay">
-      <div class="modal">
-        <div class="modal-hdr">
-          <div class="modal-av" style="${a.photoUrl ? '' : avatarStyle(a.name)}">
-            ${a.photoUrl
-              ? `<img src="${a.photoUrl}" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="onAvatarError(this,'${(a.name||'').replace(/'/g,"\\'")}')"/>`
-              : `<span style="font-size:22px;font-weight:700;color:#fff">${initials(a.name)}</span>`
-            }
-          </div>
-          <div class="modal-info">
-            <div class="modal-name">${a.name||''}</div>
-            <div class="modal-pos">${[a.position,a.jerseyNumber?'#'+a.jerseyNumber:''].filter(Boolean).join(' ')}</div>
-            <div class="modal-team">${team}${a.yearInSchool?' · '+a.yearInSchool:''}</div>
-          </div>
-          ${a.logoUrl?`<div class="modal-logo"><img src="${a.logoUrl}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer"/></div>`:''}
-          <button class="modal-close" id="modal-close">✕</button>
-        </div>
-        <div class="modal-body">
-
-          ${socials.length ? `
-          <div class="sec">
-            <div class="sec-title">Social</div>
-            ${socials.map(s => `
-              <div class="social-row">
-                <div class="social-left">
-                  <span style="color:var(--text3)">${icons[s.icon]}</span>
-                  ${s.url && s.handle
-                    ? `<a class="social-handle" href="${s.url}" target="_blank" rel="noopener">@${(s.handle||'').replace('@','')}</a>`
-                    : `<span class="social-handle" style="cursor:default">—</span>`
-                  }
-                </div>
-                <div class="social-num">${s.num||'—'}</div>
-              </div>`).join('')}
-            ${reach ? `<div style="padding:10px 0 2px;font-size:12px;color:var(--text3);display:flex;justify-content:space-between"><span>Total Reach</span><span style="font-size:13px;font-weight:700;color:var(--text2)">${fmt(reach)}</span></div>` : ''}
-          </div>` : ''}
-
-          ${a.bio ? `<div class="sec"><div class="sec-title">Bio</div><div class="bio">${a.bio}</div></div>` : ''}
-
-          ${info.length ? `<div class="sec"><div class="sec-title">Info</div>${info.map(r=>`<div class="ir"><span class="ir-l">${r.l}</span><span class="ir-v">${r.v}</span></div>`).join('')}</div>` : ''}
-
-          ${(a.interests||[]).length ? `<div class="sec"><div class="sec-title">Interests</div><div class="tags">${a.interests.map(t=>`<span class="tag">${t}</span>`).join('')}</div></div>` : ''}
-          ${(a.brands||[]).length ? `<div class="sec"><div class="sec-title">Current Partners</div><div class="tags">${a.brands.map(t=>`<span class="tag">${t}</span>`).join('')}</div></div>` : ''}
-
-          <button class="btn-dl" onclick="printProfile()">
-            ${icons.dl} Download Profile PDF
-          </button>
+function buildModal(a){
+  const loc=locationStr(a);
+  const logos=logoItems(a);
+  const types=(a.types||[]).slice().sort((x,y)=>x==='Artist'?-1:y==='Artist'?1:x.localeCompare(y));
+  const BIO_LIMIT=280;
+  const bio=a.bio||'';
+  const bioTrunc=bio.length>BIO_LIMIT&&!state.bioExpanded;
+  const bioText=bioTrunc?bio.slice(0,BIO_LIMIT).trimEnd()+'...':bio;
+  const socialBtns=[
+    a.instagram&&`<a class="btn-action" href="https://instagram.com/${a.instagram}" target="_blank" rel="noopener"><span class="btn-action-icon">${IG}</span>@${a.instagram}</a>`,
+    a.twitter&&`<a class="btn-action" href="https://x.com/${a.twitter}" target="_blank" rel="noopener"><span class="btn-action-icon">${TW}</span>@${a.twitter}</a>`,
+    a.tiktok&&`<a class="btn-action" href="https://tiktok.com/@${a.tiktok}" target="_blank" rel="noopener"><span class="btn-action-icon">${TK}</span>@${a.tiktok}</a>`,
+    a.spotifyUrl&&`<a class="btn-action" href="${a.spotifyUrl}" target="_blank" rel="noopener"><span class="btn-action-icon">${SP}</span>View Spotify</a>`,
+  ].filter(Boolean).join('');
+  return `<div class="overlay" id="overlay"><div class="modal">
+    <div class="modal-topbar"><button class="btn-close" id="modal-close">&#x2715;</button></div>
+    <div class="modal-hdr">
+      <div class="modal-hdr-top">
+        <div class="modal-avatar" style="${a.photoUrl?'':avatarStyle(a.name)+';font-size:24px'}">${a.photoUrl?`<img src="${a.photoUrl}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:`<span>${initials(a.name)}</span>`}</div>
+        <div class="modal-info">
+          <div class="modal-name">${a.name||''}</div>
+          <div class="modal-pills">${types.map(t=>`<span class="pill">${t}</span>`).join('')}</div>
+          ${(loc.flags||loc.cities)?`<div class="modal-location">${loc.flags?`<span style="font-size:16px">${loc.flags}</span>`:''} ${loc.cities?`<span>${loc.cities}</span>`:''}</div>`:''}
         </div>
       </div>
+      ${socialBtns?`<div class="modal-actions">${socialBtns}</div>`:''}
     </div>
-
-    <script>
-    function printProfile() {
-      const w = window.open('','_blank','width=900,height=700');
-      w.document.write(decodeURIComponent('${encodedHtml}'));
-      w.document.close();
-      setTimeout(() => { w.focus(); w.print(); }, 500);
-    }
-    <\/script>`;
+    <div class="modal-body">
+      ${bio?`<div><p class="bio">${bioText}</p>${bio.length>BIO_LIMIT?`<button class="btn-viewmore" id="bio-toggle">${state.bioExpanded?'View less':'View more'} <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="transform:${state.bioExpanded?'rotate(90deg)':'none'}"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`:''}</div>`:''}
+      ${a.credits?.length?`<div class="tags">${a.credits.map(cr=>`<span class="tag">${cr}</span>`).join('')}</div>`:''}
+      ${logos.length?`<div class="logo-strip" style="grid-template-columns:repeat(${Math.min(logos.length,3)},1fr)">${logos.map(l=>`<div class="logo-strip-item">${l.url?`<div class="logo-strip-logo"><img src="${faviconUrl(l.url)}" alt="${l.name}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`:''}<div class="logo-strip-item-name">${l.name}</div></div>`).join('')}</div>`:''}
+    </div>
+  </div></div>`;
 }
 
-function attachListeners() {
-  document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => { state.level = btn.dataset.level; render(); });
-  });
-  document.querySelectorAll('.card').forEach(card => {
-    card.addEventListener('click', () => {
-      const idx = parseInt(card.dataset.idx);
-      const filtered = state.level === 'All' ? state.data.athletes : state.data.athletes.filter(a => a.level === state.level);
-      state.selected = filtered[idx];
-      render();
-    });
-  });
-  const overlay = document.getElementById('modal-overlay');
-  const close   = document.getElementById('modal-close');
-  if (close)   close.addEventListener('click', () => { state.selected = null; render(); });
-  if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) { state.selected = null; render(); } });
-  document.onkeydown = e => { if (e.key === 'Escape' && state.selected) { state.selected = null; render(); } };
+function getFiltered(){const a=state.data?.athletes||[];return state.level==='All'?a:a.filter(x=>(x.types||[]).includes(state.level));}
+
+function render(){
+  const app=document.getElementById('app');
+  if(state.error){const msgs={notfound:'This roster link could not be found.',expired:'This roster link has expired.',invalid:'Invalid link.',error:'Something went wrong.'};app.innerHTML=`<div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" /></div></div><div class="err"><h2>${msgs[state.error]||msgs.error}</h2></div>`;return;}
+  if(!state.data){app.innerHTML=`<div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" /></div></div><div class="loading"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`;return;}
+  const athletes=state.data.athletes||[];
+  const allTypes=[...new Set(athletes.flatMap(a=>a.types||[]))].sort((a,b)=>a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b));
+  const filtered=getFiltered();
+  app.innerHTML=`
+    <div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" />${state.data.title?`<span class="hdr-title">${state.data.title}</span>`:''}</div></div>
+    ${allTypes.length>1?`<div class="tabs-wrap"><button class="tab${state.level==='All'?' active':''}" data-level="All">All</button>${allTypes.map(t=>`<button class="tab${state.level===t?' active':''}" data-level="${t}">${t}</button>`).join('')}</div>`:''}
+    <div class="grid-wrap"><div class="grid">${filtered.map((a,i)=>buildCard(a,i)).join('')}</div></div>
+    ${state.selected?buildModal(state.selected):''}`;
+  document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.level=btn.dataset.level;state.selected=null;render();}));
+  document.querySelectorAll('.card').forEach(card=>card.addEventListener('click',()=>{state.selected=filtered[parseInt(card.dataset.idx)];state.bioExpanded=false;render();window.scrollTo(0,0);}));
+  const overlay=document.getElementById('overlay');
+  const closeBtn=document.getElementById('modal-close');
+  const bioToggle=document.getElementById('bio-toggle');
+  if(closeBtn)closeBtn.addEventListener('click',()=>{state.selected=null;render();});
+  if(overlay)overlay.addEventListener('click',e=>{if(e.target===overlay){state.selected=null;render();}});
+  if(bioToggle)bioToggle.addEventListener('click',()=>{state.bioExpanded=!state.bioExpanded;render();window.scrollTo(0,0);});
+  document.onkeydown=e=>{if(e.key==='Escape'&&state.selected){state.selected=null;render();}};
 }
 
-async function load() {
-  const id = location.pathname.split('/').pop();
-  if (!id) { state.error = 'invalid'; render(); return; }
-  try {
-    const resp = await fetch(`/api/share?id=${id}`);
-    if (!resp.ok) { state.error = 'notfound'; render(); return; }
-    const data = await resp.json();
-    if (data.type !== 'roster-share') { state.error = 'invalid'; render(); return; }
-    if (data.expiresAt && new Date(data.expiresAt) < new Date()) { state.error = 'expired'; render(); return; }
-    state.data = data;
-    const levels = [...new Set((data.athletes||[]).map(a => a.level).filter(Boolean))];
-    state.level = levels.length === 1 ? levels[0] : 'All';
-    document.title = (data.title || 'Athlete Roster') + ' — Milk & Honey Sports';
+async function load(){
+  const id=location.pathname.split('/').pop();
+  if(!id){state.error='invalid';render();return;}
+  render();
+  try{
+    const resp=await fetch(`/api/share?id=${id}`);
+    if(!resp.ok){state.error='notfound';render();return;}
+    const data=await resp.json();
+    if(data.type!=='roster-share'){state.error='invalid';render();return;}
+    if(data.expiresAt&&new Date(data.expiresAt)<new Date()){state.error='expired';render();return;}
+    state.data=data;
+    document.title=(data.title||'Client Roster')+' -- Milk & Honey Music';
     render();
-  } catch(e) { state.error = 'error'; render(); }
+  }catch(e){state.error='error';render();}
 }
 load();
 </script>
