@@ -543,10 +543,14 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow }}>
 
       <div style={{ padding: "18px 18px 16px" }}>
-        {/* Top row: avatar + logos all on same horizontal line */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        {/* Top row: avatar left, logos right, same vertical center */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
-          {topLogos.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={38} />)}
+          {topLogos.length > 0 && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              {topLogos.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={38} />)}
+            </div>
+          )}
         </div>
 
         {/* Name */}
