@@ -565,12 +565,12 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
     </a>
   ) : null;
 
-  // Logo strip items -- only show if logo or name exists
+  // Logo strip -- split comma-separated values so each gets its own cell
   const logoItems = [
-    c.pro && { logo: proLogo, name: c.pro },
-    c.publisher && { logo: pubLogo, name: c.publisher },
-    c.label && { logo: lblLogo, name: c.label },
-  ].filter(Boolean);
+    ...(c.pro ? c.pro.split(',').map(v => v.trim()).filter(Boolean).map(v => ({ logo: lookupLogo(logos, v), name: v })) : []),
+    ...(c.publisher ? c.publisher.split(',').map(v => v.trim()).filter(Boolean).map(v => ({ logo: lookupLogo(logos, v), name: v })) : []),
+    ...(c.label ? c.label.split(',').map(v => v.trim()).filter(Boolean).map(v => ({ logo: lookupLogo(logos, v), name: v })) : []),
+  ];
 
   return (
     <div style={{ flex: 1, overflow: "auto" }}>
@@ -591,23 +591,23 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
             {/* Action buttons */}
             <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
               {c.instagram && actionBtn(
-                <><IgIcon size={14} /><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.instagram}</span></>,
+                <><span style={{ color: G.textSecondary, display:"flex" }}><IgIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.instagram}</span></>,
                 `https://instagram.com/${c.instagram}`
               )}
               {c.twitter && actionBtn(
-                <><TwIcon size={14} /><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.twitter}</span></>,
+                <><span style={{ color: G.textSecondary, display:"flex" }}><TwIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.twitter}</span></>,
                 `https://x.com/${c.twitter}`
               )}
               {c.tiktok && actionBtn(
-                <><TkIcon size={14} /><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.tiktok}</span></>,
+                <><span style={{ color: G.textSecondary, display:"flex" }}><TkIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.tiktok}</span></>,
                 `https://tiktok.com/@${c.tiktok}`
               )}
               {c.spotifyUrl && actionBtn(
-                <><SpotifyIcon size={14} /><span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>View Spotify</span></>,
+                <><span style={{ color: G.green, display:"flex" }}><SpotifyIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>View Spotify</span></>,
                 c.spotifyUrl, true
               )}
               {c.contact && actionBtn(
-                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke={G.green} strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke={G.green} strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke={G.green} strokeWidth="2" strokeLinecap="round"/></svg>
+                <><span style={{ color: G.green, display:"flex" }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact Milk &amp; Honey Rep ({c.contact})</span></>,
                 `mailto:`, true
               )}
