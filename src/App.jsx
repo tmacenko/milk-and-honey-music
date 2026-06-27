@@ -569,9 +569,9 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
             })()}
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            {proLogo && <LogoBadge url={proLogo} label={c.pro} size={36} />}
-            {pubLogo && <LogoBadge url={pubLogo} label={c.publisher} size={36} />}
-            {lblLogo && <LogoBadge url={lblLogo} label={c.label} size={36} />}
+            {proLogo && <LogoBadge url={proLogo} label={c.pro} size={42} />}
+            {pubLogo && <LogoBadge url={pubLogo} label={c.publisher} size={42} />}
+            {lblLogo && <LogoBadge url={lblLogo} label={c.label} size={42} />}
           </div>
 
         </div>
