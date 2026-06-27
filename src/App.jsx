@@ -521,27 +521,60 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
     );
   }
 
+  const sortedTypes = [...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b));
+  const isArtist = sortedTypes.includes('Artist');
+
+  // Bottom content -- top tracks for artists, credits for producers/songwriters
+  const bottomContent = (() => {
+    if (isArtist && c.spotifyTopTracks?.length) {
+      return c.spotifyTopTracks.slice(0, 2).map(t => t.name).join(' · ');
+    }
+    if (c.credits?.length) {
+      return c.credits.slice(0, 3).join(' · ') + (c.credits.length > 3 ? ` +${c.credits.length - 3}` : '');
+    }
+    return null;
+  })();
+
+  // Logo grid -- up to 2 rows of 3
+  const logoRows = [];
+  for (let i = 0; i < Math.min(logoList.length, 6); i += 3) {
+    logoRows.push(logoList.slice(i, i + 3));
+  }
+
   return (
     <div onClick={onClick}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, display: "flex", flexDirection: "column", position: "relative" }}>
+      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow }}>
 
-      <div style={{ padding: "18px 18px 14px", flex: 1 }}>
-        <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
-        <div style={{ fontWeight: 800, fontSize: 20, color: G.text, letterSpacing: "-0.03em", marginTop: 14, marginBottom: 8, lineHeight: 1.2 }}>{c.name}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-          {dedupedFlags.length > 0 && <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
-          {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
+      <div style={{ padding: "18px 18px 16px" }}>
+        {/* Top row: avatar left, logos right */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+          <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
+          {logoRows.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+              {logoRows.map((row, ri) => (
+                <div key={ri} style={{ display: "flex", gap: 6 }}>
+                  {row.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={38} />)}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        {logoList.length > 0 && (
-          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={42} />)}
-          </div>
-        )}
-        {c.spotifyLatestRelease?.artwork && (
-          <div style={{ position: "absolute", bottom: 14, right: 14 }}>
-            <img src={c.spotifyLatestRelease.artwork} alt={c.spotifyLatestRelease.name}
-              style={{ width: 42, height: 42, borderRadius: 6, objectFit: "cover", boxShadow: "0 2px 8px rgba(0,0,0,0.4)" }} />
+
+        {/* Name */}
+        <div style={{ fontWeight: 800, fontSize: 20, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: 6 }}>{c.name}</div>
+
+        {/* Flag + types as plain text with dots */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: bottomContent ? 10 : 0 }}>
+          {dedupedFlags.length > 0 && <span style={{ fontSize: 15, lineHeight: 1 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
+          {dedupedFlags.length > 0 && sortedTypes.length > 0 && <span style={{ color: G.textTertiary, fontSize: 13 }}>·</span>}
+          <span style={{ fontSize: 13, color: G.textSecondary, fontWeight: 500 }}>{sortedTypes.join(' · ')}</span>
+        </div>
+
+        {/* Bottom -- credits or top tracks */}
+        {bottomContent && (
+          <div style={{ fontSize: 12, color: G.textTertiary, lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+            {bottomContent}
           </div>
         )}
       </div>
@@ -611,9 +644,9 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
   const bioText = bioTruncated ? c.bio.slice(0, BIO_LIMIT).trimEnd() + '...' : c.bio;
 
   const socialBtns = [
-    c.instagram && { icon: <IgIcon size={isMobile ? 18 : 14} />, label: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}` },
-    c.twitter && { icon: <TwIcon size={isMobile ? 18 : 14} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
-    c.tiktok && { icon: <TkIcon size={isMobile ? 18 : 14} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
+    c.instagram && { icon: <FaviconIcon domain="instagram.com" size={isMobile ? 18 : 14} />, label: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}` },
+    c.twitter && { icon: <FaviconIcon domain="x.com" size={isMobile ? 18 : 14} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
+    c.tiktok && { icon: <FaviconIcon domain="tiktok.com" size={isMobile ? 18 : 14} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
     c.spotifyUrl && { icon: <FaviconIcon domain="spotify.com" size={isMobile ? 18 : 14} />, label: 'Spotify', url: c.spotifyUrl },
     c.appleMusicUrl && { icon: <FaviconIcon domain="music.apple.com" size={isMobile ? 18 : 14} />, label: 'Apple Music', url: c.appleMusicUrl },
     c.soundcloudUrl && { icon: <FaviconIcon domain="soundcloud.com" size={isMobile ? 18 : 14} />, label: 'SoundCloud', url: c.soundcloudUrl },
