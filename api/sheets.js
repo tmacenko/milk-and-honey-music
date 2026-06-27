@@ -193,6 +193,7 @@ module.exports = async (req, res) => {
       try {
         const cid  = process.env.SPOTIFY_CLIENT_ID;
         const csec = process.env.SPOTIFY_CLIENT_SECRET;
+        console.log(`Spotify creds: cid=${!!cid} csec=${!!csec}`);
         if (cid && csec) {
           const creds = Buffer.from(`${cid}:${csec}`).toString('base64');
           const tr = await fetch('https://accounts.spotify.com/api/token', {
@@ -201,6 +202,7 @@ module.exports = async (req, res) => {
             body: 'grant_type=client_credentials',
           });
           const td = await tr.json();
+          console.log(`Spotify token: ${td.access_token ? 'OK' : 'FAILED'} ${td.error || ''}`);
           spotifyToken = td.access_token || null;
         }
       } catch(e) { console.error('Spotify auth error:', e.message); }
