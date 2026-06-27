@@ -952,6 +952,11 @@ function App() {
         };
         const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer'];
 
+        const featuresSummary = [
+          shareRosterShowLogos ? 'Logos' : null,
+          shareRosterShowCredits ? 'Credits' : null,
+          shareRosterShowBio ? 'Bio' : null,
+        ].filter(Boolean).join(', ') || 'None';
         const sortLabel = shareRosterSort === 'alpha' ? 'A--Z' : 'Default';
         const expiryLabel = shareRosterExpiry === 'never' ? 'Never' : shareRosterExpiry === '30' ? '30 Days' : shareRosterExpiry === '90' ? '90 Days' : '6 Months';
         const Toggle = ({ val, set, label }) => (
@@ -963,8 +968,8 @@ function App() {
           </div>
         );
         const DropBox = ({ label, value, children, open, onToggle }) => (
-          <div style={{ flex: 1, position: "relative" }}>
-            <div onClick={onToggle} style={{ background: G.surfaceRaised, border: `1px solid ${open ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", transition: `border-color 0.15s ${G.ease}` }}>
+          <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column" }}>
+            <div onClick={onToggle} style={{ background: G.surfaceRaised, border: `1px solid ${open ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", transition: `border-color 0.15s ${G.ease}`, height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>{label}</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 14, fontWeight: 600, color: G.text }}>{value}</span>
@@ -1012,8 +1017,8 @@ function App() {
                 </div>
 
                 {/* Three dropboxes */}
-                <div style={{ display: "flex", gap: 10, position: "relative" }}>
-                  <DropBox label="Features" value="" open={shareFeaturesOpen === 'features'} onToggle={() => setShareFeaturesOpen(v => v === 'features' ? false : 'features')}>
+                <div style={{ display: "flex", gap: 10, position: "relative", alignItems: "stretch" }}>
+                  <DropBox label="Features" value={featuresSummary} open={shareFeaturesOpen === 'features'} onToggle={() => setShareFeaturesOpen(v => v === 'features' ? false : 'features')}>
                     <Toggle label="Logos" val={shareRosterShowLogos} set={setShareRosterShowLogos} />
                     <Toggle label="Credits" val={shareRosterShowCredits} set={setShareRosterShowCredits} />
                     <Toggle label="Bio" val={shareRosterShowBio} set={setShareRosterShowBio} />
