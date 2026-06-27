@@ -172,9 +172,10 @@ module.exports = async (req, res) => {
 
     // ── GET: load clients + logos ────────────────────────────────────────────
     if (req.method === 'GET') {
-      const [clientData, logoData] = await Promise.all([
+      const [clientData, logoData, staffData] = await Promise.all([
         sheetGet(token, 'Clients!A:AB'),
         sheetGet(token, 'Logos!A:F').catch(() => ({ values: [] })),
+        sheetGet(token, 'Staff!A:B').catch(() => ({ values: [] })),
       ]);
 
       // Parse clients
@@ -278,7 +279,16 @@ module.exports = async (req, res) => {
         if (proName && proUrl)     logos[proName.toLowerCase()]   = { url: proUrl,   category: 'PRO' };
       });
 
-      return res.json({ clients, logos });
+      // Parse staff -- Name | Email
+      const staffRows = staffData?.values || [];
+      const staff = {};
+      staffRows.slice(1).forEach(row => {
+        const name  = String(row[0] ?? '').trim();
+        const email = String(row[1] ?? '').trim();
+        if (name && email) staff[name.toLowerCase()] = { name, email };
+      });
+
+      return res.json({ clients, logos, staff });
     }
 
     // ── POST ─────────────────────────────────────────────────────────────────
