@@ -155,7 +155,7 @@ function IR({ label, value }) {
 function Sec({ title, children }) {
   return (
     <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "18px 20px" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 14 }}>{title}</div>
+      {title && <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 14 }}>{title}</div>}
       {children}
     </div>
   );
@@ -500,7 +500,7 @@ function ClientCard({ client: c, logos, onClick }) {
 
       <div style={{ padding: "16px 16px 14px", flex: 1 }}>
         {/* Avatar */}
-        <Avatar name={c.name} photoUrl={c.photoUrl} size={52} />
+        <Avatar name={c.name} photoUrl={c.photoUrl} size={64} />
 
         {/* Name */}
         <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.03em", marginTop: 10, marginBottom: 8, lineHeight: 1.2 }}>{c.name}</div>
@@ -617,14 +617,14 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
       <div style={{ padding: "24px 28px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {c.bio && (
           <div style={{ gridColumn: "1/-1" }}>
-            <Sec title="Bio"><p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.65, margin: 0 }}>{c.bio}</p></Sec>
+            <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "18px 20px" }}><p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.65, margin: 0 }}>{c.bio}</p></div>
           </div>
         )}
 
         {/* Latest Release */}
         {c.spotifyLatestRelease && (
           <div style={{ gridColumn: "1/-1" }}>
-            <Sec title="Latest Release">
+            <Sec title="">
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 {c.spotifyLatestRelease.artwork && (
                   <img src={c.spotifyLatestRelease.artwork} alt={c.spotifyLatestRelease.name}
@@ -650,7 +650,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
         {/* Top Tracks */}
         {c.spotifyTopTracks?.length > 0 && (
           <div style={{ gridColumn: "1/-1" }}>
-            <Sec title="Top Tracks">
+            <Sec title="">
               {c.spotifyTopTracks.map((t, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: i < c.spotifyTopTracks.length - 1 ? `1px solid ${G.surfaceBorder}` : "none" }}>
                   <div style={{ fontSize: 11, color: G.textTertiary, fontWeight: 600, width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
@@ -676,7 +676,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
         {/* Genres */}
         {c.spotifyGenres?.length > 0 && (
           <div style={{ gridColumn: "1/-1" }}>
-            <Sec title="Genres">
+            <Sec title="">
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                 {c.spotifyGenres.map((g, i) => (
                   <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.textSecondary, textTransform: "capitalize" }}>{g}</span>
@@ -687,22 +687,20 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
         )}
         {c.credits?.length > 0 && (
           <div style={{ gridColumn: "1/-1" }}>
-            <Sec title="Credits / Artists Worked With">
+            <Sec title="">
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                 {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
               </div>
             </Sec>
           </div>
         )}
-        <Sec title="Details">
+        <Sec title="">
           <IR label="Contact / MH Rep" value={c.contact} />
-          <IR label="City" value={[c.city, c.state].filter(Boolean).join(', ')} />
-          <IR label="Country" value={c.country ? `${flag(c.country)}  ${c.country}` : null} />
           <IR label="PRO" value={c.pro} />
           <IR label="Publisher" value={c.publisher} />
           <IR label="Record Label" value={c.label} />
         </Sec>
-        <Sec title="Links">
+        <Sec title="">
           {c.spotifyUrl && <div style={{ marginBottom: 8 }}><a href={c.spotifyUrl} target="_blank" rel="noopener noreferrer" style={{ color: G.green, fontSize: 13, textDecoration: "none" }}>Spotify Profile ↗</a></div>}
           {c.appleMusicUrl && <div style={{ marginBottom: 8 }}><a href={c.appleMusicUrl} target="_blank" rel="noopener noreferrer" style={{ color: G.green, fontSize: 13, textDecoration: "none" }}>Apple Music ↗</a></div>}
           {c.soundcloudUrl && <div style={{ marginBottom: 8 }}><a href={c.soundcloudUrl} target="_blank" rel="noopener noreferrer" style={{ color: G.green, fontSize: 13, textDecoration: "none" }}>SoundCloud ↗</a></div>}
@@ -724,9 +722,15 @@ function App() {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState('roster');
   const isMobile = window.innerWidth < 768;
+  const [shareRosterOpen, setShareRosterOpen] = useState(false);
+  const [shareRosterUrl, setShareRosterUrl] = useState(null);
+  const [shareRosterCopied, setShareRosterCopied] = useState(false);
+  const [shareRosterLoading, setShareRosterLoading] = useState(false);
+  const [shareRosterTitle, setShareRosterTitle] = useState('Milk & Honey Music — Client Roster');
+  const [shareRosterTypes, setShareRosterTypes] = useState(['Songwriter','Producer','Artist']);
+  const [shareRosterSort, setShareRosterSort] = useState('default');
+  const [shareRosterExpiry, setShareRosterExpiry] = useState('90');
 
   useEffect(() => {
     fetch('/api/sheets')
@@ -771,11 +775,7 @@ function App() {
     if (view === 'detail') setSelected(updatedClient);
   };
 
-  const tabs = [
-    { id: 'roster', label: 'Roster' },
-    { id: 'calendar', label: 'Calendar' },
-    { id: 'documents', label: 'Documents' },
-  ];
+
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: G.bg, color: G.text, fontFamily: ff }}>
@@ -792,30 +792,16 @@ function App() {
         ::-webkit-scrollbar-thumb{background:${G.surfaceBorderLight};border-radius:2px}
       `}</style>
 
-      {/* Sidebar */}
-      {!isMobile && sidebarOpen && (
-        <div style={{ width: 200, background: G.surface, borderRight: `1px solid ${G.surfaceBorder}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflow: "hidden", boxShadow: `2px 0 24px rgba(0,0,0,0.3)` }}>
-          {/* Logo */}
-          <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", alignItems: "center" }}>
-            <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 32, objectFit: "contain", maxWidth: 140 }} />
-          </div>
-          {/* Nav */}
-          <div style={{ padding: "12px 10px", flex: 1 }}>
-            {tabs.map(t => (
-              <button key={t.id} onClick={() => setActiveTab(t.id)}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px 9px 12px", borderRadius: 9, border: "none", borderLeft: `2px solid ${activeTab === t.id ? G.green : "transparent"}`, background: activeTab === t.id ? "rgba(62,170,120,0.07)" : "transparent", cursor: "pointer", fontFamily: ff, textAlign: "left", marginBottom: 2, transition: `all 0.18s ${G.ease}` }}>
-                <span style={{ fontSize: 13, fontWeight: activeTab === t.id ? 600 : 400, color: activeTab === t.id ? G.text : G.textSecondary }}>{t.label}</span>
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setSidebarOpen(false)} style={{ padding: "12px 18px", background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 11, textAlign: "left", fontFamily: ff }}>‹‹ Collapse</button>
-        </div>
-      )}
+
 
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* Top bar -- changes based on view */}
         <div style={{ padding: "14px 28px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
+          {/* Logo always visible */}
+          <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
+          <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
+
           {view === 'detail' ? (
             <>
               <div style={{ flex: 1 }} />
@@ -824,9 +810,6 @@ function App() {
             </>
           ) : (
             <>
-              {(!sidebarOpen || isMobile) && (
-                <button onClick={() => setSidebarOpen(v => !v)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 10px", cursor: "pointer", color: G.textSecondary, fontFamily: ff, flexShrink: 0 }}>☰</button>
-              )}
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
                 style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
               <div style={{ display: "flex", gap: 6, flex: 1, flexWrap: "wrap" }}>
@@ -837,6 +820,11 @@ function App() {
                   </button>
                 ))}
               </div>
+              <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
+                style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Share
+              </button>
               <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>
             </>
           )}
@@ -879,6 +867,115 @@ function App() {
           )}
         </div>
       </div>
+
+      {/* Share Roster Modal */}
+      {shareRosterOpen && (() => {
+        const doShare = async () => {
+          setShareRosterLoading(true); setShareRosterUrl(null);
+          try {
+            let filtered = clients.filter(c =>
+              shareRosterTypes.length === 0 || (c.types||[]).some(t => shareRosterTypes.includes(t))
+            );
+            if (shareRosterSort === 'alpha') filtered = [...filtered].sort((a,b) => (a.name||'').localeCompare(b.name||''));
+            const mapped = filtered.map(c => ({
+              name: c.name, types: c.types, level: (c.types||[])[0] || 'Client',
+              photoUrl: c.photoUrl,
+              logoUrl: lookupLogo(logos, c.pro) || lookupLogo(logos, c.publisher) || lookupLogo(logos, c.label),
+              city: c.city, state: c.state, country: c.country,
+              city2: c.city2, state2: c.state2, country2: c.country2,
+              city3: c.city3, state3: c.state3, country3: c.country3,
+              pro: c.pro, publisher: c.publisher, label: c.label,
+              credits: c.credits, bio: c.bio,
+              instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
+              spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
+            }));
+            const expiresAt = shareRosterExpiry !== 'never'
+              ? new Date(Date.now() + parseInt(shareRosterExpiry) * 24*60*60*1000).toISOString() : null;
+            const resp = await fetch('/api/share', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'roster-share', title: shareRosterTitle, athletes: mapped, expiresAt }),
+            });
+            const data = await resp.json();
+            if (data.url) { setShareRosterUrl(data.url); window.open(data.url, '_blank'); }
+            else throw new Error(data.error || 'Failed');
+          } catch(e) { alert('Share failed: ' + e.message); }
+          setShareRosterLoading(false);
+        };
+        const Toggle = ({ val, set }) => (
+          <div onClick={() => set(v => !v)} style={{ width: 34, height: 19, borderRadius: 10, background: val ? G.green : G.surfaceBorderLight, position: "relative", cursor: "pointer", flexShrink: 0, transition: `background 0.2s ${G.ease}` }}>
+            <div style={{ position: "absolute", top: 3, left: val ? 17 : 3, width: 13, height: 13, borderRadius: "50%", background: "#fff", transition: `left 0.2s ${G.ease}`, boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }} />
+          </div>
+        );
+        const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer'];
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(20px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <div style={{ background: G.surfaceGlass, backdropFilter: "blur(24px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: G.shadowLg }}>
+              <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontWeight: 700, fontSize: 16, color: G.text }}>Share Roster</div>
+                <button onClick={() => { setShareRosterOpen(false); setShareRosterUrl(null); }}
+                  style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 14, fontFamily: ff }}>✕</button>
+              </div>
+              <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 }}>Title</div>
+                  <input value={shareRosterTitle} onChange={e => setShareRosterTitle(e.target.value)} style={{ ...inputBase, width: "100%" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 }}>Include Types</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {allTypes.map(t => {
+                      const on = shareRosterTypes.includes(t);
+                      return <button key={t} onClick={() => {
+                        const next = on ? shareRosterTypes.filter(x=>x!==t) : [...shareRosterTypes,t];
+                        if (next.length > 0) setShareRosterTypes(next);
+                      }} style={{ padding: "7px 14px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+                        {t}
+                      </button>;
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 5 }}>
+                    {clients.filter(c => (c.types||[]).some(t => shareRosterTypes.includes(t))).length} clients
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 }}>Sort</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {[['default','Default'],['alpha','A–Z']].map(([val,label]) => (
+                      <button key={val} onClick={() => setShareRosterSort(val)}
+                        style={{ flex: 1, padding: "7px 0", border: `1px solid ${shareRosterSort===val ? G.green : G.surfaceBorder}`, borderRadius: 9, background: shareRosterSort===val ? G.greenSubtle : G.surfaceRaised, color: shareRosterSort===val ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 }}>Link Expires</div>
+                  <select value={shareRosterExpiry} onChange={e => setShareRosterExpiry(e.target.value)} style={{ ...inputBase, width: "100%" }}>
+                    <option value="30">30 days</option>
+                    <option value="90">90 days</option>
+                    <option value="180">6 months</option>
+                    <option value="never">Never</option>
+                  </select>
+                </div>
+                {shareRosterUrl ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "10px 14px", fontSize: 12, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareRosterUrl}</div>
+                    <button onClick={() => { navigator.clipboard.writeText(shareRosterUrl); setShareRosterCopied(true); setTimeout(()=>setShareRosterCopied(false),2000); }}
+                      style={{ background: shareRosterCopied ? G.green : G.surfaceRaised, color: shareRosterCopied ? "#0a0a0a" : G.text, border: `1px solid ${shareRosterCopied ? G.green : G.surfaceBorder}`, borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+                      {shareRosterCopied ? "✓ Copied" : "Copy"}
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={doShare} disabled={shareRosterLoading}
+                    style={{ background: shareRosterLoading ? G.surfaceRaised : G.green, color: shareRosterLoading ? G.textTertiary : "#0a0a0a", border: "none", borderRadius: 12, padding: "12px", fontWeight: 700, fontSize: 14, cursor: shareRosterLoading ? "not-allowed" : "pointer", fontFamily: ff, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    {shareRosterLoading ? "Generating..." : "Generate Share Link"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Edit modal */}
       {editing && <ClientForm initial={editing} onSave={saveClient} onCancel={() => setEditing(null)} />}
