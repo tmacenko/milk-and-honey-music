@@ -174,7 +174,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       const [clientData, logoData] = await Promise.all([
         sheetGet(token, 'Clients!A:AB'),
-        sheetGet(token, 'Logos!A:C').catch(() => ({ values: [] })),
+        sheetGet(token, 'Logos!A:F').catch(() => ({ values: [] })),
       ]);
 
       // Parse clients
@@ -263,14 +263,19 @@ module.exports = async (req, res) => {
         }));
       }
 
-      // Parse logos into a lookup map      // Parse logos into a lookup map: { "bmi": { url, category }, ... }
+      // Parse logos -- structure: Record Label | Label URL | Publishing Company | Pub URL | PRO | PRO URL
       const logoRows = logoData?.values || [];
       const logos = {};
       logoRows.slice(1).forEach(row => {
-        const company = String(row[0] ?? '').trim();
-        const url     = String(row[1] ?? '').trim();
-        const category = String(row[2] ?? '').trim();
-        if (company && url) logos[company.toLowerCase()] = { url, category };
+        const labelName = String(row[0] ?? '').trim();
+        const labelUrl  = String(row[1] ?? '').trim();
+        const pubName   = String(row[2] ?? '').trim();
+        const pubUrl    = String(row[3] ?? '').trim();
+        const proName   = String(row[4] ?? '').trim();
+        const proUrl    = String(row[5] ?? '').trim();
+        if (labelName && labelUrl) logos[labelName.toLowerCase()] = { url: labelUrl, category: 'Label' };
+        if (pubName && pubUrl)     logos[pubName.toLowerCase()]   = { url: pubUrl,   category: 'Publisher' };
+        if (proName && proUrl)     logos[proName.toLowerCase()]   = { url: proUrl,   category: 'PRO' };
       });
 
       return res.json({ clients, logos });
