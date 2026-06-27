@@ -173,6 +173,12 @@ function Sec({ title, children }) {
 // ── Chat component ────────────────────────────────────────────────────────────
 function FloatingChat({ clients, isMobile }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (isMobile) {
+      document.body.style.overflow = open ? 'hidden' : '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [open, isMobile]);
   const [msgs, setMsgs] = useState([{ role: "assistant", text: "Hey — ask me anything about your music clients. I can help with brand matching, finding collaboration patterns, drafting outreach, or answering questions about the roster." }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -314,9 +320,11 @@ ${JSON.stringify(clients.map(c => ({
           </button>
         </div>
       </div>
-      <button onClick={() => setOpen(false)} style={{ position: "fixed", bottom: 24, right: 24, width: 52, height: 52, borderRadius: 26, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, cursor: "pointer", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", transition: `all 0.22s ${G.ease}` }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={G.textSecondary} strokeWidth="2.2" strokeLinecap="round"/></svg>
-      </button>
+      {!isMobile && (
+        <button onClick={() => setOpen(false)} style={{ position: "fixed", bottom: 24, right: 24, width: 52, height: 52, borderRadius: 26, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, cursor: "pointer", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", transition: `all 0.22s ${G.ease}` }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={G.textSecondary} strokeWidth="2.2" strokeLinecap="round"/></svg>
+        </button>
+      )}
     </>
   );
 }
