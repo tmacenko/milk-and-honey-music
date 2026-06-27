@@ -70,7 +70,7 @@ function LogoBadge({ url, label, size = 32 }) {
   }
   return (
     <div style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), background: "#fff", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.3)", flexShrink: 0 }}>
-      <img src={resolvedUrl} alt={label} onError={() => setErr(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      <img src={resolvedUrl} alt={label} onError={() => setErr(true)} style={{ width: "110%", height: "110%", objectFit: "cover", display: "block", margin: "-5%" }} />
     </div>
   );
 }
@@ -607,7 +607,8 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
     c.instagram && { icon: <IgIcon size={isMobile ? 18 : 14} />, label: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}` },
     c.twitter && { icon: <TwIcon size={isMobile ? 18 : 14} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
     c.tiktok && { icon: <TkIcon size={isMobile ? 18 : 14} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
-    c.spotifyUrl && { icon: <SpotifyIcon size={isMobile ? 18 : 14} />, label: 'View Spotify', url: c.spotifyUrl },
+    c.spotifyUrl && { icon: <SpotifyIcon size={isMobile ? 18 : 14} />, label: 'Spotify', url: c.spotifyUrl },
+    c.appleMusicUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 24 24" fill="currentColor"><path d="M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.04-.003-.083-.01-.124-.013H5.986c-.152.01-.303.017-.455.026C4.786.07 4.043.15 3.34.428 2.004.958 1.04 1.88.475 3.208A5.494 5.494 0 00.05 5.09c-.013.593-.01 1.187-.01 1.781v10.282c0 .682-.01 1.365.017 2.045.055 1.515.56 2.796 1.578 3.846.01.01.017.024.027.033.02.024.04.05.06.072.45.503.987.908 1.582 1.21.704.35 1.46.508 2.243.55.464.026.928.03 1.393.03H18.55c.37 0 .742-.004 1.112-.018 1.23-.045 2.326-.39 3.25-1.165.942-.79 1.548-1.79 1.841-2.97.136-.535.186-1.085.197-1.633.012-.594.01-1.19.01-1.784V7.925c-.001-.6.001-1.2-.966-1.8zm-6.895 2.046l-6.5 3.75a.5.5 0 01-.5 0l-2-1.155V7.5a.5.5 0 01.75-.433l8 4.618a.5.5 0 010 .866l-8 4.618A.5.5 0 017 16.5v-2.346l2 1.154a.5.5 0 00.5 0l6.5-3.75V8.17a.5.5 0 00-.901-.3z"/></svg>, label: 'Apple Music', url: c.appleMusicUrl },
   ].filter(Boolean);
 
   if (isMobile) return (
