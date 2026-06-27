@@ -97,7 +97,7 @@ function Avatar({ name, photoUrl, size = 44 }) {
 
 // ── Type pill ─────────────────────────────────────────────────────────────────
 function TypePill({ type }) {
-  return <span style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 600, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{type}</span>;
+  return <span style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, padding: "3px 10px", fontSize: 12, fontWeight: 600, letterSpacing: "0.01em", whiteSpace: "nowrap" }}>{type}</span>;
 }
 
 // ── Social icons ──────────────────────────────────────────────────────────────
@@ -497,23 +497,23 @@ function ClientCard({ client: c, logos, onClick }) {
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, display: "flex", flexDirection: "column", position: "relative" }}>
 
-      <div style={{ padding: "12px 14px 10px", flex: 1 }}>
+      <div style={{ padding: "18px 18px 14px", flex: 1 }}>
         {/* Avatar */}
-        <Avatar name={c.name} photoUrl={c.photoUrl} size={48} />
+        <Avatar name={c.name} photoUrl={c.photoUrl} size={64} />
 
         {/* Name */}
-        <div style={{ fontWeight: 700, fontSize: 14, color: G.text, letterSpacing: "-0.02em", marginTop: 8, marginBottom: 6, lineHeight: 1.2 }}>{c.name}</div>
+        <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.03em", marginTop: 12, marginBottom: 8, lineHeight: 1.2 }}>{c.name}</div>
 
         {/* Flag(s) + type pills on same line */}
         <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-          {dedupedFlags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
+          {dedupedFlags.length > 0 && <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
           {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
         </div>
 
         {/* Logo badges */}
         {logoList.length > 0 && (
-          <div style={{ display: "flex", gap: 5, marginTop: 8 }}>
-            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={24} />)}
+          <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+            {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={32} />)}
           </div>
         )}
 
@@ -839,7 +839,7 @@ function App() {
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* Top bar -- changes based on view */}
-        <div style={{ padding: "10px 20px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
+        <div style={{ padding: "12px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
           {/* Logo always visible */}
           <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
           <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
@@ -893,13 +893,13 @@ function App() {
           )}
 
           {!loading && !error && view === 'roster' && (
-            <div style={{ padding: "14px 20px 40px" }}>
+            <div style={{ padding: "20px 24px 48px" }}>
               {filtered.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
                   <div style={{ fontSize: 15 }}>{search || filterType !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
                 </div>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
                   {filtered.map((c, i) => (
                     <ClientCard key={c.id || i} client={c} logos={logos} onClick={() => setView('detail', c)} />
                   ))}
