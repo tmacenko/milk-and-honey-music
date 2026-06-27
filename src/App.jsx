@@ -69,8 +69,8 @@ function LogoBadge({ url, label, size = 32 }) {
     return <span style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, fontWeight: 600, color: G.textSecondary, whiteSpace: "nowrap" }}>{label}</span>;
   }
   return (
-    <div style={{ width: size, height: size, borderRadius: "50%", background: "#fff", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.3)", flexShrink: 0 }}>
-      <img src={resolvedUrl} alt={label} onError={() => setErr(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+    <div style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), background: "#fff", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.3)", flexShrink: 0 }}>
+      <img src={resolvedUrl} alt={label} onError={() => setErr(true)} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", padding: Math.round(size * 0.08) + "px" }} />
     </div>
   );
 }
@@ -543,7 +543,7 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
 }
 
 // ── Client detail view ────────────────────────────────────────────────────────
-function ClientDetail({ client: c, logos, onBack, onEdit, isMobile }) {
+function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
   const proLogo = lookupLogo(logos, c.pro);
   const pubLogo = lookupLogo(logos, c.publisher);
   const lblLogo = lookupLogo(logos, c.label);
@@ -579,6 +579,18 @@ function ClientDetail({ client: c, logos, onBack, onEdit, isMobile }) {
   ) : null;
 
   const [bioExpanded, setBioExpanded] = useState(false);
+
+  // Resolve contact name(s) to email(s)
+  const contactEmails = (() => {
+    if (!c.contact) return [];
+    return c.contact.split(',').map(name => {
+      const key = name.trim().toLowerCase();
+      return staff[key] || { name: name.trim(), email: null };
+    });
+  })();
+  const contactMailto = contactEmails.length
+    ? 'mailto:' + contactEmails.filter(s => s.email).map(s => s.email).join(',')
+    : 'mailto:';
 
   // Logo strip -- split comma-separated values so each gets its own cell
   const logoItems = [
@@ -648,13 +660,13 @@ function ClientDetail({ client: c, logos, onBack, onEdit, isMobile }) {
             {logoItems.map((item, i) => (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 12px", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none" }}>
                 {item.logo && <LogoBadge url={item.logo} label={item.name} size={44} />}
-                <span style={{ fontSize: 13, fontWeight: 600, color: G.text, textAlign: "center" }}>{item.name}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: G.text, textAlign: "center", marginTop: 2 }}>{item.name}</span>
               </div>
             ))}
           </div>
         )}
         {c.contact && (
-          <a href={`mailto:`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "transparent", border: `1.5px solid ${G.green}`, borderRadius: 14, padding: "16px", textDecoration: "none", marginTop: 4 }}>
+          <a href={contactMailto} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "transparent", border: `1.5px solid ${G.green}`, borderRadius: 14, padding: "16px", textDecoration: "none", marginTop: 4 }}>
             <span style={{ color: G.green, display: "flex" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
             <span style={{ fontSize: 15, fontWeight: 700, color: G.green }}>Contact Milk &amp; Honey Rep ({c.contact})</span>
           </a>
@@ -684,7 +696,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit, isMobile }) {
               {c.contact && actionBtn(
                 <><span style={{ color: G.green, display:"flex" }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact Milk &amp; Honey Rep ({c.contact})</span></>,
-                `mailto:`, true
+                contactMailto, true
               )}
             </div>
           </div>
@@ -701,7 +713,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit, isMobile }) {
           <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, display: "flex", overflow: "hidden" }}>
             {logoItems.map((item, i) => (
               <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "20px 16px", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none" }}>
-                {item.logo && <LogoBadge url={item.logo} label={item.name} size={36} />}
+                {item.logo && <LogoBadge url={item.logo} label={item.name} size={40} />}
                 <span style={{ fontSize: 15, fontWeight: 600, color: G.text }}>{item.name}</span>
               </div>
             ))}
@@ -726,6 +738,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit, isMobile }) {
 function App() {
   const [clients, setClients] = useState([]);
   const [logos, setLogos] = useState({});
+  const [staff, setStaff] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // URL-based navigation -- persist state across refresh and enable browser back
@@ -795,7 +808,7 @@ function App() {
   useEffect(() => {
     fetch('/api/sheets')
       .then(r => r.json())
-      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setLoading(false); })
+      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
@@ -946,7 +959,7 @@ function App() {
           )}
 
           {!loading && !error && view === 'detail' && selected && (
-            <ClientDetail client={selected} logos={logos} isMobile={isMobile} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
+            <ClientDetail client={selected} logos={logos} staff={staff} isMobile={isMobile} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
           )}
 
           {!loading && !error && view === 'roster' && (
