@@ -69,7 +69,7 @@ function LogoBadge({ url, label, size = 32 }) {
     return <span style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, fontWeight: 600, color: G.textSecondary, whiteSpace: "nowrap" }}>{label}</span>;
   }
   return (
-    <div style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), background: "#fff", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.3)", flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), background: "#000", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.3)", flexShrink: 0 }}>
       <img src={resolvedUrl} alt={label} onError={() => setErr(true)} style={{ width: "110%", height: "110%", objectFit: "cover", display: "block", margin: "-5%" }} />
     </div>
   );
