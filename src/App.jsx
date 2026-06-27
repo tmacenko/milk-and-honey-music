@@ -477,13 +477,10 @@ function ClientForm({ initial, onSave, onCancel }) {
 // ── Client card ───────────────────────────────────────────────────────────────
 function ClientCard({ client: c, logos, isMobile, onClick }) {
   const [hov, setHov] = useState(false);
-  const proLogo = lookupLogo(logos, c.pro);
-  const pubLogo = lookupLogo(logos, c.publisher);
-  const lblLogo = lookupLogo(logos, c.label);
   const logoList = [
-    proLogo && { url: proLogo, label: c.pro },
-    pubLogo && { url: pubLogo, label: c.publisher },
-    lblLogo && { url: lblLogo, label: c.label },
+    ...(c.pro ? c.pro.split(',').map(v => v.trim()).filter(Boolean).map(v => ({ url: lookupLogo(logos, v), label: v })) : []),
+    ...(c.publisher ? c.publisher.split(',').map(v => v.trim()).filter(Boolean).map(v => ({ url: lookupLogo(logos, v), label: v })) : []),
+    ...(c.label ? c.label.split(',').map(v => v.trim()).filter(Boolean).map(v => ({ url: lookupLogo(logos, v), label: v })) : []),
   ].filter(Boolean);
 
   // Deduplicate flags
@@ -608,8 +605,8 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
     c.twitter && { icon: <TwIcon size={isMobile ? 18 : 14} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
     c.tiktok && { icon: <TkIcon size={isMobile ? 18 : 14} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
     c.spotifyUrl && { icon: <SpotifyIcon size={isMobile ? 18 : 14} />, label: 'Spotify', url: c.spotifyUrl },
-    c.appleMusicUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 814 1000" fill="currentColor"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-42.4-150.3-109.1C77 488.8 40.9 388.1 40.9 293.5c0-19.5 1.3-39.5 4.5-59.5 19.5-121.5 111.5-197.5 213.8-197.5 54 0 99.5 36.5 133.5 36.5 32.9 0 84.5-38.5 148.3-38.5 23 0 106.9 2 167.8 63.5zm-109.3-60.5c-12.2-16.5-31.5-40.5-76.5-40.5-40.5 0-86.5 29.5-120.2 29.5-35.5 0-77.5-31.5-124.5-31.5-77.5 0-144.5 51.5-165.5 135.5-3.5 12.5-5.2 27.5-5.2 42.5 0 93.5 55.5 189.5 128.2 253.5 30.5 27 63.5 48 96.5 48 37.5 0 72-26.5 116.5-26.5 44.5 0 75.5 25 116.5 25 37 0 75.5-26.5 104.5-55.5V280.4z"/></svg>, label: 'Apple Music', url: c.appleMusicUrl },
-    c.soundcloudUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 24 24" fill="currentColor"><path d="M1.175 12.225c-.041 0-.082.006-.123.011.039-.194.063-.392.063-.596 0-1.861-1.494-3.371-3.338-3.371-.276 0-.544.037-.8.103C-3.42 6.699-4.93 5.5-6.667 5.5c-2.065 0-3.739 1.675-3.739 3.741 0 .204.019.405.05.602-.196-.033-.397-.052-.601-.052C-12.953 9.791-14 10.843-14 12.141c0 1.297 1.047 2.349 2.34 2.349h12.835C2.47 14.49 3.5 13.461 3.5 12.225c0-1.199-.97-2.197-2.325-2z"/></svg>, label: 'SoundCloud', url: c.soundcloudUrl },
+    c.appleMusicUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 24 24" fill="currentColor"><path d="M23.997 6.124c0-.738-.065-1.47-.24-2.19-.317-1.307-1.062-2.31-2.18-3.043C21.003.517 20.373.285 19.7.164c-.517-.093-1.043-.137-1.568-.152-.038-.002-.076-.01-.114-.013H5.981c-.152.01-.303.017-.454.026C4.786.07 4.043.15 3.34.428 2.004.958 1.04 1.88.475 3.208A5.49 5.49 0 00.05 5.09C.035 5.694.03 6.3.03 6.907v10.276c0 .681-.01 1.364.018 2.045.055 1.516.56 2.797 1.578 3.847.01.01.017.024.027.033.02.023.04.047.06.07.45.503.987.908 1.582 1.21.704.35 1.46.508 2.244.55.464.026.927.03 1.393.03H18.55c.37 0 .74-.005 1.112-.02 1.23-.045 2.327-.39 3.25-1.164.94-.79 1.547-1.79 1.842-2.97.135-.535.185-1.084.196-1.632.013-.594.01-1.19.01-1.784V6.124zm-6.003 7.858c0 .658-.528 1.19-1.18 1.19H7.166c-.652 0-1.18-.532-1.18-1.19V9.158c0-.658.528-1.19 1.18-1.19H16.8c.657 0 1.185.532 1.185 1.19l.01 4.824zm-5.03-6.93L9.2 8.698v2.046l3.764-1.542V6.053zm0 2.456L9.2 10.065v2.045l3.764-1.542V8.51zm0 2.456L9.2 12.52v2.046l3.764-1.542v-2.057z"/></svg>, label: 'Apple Music', url: c.appleMusicUrl },
+    c.soundcloudUrl && { icon: <svg width={isMobile ? 18 : 14} height={isMobile ? 18 : 14} viewBox="0 0 24 24" fill="currentColor"><path d="M11.56 8.87V17h8.76c1-.09 1.68-.64 1.68-1.54 0-.8-.63-1.46-1.43-1.5-.2 0-.4.04-.57.1-.1-2.17-1.9-3.91-4.1-3.91-.65 0-1.27.15-1.82.44-.28-1.46-1.58-2.57-3.12-2.57-.99 0-1.88.43-2.5 1.12A3.2 3.2 0 006.5 9C4.57 9 3 10.57 3 12.5S4.57 16 6.5 16h5.06V8.87h0z"/></svg>, label: 'SoundCloud', url: c.soundcloudUrl },
   ].filter(Boolean);
 
   if (isMobile) return (
@@ -1049,6 +1046,10 @@ function App() {
               proLogoUrl: shareRosterShowLogos ? lookupLogo(logos, c.pro) : null,
               pubLogoUrl: shareRosterShowLogos ? lookupLogo(logos, c.publisher) : null,
               labelLogoUrl: shareRosterShowLogos ? lookupLogo(logos, c.label) : null,
+              // Per-company logo maps for multi-value fields
+              proLogos: shareRosterShowLogos ? (c.pro||'').split(',').map(v=>v.trim()).filter(Boolean).map(v=>({name:v,url:lookupLogo(logos,v)})) : [],
+              pubLogos: shareRosterShowLogos ? (c.publisher||'').split(',').map(v=>v.trim()).filter(Boolean).map(v=>({name:v,url:lookupLogo(logos,v)})) : [],
+              labelLogos: shareRosterShowLogos ? (c.label||'').split(',').map(v=>v.trim()).filter(Boolean).map(v=>({name:v,url:lookupLogo(logos,v)})) : [],
               pro: shareRosterShowLogos ? c.pro : null,
               publisher: shareRosterShowLogos ? c.publisher : null,
               label: shareRosterShowLogos ? c.label : null,
