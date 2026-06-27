@@ -277,7 +277,7 @@ ${JSON.stringify(clients.map(c => ({
           </div>
         </div>
       )}
-      <div style={{ position: "fixed", ...(isMobile ? { inset: 0 } : { bottom: 86, right: 24, width: 380, height: 520, borderRadius: 18 }), background: G.surfaceGlass, backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)", border: `1px solid ${G.surfaceBorderLight}`, display: "flex", flexDirection: "column", zIndex: 999, boxShadow: G.shadow, overflow: "hidden", transition: `all 0.2s ${G.ease}` }}>
+      <div style={{ position: "fixed", ...(isMobile ? { inset: 0, borderRadius: 0 } : { bottom: 86, right: 24, width: 380, height: 520, borderRadius: 18 }), background: G.surfaceGlass, backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)", border: `1px solid ${G.surfaceBorderLight}`, display: "flex", flexDirection: "column", zIndex: 999, boxShadow: G.shadow, overflow: "hidden", transition: `all 0.2s ${G.ease}` }}>
         <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: G.green }} />
@@ -308,7 +308,7 @@ ${JSON.stringify(clients.map(c => ({
         </div>
         <div style={{ padding: "10px 12px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, flexShrink: 0 }}>
           <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="Ask about your clients..." style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "9px 12px", fontSize: 13, color: G.text, fontFamily: ff, outline: "none" }} />
+            placeholder="Ask about your clients..." style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "9px 12px", fontSize: isMobile ? 16 : 13, color: G.text, fontFamily: ff, outline: "none" }} />
           <button onClick={send} disabled={!input.trim() || loading} style={{ background: input.trim() && !loading ? G.green : G.surfaceRaised, color: input.trim() && !loading ? "#0a0a0a" : G.textTertiary, border: "none", borderRadius: 10, width: 36, height: 36, cursor: input.trim() && !loading ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: `all .15s` }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
@@ -506,15 +506,22 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
         <Avatar name={c.name} photoUrl={c.photoUrl} size={56} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: G.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{c.name}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
             {dedupedFlags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
             {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
           </div>
           {logoList.length > 0 && (
-            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-              {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={28} />)}
+            <div style={{ display: "flex", gap: 5, marginBottom: 6, flexWrap: "wrap" }}>
+              {logoList.slice(0,5).map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={26} />)}
             </div>
           )}
+          {(() => {
+            const isArt = (c.types||[]).includes('Artist');
+            const txt = isArt && c.spotifyTopTracks?.length
+              ? c.spotifyTopTracks.slice(0,4).map(t=>t.name).join(' · ')
+              : c.credits?.length ? c.credits.slice(0,4).join(' · ') + (c.credits.length > 4 ? ` +${c.credits.length-4}` : '') : null;
+            return txt ? <div style={{ fontSize: 11, color: G.textTertiary, lineHeight: 1.4 }}>{txt}</div> : null;
+          })()}
         </div>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
       </div>
@@ -848,6 +855,7 @@ function App() {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', onResize);
@@ -965,27 +973,39 @@ function App() {
           ) : (
             <div style={{ flexShrink: 0 }}>
               {/* Logo centered */}
-              <div style={{ display: "flex", justifyContent: "center", padding: "16px 16px 12px" }}>
-                <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 36, objectFit: "contain" }} />
+              <div style={{ display: "flex", justifyContent: "center", padding: "14px 16px 10px" }}>
+                <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 34, objectFit: "contain" }} />
               </div>
-              {/* Search + filter icon */}
-              <div style={{ padding: "0 16px 10px", display: "flex", gap: 8 }}>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 14px" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
-                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
-                    style={{ background: "none", border: "none", outline: "none", fontSize: 15, color: G.text, fontFamily: ff, flex: 1 }} />
-                </div>
-                <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
-                  style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 14px", cursor: "pointer", color: G.textSecondary, fontFamily: ff, display: "flex", alignItems: "center" }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                </button>
-                <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
+              {/* Search icon + Share + Add row */}
+              <div style={{ padding: "0 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
+                {mobileSearchOpen ? (
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
+                    <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
+                      style={{ background: "none", border: "none", outline: "none", fontSize: 15, color: G.text, fontFamily: ff, flex: 1 }} />
+                    <button onClick={() => { setMobileSearchOpen(false); setSearch(''); }} style={{ background: "none", border: "none", color: G.textSecondary, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: ff }}>✕</button>
+                  </div>
+                ) : (
+                  <>
+                    <button onClick={() => setMobileSearchOpen(true)}
+                      style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 14px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center" }}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                    </button>
+                    <div style={{ flex: 1 }} />
+                    <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
+                      style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 16px", cursor: "pointer", color: G.text, fontFamily: ff, display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 13 }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                      Share
+                    </button>
+                    <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
+                  </>
+                )}
               </div>
-              {/* Type filters scrollable row */}
-              <div style={{ overflowX: "auto", display: "flex", gap: 8, padding: "0 16px 12px", scrollbarWidth: "none" }}>
+              {/* Type filters -- contained pill row */}
+              <div style={{ margin: "0 16px 12px", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: "6px", display: "flex", gap: 4, overflowX: "auto", scrollbarWidth: "none" }}>
                 {types.map(t => (
                   <button key={t} onClick={() => setFilterType(t)}
-                    style={{ padding: "8px 16px", borderRadius: 20, border: `1.5px solid ${filterType === t ? G.green : G.surfaceBorder}`, background: filterType === t ? G.greenSubtle : "transparent", color: filterType === t ? G.green : G.textSecondary, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap", flexShrink: 0, transition: `all 0.15s ${G.ease}` }}>
+                    style={{ padding: "7px 14px", borderRadius: 10, border: "none", background: filterType === t ? G.green : "transparent", color: filterType === t ? "#0a0a0a" : G.textSecondary, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap", flexShrink: 0, transition: `all 0.15s ${G.ease}` }}>
                     {t}
                   </button>
                 ))}
