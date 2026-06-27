@@ -475,7 +475,7 @@ function ClientForm({ initial, onSave, onCancel }) {
 }
 
 // ── Client card ───────────────────────────────────────────────────────────────
-function ClientCard({ client: c, logos, onClick }) {
+function ClientCard({ client: c, logos, isMobile, onClick }) {
   const [hov, setHov] = useState(false);
   const proLogo = lookupLogo(logos, c.pro);
   const pubLogo = lookupLogo(logos, c.publisher);
@@ -492,32 +492,45 @@ function ClientCard({ client: c, logos, onClick }) {
     const f = flag(co); if (!f || seenFlags.has(f)) return false; seenFlags.add(f); return true;
   });
 
+  if (isMobile) {
+    return (
+      <div onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, background: hov ? G.surfaceRaised : "transparent", cursor: "pointer", transition: `background 0.15s ${G.ease}` }}
+        onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}>
+        <Avatar name={c.name} photoUrl={c.photoUrl} size={56} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: G.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{c.name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+            {dedupedFlags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
+            {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
+          </div>
+          {logoList.length > 0 && (
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={28} />)}
+            </div>
+          )}
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </div>
+    );
+  }
+
   return (
     <div onClick={onClick}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow, display: "flex", flexDirection: "column", position: "relative" }}>
 
       <div style={{ padding: "18px 18px 14px", flex: 1 }}>
-        {/* Avatar */}
         <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
-
-        {/* Name */}
         <div style={{ fontWeight: 800, fontSize: 20, color: G.text, letterSpacing: "-0.03em", marginTop: 14, marginBottom: 8, lineHeight: 1.2 }}>{c.name}</div>
-
-        {/* Flag(s) + type pills on same line */}
         <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
           {dedupedFlags.length > 0 && <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
           {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
         </div>
-
-        {/* Logo badges */}
         {logoList.length > 0 && (
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             {logoList.map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={42} />)}
           </div>
         )}
-
-        {/* Latest release artwork -- bottom right */}
         {c.spotifyLatestRelease?.artwork && (
           <div style={{ position: "absolute", bottom: 14, right: 14 }}>
             <img src={c.spotifyLatestRelease.artwork} alt={c.spotifyLatestRelease.name}
@@ -530,7 +543,7 @@ function ClientCard({ client: c, logos, onClick }) {
 }
 
 // ── Client detail view ────────────────────────────────────────────────────────
-function ClientDetail({ client: c, logos, onBack, onEdit }) {
+function ClientDetail({ client: c, logos, onBack, onEdit, isMobile }) {
   const proLogo = lookupLogo(logos, c.pro);
   const pubLogo = lookupLogo(logos, c.publisher);
   const lblLogo = lookupLogo(logos, c.label);
@@ -565,6 +578,8 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
     </a>
   ) : null;
 
+  const [bioExpanded, setBioExpanded] = useState(false);
+
   // Logo strip -- split comma-separated values so each gets its own cell
   const logoItems = [
     ...(c.pro ? c.pro.split(',').map(v => v.trim()).filter(Boolean).map(v => ({ logo: lookupLogo(logos, v), name: v })) : []),
@@ -572,12 +587,86 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
     ...(c.label ? c.label.split(',').map(v => v.trim()).filter(Boolean).map(v => ({ logo: lookupLogo(logos, v), name: v })) : []),
   ];
 
+  const BIO_LIMIT = 280;
+  const bioTruncated = c.bio && c.bio.length > BIO_LIMIT && !bioExpanded;
+  const bioText = bioTruncated ? c.bio.slice(0, BIO_LIMIT).trimEnd() + '...' : c.bio;
+
+  const socialBtns = [
+    c.instagram && { icon: <IgIcon size={isMobile ? 18 : 14} />, label: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}` },
+    c.twitter && { icon: <TwIcon size={isMobile ? 18 : 14} />, label: `@${c.twitter}`, url: `https://x.com/${c.twitter}` },
+    c.tiktok && { icon: <TkIcon size={isMobile ? 18 : 14} />, label: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}` },
+    c.spotifyUrl && { icon: <SpotifyIcon size={isMobile ? 18 : 14} />, label: 'View Spotify', url: c.spotifyUrl },
+  ].filter(Boolean);
+
+  if (isMobile) return (
+    <div style={{ flex: 1, overflow: "auto", paddingBottom: 24 }}>
+      <div style={{ padding: "20px 16px 16px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+          <div style={{ flexShrink: 0, width: 90, height: 90, borderRadius: "50%", overflow: "hidden", border: `2px solid ${G.surfaceBorderLight}` }}>
+            <Avatar name={c.name} photoUrl={c.photoUrl} size={90} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: G.text, letterSpacing: "-0.03em", margin: "0 0 8px", lineHeight: 1.1 }}>{c.name}</h1>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
+            </div>
+            {locationEl}
+          </div>
+        </div>
+        {socialBtns.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
+            {socialBtns.map((btn, i) => (
+              <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "12px 16px", textDecoration: "none" }}>
+                <span style={{ color: G.textSecondary, display: "flex" }}>{btn.icon}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: G.text }}>{btn.label}</span>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ padding: "18px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
+        {c.bio && (
+          <div>
+            <p style={{ fontSize: 15, color: G.textSecondary, lineHeight: 1.65, margin: 0 }}>{bioText}</p>
+            {c.bio.length > BIO_LIMIT && (
+              <button onClick={() => setBioExpanded(v => !v)}
+                style={{ background: "none", border: "none", color: G.green, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0 0", fontFamily: ff, display: "flex", alignItems: "center", gap: 4 }}>
+                {bioExpanded ? 'View less' : 'View more'}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ transform: bioExpanded ? "rotate(90deg)" : "none", transition: `transform 0.2s ${G.ease}` }}><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            )}
+          </div>
+        )}
+        {c.credits?.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "7px 16px", fontSize: 14, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
+          </div>
+        )}
+        {logoItems.length > 0 && (
+          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, display: "grid", gridTemplateColumns: `repeat(${Math.min(logoItems.length, 3)}, 1fr)`, overflow: "hidden" }}>
+            {logoItems.map((item, i) => (
+              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 12px", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none" }}>
+                {item.logo && <LogoBadge url={item.logo} label={item.name} size={44} />}
+                <span style={{ fontSize: 13, fontWeight: 600, color: G.text, textAlign: "center" }}>{item.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {c.contact && (
+          <a href={`mailto:`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "transparent", border: `1.5px solid ${G.green}`, borderRadius: 14, padding: "16px", textDecoration: "none", marginTop: 4 }}>
+            <span style={{ color: G.green, display: "flex" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: G.green }}>Contact Milk &amp; Honey Rep ({c.contact})</span>
+          </a>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ flex: 1, overflow: "auto" }}>
-      {/* Header */}
       <div style={{ padding: "28px 32px 24px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 24 }}>
-          {/* Avatar with circle border */}
           <div style={{ flexShrink: 0, width: 120, height: 120, borderRadius: "50%", overflow: "hidden", border: `2px solid ${G.surfaceBorderLight}` }}>
             <Avatar name={c.name} photoUrl={c.photoUrl} size={120} />
           </div>
@@ -587,25 +676,11 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
               {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
             </div>
             {locationEl}
-
-            {/* Action buttons */}
             <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-              {c.instagram && actionBtn(
-                <><span style={{ color: G.textSecondary, display:"flex" }}><IgIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.instagram}</span></>,
-                `https://instagram.com/${c.instagram}`
-              )}
-              {c.twitter && actionBtn(
-                <><span style={{ color: G.textSecondary, display:"flex" }}><TwIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.twitter}</span></>,
-                `https://x.com/${c.twitter}`
-              )}
-              {c.tiktok && actionBtn(
-                <><span style={{ color: G.textSecondary, display:"flex" }}><TkIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>@{c.tiktok}</span></>,
-                `https://tiktok.com/@${c.tiktok}`
-              )}
-              {c.spotifyUrl && actionBtn(
-                <><span style={{ color: G.textSecondary, display:"flex" }}><SpotifyIcon size={14} /></span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>View Spotify</span></>,
-                c.spotifyUrl, false
-              )}
+              {socialBtns.map((btn, i) => actionBtn(
+                <><span style={{ color: G.textSecondary, display:"flex" }}>{btn.icon}</span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{btn.label}</span></>,
+                btn.url, false
+              ))}
               {c.contact && actionBtn(
                 <><span style={{ color: G.green, display:"flex" }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact Milk &amp; Honey Rep ({c.contact})</span></>,
@@ -615,23 +690,13 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
           </div>
         </div>
       </div>
-
-      {/* Body */}
       <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
-
-        {/* Bio */}
-        {c.bio && (
-          <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{c.bio}</p>
-        )}
-
-        {/* Credits */}
+        {c.bio && <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{c.bio}</p>}
         {c.credits?.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
             {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 14px", fontSize: 13, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
           </div>
         )}
-
-        {/* Logo strip -- PRO / Publisher / Label with dividers */}
         {logoItems.length > 0 && (
           <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, display: "flex", overflow: "hidden" }}>
             {logoItems.map((item, i) => (
@@ -642,9 +707,7 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
             ))}
           </div>
         )}
-
-        {/* Spotify stats if available */}
-        {(c.spotifyMonthly || c.spotifyFollowers || c.spotifyPopularity != null) && (
+        {(c.spotifyMonthly || c.spotifyFollowers) && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {c.spotifyMonthly && (
               <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px" }}>
@@ -652,20 +715,6 @@ function ClientDetail({ client: c, logos, onBack, onEdit }) {
                 <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Monthly Listeners</div>
               </div>
             )}
-            {c.spotifyFollowers > 0 && (
-              <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px" }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmt(c.spotifyFollowers)}</div>
-                <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Followers</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Apple Music / SoundCloud links if no Spotify shown above */}
-        {(c.appleMusicUrl || c.soundcloudUrl) && (
-          <div style={{ display: "flex", gap: 8 }}>
-            {c.appleMusicUrl && <a href={c.appleMusicUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none" }}>Apple Music ↗</a>}
-            {c.soundcloudUrl && <a href={c.soundcloudUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none" }}>SoundCloud ↗</a>}
           </div>
         )}
       </div>
@@ -700,7 +749,12 @@ function App() {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
-  const isMobile = window.innerWidth < 768;
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // Handle browser back/forward
   useEffect(() => {
@@ -802,39 +856,78 @@ function App() {
 
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Top bar -- changes based on view */}
-        <div style={{ padding: "12px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
-          {/* Logo always visible */}
-          <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
-          <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
-
-          {view === 'detail' ? (
-            <>
-              <div style={{ flex: 1 }} />
-              <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>
+        {/* Top bar */}
+        {isMobile ? (
+          // ── Mobile header ─────────────────────────────────────────────────
+          view === 'detail' ? (
+            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
+              <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
-            </>
+            </div>
           ) : (
-            <>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
-                style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
-              <div style={{ display: "flex", gap: 6, flex: 1, flexWrap: "wrap" }}>
+            <div style={{ flexShrink: 0 }}>
+              {/* Logo centered */}
+              <div style={{ display: "flex", justifyContent: "center", padding: "16px 16px 12px" }}>
+                <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 36, objectFit: "contain" }} />
+              </div>
+              {/* Search + filter icon */}
+              <div style={{ padding: "0 16px 10px", display: "flex", gap: 8 }}>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 14px" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
+                    style={{ background: "none", border: "none", outline: "none", fontSize: 15, color: G.text, fontFamily: ff, flex: 1 }} />
+                </div>
+                <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
+                  style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 14px", cursor: "pointer", color: G.textSecondary, fontFamily: ff, display: "flex", alignItems: "center" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                </button>
+                <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
+              </div>
+              {/* Type filters scrollable row */}
+              <div style={{ overflowX: "auto", display: "flex", gap: 8, padding: "0 16px 12px", scrollbarWidth: "none" }}>
                 {types.map(t => (
                   <button key={t} onClick={() => setFilterType(t)}
-                    style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${filterType === t ? G.green : G.surfaceBorder}`, background: filterType === t ? G.greenSubtle : G.surfaceRaised, color: filterType === t ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
+                    style={{ padding: "8px 16px", borderRadius: 20, border: `1.5px solid ${filterType === t ? G.green : G.surfaceBorder}`, background: filterType === t ? G.greenSubtle : "transparent", color: filterType === t ? G.green : G.textSecondary, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap", flexShrink: 0, transition: `all 0.15s ${G.ease}` }}>
                     {t}
                   </button>
                 ))}
               </div>
-              <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
-                style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                Share
-              </button>
-              <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>
-            </>
-          )}
-        </div>
+              <div style={{ height: 1, background: G.surfaceBorder }} />
+            </div>
+          )
+        ) : (
+          // ── Desktop header ────────────────────────────────────────────────
+          <div style={{ padding: "12px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
+            <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
+            <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
+            {view === 'detail' ? (
+              <>
+                <div style={{ flex: 1 }} />
+                <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>
+                <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
+              </>
+            ) : (
+              <>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
+                  style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
+                <div style={{ display: "flex", gap: 6, flex: 1, flexWrap: "wrap" }}>
+                  {types.map(t => (
+                    <button key={t} onClick={() => setFilterType(t)}
+                      style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${filterType === t ? G.green : G.surfaceBorder}`, background: filterType === t ? G.greenSubtle : G.surfaceRaised, color: filterType === t ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
+                  style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Share
+                </button>
+                <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Content */}
         <div style={{ flex: 1, overflow: "auto" }}>
@@ -853,19 +946,19 @@ function App() {
           )}
 
           {!loading && !error && view === 'detail' && selected && (
-            <ClientDetail client={selected} logos={logos} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
+            <ClientDetail client={selected} logos={logos} isMobile={isMobile} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
           )}
 
           {!loading && !error && view === 'roster' && (
-            <div style={{ padding: "20px 24px 48px" }}>
+            <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
               {filtered.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
                   <div style={{ fontSize: 15 }}>{search || filterType !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
                 </div>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
                   {filtered.map((c, i) => (
-                    <ClientCard key={c.id || i} client={c} logos={logos} onClick={() => setView('detail', c)} />
+                    <ClientCard key={c.id || i} client={c} logos={logos} isMobile={isMobile} onClick={() => setView('detail', c)} />
                   ))}
                 </div>
               )}
