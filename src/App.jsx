@@ -975,12 +975,9 @@ function App() {
             </div>
           ) : (
             <div style={{ flexShrink: 0 }}>
-              {/* Logo centered */}
-              <div style={{ display: "flex", justifyContent: "center", padding: "14px 16px 10px" }}>
-                <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 34, objectFit: "contain" }} />
-              </div>
-              {/* Search icon + Share + Add row */}
-              <div style={{ padding: "0 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
+              {/* Logo + Search icon + Share + Add row */}
+              <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
+                <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
                 {mobileSearchOpen ? (
                   <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
