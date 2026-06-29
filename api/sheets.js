@@ -256,6 +256,7 @@ module.exports = async (req, res) => {
 
                   if (ar.ok) {
                     const a = await ar.json();
+                    if (!_debug.sampleArtistRaw) _debug.sampleArtistRaw = { client: c.name, artistId, status: ar.status, keys: Object.keys(a), raw: JSON.stringify(a).slice(0, 500) };
                     // Don't override photo -- use whatever is in the sheet or oEmbed
                     c.spotifyPopularity = a.popularity ?? null;
                     c.spotifyGenres    = a.genres || [];
