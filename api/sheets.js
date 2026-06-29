@@ -230,6 +230,8 @@ module.exports = async (req, res) => {
           .map(c => (c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/) || [])[1])
           .filter(Boolean);
 
+        _debug.spotifyClientsCount = spotifyClients.length;
+        _debug.artistIdsCount = artistIds.length;
         if (artistIds.length) {
           try {
             // Batch /v1/artists?ids=... 403s under Client Credentials -- use
@@ -285,11 +287,14 @@ module.exports = async (req, res) => {
                       };
                     }
                   }
-                } catch(e) { console.error(`Spotify enrichment error for ${c.name}:`, e.message); }
+                } catch(e) {
+                  console.error(`Spotify enrichment error for ${c.name}:`, e.message);
+                  if (!_debug.sampleException) _debug.sampleException = { client: c.name, artistId, message: e.message, stack: e.stack?.slice(0, 400) };
+                }
               }));
             }
             console.log(`Spotify enrichment complete for ${spotifyClients.length} clients`);
-          } catch(e) { console.error('Spotify enrichment error:', e.message); }
+          } catch(e) { console.error('Spotify enrichment error:', e.message); _debug.outerError = e.message; }
         }
       } else {
         console.log('No Spotify token -- skipping enrichment');
