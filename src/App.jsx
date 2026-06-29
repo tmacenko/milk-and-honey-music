@@ -980,8 +980,9 @@ function App() {
   const [shareRosterUrl, setShareRosterUrl] = useState(null);
   const [shareRosterCopied, setShareRosterCopied] = useState(false);
   const [shareRosterLoading, setShareRosterLoading] = useState(false);
-  const [shareRosterTitle, setShareRosterTitle] = useState('Milk & Honey Music — Client Roster');
-  const [shareRosterTypes, setShareRosterTypes] = useState(['Songwriter','Producer','Artist']);
+  const [shareRosterTitle, setShareRosterTitle] = useState('Milk & Honey Music');
+  const [shareRosterTypes, setShareRosterTypes] = useState(['Artist','Producer','Songwriter','Composer','Mixer']);
+  const [shareRosterMoreOpen, setShareRosterMoreOpen] = useState(false);
   const [shareRosterSort, setShareRosterSort] = useState('default');
   const [shareRosterExpiry, setShareRosterExpiry] = useState('90');
   const [shareRosterShowLogos, setShareRosterShowLogos] = useState(true);
@@ -1271,6 +1272,20 @@ function App() {
           setShareRosterLoading(false);
         };
         const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer'];
+        const primaryTypes = ['Artist','Producer','Songwriter'];
+        const moreTypes = allTypes.filter(t => !primaryTypes.includes(t));
+        const PLURALS = { Artist: 'Artists', Producer: 'Producers', Songwriter: 'Songwriters', Composer: 'Composers', Mixer: 'Mixers' };
+        const deriveTitle = types => {
+          if (types.length === 0 || types.length === allTypes.length) return 'Milk & Honey Music';
+          if (types.length === 1) return `Milk & Honey ${PLURALS[types[0]] || types[0] + 's'}`;
+          return 'Milk & Honey Music';
+        };
+        const selectTypes = next => {
+          if (next.length === 0) return;
+          setShareRosterTypes(next);
+          setShareRosterTitle(deriveTitle(next));
+        };
+        const moreActiveCount = moreTypes.filter(t => shareRosterTypes.includes(t)).length;
 
 
         const Toggle = ({ val, set, label }) => (
@@ -1316,17 +1331,33 @@ function App() {
                 {/* Type pills */}
                 <div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {allTypes.map(t => {
+                    {primaryTypes.map(t => {
                       const on = shareRosterTypes.includes(t);
                       return <button key={t} onClick={() => {
                         const next = on ? shareRosterTypes.filter(x => x !== t) : [...shareRosterTypes, t];
-                        if (next.length > 0) setShareRosterTypes(next);
+                        selectTypes(next);
                       }} style={{ padding: "10px 20px", border: `1.5px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 12, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textSecondary, fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
                         {t}
                       </button>;
                     })}
+                    <button onClick={() => setShareRosterMoreOpen(v => !v)}
+                      style={{ padding: "10px 20px", border: `1.5px solid ${moreActiveCount > 0 ? G.green : G.surfaceBorder}`, borderRadius: 12, background: moreActiveCount > 0 ? G.greenSubtle : "transparent", color: moreActiveCount > 0 ? G.green : G.textSecondary, fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}`, display: "flex", alignItems: "center", gap: 6 }}>
+                      {shareRosterMoreOpen ? '− Less' : '+ More'}{moreActiveCount > 0 ? ` (${moreActiveCount})` : ''}
+                    </button>
                   </div>
-
+                  {shareRosterMoreOpen && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                      {moreTypes.map(t => {
+                        const on = shareRosterTypes.includes(t);
+                        return <button key={t} onClick={() => {
+                          const next = on ? shareRosterTypes.filter(x => x !== t) : [...shareRosterTypes, t];
+                          selectTypes(next);
+                        }} style={{ padding: "10px 20px", border: `1.5px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 12, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textSecondary, fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
+                          {t}
+                        </button>;
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Three dropboxes */}
