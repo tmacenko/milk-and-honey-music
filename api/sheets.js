@@ -189,10 +189,12 @@ module.exports = async (req, res) => {
       }).filter(Boolean);
 
       // ── Spotify Web API enrichment (Premium) ─────────────────────────────────
+      const _debug = { hasCid: false, hasCsec: false, tokenOk: false, tokenError: null };
       let spotifyToken = null;
       try {
         const cid  = process.env.SPOTIFY_CLIENT_ID;
         const csec = process.env.SPOTIFY_CLIENT_SECRET;
+        _debug.hasCid = !!cid; _debug.hasCsec = !!csec;
         console.log(`Spotify creds: cid=${!!cid} csec=${!!csec}`);
         if (cid && csec) {
           const creds = Buffer.from(`${cid}:${csec}`).toString('base64');
@@ -204,8 +206,10 @@ module.exports = async (req, res) => {
           const td = await tr.json();
           console.log(`Spotify token: ${td.access_token ? 'OK' : 'FAILED'} ${td.error || ''}`);
           spotifyToken = td.access_token || null;
+          _debug.tokenOk = !!spotifyToken;
+          _debug.tokenError = td.error || null;
         }
-      } catch(e) { console.error('Spotify auth error:', e.message); }
+      } catch(e) { console.error('Spotify auth error:', e.message); _debug.tokenError = e.message; }
 
       // Photo fallback via oEmbed for clients with Spotify artist URL but no manual photo
       await Promise.all(clients.filter(c => !c.photoUrl?.trim() && c.spotifyUrl?.includes('open.spotify.com/artist/')).map(async c => {
@@ -255,7 +259,9 @@ module.exports = async (req, res) => {
                     c.spotifyGenres    = a.genres || [];
                     c.spotifyFollowers = a.followers?.total ?? null;
                   } else {
-                    console.error(`Spotify artist fetch failed for ${c.name}:`, ar.status, await ar.text());
+                    const bodyText = await ar.text();
+                    console.error(`Spotify artist fetch failed for ${c.name}:`, ar.status, bodyText);
+                    if (!_debug.sampleArtistFetch) _debug.sampleArtistFetch = { client: c.name, artistId, status: ar.status, body: bodyText.slice(0, 300) };
                   }
 
                   if (tr.ok) {
@@ -313,6 +319,7 @@ module.exports = async (req, res) => {
         if (name && email) staff[name.toLowerCase()] = { name, email };
       });
 
+      if (req.query.debug === '1') return res.json({ clients, logos, staff, _debug });
       return res.json({ clients, logos, staff });
     }
 
