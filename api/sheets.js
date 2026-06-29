@@ -262,9 +262,11 @@ module.exports = async (req, res) => {
         } catch(e) {}
       }));
 
+      const _debug = { blockedUntil: spotifyBlockedUntil, now: Date.now() };
       if (spotifyToken) {
         const spotifyClients = clients.filter(c => c.spotifyUrl?.includes('open.spotify.com/artist/'));
         const persistedCache = await loadReleasesCache();
+        _debug.cacheKeys = Object.keys(persistedCache).length;
         let cacheDirty = false;
 
         const CHUNK_SIZE = 8;
@@ -284,9 +286,11 @@ module.exports = async (req, res) => {
               const ar = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=10`, {
                 headers: { Authorization: `Bearer ${spotifyToken}` }
               });
+              if (!_debug.sample) _debug.sample = { client: c.name, status: ar.status };
               if (ar.status === 429) {
                 const retryAfterSec = parseInt(ar.headers.get('retry-after') || '3600', 10);
                 spotifyBlockedUntil = Date.now() + retryAfterSec * 1000;
+                _debug.sample.retryAfter = retryAfterSec;
                 return;
               }
               if (ar.ok) {
@@ -336,6 +340,7 @@ module.exports = async (req, res) => {
         if (name && email) staff[name.toLowerCase()] = { name, email };
       });
 
+      if (req.query.debug === '1') return res.json({ clients, logos, staff, _debug });
       return res.json({ clients, logos, staff });
     }
 
