@@ -5,7 +5,7 @@ const SHEET_ID = process.env.MUSIC_SHEET_ID;
 // Module-level so they persist across warm invocations of this function
 // instance -- cuts repeat Spotify calls way down, since /api/sheets used to
 // re-fetch all 20 artists' releases on every single page load with no cache.
-const RELEASES_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const RELEASES_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 1 week -- new releases land on Fridays
 const releasesCache = new Map(); // artistId -> { data, fetchedAt }
 let spotifyBlockedUntil = 0;
 
