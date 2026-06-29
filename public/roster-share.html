@@ -71,6 +71,7 @@
     .btn-action.btn-icon{padding:0;background:none;border:none;box-shadow:none}
     .modal-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
     .btn-action-icon{color:var(--text3);display:flex}
+    .btn-contact{display:flex;align-items:center;justify-content:center;background:var(--green-s);border:1.5px solid var(--green);border-radius:10px;padding:8px 10px;text-decoration:none;flex-shrink:0}
     @media(max-width:768px){
       .modal-actions{display:grid;grid-template-columns:1fr 1fr}
       .btn-action{justify-content:center;padding:12px 14px;font-size:14px}
@@ -156,6 +157,7 @@ function buildModal(a){
   const bio=a.bio||'';
   const bioTrunc=bio.length>BIO_LIMIT&&!state.bioExpanded;
   const bioText=bioTrunc?bio.slice(0,BIO_LIMIT).trimEnd()+'...':bio;
+  const contactBtn=a.contact?`<a class="btn-contact" href="mailto:${a.contactEmail||''}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="7" r="4" stroke="var(--green)" stroke-width="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/></svg></a>`:'';
   const socialBtns=[
     a.instagram&&`<a class="btn-action btn-icon" href="https://instagram.com/${a.instagram}" target="_blank" rel="noopener">${IG}</a>`,
     a.twitter&&`<a class="btn-action btn-icon" href="https://x.com/${a.twitter}" target="_blank" rel="noopener">${TW}</a>`,
@@ -172,6 +174,7 @@ function buildModal(a){
         <div class="modal-info">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px">
             <div class="modal-name" style="margin-bottom:0;flex:1">${a.name||''}</div>
+            ${contactBtn}
           </div>
           <div class="modal-pills">${types.map(t=>`<span class="pill">${t}</span>`).join('')}</div>
           ${(loc.flags||loc.cities)?`<div class="modal-location">${loc.flags?`<span style="font-size:16px">${loc.flags}</span>`:''} ${loc.cities?`<span>${loc.cities}</span>`:''}</div>`:''}

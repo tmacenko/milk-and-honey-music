@@ -987,6 +987,7 @@ function App() {
   const [shareRosterShowLogos, setShareRosterShowLogos] = useState(true);
   const [shareRosterShowCredits, setShareRosterShowCredits] = useState(true);
   const [shareRosterShowBio, setShareRosterShowBio] = useState(true);
+  const [shareRosterShowContact, setShareRosterShowContact] = useState(true);
   const [shareFeaturesOpen, setShareFeaturesOpen] = useState(false);
 
   useEffect(() => {
@@ -1093,7 +1094,7 @@ function App() {
             <div style={{ flexShrink: 0 }}>
               {/* Logo + Search icon + Share + Add row */}
               <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
-                <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
+                <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
                 {mobileSearchOpen ? (
                   <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
@@ -1142,7 +1143,7 @@ function App() {
         ) : (
           // ── Desktop header ────────────────────────────────────────────────
           <div style={{ padding: "12px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
-            <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
+            <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
             <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
             {view === 'detail' ? (
               <>
@@ -1249,7 +1250,12 @@ function App() {
               city3: c.city3, state3: c.state3, country3: c.country3,
               credits: shareRosterShowCredits ? c.credits : null,
               bio: shareRosterShowBio ? c.bio : null,
+              contact: shareRosterShowContact ? c.contact : null,
+              contactEmail: (shareRosterShowContact && c.contact)
+                ? c.contact.split(',').map(n => staff[n.trim().toLowerCase()]).filter(Boolean).map(s => s.email).filter(Boolean).join(',')
+                : null,
               instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
+              appleMusicUrl: c.appleMusicUrl, soundcloudUrl: c.soundcloudUrl,
               spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
             }));
             const expiresAt = shareRosterExpiry !== 'never'
@@ -1329,6 +1335,7 @@ function App() {
                     <Toggle label="Logos" val={shareRosterShowLogos} set={setShareRosterShowLogos} />
                     <Toggle label="Credits" val={shareRosterShowCredits} set={setShareRosterShowCredits} />
                     <Toggle label="Bio" val={shareRosterShowBio} set={setShareRosterShowBio} />
+                    <Toggle label="Contact" val={shareRosterShowContact} set={setShareRosterShowContact} />
                   </DropBox>
                   <DropBox label="Sort" value="" open={shareFeaturesOpen === 'sort'} onToggle={() => setShareFeaturesOpen(v => v === 'sort' ? false : 'sort')}>
                     {[['default','Default'],['alpha','A--Z']].map(([val, lbl]) => (
