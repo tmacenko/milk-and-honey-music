@@ -2,6 +2,13 @@ const crypto = require('crypto');
 
 const SHEET_ID = process.env.MUSIC_SHEET_ID;
 
+// Module-level so they persist across warm invocations of this function
+// instance -- cuts repeat Spotify calls way down, since /api/sheets used to
+// re-fetch all 20 artists' releases on every single page load with no cache.
+const RELEASES_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const releasesCache = new Map(); // artistId -> { data, fetchedAt }
+let spotifyBlockedUntil = 0;
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 function b64url(str) { return Buffer.from(str).toString('base64url'); }
 
@@ -221,7 +228,6 @@ module.exports = async (req, res) => {
         } catch(e) {}
       }));
 
-      const _debug = { hasToken: !!spotifyToken };
       if (spotifyToken) {
         const spotifyClients = clients.filter(c => c.spotifyUrl?.includes('open.spotify.com/artist/'));
 
@@ -232,17 +238,24 @@ module.exports = async (req, res) => {
             const m = c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
             if (!m) return;
             const artistId = m[1];
+
+            const cached = releasesCache.get(artistId);
+            if (cached) c.spotifyRecentReleases = cached.data;
+            if (cached && Date.now() - cached.fetchedAt < RELEASES_CACHE_TTL_MS) return;
+            if (Date.now() < spotifyBlockedUntil) return; // rate-limited -- serve cache (if any) and skip
+
             try {
               const ar = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=10`, {
                 headers: { Authorization: `Bearer ${spotifyToken}` }
               });
-              if (!_debug.sample) {
-                const bodyText = await ar.clone().text();
-                _debug.sample = { client: c.name, artistId, status: ar.status, retryAfter: ar.headers.get('retry-after'), body: bodyText.slice(0, 400) };
+              if (ar.status === 429) {
+                const retryAfterSec = parseInt(ar.headers.get('retry-after') || '3600', 10);
+                spotifyBlockedUntil = Date.now() + retryAfterSec * 1000;
+                return;
               }
               if (ar.ok) {
                 const d = await ar.json();
-                c.spotifyRecentReleases = (d.items || [])
+                const releases = (d.items || [])
                   .filter(a => a?.release_date)
                   .sort((x, y) => new Date(y.release_date) - new Date(x.release_date))
                   .slice(0, 4)
@@ -253,6 +266,8 @@ module.exports = async (req, res) => {
                     releaseDate: a.release_date,
                     url:         a.external_urls?.spotify,
                   }));
+                c.spotifyRecentReleases = releases;
+                releasesCache.set(artistId, { data: releases, fetchedAt: Date.now() });
               }
             } catch(e) { console.error(`Spotify enrichment error for ${c.name}:`, e.message); }
           }));
@@ -283,7 +298,6 @@ module.exports = async (req, res) => {
         if (name && email) staff[name.toLowerCase()] = { name, email };
       });
 
-      if (req.query.debug === '1') return res.json({ clients, logos, staff, _debug });
       return res.json({ clients, logos, staff });
     }
 
