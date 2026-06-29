@@ -237,16 +237,17 @@ module.exports = async (req, res) => {
               });
               if (ar.ok) {
                 const d = await ar.json();
-                const latestAlbum = (d.items || [])
+                c.spotifyRecentReleases = (d.items || [])
                   .filter(a => a?.release_date)
-                  .sort((x, y) => new Date(y.release_date) - new Date(x.release_date))[0];
-                if (latestAlbum) c.spotifyLatestRelease = {
-                  name:        latestAlbum.name,
-                  type:        latestAlbum.album_type,
-                  artwork:     latestAlbum.images?.[0]?.url,
-                  releaseDate: latestAlbum.release_date,
-                  url:         latestAlbum.external_urls?.spotify,
-                };
+                  .sort((x, y) => new Date(y.release_date) - new Date(x.release_date))
+                  .slice(0, 4)
+                  .map(a => ({
+                    name:        a.name,
+                    type:        a.album_type,
+                    artwork:     a.images?.[0]?.url,
+                    releaseDate: a.release_date,
+                    url:         a.external_urls?.spotify,
+                  }));
               }
             } catch(e) { console.error(`Spotify enrichment error for ${c.name}:`, e.message); }
           }));

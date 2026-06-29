@@ -696,6 +696,20 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             )}
           </div>
         )}
+        {c.spotifyRecentReleases?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Recent Releases</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              {c.spotifyRecentReleases.map((r, i) => (
+                <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block" }}>
+                  {r.artwork && <img src={r.artwork} alt={r.name} style={{ width: "100%", aspectRatio: "1", borderRadius: 8, objectFit: "cover", display: "block" }} />}
+                  <div style={{ fontSize: 11, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                  <div style={{ fontSize: 10, color: G.textTertiary, marginTop: 1, textTransform: "capitalize" }}>{r.releaseDate?.slice(0,4)}</div>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {c.credits?.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "7px 16px", fontSize: 14, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
@@ -751,6 +765,20 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
       </div>
       <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
         {c.bio && <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{c.bio}</p>}
+        {c.spotifyRecentReleases?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Recent Releases</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+              {c.spotifyRecentReleases.map((r, i) => (
+                <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block" }}>
+                  {r.artwork && <img src={r.artwork} alt={r.name} style={{ width: "100%", aspectRatio: "1", borderRadius: 10, objectFit: "cover", display: "block" }} />}
+                  <div style={{ fontSize: 12, fontWeight: 600, color: G.text, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                  <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 1, textTransform: "capitalize" }}>{r.type} · {r.releaseDate?.slice(0,4)}</div>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {c.credits?.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
             {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 14px", fontSize: 13, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
@@ -786,20 +814,6 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
                 <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Popularity</div>
               </div>
             )}
-          </div>
-        )}
-
-        {c.spotifyLatestRelease && (
-          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "16px 20px" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 12 }}>Latest Release</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              {c.spotifyLatestRelease.artwork && <img src={c.spotifyLatestRelease.artwork} alt={c.spotifyLatestRelease.name} style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />}
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{c.spotifyLatestRelease.name}</div>
-                <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 3, textTransform: "capitalize" }}>{c.spotifyLatestRelease.type} · {c.spotifyLatestRelease.releaseDate?.slice(0,4)}</div>
-                {c.spotifyLatestRelease.url && <a href={c.spotifyLatestRelease.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: G.green, textDecoration: "none", marginTop: 4, display: "inline-block" }}>Listen on Spotify ↗</a>}
-              </div>
-            </div>
           </div>
         )}
 
