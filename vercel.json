@@ -5,8 +5,8 @@
     "api/sheets.js": { "maxDuration": 30 }
   },
   "rewrites": [
-    { "source": "/share/:id",  "destination": "/share.html" },
-    { "source": "/roster/:id", "destination": "/roster-share.html" },
+    { "source": "/share/:id",  "destination": "/api/share-og?id=:id" },
+    { "source": "/roster/:id", "destination": "/api/share-og?id=:id&kind=roster" },
     { "source": "/api/:path*", "destination": "/api/:path*" },
     { "source": "/(.*)",       "destination": "/index.html" }
   ]

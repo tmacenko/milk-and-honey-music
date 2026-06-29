@@ -2,7 +2,7 @@
 const crypto = require('crypto');
 
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://milkhoneysports.app').replace(/\/$/, '');
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://milk-and-honey-music.vercel.app').replace(/\/$/, '');
 const BLOB_API = 'https://blob.vercel-storage.com';
 
 module.exports = async function handler(req, res) {

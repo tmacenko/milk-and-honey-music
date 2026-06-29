@@ -213,7 +213,7 @@ function render(){
 }
 
 async function load(){
-  const id=location.pathname.split('/').pop();
+  const id=new URLSearchParams(location.search).get('id')||location.pathname.split('/').pop();
   if(!id){state.error='invalid';render();return;}
   render();
   try{
