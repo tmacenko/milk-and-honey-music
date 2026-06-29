@@ -22,6 +22,8 @@
     .hdr-left{display:flex;align-items:center;gap:10px}
     .hdr-logo{height:28px}
     .hdr-title{font-size:12px;font-weight:600;color:var(--text3)}
+    .btn-dl{display:flex;align-items:center;gap:6px;background:var(--raised);border:1px solid var(--border-l);border-radius:9px;padding:7px 14px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;font-family:var(--ff);transition:all 0.18s var(--ease);flex-shrink:0}
+    .btn-dl:hover{color:var(--text);background:var(--surface)}
     .tabs-wrap{padding:14px 24px 0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
     .tabs-wrap::-webkit-scrollbar{display:none}
     .tab{padding:7px 16px;border-radius:20px;border:1.5px solid var(--border);font-family:var(--ff);font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--text3);white-space:nowrap;transition:all 0.15s var(--ease);flex-shrink:0}
@@ -134,7 +136,33 @@ const TW=favicon('x.com',32);
 const TK=favicon('tiktok.com',32);
 const SP=favicon('spotify.com',32);
 
-const state={data:null,level:'All',selected:null,error:null,bioExpanded:false};
+const state={data:null,level:'All',selected:null,error:null,bioExpanded:false,id:null};
+
+async function downloadPdf(){
+  const btn=document.getElementById('btn-download');
+  if(!btn||!state.id)return;
+  const original=btn.innerHTML;
+  btn.disabled=true;
+  btn.innerHTML='Generating…';
+  try{
+    const resp=await fetch(`/api/share?id=${state.id}&format=pdf`);
+    if(!resp.ok)throw new Error('Failed to generate PDF');
+    const blob=await resp.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`${(state.data?.title||'Client Roster').replace(/[^a-z0-9]+/gi,'-')}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }catch(e){
+    alert('Failed to generate PDF. Please try again.');
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML=original;
+  }
+}
 
 function buildCard(a,idx){
   const isMobile=window.innerWidth<769;
@@ -200,11 +228,13 @@ function render(){
   const allTypes=[...new Set(athletes.flatMap(a=>a.types||[]))].sort((a,b)=>a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b));
   const filtered=getFiltered();
   app.innerHTML=`
-    <div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" />${state.data.title?`<span class="hdr-title">${state.data.title}</span>`:''}</div></div>
+    <div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" />${state.data.title?`<span class="hdr-title">${state.data.title}</span>`:''}</div><button class="btn-dl" id="btn-download"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Download Roster PDF</button></div>
     ${allTypes.length>1?`<div class="tabs-wrap"><button class="tab${state.level==='All'?' active':''}" data-level="All">All</button>${allTypes.map(t=>`<button class="tab${state.level===t?' active':''}" data-level="${t}">${t}</button>`).join('')}</div>`:''}
     <div class="grid-wrap"><div class="grid">${filtered.map((a,i)=>buildCard(a,i)).join('')}</div></div>
     ${state.selected?buildModal(state.selected):''}`;
   document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.level=btn.dataset.level;state.selected=null;render();}));
+  const dlBtn=document.getElementById('btn-download');
+  if(dlBtn)dlBtn.addEventListener('click',downloadPdf);
   document.querySelectorAll('.card').forEach(card=>card.addEventListener('click',()=>{state.selected=filtered[parseInt(card.dataset.idx)];state.bioExpanded=false;render();window.scrollTo(0,0);}));
   const overlay=document.getElementById('overlay');
   const closeBtn=document.getElementById('modal-close');
@@ -217,6 +247,7 @@ function render(){
 
 async function load(){
   const id=new URLSearchParams(location.search).get('id')||location.pathname.split('/').pop();
+  state.id=id;
   if(!id){state.error='invalid';render();return;}
   render();
   try{
