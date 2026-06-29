@@ -188,14 +188,14 @@ module.exports = async (req, res) => {
         return parseClient(obj, i);
       }).filter(Boolean);
 
-      // ── Spotify Web API enrichment (Premium) ─────────────────────────────────
-      const _debug = { hasCid: false, hasCsec: false, tokenOk: false, tokenError: null };
+      // ── Spotify Web API enrichment ────────────────────────────────────────────
+      // Client Credentials auth only exposes top-tracks/album data; Spotify
+      // withholds popularity/genres/followers from app-only tokens unless the
+      // app has Extended Quota Mode approval.
       let spotifyToken = null;
       try {
         const cid  = process.env.SPOTIFY_CLIENT_ID;
         const csec = process.env.SPOTIFY_CLIENT_SECRET;
-        _debug.hasCid = !!cid; _debug.hasCsec = !!csec;
-        console.log(`Spotify creds: cid=${!!cid} csec=${!!csec}`);
         if (cid && csec) {
           const creds = Buffer.from(`${cid}:${csec}`).toString('base64');
           const tr = await fetch('https://accounts.spotify.com/api/token', {
@@ -204,12 +204,9 @@ module.exports = async (req, res) => {
             body: 'grant_type=client_credentials',
           });
           const td = await tr.json();
-          console.log(`Spotify token: ${td.access_token ? 'OK' : 'FAILED'} ${td.error || ''}`);
           spotifyToken = td.access_token || null;
-          _debug.tokenOk = !!spotifyToken;
-          _debug.tokenError = td.error || null;
         }
-      } catch(e) { console.error('Spotify auth error:', e.message); _debug.tokenError = e.message; }
+      } catch(e) { console.error('Spotify auth error:', e.message); }
 
       // Photo fallback via oEmbed for clients with Spotify artist URL but no manual photo
       await Promise.all(clients.filter(c => !c.photoUrl?.trim() && c.spotifyUrl?.includes('open.spotify.com/artist/')).map(async c => {
@@ -223,82 +220,42 @@ module.exports = async (req, res) => {
 
       if (spotifyToken) {
         const spotifyClients = clients.filter(c => c.spotifyUrl?.includes('open.spotify.com/artist/'));
-        console.log(`Spotify: token OK, enriching ${spotifyClients.length} clients`);
 
-        // Fetch all artist IDs in one batch call (up to 50 per request -- much faster)
-        const artistIds = spotifyClients
-          .map(c => (c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/) || [])[1])
-          .filter(Boolean);
-
-        _debug.spotifyClientsCount = spotifyClients.length;
-        _debug.artistIdsCount = artistIds.length;
-        if (artistIds.length) {
-          try {
-            // Batch /v1/artists?ids=... 403s under Client Credentials -- use
-            // individual /v1/artists/{id} calls instead, chunked to limit
-            // concurrency (Spotify rate limits + Vercel's 30s timeout).
-            const CHUNK_SIZE = 8;
-            for (let i = 0; i < spotifyClients.length; i += CHUNK_SIZE) {
-              const chunk = spotifyClients.slice(i, i + CHUNK_SIZE);
-              await Promise.all(chunk.map(async c => {
-                const m = c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
-                if (!m) return;
-                const artistId = m[1];
-                try {
-                  const [ar, tr] = await Promise.all([
-                    fetch(`https://api.spotify.com/v1/artists/${artistId}`, {
-                      headers: { Authorization: `Bearer ${spotifyToken}` }
-                    }),
-                    fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`, {
-                      headers: { Authorization: `Bearer ${spotifyToken}` }
-                    }),
-                  ]);
-
-                  if (ar.ok) {
-                    const a = await ar.json();
-                    if (!_debug.sampleArtistRaw) _debug.sampleArtistRaw = { client: c.name, artistId, status: ar.status, keys: Object.keys(a), raw: JSON.stringify(a).slice(0, 500) };
-                    // Don't override photo -- use whatever is in the sheet or oEmbed
-                    c.spotifyPopularity = a.popularity ?? null;
-                    c.spotifyGenres    = a.genres || [];
-                    c.spotifyFollowers = a.followers?.total ?? null;
-                  } else {
-                    const bodyText = await ar.text();
-                    console.error(`Spotify artist fetch failed for ${c.name}:`, ar.status, bodyText);
-                    if (!_debug.sampleArtistFetch) _debug.sampleArtistFetch = { client: c.name, artistId, status: ar.status, body: bodyText.slice(0, 300) };
-                  }
-
-                  if (tr.ok) {
-                    const t = await tr.json();
-                    if (t.tracks?.length) {
-                      c.spotifyTopTracks = t.tracks.slice(0, 5).map(tk => ({
-                        name:    tk.name,
-                        album:   tk.album?.name,
-                        artwork: tk.album?.images?.[1]?.url || tk.album?.images?.[0]?.url,
-                        url:     tk.external_urls?.spotify,
-                      }));
-                      const latestAlbum = t.tracks
-                        .map(tk => tk.album).filter(Boolean)
-                        .sort((x, y) => new Date(y.release_date) - new Date(x.release_date))[0];
-                      if (latestAlbum) c.spotifyLatestRelease = {
-                        name:        latestAlbum.name,
-                        type:        latestAlbum.album_type,
-                        artwork:     latestAlbum.images?.[0]?.url,
-                        releaseDate: latestAlbum.release_date,
-                        url:         latestAlbum.external_urls?.spotify,
-                      };
-                    }
-                  }
-                } catch(e) {
-                  console.error(`Spotify enrichment error for ${c.name}:`, e.message);
-                  if (!_debug.sampleException) _debug.sampleException = { client: c.name, artistId, message: e.message, stack: e.stack?.slice(0, 400) };
+        const CHUNK_SIZE = 8;
+        for (let i = 0; i < spotifyClients.length; i += CHUNK_SIZE) {
+          const chunk = spotifyClients.slice(i, i + CHUNK_SIZE);
+          await Promise.all(chunk.map(async c => {
+            const m = c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
+            if (!m) return;
+            const artistId = m[1];
+            try {
+              const tr = await fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`, {
+                headers: { Authorization: `Bearer ${spotifyToken}` }
+              });
+              if (tr.ok) {
+                const t = await tr.json();
+                if (t.tracks?.length) {
+                  c.spotifyTopTracks = t.tracks.slice(0, 5).map(tk => ({
+                    name:    tk.name,
+                    album:   tk.album?.name,
+                    artwork: tk.album?.images?.[1]?.url || tk.album?.images?.[0]?.url,
+                    url:     tk.external_urls?.spotify,
+                  }));
+                  const latestAlbum = t.tracks
+                    .map(tk => tk.album).filter(Boolean)
+                    .sort((x, y) => new Date(y.release_date) - new Date(x.release_date))[0];
+                  if (latestAlbum) c.spotifyLatestRelease = {
+                    name:        latestAlbum.name,
+                    type:        latestAlbum.album_type,
+                    artwork:     latestAlbum.images?.[0]?.url,
+                    releaseDate: latestAlbum.release_date,
+                    url:         latestAlbum.external_urls?.spotify,
+                  };
                 }
-              }));
-            }
-            console.log(`Spotify enrichment complete for ${spotifyClients.length} clients`);
-          } catch(e) { console.error('Spotify enrichment error:', e.message); _debug.outerError = e.message; }
+              }
+            } catch(e) { console.error(`Spotify enrichment error for ${c.name}:`, e.message); }
+          }));
         }
-      } else {
-        console.log('No Spotify token -- skipping enrichment');
       }
 
       // Parse logos -- structure: Record Label | Label URL | Publishing Company | Pub URL | PRO | PRO URL
@@ -325,7 +282,6 @@ module.exports = async (req, res) => {
         if (name && email) staff[name.toLowerCase()] = { name, email };
       });
 
-      if (req.query.debug === '1') return res.json({ clients, logos, staff, _debug });
       return res.json({ clients, logos, staff });
     }
 
