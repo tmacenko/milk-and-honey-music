@@ -217,7 +217,6 @@ ${JSON.stringify(clients.map(c => ({
   spotifyFollowers: c.spotifyFollowers,
   spotifyPopularity: c.spotifyPopularity,
   spotifyGenres: c.spotifyGenres,
-  spotifyTopTracks: c.spotifyTopTracks?.map(t => t.name),
 })))}`;
 
       const priorMsgs = msgs.filter((m, i) => i > 0 && m.text);
@@ -524,10 +523,7 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
             </div>
           )}
           {(() => {
-            const isArt = (c.types||[]).includes('Artist');
-            const txt = isArt && c.spotifyTopTracks?.length
-              ? c.spotifyTopTracks.slice(0,4).map(t=>t.name).join(' · ')
-              : c.credits?.length ? c.credits.slice(0,4).join(' · ') + (c.credits.length > 4 ? ` +${c.credits.length-4}` : '') : null;
+            const txt = c.credits?.length ? c.credits.slice(0,4).join(' · ') + (c.credits.length > 4 ? ` +${c.credits.length-4}` : '') : null;
             return txt ? <div style={{ fontSize: 11, color: G.textTertiary, lineHeight: 1.4 }}>{txt}</div> : null;
           })()}
         </div>
@@ -537,14 +533,10 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
   }
 
   const sortedTypes = [...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b));
-  const isArtist = sortedTypes.includes('Artist');
   const topLogos = logoList.slice(0, 5);
 
-  // Bottom content -- top tracks for artists, credits for producers/songwriters
+  // Bottom content -- credits
   const bottomContent = (() => {
-    if (isArtist && c.spotifyTopTracks?.length) {
-      return c.spotifyTopTracks.slice(0, 6).map(t => t.name).join(' · ');
-    }
     if (c.credits?.length) {
       const shown = c.credits.slice(0, 6);
       return shown.join(' · ') + (c.credits.length > 6 ? ` +${c.credits.length - 6}` : '');
@@ -808,23 +800,6 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
                 {c.spotifyLatestRelease.url && <a href={c.spotifyLatestRelease.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: G.green, textDecoration: "none", marginTop: 4, display: "inline-block" }}>Listen on Spotify ↗</a>}
               </div>
             </div>
-          </div>
-        )}
-
-        {c.spotifyTopTracks?.length > 0 && (
-          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "16px 20px" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 12 }}>Top Tracks</div>
-            {c.spotifyTopTracks.map((t, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: i < c.spotifyTopTracks.length - 1 ? `1px solid ${G.surfaceBorder}` : "none" }}>
-                <span style={{ fontSize: 11, color: G.textTertiary, fontWeight: 600, width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</span>
-                {t.artwork && <img src={t.artwork} alt={t.album} style={{ width: 34, height: 34, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
-                  <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.album}</div>
-                </div>
-                {t.url && <a href={t.url} target="_blank" rel="noopener noreferrer" style={{ color: G.textTertiary, textDecoration: "none", flexShrink: 0, display: "flex" }} onMouseEnter={e=>e.currentTarget.style.color=G.green} onMouseLeave={e=>e.currentTarget.style.color=G.textTertiary}><SpotifyIcon size={14} /></a>}
-              </div>
-            ))}
           </div>
         )}
 

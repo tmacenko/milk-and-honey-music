@@ -189,9 +189,12 @@ module.exports = async (req, res) => {
       }).filter(Boolean);
 
       // ── Spotify Web API enrichment ────────────────────────────────────────────
-      // Client Credentials auth only exposes top-tracks/album data; Spotify
-      // withholds popularity/genres/followers from app-only tokens unless the
-      // app has Extended Quota Mode approval.
+      // As of Feb 2026, Development Mode apps (this one -- Extended Quota Mode
+      // requires 250k+ MAU and a launched public service, not applicable here)
+      // lost Get Several Artists, Get Artist's Top Tracks, and the
+      // followers/popularity/genres fields entirely, with no workaround via a
+      // different auth flow. Get Artist's Albums is still available, so latest
+      // release enrichment uses that instead.
       let spotifyToken = null;
       try {
         const cid  = process.env.SPOTIFY_CLIENT_ID;
@@ -229,29 +232,21 @@ module.exports = async (req, res) => {
             if (!m) return;
             const artistId = m[1];
             try {
-              const tr = await fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`, {
+              const ar = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=10`, {
                 headers: { Authorization: `Bearer ${spotifyToken}` }
               });
-              if (tr.ok) {
-                const t = await tr.json();
-                if (t.tracks?.length) {
-                  c.spotifyTopTracks = t.tracks.slice(0, 5).map(tk => ({
-                    name:    tk.name,
-                    album:   tk.album?.name,
-                    artwork: tk.album?.images?.[1]?.url || tk.album?.images?.[0]?.url,
-                    url:     tk.external_urls?.spotify,
-                  }));
-                  const latestAlbum = t.tracks
-                    .map(tk => tk.album).filter(Boolean)
-                    .sort((x, y) => new Date(y.release_date) - new Date(x.release_date))[0];
-                  if (latestAlbum) c.spotifyLatestRelease = {
-                    name:        latestAlbum.name,
-                    type:        latestAlbum.album_type,
-                    artwork:     latestAlbum.images?.[0]?.url,
-                    releaseDate: latestAlbum.release_date,
-                    url:         latestAlbum.external_urls?.spotify,
-                  };
-                }
+              if (ar.ok) {
+                const d = await ar.json();
+                const latestAlbum = (d.items || [])
+                  .filter(a => a?.release_date)
+                  .sort((x, y) => new Date(y.release_date) - new Date(x.release_date))[0];
+                if (latestAlbum) c.spotifyLatestRelease = {
+                  name:        latestAlbum.name,
+                  type:        latestAlbum.album_type,
+                  artwork:     latestAlbum.images?.[0]?.url,
+                  releaseDate: latestAlbum.release_date,
+                  url:         latestAlbum.external_urls?.spotify,
+                };
               }
             } catch(e) { console.error(`Spotify enrichment error for ${c.name}:`, e.message); }
           }));
