@@ -92,6 +92,7 @@ module.exports = async function handler(req, res) {
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300');
+  res.setHeader('Vary', 'User-Agent');
   return res.send(`<!DOCTYPE html>
 <html>
 <head>
