@@ -1,13 +1,47 @@
 const crypto = require('crypto');
 
 const SHEET_ID = process.env.MUSIC_SHEET_ID;
+const BLOB_API = 'https://blob.vercel-storage.com';
+const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
+const RELEASES_CACHE_PATH = 'spotify-releases-cache.json';
 
-// Module-level so they persist across warm invocations of this function
-// instance -- cuts repeat Spotify calls way down, since /api/sheets used to
-// re-fetch all 20 artists' releases on every single page load with no cache.
+// Persisted in Vercel Blob (not just in-memory) so the cache survives cold
+// starts -- a 1-week TTL is pointless if a function restart wipes it.
 const RELEASES_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 1 week -- new releases land on Fridays
-const releasesCache = new Map(); // artistId -> { data, fetchedAt }
+// In-memory, module-level: cheap same-instance guard against re-hammering
+// Spotify with more requests while already rate-limited.
 let spotifyBlockedUntil = 0;
+
+async function loadReleasesCache() {
+  if (!BLOB_TOKEN) return {};
+  try {
+    const params = new URLSearchParams({ prefix: RELEASES_CACHE_PATH, limit: '1' });
+    const r = await fetch(`${BLOB_API}?${params}`, {
+      headers: { authorization: `Bearer ${BLOB_TOKEN}`, 'x-api-version': '7' },
+    });
+    if (!r.ok) return {};
+    const list = await r.json();
+    const blob = list.blobs?.[0];
+    if (!blob) return {};
+    const data = await fetch(blob.url);
+    if (!data.ok) return {};
+    return await data.json();
+  } catch { return {}; }
+}
+
+async function saveReleasesCache(cache) {
+  if (!BLOB_TOKEN) return;
+  try {
+    await fetch(`${BLOB_API}/${RELEASES_CACHE_PATH}`, {
+      method: 'PUT',
+      headers: {
+        authorization: `Bearer ${BLOB_TOKEN}`, 'x-api-version': '7',
+        'content-type': 'application/json', 'x-add-random-suffix': '0',
+      },
+      body: JSON.stringify(cache),
+    });
+  } catch(e) { console.error('Releases cache save error:', e.message); }
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 function b64url(str) { return Buffer.from(str).toString('base64url'); }
@@ -230,6 +264,8 @@ module.exports = async (req, res) => {
 
       if (spotifyToken) {
         const spotifyClients = clients.filter(c => c.spotifyUrl?.includes('open.spotify.com/artist/'));
+        const persistedCache = await loadReleasesCache();
+        let cacheDirty = false;
 
         const CHUNK_SIZE = 8;
         for (let i = 0; i < spotifyClients.length; i += CHUNK_SIZE) {
@@ -239,7 +275,7 @@ module.exports = async (req, res) => {
             if (!m) return;
             const artistId = m[1];
 
-            const cached = releasesCache.get(artistId);
+            const cached = persistedCache[artistId];
             if (cached) c.spotifyRecentReleases = cached.data;
             if (cached && Date.now() - cached.fetchedAt < RELEASES_CACHE_TTL_MS) return;
             if (Date.now() < spotifyBlockedUntil) return; // rate-limited -- serve cache (if any) and skip
@@ -267,11 +303,13 @@ module.exports = async (req, res) => {
                     url:         a.external_urls?.spotify,
                   }));
                 c.spotifyRecentReleases = releases;
-                releasesCache.set(artistId, { data: releases, fetchedAt: Date.now() });
+                persistedCache[artistId] = { data: releases, fetchedAt: Date.now() };
+                cacheDirty = true;
               }
             } catch(e) { console.error(`Spotify enrichment error for ${c.name}:`, e.message); }
           }));
         }
+        if (cacheDirty) await saveReleasesCache(persistedCache);
       }
 
       // Parse logos -- structure: Record Label | Label URL | Publishing Company | Pub URL | PRO | PRO URL
