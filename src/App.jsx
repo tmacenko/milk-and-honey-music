@@ -829,6 +829,90 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
   );
 }
 
+function ClientFiltersDropdown({ filterContact, setFilterContact, filterLabel, setFilterLabel, filterCountry, setFilterCountry, contacts, labels, countries, activeCount }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef();
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+  const hasActive = activeCount > 0;
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: hasActive ? G.greenSubtle : G.surface, border: `1px solid ${hasActive ? G.green : G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: hasActive ? 700 : 500, color: hasActive ? G.green : G.textSecondary, cursor: "pointer", transition: `all 0.18s ${G.ease}`, whiteSpace: "nowrap" }}>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+        Filters{hasActive ? ` (${activeCount})` : ""}
+        <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 14, padding: 16, zIndex: 500, minWidth: 240, boxShadow: G.shadowLg }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Filters</span>
+            {hasActive && <button onClick={() => { setFilterContact("All"); setFilterLabel("All"); setFilterCountry("All"); }} style={{ background: "none", border: "none", color: G.green, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>Clear all</button>}
+          </div>
+          {/* Contact */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Contact</div>
+            <select value={filterContact} onChange={e => setFilterContact(e.target.value)} style={{ width: "100%", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "8px 10px", fontSize: 13, color: G.text, outline: "none", fontFamily: ff, cursor: "pointer" }}>
+              {contacts.map(c => <option key={c} value={c}>{c === "All" ? "All Contacts" : c}</option>)}
+            </select>
+          </div>
+          {/* Record Label */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Record Label</div>
+            <select value={filterLabel} onChange={e => setFilterLabel(e.target.value)} style={{ width: "100%", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "8px 10px", fontSize: 13, color: G.text, outline: "none", fontFamily: ff, cursor: "pointer" }}>
+              {labels.map(l => <option key={l} value={l}>{l === "All" ? "All Labels" : l}</option>)}
+            </select>
+          </div>
+          {/* Country */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Country</div>
+            <select value={filterCountry} onChange={e => setFilterCountry(e.target.value)} style={{ width: "100%", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "8px 10px", fontSize: 13, color: G.text, outline: "none", fontFamily: ff, cursor: "pointer" }}>
+              {countries.map(c => <option key={c} value={c}>{c === "All" ? "All Countries" : c}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClientSortDropdown({ clientSort, setClientSort }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef();
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+  const SORTS = [["default","Roster Order"], ["alpha","A – Z"], ["label","Record Label"], ["listeners","Monthly Listeners"], ["type","Type"]];
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: 500, color: G.textSecondary, cursor: "pointer", whiteSpace: "nowrap" }}>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M4 4h8M6 12h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+        Sort
+        <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 500, minWidth: 180, boxShadow: G.shadowLg }}>
+          {SORTS.map(([val, label]) => (
+            <button key={val} onClick={() => { setClientSort(val); setOpen(false); }}
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, fontSize: 13, fontWeight: clientSort === val ? 700 : 400, color: clientSort === val ? G.green : G.text, textAlign: "left" }}
+              onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              {label}
+              {clientSort === val && <span style={{ color: G.green, fontSize: 12 }}>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
   const [clients, setClients] = useState([]);
@@ -857,6 +941,10 @@ function App() {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
+  const [filterContact, setFilterContact] = useState('All');
+  const [filterLabel, setFilterLabel] = useState('All');
+  const [filterCountry, setFilterCountry] = useState('All');
+  const [clientSort, setClientSort] = useState('default');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   useEffect(() => {
@@ -918,9 +1006,32 @@ function App() {
     return ['All', ...sorted];
   }, [clients]);
 
+  const contacts = useMemo(() => ['All', ...Array.from(new Set(
+    clients.flatMap(c => (c.contact || '').split(',').map(s => s.trim()).filter(Boolean))
+  )).sort()], [clients]);
+
+  const labels = useMemo(() => ['All', ...Array.from(new Set(
+    clients.map(c => c.label).filter(Boolean)
+  )).sort()], [clients]);
+
+  const countries = useMemo(() => ['All', ...Array.from(new Set(
+    clients.map(c => c.country).filter(Boolean)
+  )).sort()], [clients]);
+
+  const parseListeners = v => {
+    if (!v) return 0;
+    const s = String(v).trim().toUpperCase();
+    if (s.endsWith('M')) return parseFloat(s) * 1e6;
+    if (s.endsWith('K')) return parseFloat(s) * 1e3;
+    return parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
+  };
+
   const filtered = useMemo(() => {
-    return clients.filter(c => {
+    const list = clients.filter(c => {
       if (filterType !== 'All' && !(c.types || []).includes(filterType)) return false;
+      if (filterContact !== 'All' && !(c.contact || '').split(',').map(s => s.trim()).includes(filterContact)) return false;
+      if (filterLabel !== 'All' && c.label !== filterLabel) return false;
+      if (filterCountry !== 'All' && c.country !== filterCountry) return false;
       if (search) {
         const q = search.toLowerCase();
         return c.name.toLowerCase().includes(q) ||
@@ -932,7 +1043,12 @@ function App() {
       }
       return true;
     });
-  }, [clients, filterType, search]);
+    if (clientSort === 'alpha') return [...list].sort((a, b) => a.name.localeCompare(b.name));
+    if (clientSort === 'label') return [...list].sort((a, b) => (a.label || '').localeCompare(b.label || ''));
+    if (clientSort === 'listeners') return [...list].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly));
+    if (clientSort === 'type') return [...list].sort((a, b) => (a.types?.[0] || '').localeCompare(b.types?.[0] || ''));
+    return list;
+  }, [clients, filterType, filterContact, filterLabel, filterCountry, search, clientSort]);
 
   const saveClient = (updatedClient) => {
     setClients(prev => {
@@ -1001,14 +1117,24 @@ function App() {
                   </>
                 )}
               </div>
-              {/* Type filters -- contained pill row */}
-              <div style={{ margin: "0 16px 12px", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: "6px", display: "flex", gap: 4, overflowX: "auto", scrollbarWidth: "none" }}>
-                {types.map(t => (
-                  <button key={t} onClick={() => setFilterType(t)}
-                    style={{ padding: "7px 14px", borderRadius: 10, border: "none", background: filterType === t ? G.green : "transparent", color: filterType === t ? "#0a0a0a" : G.textSecondary, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap", flexShrink: 0, transition: `all 0.15s ${G.ease}` }}>
-                    {t}
-                  </button>
-                ))}
+              {/* Type toggle + filter/sort dropdowns */}
+              <div style={{ margin: "0 16px 12px", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, overflow: "hidden", flexShrink: 0 }}>
+                  {types.map((t, i) => (
+                    <button key={t} onClick={() => setFilterType(t)}
+                      style={{ padding: "7px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 11, fontWeight: filterType === t ? 700 : 500, cursor: "pointer", background: filterType === t ? G.greenSubtle : "transparent", color: filterType === t ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <ClientFiltersDropdown
+                  filterContact={filterContact} setFilterContact={setFilterContact}
+                  filterLabel={filterLabel} setFilterLabel={setFilterLabel}
+                  filterCountry={filterCountry} setFilterCountry={setFilterCountry}
+                  contacts={contacts} labels={labels} countries={countries}
+                  activeCount={(filterContact !== 'All' ? 1 : 0) + (filterLabel !== 'All' ? 1 : 0) + (filterCountry !== 'All' ? 1 : 0)}
+                />
+                <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
               </div>
               <div style={{ height: 1, background: G.surfaceBorder }} />
             </div>
@@ -1028,13 +1154,23 @@ function App() {
               <>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
                   style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
-                <div style={{ display: "flex", gap: 6, flex: 1, flexWrap: "wrap" }}>
-                  {types.map(t => (
-                    <button key={t} onClick={() => setFilterType(t)}
-                      style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${filterType === t ? G.green : G.surfaceBorder}`, background: filterType === t ? G.greenSubtle : G.surfaceRaised, color: filterType === t ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
-                      {t}
-                    </button>
-                  ))}
+                <div style={{ display: "flex", gap: 8, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
+                    {types.map((t, i) => (
+                      <button key={t} onClick={() => setFilterType(t)}
+                        style={{ padding: "8px 16px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 13, fontWeight: filterType === t ? 700 : 500, cursor: "pointer", background: filterType === t ? G.greenSubtle : "transparent", color: filterType === t ? G.green : G.textSecondary, transition: `all 0.18s ${G.ease}`, whiteSpace: "nowrap" }}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  <ClientFiltersDropdown
+                    filterContact={filterContact} setFilterContact={setFilterContact}
+                    filterLabel={filterLabel} setFilterLabel={setFilterLabel}
+                    filterCountry={filterCountry} setFilterCountry={setFilterCountry}
+                    contacts={contacts} labels={labels} countries={countries}
+                    activeCount={(filterContact !== 'All' ? 1 : 0) + (filterLabel !== 'All' ? 1 : 0) + (filterCountry !== 'All' ? 1 : 0)}
+                  />
+                  <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
                 </div>
                 <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
                   style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -1071,7 +1207,7 @@ function App() {
             <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
               {filtered.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
-                  <div style={{ fontSize: 15 }}>{search || filterType !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
+                  <div style={{ fontSize: 15 }}>{search || filterType !== 'All' || filterContact !== 'All' || filterLabel !== 'All' || filterCountry !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
                 </div>
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
