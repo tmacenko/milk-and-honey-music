@@ -221,6 +221,7 @@ module.exports = async (req, res) => {
         } catch(e) {}
       }));
 
+      const _debug = { hasToken: !!spotifyToken };
       if (spotifyToken) {
         const spotifyClients = clients.filter(c => c.spotifyUrl?.includes('open.spotify.com/artist/'));
 
@@ -235,6 +236,10 @@ module.exports = async (req, res) => {
               const ar = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=10`, {
                 headers: { Authorization: `Bearer ${spotifyToken}` }
               });
+              if (!_debug.sample) {
+                const bodyText = await ar.clone().text();
+                _debug.sample = { client: c.name, artistId, status: ar.status, body: bodyText.slice(0, 400) };
+              }
               if (ar.ok) {
                 const d = await ar.json();
                 c.spotifyRecentReleases = (d.items || [])
@@ -278,6 +283,7 @@ module.exports = async (req, res) => {
         if (name && email) staff[name.toLowerCase()] = { name, email };
       });
 
+      if (req.query.debug === '1') return res.json({ clients, logos, staff, _debug });
       return res.json({ clients, logos, staff });
     }
 
