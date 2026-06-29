@@ -238,7 +238,7 @@ module.exports = async (req, res) => {
               });
               if (!_debug.sample) {
                 const bodyText = await ar.clone().text();
-                _debug.sample = { client: c.name, artistId, status: ar.status, body: bodyText.slice(0, 400) };
+                _debug.sample = { client: c.name, artistId, status: ar.status, retryAfter: ar.headers.get('retry-after'), body: bodyText.slice(0, 400) };
               }
               if (ar.ok) {
                 const d = await ar.json();
