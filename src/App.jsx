@@ -663,19 +663,19 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
               {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
             </div>
             {locationEl}
+            {socialBtns.length > 0 && (
+              <div style={{ display: "flex", gap: 18, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+                {socialBtns.map((btn, i) => (
+                  <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", textDecoration: "none", color: G.textSecondary, transition: "color 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.color = G.text}
+                    onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>
+                    {btn.icon}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-        {socialBtns.length > 0 && (
-          <div style={{ display: "flex", gap: 18, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
-            {socialBtns.map((btn, i) => (
-              <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", textDecoration: "none", color: G.textSecondary, transition: "color 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.color = G.text}
-                onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>
-                {btn.icon}
-              </a>
-            ))}
-          </div>
-        )}
       </div>
       <div style={{ padding: "18px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
         {c.bio && (
