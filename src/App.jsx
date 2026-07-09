@@ -1400,8 +1400,8 @@ function App() {
       {/* Edit modal */}
       {editing && <ClientForm initial={editing} onSave={saveClient} onCancel={() => setEditing(null)} />}
 
-      {/* Chat */}
-      {!loading && <FloatingChat clients={clients} isMobile={isMobile} />}
+      {/* Chat — temporarily disabled (component kept; re-enable by uncommenting) */}
+      {/* {!loading && <FloatingChat clients={clients} isMobile={isMobile} />} */}
     </div>
   );
 }
