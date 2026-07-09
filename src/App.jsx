@@ -85,7 +85,7 @@ function Avatar({ name, photoUrl, size = 44 }) {
 
   if (photoUrl && !err) return (
     <img src={photoUrl} alt={name} onError={() => setErr(true)}
-      referrerPolicy="no-referrer" crossOrigin="anonymous"
+      referrerPolicy="no-referrer" crossOrigin="anonymous" loading="lazy" decoding="async"
       style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0 }} />
   );
   return (

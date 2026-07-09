@@ -4,18 +4,22 @@ const SHEET_ID = process.env.MUSIC_SHEET_ID;
 const BLOB_API = 'https://blob.vercel-storage.com';
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const RELEASES_CACHE_PATH = 'spotify-releases-cache.json';
+const PHOTO_CACHE_PATH = 'spotify-photo-cache.json';
 
 // Persisted in Vercel Blob (not just in-memory) so the cache survives cold
 // starts -- a 1-week TTL is pointless if a function restart wipes it.
 const RELEASES_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 1 week -- new releases land on Fridays
+// Resolved profile photos (oEmbed / songwriter-page scrape) rarely change, and
+// re-resolving them on every load was the main cause of slow API responses.
+const PHOTO_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // In-memory, module-level: cheap same-instance guard against re-hammering
 // Spotify with more requests while already rate-limited.
 let spotifyBlockedUntil = 0;
 
-async function loadReleasesCache() {
+async function loadBlobCache(path) {
   if (!BLOB_TOKEN) return {};
   try {
-    const params = new URLSearchParams({ prefix: RELEASES_CACHE_PATH, limit: '1' });
+    const params = new URLSearchParams({ prefix: path, limit: '1' });
     const r = await fetch(`${BLOB_API}?${params}`, {
       headers: { authorization: `Bearer ${BLOB_TOKEN}`, 'x-api-version': '7' },
     });
@@ -29,10 +33,10 @@ async function loadReleasesCache() {
   } catch { return {}; }
 }
 
-async function saveReleasesCache(cache) {
+async function saveBlobCache(path, cache) {
   if (!BLOB_TOKEN) return;
   try {
-    await fetch(`${BLOB_API}/${RELEASES_CACHE_PATH}`, {
+    await fetch(`${BLOB_API}/${path}`, {
       method: 'PUT',
       headers: {
         authorization: `Bearer ${BLOB_TOKEN}`, 'x-api-version': '7',
@@ -40,7 +44,7 @@ async function saveReleasesCache(cache) {
       },
       body: JSON.stringify(cache),
     });
-  } catch(e) { console.error('Releases cache save error:', e.message); }
+  } catch(e) { console.error(`Blob cache save error (${path}):`, e.message); }
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -252,41 +256,71 @@ module.exports = async (req, res) => {
         }
       } catch(e) { console.error('Spotify auth error:', e.message); }
 
-      // Photo fallback via oEmbed for clients with Spotify artist URL but no manual photo
-      await Promise.all(clients.filter(c => !c.photoUrl?.trim() && c.spotifyUrl?.includes('open.spotify.com/artist/')).map(async c => {
-        const m = c.spotifyUrl.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
-        if (!m) return;
-        try {
-          const r = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/artist/${m[1]}`);
-          if (r.ok) { const d = await r.json(); if (d.thumbnail_url) c.photoUrl = d.thumbnail_url; }
-        } catch(e) {}
-      }));
+      // ── Photo fallback (cached) ────────────────────────────────────────────
+      // Clients with no manual photo get one resolved from their Spotify URL:
+      //   open.spotify.com/artist/{id}     -> oEmbed thumbnail
+      //   artists.spotify.com/{role}/{id}  -> og:image scrape of the ~500KB page
+      // Re-resolving these on every load was the main cause of slow responses
+      // (~7-8s), so resolved photos are cached in Vercel Blob keyed by the
+      // Spotify URL. Cache hits skip the network entirely.
+      const photoCache = await loadBlobCache(PHOTO_CACHE_PATH);
+      let photoCacheDirty = false;
+      const now = Date.now();
 
-      // Photo fallback for Spotify for Artists credit pages (songwriter / producer,
-      // e.g. artists.spotify.com/songwriter/{id}). These aren't served by oEmbed,
-      // but the public page exposes the profile photo via its og:image meta tag.
-      // Guard against the generic /socialcard.jpg placeholder returned when an id
-      // doesn't resolve to a real credit page (only real Spotify CDN images pass).
-      // Pages are ~500KB, so fetch in small concurrent chunks to stay within the
-      // function's 30s budget.
-      const creditClients = clients.filter(c => !c.photoUrl?.trim() && /artists\.spotify\.com\/(songwriter|producer)\//.test(c.spotifyUrl || ''));
-      for (let i = 0; i < creditClients.length; i += 6) {
-        await Promise.all(creditClients.slice(i, i + 6).map(async c => {
-          try {
-            const r = await fetch(c.spotifyUrl, { signal: AbortSignal.timeout(8000) });
-            if (!r.ok) return;
-            const html = await r.text();
-            const tag = html.match(/<meta[^>]*property=["']og:image["'][^>]*>/i);
-            const cm = tag && tag[0].match(/content=["']([^"']+)["']/i);
-            const url = cm && cm[1];
-            if (url && url.startsWith('http') && /scdn\.co|spotifycdn\.com/.test(url)) c.photoUrl = url;
-          } catch(e) {}
+      // Apply fresh cache hits up front; collect the rest to resolve.
+      const toResolve = [];
+      for (const c of clients) {
+        if (c.photoUrl?.trim()) continue;
+        const url = c.spotifyUrl || '';
+        const isArtist = url.includes('open.spotify.com/artist/');
+        const isCredit = /artists\.spotify\.com\/(songwriter|producer)\//.test(url);
+        if (!isArtist && !isCredit) continue;
+        const hit = photoCache[url];
+        if (hit && now - hit.fetchedAt < PHOTO_CACHE_TTL_MS) {
+          if (hit.photoUrl) c.photoUrl = hit.photoUrl;
+          continue;
+        }
+        toResolve.push({ c, url, isArtist });
+      }
+
+      const resolveArtist = async (c, url) => {
+        const m = url.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
+        if (!m) return null;
+        try {
+          const r = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/artist/${m[1]}`, { signal: AbortSignal.timeout(8000) });
+          if (r.ok) { const d = await r.json(); if (d.thumbnail_url) return d.thumbnail_url; }
+        } catch(e) {}
+        return null;
+      };
+      const resolveCredit = async (c, url) => {
+        try {
+          const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (!r.ok) return null;
+          const html = await r.text();
+          const tag = html.match(/<meta[^>]*property=["']og:image["'][^>]*>/i);
+          const cm = tag && tag[0].match(/content=["']([^"']+)["']/i);
+          const img = cm && cm[1];
+          if (img && img.startsWith('http') && /scdn\.co|spotifycdn\.com/.test(img)) return img;
+        } catch(e) {}
+        return null;
+      };
+
+      // Resolve cache misses in small concurrent chunks (credit pages are heavy).
+      for (let i = 0; i < toResolve.length; i += 6) {
+        await Promise.all(toResolve.slice(i, i + 6).map(async ({ c, url, isArtist }) => {
+          const photoUrl = isArtist ? await resolveArtist(c, url) : await resolveCredit(c, url);
+          if (photoUrl) c.photoUrl = photoUrl;
+          // Cache the outcome either way -- caching a null miss avoids re-hitting
+          // a URL that has no resolvable photo on every subsequent load.
+          photoCache[url] = { photoUrl: photoUrl || null, fetchedAt: now };
+          photoCacheDirty = true;
         }));
       }
+      if (photoCacheDirty) await saveBlobCache(PHOTO_CACHE_PATH, photoCache);
 
       if (spotifyToken) {
         const spotifyClients = clients.filter(c => c.spotifyUrl?.includes('open.spotify.com/artist/'));
-        const persistedCache = await loadReleasesCache();
+        const persistedCache = await loadBlobCache(RELEASES_CACHE_PATH);
         let cacheDirty = false;
 
         const CHUNK_SIZE = 8;
@@ -331,7 +365,7 @@ module.exports = async (req, res) => {
             } catch(e) { console.error(`Spotify enrichment error for ${c.name}:`, e.message); }
           }));
         }
-        if (cacheDirty) await saveReleasesCache(persistedCache);
+        if (cacheDirty) await saveBlobCache(RELEASES_CACHE_PATH, persistedCache);
       }
 
       // Parse logos -- structure: Record Label | Label URL | Publishing Company | Pub URL | PRO | PRO URL
