@@ -262,6 +262,28 @@ module.exports = async (req, res) => {
         } catch(e) {}
       }));
 
+      // Photo fallback for Spotify for Artists credit pages (songwriter / producer,
+      // e.g. artists.spotify.com/songwriter/{id}). These aren't served by oEmbed,
+      // but the public page exposes the profile photo via its og:image meta tag.
+      // Guard against the generic /socialcard.jpg placeholder returned when an id
+      // doesn't resolve to a real credit page (only real Spotify CDN images pass).
+      // Pages are ~500KB, so fetch in small concurrent chunks to stay within the
+      // function's 30s budget.
+      const creditClients = clients.filter(c => !c.photoUrl?.trim() && /artists\.spotify\.com\/(songwriter|producer)\//.test(c.spotifyUrl || ''));
+      for (let i = 0; i < creditClients.length; i += 6) {
+        await Promise.all(creditClients.slice(i, i + 6).map(async c => {
+          try {
+            const r = await fetch(c.spotifyUrl, { signal: AbortSignal.timeout(8000) });
+            if (!r.ok) return;
+            const html = await r.text();
+            const tag = html.match(/<meta[^>]*property=["']og:image["'][^>]*>/i);
+            const cm = tag && tag[0].match(/content=["']([^"']+)["']/i);
+            const url = cm && cm[1];
+            if (url && url.startsWith('http') && /scdn\.co|spotifycdn\.com/.test(url)) c.photoUrl = url;
+          } catch(e) {}
+        }));
+      }
+
       if (spotifyToken) {
         const spotifyClients = clients.filter(c => c.spotifyUrl?.includes('open.spotify.com/artist/'));
         const persistedCache = await loadReleasesCache();
