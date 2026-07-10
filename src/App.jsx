@@ -408,7 +408,7 @@ function ClientForm({ initial, onSave, onCancel }) {
     setSaving(false);
   };
 
-  const typeOptions = ['Songwriter', 'Producer', 'Artist'];
+  const typeOptions = ['Artist', 'Producer', 'Songwriter', 'Composer', 'Mixer', 'Remixer'];
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(20px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -690,23 +690,12 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             )}
           </div>
         )}
-        {c.spotifyRecentReleases?.length > 0 && (
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Recent Releases</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-              {c.spotifyRecentReleases.map((r, i) => (
-                <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", minWidth: 0 }}>
-                  {r.artwork && <img src={r.artwork} alt={r.name} style={{ width: "100%", maxWidth: "100%", aspectRatio: "1", borderRadius: 8, objectFit: "cover", display: "block" }} />}
-                  <div style={{ fontSize: 11, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
-                  <div style={{ fontSize: 10, color: G.textTertiary, marginTop: 1, textTransform: "capitalize" }}>{r.releaseDate?.slice(0,4)}</div>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
         {c.credits?.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "7px 16px", fontSize: 14, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Artists Worked With</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "7px 16px", fontSize: 14, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
+            </div>
           </div>
         )}
         {logoItems.length > 0 && (
@@ -717,6 +706,34 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
                 <span style={{ fontSize: 13, fontWeight: 600, color: G.text, textAlign: "center", marginTop: 2 }}>{item.name}</span>
               </div>
             ))}
+          </div>
+        )}
+        {c.spotifyRecentReleases?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Recent Releases</div>
+            <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2 }}>
+              {c.spotifyRecentReleases.map((r, i) => (
+                <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", width: 72, flexShrink: 0 }}>
+                  {r.artwork && <img src={r.artwork} alt={r.name} style={{ width: 72, height: 72, borderRadius: 8, objectFit: "cover", display: "block" }} />}
+                  <div style={{ fontSize: 10, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                  <div style={{ fontSize: 9, color: G.textTertiary, marginTop: 1 }}>{r.releaseDate?.slice(0,4)}</div>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+        {c.spotifySongCredits?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Songs Worked On</div>
+            <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2 }}>
+              {c.spotifySongCredits.map((s, i) => (
+                <a key={i} href={s.url || undefined} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", width: 78, flexShrink: 0 }}>
+                  {s.artwork && <img src={s.artwork} alt={s.title} style={{ width: 78, height: 78, borderRadius: 8, objectFit: "cover", display: "block" }} />}
+                  <div style={{ fontSize: 10, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
+                  <div style={{ fontSize: 9, color: G.textTertiary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.artist}</div>
+                </a>
+              ))}
+            </div>
           </div>
         )}
 
@@ -759,6 +776,24 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
       </div>
       <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
         {c.bio && <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{c.bio}</p>}
+        {c.credits?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Artists Worked With</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+              {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 14px", fontSize: 13, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
+            </div>
+          </div>
+        )}
+        {logoItems.length > 0 && (
+          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, display: "flex", overflow: "hidden" }}>
+            {logoItems.map((item, i) => (
+              <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "20px 16px", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none" }}>
+                {item.logo && <LogoBadge url={item.logo} label={item.name} size={40} />}
+                <span style={{ fontSize: 15, fontWeight: 600, color: G.text }}>{item.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
         {c.spotifyRecentReleases?.length > 0 && (
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Recent Releases</div>
@@ -773,19 +808,18 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             </div>
           </div>
         )}
-        {c.credits?.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-            {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 14px", fontSize: 13, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
-          </div>
-        )}
-        {logoItems.length > 0 && (
-          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, display: "flex", overflow: "hidden" }}>
-            {logoItems.map((item, i) => (
-              <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "20px 16px", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none" }}>
-                {item.logo && <LogoBadge url={item.logo} label={item.name} size={40} />}
-                <span style={{ fontSize: 15, fontWeight: 600, color: G.text }}>{item.name}</span>
-              </div>
-            ))}
+        {c.spotifySongCredits?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Songs Worked On</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+              {c.spotifySongCredits.map((s, i) => (
+                <a key={i} href={s.url || undefined} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", minWidth: 0 }}>
+                  {s.artwork && <img src={s.artwork} alt={s.title} style={{ width: "100%", maxWidth: "100%", aspectRatio: "1", borderRadius: 10, objectFit: "cover", display: "block" }} />}
+                  <div style={{ fontSize: 12, fontWeight: 600, color: G.text, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
+                  <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.artist}</div>
+                </a>
+              ))}
+            </div>
           </div>
         )}
         {(c.spotifyMonthly || c.spotifyFollowers || c.spotifyPopularity != null) && (
@@ -934,7 +968,14 @@ function App() {
   };
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('All');
+  // Multi-select type filter. Empty array = show all; otherwise a client matches
+  // if it has ANY selected type (so "Producer" + "Songwriter" shows both).
+  const [filterTypes, setFilterTypes] = useState([]);
+  const toggleFilterType = (t) => {
+    if (t === 'All') { setFilterTypes([]); return; }
+    setFilterTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+  };
+  const typeActive = (t) => t === 'All' ? filterTypes.length === 0 : filterTypes.includes(t);
   const [filterContact, setFilterContact] = useState('All');
   const [filterLabel, setFilterLabel] = useState('All');
   const [filterCountry, setFilterCountry] = useState('All');
@@ -975,7 +1016,7 @@ function App() {
   const [shareRosterCopied, setShareRosterCopied] = useState(false);
   const [shareRosterLoading, setShareRosterLoading] = useState(false);
   const [shareRosterTitle, setShareRosterTitle] = useState('Milk & Honey Music');
-  const [shareRosterTypes, setShareRosterTypes] = useState(['Artist','Producer','Songwriter','Composer','Mixer']);
+  const [shareRosterTypes, setShareRosterTypes] = useState(['Artist','Producer','Songwriter','Composer','Mixer','Remixer']);
   const [shareRosterMoreOpen, setShareRosterMoreOpen] = useState(false);
   const [shareRosterSort, setShareRosterSort] = useState('default');
   const [shareRosterExpiry, setShareRosterExpiry] = useState('90');
@@ -1024,7 +1065,7 @@ function App() {
 
   const filtered = useMemo(() => {
     const list = clients.filter(c => {
-      if (filterType !== 'All' && !(c.types || []).includes(filterType)) return false;
+      if (filterTypes.length > 0 && !filterTypes.some(t => (c.types || []).includes(t))) return false;
       if (filterContact !== 'All' && !(c.contact || '').split(',').map(s => s.trim()).includes(filterContact)) return false;
       if (filterLabel !== 'All' && c.label !== filterLabel) return false;
       if (filterCountry !== 'All' && c.country !== filterCountry) return false;
@@ -1044,7 +1085,7 @@ function App() {
     if (clientSort === 'listeners') return [...list].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly));
     if (clientSort === 'type') return [...list].sort((a, b) => (a.types?.[0] || '').localeCompare(b.types?.[0] || ''));
     return list;
-  }, [clients, filterType, filterContact, filterLabel, filterCountry, search, clientSort]);
+  }, [clients, filterTypes, filterContact, filterLabel, filterCountry, search, clientSort]);
 
   const saveClient = (updatedClient) => {
     setClients(prev => {
@@ -1117,8 +1158,8 @@ function App() {
               <div style={{ margin: "0 16px 12px", display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, overflow: "hidden", flexShrink: 0 }}>
                   {types.map((t, i) => (
-                    <button key={t} onClick={() => setFilterType(t)}
-                      style={{ padding: "7px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 11, fontWeight: filterType === t ? 700 : 500, cursor: "pointer", background: filterType === t ? G.greenSubtle : "transparent", color: filterType === t ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
+                    <button key={t} onClick={() => toggleFilterType(t)}
+                      style={{ padding: "7px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 11, fontWeight: typeActive(t) ? 700 : 500, cursor: "pointer", background: typeActive(t) ? G.greenSubtle : "transparent", color: typeActive(t) ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
                       {t}
                     </button>
                   ))}
@@ -1153,8 +1194,8 @@ function App() {
                 <div style={{ display: "flex", gap: 8, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
                   <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
                     {types.map((t, i) => (
-                      <button key={t} onClick={() => setFilterType(t)}
-                        style={{ padding: "8px 16px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 13, fontWeight: filterType === t ? 700 : 500, cursor: "pointer", background: filterType === t ? G.greenSubtle : "transparent", color: filterType === t ? G.green : G.textSecondary, transition: `all 0.18s ${G.ease}`, whiteSpace: "nowrap" }}>
+                      <button key={t} onClick={() => toggleFilterType(t)}
+                        style={{ padding: "8px 16px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 13, fontWeight: typeActive(t) ? 700 : 500, cursor: "pointer", background: typeActive(t) ? G.greenSubtle : "transparent", color: typeActive(t) ? G.green : G.textSecondary, transition: `all 0.18s ${G.ease}`, whiteSpace: "nowrap" }}>
                         {t}
                       </button>
                     ))}
@@ -1203,7 +1244,7 @@ function App() {
             <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
               {filtered.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
-                  <div style={{ fontSize: 15 }}>{search || filterType !== 'All' || filterContact !== 'All' || filterLabel !== 'All' || filterCountry !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
+                  <div style={{ fontSize: 15 }}>{search || filterTypes.length > 0 || filterContact !== 'All' || filterLabel !== 'All' || filterCountry !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
                 </div>
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
@@ -1265,10 +1306,10 @@ function App() {
           } catch(e) { alert('Share failed: ' + e.message); }
           setShareRosterLoading(false);
         };
-        const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer'];
+        const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer','Remixer'];
         const primaryTypes = ['Artist','Producer','Songwriter'];
         const moreTypes = allTypes.filter(t => !primaryTypes.includes(t));
-        const PLURALS = { Artist: 'Artists', Producer: 'Producers', Songwriter: 'Songwriters', Composer: 'Composers', Mixer: 'Mixers' };
+        const PLURALS = { Artist: 'Artists', Producer: 'Producers', Songwriter: 'Songwriters', Composer: 'Composers', Mixer: 'Mixers', Remixer: 'Remixers' };
         const deriveTitle = types => {
           if (types.length === 0 || types.length === allTypes.length) return 'Milk & Honey Music';
           if (types.length === 1) return `Milk & Honey ${PLURALS[types[0]] || types[0] + 's'}`;
