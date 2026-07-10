@@ -708,7 +708,23 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             ))}
           </div>
         )}
-        {c.spotifyRecentReleases?.length > 0 && (
+        {c.spotifyTopTracks?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Popular</div>
+            <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2 }}>
+              {c.spotifyTopTracks.map((s, i) => (
+                <a key={i} href={s.url || undefined} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", width: 78, flexShrink: 0 }}>
+                  {s.artwork
+                    ? <img src={s.artwork} alt={s.title} style={{ width: 78, height: 78, borderRadius: 8, objectFit: "cover", display: "block" }} />
+                    : <div style={{ width: 78, height: 78, borderRadius: 8, background: G.surfaceRaised, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: G.textTertiary }}>♪</div>}
+                  <div style={{ fontSize: 10, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
+                  <div style={{ fontSize: 9, color: G.textTertiary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.artist}</div>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+        {!c.spotifyTopTracks?.length && c.spotifyRecentReleases?.length > 0 && (
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Recent Releases</div>
             <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2 }}>
@@ -794,7 +810,23 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             ))}
           </div>
         )}
-        {c.spotifyRecentReleases?.length > 0 && (
+        {c.spotifyTopTracks?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Popular</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10 }}>
+              {c.spotifyTopTracks.map((s, i) => (
+                <a key={i} href={s.url || undefined} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", minWidth: 0 }}>
+                  {s.artwork
+                    ? <img src={s.artwork} alt={s.title} style={{ width: "100%", maxWidth: "100%", aspectRatio: "1", borderRadius: 8, objectFit: "cover", display: "block" }} />
+                    : <div style={{ width: "100%", aspectRatio: "1", borderRadius: 8, background: G.surfaceRaised, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: G.textTertiary }}>♪</div>}
+                  <div style={{ fontSize: 11, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
+                  <div style={{ fontSize: 10, color: G.textTertiary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.artist}</div>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+        {!c.spotifyTopTracks?.length && c.spotifyRecentReleases?.length > 0 && (
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Recent Releases</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10 }}>
@@ -1295,6 +1327,7 @@ function App() {
               spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
               spotifyRecentReleases: shareRosterShowMusic ? (c.spotifyRecentReleases || null) : null,
               spotifySongCredits: shareRosterShowMusic ? (c.spotifySongCredits || null) : null,
+              spotifyTopTracks: shareRosterShowMusic ? (c.spotifyTopTracks || null) : null,
             }));
             const expiresAt = shareRosterExpiry !== 'never'
               ? new Date(Date.now() + parseInt(shareRosterExpiry) * 24*60*60*1000).toISOString() : null;

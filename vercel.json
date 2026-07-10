@@ -2,7 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/sheets.js": { "maxDuration": 30 },
+    "api/sheets.js": { "maxDuration": 60 },
     "api/share.js": { "maxDuration": 60 }
   },
   "rewrites": [

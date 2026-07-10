@@ -4,9 +4,12 @@ const SHEET_ID = process.env.MUSIC_SHEET_ID;
 const BLOB_API = 'https://blob.vercel-storage.com';
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const RELEASES_CACHE_PATH = 'spotify-releases-cache.json';
-// v2 (was spotify-photo-cache.json) -- now caches photo AND songwriter/producer
-// song credits per URL, so the shape changed; new path forces a clean repopulate.
-const MEDIA_CACHE_PATH = 'spotify-media-cache.json';
+// v3 -- entries now also hold artists' popular tracks (topTracks); new path
+// forces a clean repopulate since the shape changed again.
+const MEDIA_CACHE_PATH = 'spotify-media-cache-v3.json';
+// Track album art never changes, so it's cached separately and long-lived,
+// reused across artists (collabs overlap) and across weekly media rebuilds.
+const TRACK_ART_CACHE_PATH = 'spotify-track-art-cache.json';
 
 // Persisted in Vercel Blob (not just in-memory) so the cache survives cold
 // starts -- a 1-week TTL is pointless if a function restart wipes it.
@@ -90,6 +93,26 @@ function parseCreditSongs(html) {
         };
       });
   } catch { return []; }
+}
+
+// The artist embed page (open.spotify.com/embed/artist/{id}) is a light Next.js
+// page whose __NEXT_DATA__ carries the artist's photo AND their popular tracks
+// (the Web API's popularity ordering is blocked, but this isn't). Per-track album
+// art isn't in this data, so it's fetched separately (and cached).
+function parseArtistEmbed(html) {
+  try {
+    const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+    if (!m) return { photoUrl: null, tracks: [] };
+    const e = JSON.parse(m[1]).props?.pageProps?.state?.data?.entity || {};
+    const img = (e.visualIdentity?.image || []).slice().sort((a, b) => (b.maxWidth || 0) - (a.maxWidth || 0))[0];
+    const photoUrl = img && img.url && /scdn\.co|spotifycdn\.com/.test(img.url) ? img.url : null;
+    const tracks = (e.trackList || [])
+      .filter(t => t && t.title)
+      .slice(0, 8)
+      .map(t => ({ title: t.title, artist: t.subtitle || '', id: String(t.uri || '').split(':').pop() }))
+      .filter(t => t.id);
+    return { photoUrl, tracks };
+  } catch { return { photoUrl: null, tracks: [] }; }
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -308,8 +331,15 @@ module.exports = async (req, res) => {
       //   artists.spotify.com/{role}/{id}  -> one ~500KB page scrape yields BOTH
       //     the og:image photo AND the top song credits (__NEXT_DATA__).
       const mediaCache = await loadBlobCache(MEDIA_CACHE_PATH);
-      let mediaCacheDirty = false;
+      const trackArtCache = await loadBlobCache(TRACK_ART_CACHE_PATH);
+      let mediaCacheDirty = false, trackArtDirty = false;
       const now = Date.now();
+
+      const applyHit = (c, hit) => {
+        if (hit.photoUrl && !c.photoUrl?.trim()) c.photoUrl = hit.photoUrl;
+        if (hit.songs?.length) c.spotifySongCredits = hit.songs;
+        if (hit.topTracks?.length) c.spotifyTopTracks = hit.topTracks;
+      };
 
       // Apply fresh cache hits up front; collect the rest to resolve.
       const toResolve = [];
@@ -318,55 +348,78 @@ module.exports = async (req, res) => {
         const isArtist = url.includes('open.spotify.com/artist/');
         const isCredit = /artists\.spotify\.com\/(songwriter|producer)\//.test(url);
         if (!isArtist && !isCredit) continue;
-        // Artists only need a photo, and only when none is set manually. Credit
-        // pages always need resolving (for song credits) regardless of photo.
-        if (isArtist && c.photoUrl?.trim()) continue;
         const hit = mediaCache[url];
-        if (hit && now - hit.fetchedAt < MEDIA_CACHE_TTL_MS) {
-          if (hit.photoUrl && !c.photoUrl?.trim()) c.photoUrl = hit.photoUrl;
-          if (hit.songs?.length) c.spotifySongCredits = hit.songs;
-          continue;
-        }
+        if (hit && now - hit.fetchedAt < MEDIA_CACHE_TTL_MS) { applyHit(c, hit); continue; }
         toResolve.push({ c, url, isArtist });
       }
 
+      // Artist popular tracks come from the light embed page (one fetch: photo +
+      // top tracks). Per-track album art is NOT fetched here -- it's resolved
+      // separately and bounded (below), because the oEmbed art endpoint is slow.
       const resolveArtist = async (url) => {
         const m = url.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
-        if (!m) return { photoUrl: null, songs: [] };
+        if (!m) return { photoUrl: null, songs: [], topTracks: [] };
         try {
-          const r = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/artist/${m[1]}`, { signal: AbortSignal.timeout(8000) });
-          if (r.ok) { const d = await r.json(); if (d.thumbnail_url) return { photoUrl: d.thumbnail_url, songs: [] }; }
+          const r = await fetch(`https://open.spotify.com/embed/artist/${m[1]}`, { signal: AbortSignal.timeout(8000) });
+          if (!r.ok) return { photoUrl: null, songs: [], topTracks: [] };
+          const { photoUrl, tracks } = parseArtistEmbed(await r.text());
+          const topTracks = tracks.map(t => ({ title: t.title, artist: t.artist, id: t.id, url: `https://open.spotify.com/track/${t.id}` }));
+          return { photoUrl, songs: [], topTracks };
         } catch(e) {}
-        return { photoUrl: null, songs: [] };
+        return { photoUrl: null, songs: [], topTracks: [] };
       };
       const resolveCredit = async (url) => {
         try {
           const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
-          if (!r.ok) return { photoUrl: null, songs: [] };
+          if (!r.ok) return { photoUrl: null, songs: [], topTracks: [] };
           const html = await r.text();
           let photoUrl = null;
           const tag = html.match(/<meta[^>]*property=["']og:image["'][^>]*>/i);
           const cm = tag && tag[0].match(/content=["']([^"']+)["']/i);
           const img = cm && cm[1];
           if (img && img.startsWith('http') && /scdn\.co|spotifycdn\.com/.test(img)) photoUrl = img;
-          return { photoUrl, songs: parseCreditSongs(html) };
+          return { photoUrl, songs: parseCreditSongs(html), topTracks: [] };
         } catch(e) {}
-        return { photoUrl: null, songs: [] };
+        return { photoUrl: null, songs: [], topTracks: [] };
       };
 
-      // Resolve cache misses in small concurrent chunks (credit pages are heavy).
-      for (let i = 0; i < toResolve.length; i += 6) {
-        await Promise.all(toResolve.slice(i, i + 6).map(async ({ c, url, isArtist }) => {
+      // Resolve cache misses in small concurrent chunks; save after each chunk so
+      // a cold-rebuild timeout never loses progress (next request resumes).
+      for (let i = 0; i < toResolve.length; i += 4) {
+        await Promise.all(toResolve.slice(i, i + 4).map(async ({ c, url, isArtist }) => {
           const res = isArtist ? await resolveArtist(url) : await resolveCredit(url);
-          if (res.photoUrl && !c.photoUrl?.trim()) c.photoUrl = res.photoUrl;
-          if (res.songs?.length) c.spotifySongCredits = res.songs;
-          // Cache the outcome either way -- caching an empty miss avoids re-hitting
-          // a URL that has nothing resolvable on every subsequent load.
-          mediaCache[url] = { photoUrl: res.photoUrl || null, songs: res.songs || [], fetchedAt: now };
+          applyHit(c, res);
+          mediaCache[url] = { photoUrl: res.photoUrl || null, songs: res.songs || [], topTracks: res.topTracks || [], fetchedAt: now };
           mediaCacheDirty = true;
         }));
+        if (mediaCacheDirty) { await saveBlobCache(MEDIA_CACHE_PATH, mediaCache); mediaCacheDirty = false; }
       }
-      if (mediaCacheDirty) await saveBlobCache(MEDIA_CACHE_PATH, mediaCache);
+
+      // Attach album art to popular tracks from the long-lived track-art cache,
+      // and best-effort resolve a bounded number of missing ones this request
+      // (art never changes, so it accumulates over a few loads without hammering
+      // the slow oEmbed endpoint). Only definitive results are cached.
+      const needArt = [];
+      for (const c of clients) {
+        for (const t of (c.spotifyTopTracks || [])) {
+          if (t.id && !(t.id in trackArtCache) && !needArt.includes(t.id)) needArt.push(t.id);
+        }
+      }
+      const artBudget = needArt.slice(0, 48);
+      for (let i = 0; i < artBudget.length; i += 8) {
+        await Promise.all(artBudget.slice(i, i + 8).map(async id => {
+          try {
+            const r = await fetch(`https://open.spotify.com/oembed?url=spotify:track:${id}`, { signal: AbortSignal.timeout(5000) });
+            if (r.ok) { const d = await r.json(); trackArtCache[id] = d.thumbnail_url || null; trackArtDirty = true; }
+          } catch(e) {}
+        }));
+      }
+      if (trackArtDirty) await saveBlobCache(TRACK_ART_CACHE_PATH, trackArtCache);
+      for (const c of clients) {
+        if (c.spotifyTopTracks?.length) {
+          c.spotifyTopTracks = c.spotifyTopTracks.map(t => ({ title: t.title, artist: t.artist, artwork: trackArtCache[t.id] || null, url: t.url }));
+        }
+      }
 
       if (spotifyToken) {
         const spotifyClients = clients.filter(c => c.spotifyUrl?.includes('open.spotify.com/artist/'));
