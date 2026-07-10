@@ -77,7 +77,7 @@ function parseCreditSongs(html) {
     return recordings
       .filter(r => r && r.title)
       .sort((a, b) => (b.totalStreams || 0) - (a.totalStreams || 0))
-      .slice(0, 6)
+      .slice(0, 8)
       .map(r => {
         const id = gidToSpotifyId(r.gid);
         return {
@@ -400,7 +400,7 @@ module.exports = async (req, res) => {
                 const releases = (d.items || [])
                   .filter(a => a?.release_date)
                   .sort((x, y) => new Date(y.release_date) - new Date(x.release_date))
-                  .slice(0, 4)
+                  .slice(0, 8)
                   .map(a => ({
                     name:        a.name,
                     type:        a.album_type,

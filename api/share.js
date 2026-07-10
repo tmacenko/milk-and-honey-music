@@ -40,10 +40,20 @@ async function pdfFetchImageBuffer(url) {
   } catch { return null; }
 }
 
+// Logo URLs in the share payload are mostly homepage URLs (e.g. https://bmi.com),
+// not images -- the web UI converts those to the Google favicon service at render
+// time. The PDF must do the same, else it fetches HTML and the logo never shows.
+function resolveLogoUrl(url) {
+  if (!url) return null;
+  if (/\.(png|jpg|jpeg|gif|svg|webp)(\?|$)/i.test(url)) return url;
+  if (url.startsWith('http')) return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url)}&sz=64`;
+  return null;
+}
+
 function cardFields(c) {
   const types = (c.types || []).join(' · ');
   const team = c.label || c.pro || '';
-  return { photoUrl: c.photoUrl, logoUrl: c.logoUrl, line1: types, line2: team };
+  return { photoUrl: c.photoUrl, logoUrl: resolveLogoUrl(c.logoUrl), line1: types, line2: team };
 }
 function pdfDrawHeader(doc, title, count, isFirst) {
   doc.image(MH_LOGO_BUF, PDF_MARGIN, PDF_MARGIN + 8, { fit: [60, 26], align: 'left', valign: 'top' });

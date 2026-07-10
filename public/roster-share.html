@@ -41,6 +41,7 @@
     .card-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:8px}
     .pill{background:var(--raised);border:1px solid var(--border);border-radius:7px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap}
     .card-logos-row{display:flex;gap:8px;margin-top:12px}
+    .card-credits{font-size:12px;color:var(--text3);line-height:1.5;margin-top:10px}
     @media(max-width:768px){
       .card{border-radius:0;border:none;border-bottom:1px solid var(--border);background:transparent;box-shadow:none}
       .card:hover{transform:none;box-shadow:none;background:var(--raised)}
@@ -49,6 +50,7 @@
       .card-content{flex:1;min-width:0}
       .card-name{font-size:16px;margin-bottom:4px}
       .card-logos-row{margin-top:8px}
+      .card-credits{font-size:11px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     }
     .logo-badge{border-radius:22%;background:#fff;overflow:hidden;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.3),inset 0 0 0 1px rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:center}
     .logo-badge img{width:110%;height:110%;object-fit:cover;display:block;margin:-5%}
@@ -133,7 +135,7 @@ function logoItems(a){
 }
 const ICONS={ig:"<svg width=\"21\" height=\"21\" viewBox=\"0 0 24 24\" fill=\"none\"><rect x=\"2\" y=\"2\" width=\"20\" height=\"20\" rx=\"5.5\" stroke=\"currentColor\" stroke-width=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"4.5\" stroke=\"currentColor\" stroke-width=\"2\"/><circle cx=\"17.5\" cy=\"6.5\" r=\"1.2\" fill=\"currentColor\"/></svg>",tw:"<svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z\"/></svg>",tk:"<svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.73a4.85 4.85 0 01-1.01-.04z\"/></svg>",sp:"<svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z\"/></svg>",apple:"<svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.04-.003-.083-.01-.124-.013H5.986c-.152.01-.303.017-.455.026-.747.043-1.49.123-2.193.4-1.336.53-2.3 1.452-2.865 2.78-.192.448-.292.925-.363 1.408-.056.392-.088.785-.1 1.18 0 .032-.007.062-.01.093v12.223c.01.14.017.283.027.424.05.815.154 1.624.497 2.373.65 1.42 1.738 2.353 3.234 2.801.42.127.856.187 1.293.228.555.053 1.11.06 1.667.06h11.03a12.5 12.5 0 001.57-.1c.822-.106 1.596-.35 2.295-.81a5.046 5.046 0 001.88-2.207c.186-.42.293-.87.37-1.324.113-.675.138-1.358.137-2.04-.002-3.8 0-7.595-.003-11.393zm-6.423 3.99v5.712c0 .417-.058.827-.244 1.206-.29.59-.76.962-1.388 1.14-.35.1-.706.157-1.07.173-.95.045-1.773-.6-1.943-1.536a1.88 1.88 0 011.038-2.022c.323-.16.67-.25 1.018-.324.378-.082.758-.153 1.134-.24.274-.063.457-.23.51-.516a.904.904 0 00.02-.193c0-1.815 0-3.63-.002-5.443a.725.725 0 00-.026-.185c-.04-.15-.15-.243-.304-.234-.16.01-.318.035-.475.066-.76.15-1.52.303-2.28.456l-2.325.47-1.374.278c-.016.003-.032.01-.048.013-.277.077-.377.203-.39.49-.002.042 0 .086 0 .13-.002 2.602 0 5.204-.003 7.805 0 .42-.047.836-.215 1.227-.278.64-.77 1.04-1.434 1.233-.35.1-.71.16-1.075.172-.96.036-1.755-.6-1.92-1.544-.14-.812.23-1.685 1.154-2.075.357-.15.73-.232 1.108-.31.287-.06.575-.116.86-.177.383-.083.583-.323.6-.714v-.15c0-2.96 0-5.922.002-8.882 0-.123.013-.25.042-.37.07-.285.273-.448.546-.518.255-.066.515-.112.774-.165.733-.15 1.466-.296 2.2-.444l2.27-.46c.67-.134 1.34-.27 2.01-.403.22-.043.442-.088.663-.106.31-.025.523.17.554.482.008.073.012.148.012.223.002 1.91.002 3.822 0 5.732z\"/></svg>",sc:"<svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M23.999 14.165c-.052 1.796-1.612 3.169-3.4 3.169h-8.18a.68.68 0 0 1-.675-.683V7.862a.747.747 0 0 1 .452-.724s.75-.513 2.333-.513a5.364 5.364 0 0 1 2.763.755 5.433 5.433 0 0 1 2.57 3.54c.282-.08.574-.121.868-.12.884 0 1.73.358 2.347.992s.948 1.49.922 2.373ZM10.721 8.421c.247 2.98.427 5.697 0 8.672a.264.264 0 0 1-.53 0c-.395-2.946-.22-5.718 0-8.672a.264.264 0 0 1 .53 0ZM9.072 9.448c.285 2.659.37 4.986-.006 7.655a.277.277 0 0 1-.55 0c-.331-2.63-.256-5.02 0-7.655a.277.277 0 0 1 .556 0Zm-1.663-.257c.27 2.726.39 5.171 0 7.904a.266.266 0 0 1-.532 0c-.38-2.69-.257-5.21 0-7.904a.266.266 0 0 1 .532 0Zm-1.647.77a26.108 26.108 0 0 1-.008 7.147.272.272 0 0 1-.542 0 27.955 27.955 0 0 1 0-7.147.275.275 0 0 1 .55 0Zm-1.67 1.769c.421 1.865.228 3.5-.029 5.388a.257.257 0 0 1-.514 0c-.21-1.858-.398-3.549 0-5.389a.272.272 0 0 1 .543 0Zm-1.655-.273c.388 1.897.26 3.508-.01 5.412-.026.28-.514.283-.54 0-.244-1.878-.347-3.54-.01-5.412a.283.283 0 0 1 .56 0Zm-1.668.911c.4 1.268.257 2.292-.026 3.572a.257.257 0 0 1-.514 0c-.241-1.262-.354-2.312-.023-3.572a.283.283 0 0 1 .563 0Z\"/></svg>"};
 
-const state={data:null,level:'All',selected:null,error:null,bioExpanded:false,id:null};
+const state={data:null,levels:[],selected:null,error:null,bioExpanded:false,id:null};
 
 async function downloadPdf(){
   const btn=document.getElementById('btn-download');
@@ -169,9 +171,11 @@ function buildCard(a,idx){
   const avImg=a.photoUrl?`<img src="${a.photoUrl}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:`<span style="font-size:${isMobile?20:26}px">${initials(a.name)}</span>`;
   const pillsHtml=types.map(t=>`<span class="pill">${t}</span>`).join('');
   const logosHtml=logos.length?`<div class="card-logos-row">${logos.map(l=>{const sz=isMobile?28:36;const u=faviconUrl(l.url);return u?`<div class="logo-badge" style="width:${sz}px;height:${sz}px"><img src="${u}" alt="${l.name}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`:`<span class="pill">${l.name}</span>`;}).join('')}</div>`:'';
+  const cap=isMobile?4:6;
+  const creditsHtml=(a.credits&&a.credits.length)?`<div class="card-credits">${a.credits.slice(0,cap).join(' · ')}${a.credits.length>cap?' +'+(a.credits.length-cap):''}</div>`:'';
 
-  if(isMobile){return `<div class="card" data-idx="${idx}"><div class="card-body"><div class="card-avatar" style="${a.photoUrl?'':avatarStyle(a.name)}">${avImg}</div><div class="card-content"><div class="card-name">${a.name||''}</div><div class="card-row">${loc.flags?`<span style="font-size:14px">${loc.flags}</span>`:''} ${pillsHtml}</div>${logosHtml}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;color:var(--text4)"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>`;}
-  return `<div class="card" data-idx="${idx}"><div class="card-body"><div class="card-avatar" style="${a.photoUrl?'':avatarStyle(a.name)+';font-size:26px'}">${avImg}</div><div class="card-name">${a.name||''}</div><div class="card-row">${loc.flags?`<span style="font-size:16px">${loc.flags}</span>`:''} ${pillsHtml}</div>${logosHtml}</div></div>`;
+  if(isMobile){return `<div class="card" data-idx="${idx}"><div class="card-body"><div class="card-avatar" style="${a.photoUrl?'':avatarStyle(a.name)}">${avImg}</div><div class="card-content"><div class="card-name">${a.name||''}</div><div class="card-row">${loc.flags?`<span style="font-size:14px">${loc.flags}</span>`:''} ${pillsHtml}</div>${logosHtml}${creditsHtml}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;color:var(--text4)"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>`;}
+  return `<div class="card" data-idx="${idx}"><div class="card-body"><div class="card-avatar" style="${a.photoUrl?'':avatarStyle(a.name)+';font-size:26px'}">${avImg}</div><div class="card-name">${a.name||''}</div><div class="card-row">${loc.flags?`<span style="font-size:16px">${loc.flags}</span>`:''} ${pillsHtml}</div>${logosHtml}${creditsHtml}</div></div>`;
 }
 
 function buildModal(a){
@@ -218,7 +222,9 @@ function buildModal(a){
   </div></div>`;
 }
 
-function getFiltered(){const a=state.data?.athletes||[];return state.level==='All'?a:a.filter(x=>(x.types||[]).includes(state.level));}
+function getFiltered(){const a=state.data?.athletes||[];return state.levels.length===0?a:a.filter(x=>state.levels.some(t=>(x.types||[]).includes(t)));}
+function toggleLevel(t){if(t==='All'){state.levels=[];}else{state.levels=state.levels.includes(t)?state.levels.filter(x=>x!==t):[...state.levels,t];}state.selected=null;render();}
+function levelActive(t){return t==='All'?state.levels.length===0:state.levels.includes(t);}
 
 function render(){
   const app=document.getElementById('app');
@@ -229,10 +235,10 @@ function render(){
   const filtered=getFiltered();
   app.innerHTML=`
     <div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" />${state.data.title?`<span class="hdr-title">${state.data.title}</span>`:''}</div><button class="btn-dl" id="btn-download"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Download Roster PDF</button></div>
-    ${allTypes.length>1?`<div class="tabs-wrap"><button class="tab${state.level==='All'?' active':''}" data-level="All">All</button>${allTypes.map(t=>`<button class="tab${state.level===t?' active':''}" data-level="${t}">${t}</button>`).join('')}</div>`:''}
+    ${allTypes.length>1?`<div class="tabs-wrap"><button class="tab${levelActive('All')?' active':''}" data-level="All">All</button>${allTypes.map(t=>`<button class="tab${levelActive(t)?' active':''}" data-level="${t}">${t}</button>`).join('')}</div>`:''}
     <div class="grid-wrap"><div class="grid">${filtered.map((a,i)=>buildCard(a,i)).join('')}</div></div>
     ${state.selected?buildModal(state.selected):''}`;
-  document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.level=btn.dataset.level;state.selected=null;render();}));
+  document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>toggleLevel(btn.dataset.level)));
   const dlBtn=document.getElementById('btn-download');
   if(dlBtn)dlBtn.addEventListener('click',downloadPdf);
   document.querySelectorAll('.card').forEach(card=>card.addEventListener('click',()=>{state.selected=filtered[parseInt(card.dataset.idx)];state.bioExpanded=false;render();window.scrollTo(0,0);}));

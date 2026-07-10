@@ -797,12 +797,12 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
         {c.spotifyRecentReleases?.length > 0 && (
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Recent Releases</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10 }}>
               {c.spotifyRecentReleases.map((r, i) => (
                 <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", minWidth: 0 }}>
-                  {r.artwork && <img src={r.artwork} alt={r.name} style={{ width: "100%", maxWidth: "100%", aspectRatio: "1", borderRadius: 10, objectFit: "cover", display: "block" }} />}
-                  <div style={{ fontSize: 12, fontWeight: 600, color: G.text, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
-                  <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 1, textTransform: "capitalize" }}>{r.type} · {r.releaseDate?.slice(0,4)}</div>
+                  {r.artwork && <img src={r.artwork} alt={r.name} style={{ width: "100%", maxWidth: "100%", aspectRatio: "1", borderRadius: 8, objectFit: "cover", display: "block" }} />}
+                  <div style={{ fontSize: 11, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                  <div style={{ fontSize: 10, color: G.textTertiary, marginTop: 1, textTransform: "capitalize" }}>{r.releaseDate?.slice(0,4)}</div>
                 </a>
               ))}
             </div>
@@ -811,12 +811,12 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
         {c.spotifySongCredits?.length > 0 && (
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Songs Worked On</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10 }}>
               {c.spotifySongCredits.map((s, i) => (
                 <a key={i} href={s.url || undefined} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", minWidth: 0 }}>
-                  {s.artwork && <img src={s.artwork} alt={s.title} style={{ width: "100%", maxWidth: "100%", aspectRatio: "1", borderRadius: 10, objectFit: "cover", display: "block" }} />}
-                  <div style={{ fontSize: 12, fontWeight: 600, color: G.text, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
-                  <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.artist}</div>
+                  {s.artwork && <img src={s.artwork} alt={s.title} style={{ width: "100%", maxWidth: "100%", aspectRatio: "1", borderRadius: 8, objectFit: "cover", display: "block" }} />}
+                  <div style={{ fontSize: 11, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
+                  <div style={{ fontSize: 10, color: G.textTertiary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.artist}</div>
                 </a>
               ))}
             </div>
@@ -1016,8 +1016,7 @@ function App() {
   const [shareRosterCopied, setShareRosterCopied] = useState(false);
   const [shareRosterLoading, setShareRosterLoading] = useState(false);
   const [shareRosterTitle, setShareRosterTitle] = useState('Milk & Honey Music');
-  const [shareRosterTypes, setShareRosterTypes] = useState(['Artist','Producer','Songwriter','Composer','Mixer','Remixer']);
-  const [shareRosterMoreOpen, setShareRosterMoreOpen] = useState(false);
+  const [shareRosterTypes, setShareRosterTypes] = useState([]); // empty = All (like the main filter)
   const [shareRosterSort, setShareRosterSort] = useState('default');
   const [shareRosterExpiry, setShareRosterExpiry] = useState('90');
   const [shareRosterShowLogos, setShareRosterShowLogos] = useState(true);
@@ -1309,21 +1308,19 @@ function App() {
           } catch(e) { alert('Share failed: ' + e.message); }
           setShareRosterLoading(false);
         };
-        const allTypes = ['Artist','Songwriter','Producer','Composer','Mixer','Remixer'];
-        const primaryTypes = ['Artist','Producer','Songwriter'];
-        const moreTypes = allTypes.filter(t => !primaryTypes.includes(t));
+        // Same model as the main-page filter: 'All' (empty) or a multi-select of types.
+        const shareTypeOptions = ['All', ...types.filter(t => t !== 'All')];
         const PLURALS = { Artist: 'Artists', Producer: 'Producers', Songwriter: 'Songwriters', Composer: 'Composers', Mixer: 'Mixers', Remixer: 'Remixers' };
-        const deriveTitle = types => {
-          if (types.length === 0 || types.length === allTypes.length) return 'Milk & Honey Music';
-          if (types.length === 1) return `Milk & Honey ${PLURALS[types[0]] || types[0] + 's'}`;
+        const deriveTitle = sel => {
+          if (sel.length === 1) return `Milk & Honey ${PLURALS[sel[0]] || sel[0] + 's'}`;
           return 'Milk & Honey Music';
         };
-        const selectTypes = next => {
-          if (next.length === 0) return;
+        const toggleShareType = t => {
+          const next = t === 'All' ? [] : (shareRosterTypes.includes(t) ? shareRosterTypes.filter(x => x !== t) : [...shareRosterTypes, t]);
           setShareRosterTypes(next);
           setShareRosterTitle(deriveTitle(next));
         };
-        const moreActiveCount = moreTypes.filter(t => shareRosterTypes.includes(t)).length;
+        const shareTypeActive = t => t === 'All' ? shareRosterTypes.length === 0 : shareRosterTypes.includes(t);
 
 
         const Toggle = ({ val, set, label }) => (
@@ -1366,36 +1363,15 @@ function App() {
                 <input value={shareRosterTitle} onChange={e => setShareRosterTitle(e.target.value)}
                   style={{ ...inputBase, fontSize: 18, fontWeight: 600, padding: "14px 16px", borderRadius: 14, background: G.surfaceRaised }} />
 
-                {/* Type pills */}
-                <div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {primaryTypes.map(t => {
-                      const on = shareRosterTypes.includes(t);
-                      return <button key={t} onClick={() => {
-                        const next = on ? shareRosterTypes.filter(x => x !== t) : [...shareRosterTypes, t];
-                        selectTypes(next);
-                      }} style={{ padding: "10px 20px", border: `1.5px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 12, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textSecondary, fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
-                        {t}
-                      </button>;
-                    })}
-                    <button onClick={() => setShareRosterMoreOpen(v => !v)}
-                      style={{ padding: "10px 20px", border: `1.5px solid ${moreActiveCount > 0 ? G.green : G.surfaceBorder}`, borderRadius: 12, background: moreActiveCount > 0 ? G.greenSubtle : "transparent", color: moreActiveCount > 0 ? G.green : G.textSecondary, fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}`, display: "flex", alignItems: "center", gap: 6 }}>
-                      {shareRosterMoreOpen ? '− Less' : '+ More'}{moreActiveCount > 0 ? ` (${moreActiveCount})` : ''}
-                    </button>
-                  </div>
-                  {shareRosterMoreOpen && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                      {moreTypes.map(t => {
-                        const on = shareRosterTypes.includes(t);
-                        return <button key={t} onClick={() => {
-                          const next = on ? shareRosterTypes.filter(x => x !== t) : [...shareRosterTypes, t];
-                          selectTypes(next);
-                        }} style={{ padding: "10px 20px", border: `1.5px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 12, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textSecondary, fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
-                          {t}
-                        </button>;
-                      })}
-                    </div>
-                  )}
+                {/* Type toggles -- All + multi-select, same as the main roster filter */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {shareTypeOptions.map(t => {
+                    const on = shareTypeActive(t);
+                    return <button key={t} onClick={() => toggleShareType(t)}
+                      style={{ padding: "9px 18px", border: `1.5px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 12, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textSecondary, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
+                      {t}
+                    </button>;
+                  })}
                 </div>
 
                 {/* Three dropboxes */}
