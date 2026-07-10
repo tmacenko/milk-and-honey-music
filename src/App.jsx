@@ -1024,6 +1024,7 @@ function App() {
   const [shareRosterShowCredits, setShareRosterShowCredits] = useState(true);
   const [shareRosterShowBio, setShareRosterShowBio] = useState(true);
   const [shareRosterShowContact, setShareRosterShowContact] = useState(true);
+  const [shareRosterShowMusic, setShareRosterShowMusic] = useState(true);
   const [shareFeaturesOpen, setShareFeaturesOpen] = useState(false);
 
   useEffect(() => {
@@ -1293,6 +1294,8 @@ function App() {
               instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
               appleMusicUrl: c.appleMusicUrl, soundcloudUrl: c.soundcloudUrl,
               spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
+              spotifyRecentReleases: shareRosterShowMusic ? (c.spotifyRecentReleases || null) : null,
+              spotifySongCredits: shareRosterShowMusic ? (c.spotifySongCredits || null) : null,
             }));
             const expiresAt = shareRosterExpiry !== 'never'
               ? new Date(Date.now() + parseInt(shareRosterExpiry) * 24*60*60*1000).toISOString() : null;
@@ -1402,6 +1405,7 @@ function App() {
                     <Toggle label="Credits" val={shareRosterShowCredits} set={setShareRosterShowCredits} />
                     <Toggle label="Bio" val={shareRosterShowBio} set={setShareRosterShowBio} />
                     <Toggle label="Contact" val={shareRosterShowContact} set={setShareRosterShowContact} />
+                    <Toggle label="Music" val={shareRosterShowMusic} set={setShareRosterShowMusic} />
                   </DropBox>
                   <DropBox label="Sort" value="" open={shareFeaturesOpen === 'sort'} onToggle={() => setShareFeaturesOpen(v => v === 'sort' ? false : 'sort')}>
                     {[['default','Default'],['alpha','A--Z']].map(([val, lbl]) => (

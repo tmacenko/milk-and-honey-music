@@ -67,18 +67,19 @@
     @media(max-width:768px){.modal-name{font-size:26px}.modal-avatar{width:80px;height:80px}}
     .modal-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
     .modal-location{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:14px;color:var(--text2)}
-    .modal-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-    .btn-action{display:flex;align-items:center;gap:7px;background:var(--raised);border:1px solid var(--border);border-radius:10px;padding:9px 14px;text-decoration:none;font-family:var(--ff);font-size:13px;font-weight:600;color:var(--text);transition:all 0.15s}
-    .btn-action:hover{border-color:var(--border-l);background:var(--surface)}
-    .btn-action.btn-icon{padding:0;background:none;border:none;box-shadow:none}
-    .modal-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
-    .btn-action-icon{color:var(--text3);display:flex}
+    .modal-actions{display:flex;gap:18px;margin-top:16px;flex-wrap:wrap;align-items:center}
+    .social-link{color:var(--text2);display:flex;transition:color 0.15s}
+    .social-link:hover{color:var(--text)}
     .btn-contact{display:flex;align-items:center;justify-content:center;background:var(--green-s);border:1.5px solid var(--green);border-radius:10px;padding:8px 10px;text-decoration:none;flex-shrink:0}
-    @media(max-width:768px){
-      .modal-actions{display:grid;grid-template-columns:1fr 1fr}
-      .btn-action{justify-content:center;padding:12px 14px;font-size:14px}
-    }
     .modal-body{padding:20px 24px 28px;display:flex;flex-direction:column;gap:18px}
+    .sec-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);margin-bottom:10px}
+    .media-grid{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+    .media-grid::-webkit-scrollbar{display:none}
+    .media-item{text-decoration:none;display:block;width:74px;flex-shrink:0}
+    .media-grid.songs .media-item{width:80px}
+    .media-item img{width:100%;aspect-ratio:1;border-radius:8px;object-fit:cover;display:block}
+    .media-t{font-size:11px;font-weight:600;color:var(--text);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .media-s{font-size:10px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .bio{font-size:14px;color:var(--text2);line-height:1.7}
     .btn-viewmore{background:none;border:none;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--ff);padding:6px 0 0;display:flex;align-items:center;gap:4px}
     .tags{display:flex;flex-wrap:wrap;gap:7px}
@@ -130,11 +131,7 @@ function logoItems(a){
   split(a.label).forEach(v=>items.push({name:v,url:a.labelLogoUrl||null}));
   return items;
 }
-function favicon(domain,size){return `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=64" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block" />`;}
-const IG=favicon('instagram.com',32);
-const TW=favicon('x.com',32);
-const TK=favicon('tiktok.com',32);
-const SP=favicon('spotify.com',32);
+const ICONS={ig:"<svg width=\"21\" height=\"21\" viewBox=\"0 0 24 24\" fill=\"none\"><rect x=\"2\" y=\"2\" width=\"20\" height=\"20\" rx=\"5.5\" stroke=\"currentColor\" stroke-width=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"4.5\" stroke=\"currentColor\" stroke-width=\"2\"/><circle cx=\"17.5\" cy=\"6.5\" r=\"1.2\" fill=\"currentColor\"/></svg>",tw:"<svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z\"/></svg>",tk:"<svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.73a4.85 4.85 0 01-1.01-.04z\"/></svg>",sp:"<svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z\"/></svg>",apple:"<svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.04-.003-.083-.01-.124-.013H5.986c-.152.01-.303.017-.455.026-.747.043-1.49.123-2.193.4-1.336.53-2.3 1.452-2.865 2.78-.192.448-.292.925-.363 1.408-.056.392-.088.785-.1 1.18 0 .032-.007.062-.01.093v12.223c.01.14.017.283.027.424.05.815.154 1.624.497 2.373.65 1.42 1.738 2.353 3.234 2.801.42.127.856.187 1.293.228.555.053 1.11.06 1.667.06h11.03a12.5 12.5 0 001.57-.1c.822-.106 1.596-.35 2.295-.81a5.046 5.046 0 001.88-2.207c.186-.42.293-.87.37-1.324.113-.675.138-1.358.137-2.04-.002-3.8 0-7.595-.003-11.393zm-6.423 3.99v5.712c0 .417-.058.827-.244 1.206-.29.59-.76.962-1.388 1.14-.35.1-.706.157-1.07.173-.95.045-1.773-.6-1.943-1.536a1.88 1.88 0 011.038-2.022c.323-.16.67-.25 1.018-.324.378-.082.758-.153 1.134-.24.274-.063.457-.23.51-.516a.904.904 0 00.02-.193c0-1.815 0-3.63-.002-5.443a.725.725 0 00-.026-.185c-.04-.15-.15-.243-.304-.234-.16.01-.318.035-.475.066-.76.15-1.52.303-2.28.456l-2.325.47-1.374.278c-.016.003-.032.01-.048.013-.277.077-.377.203-.39.49-.002.042 0 .086 0 .13-.002 2.602 0 5.204-.003 7.805 0 .42-.047.836-.215 1.227-.278.64-.77 1.04-1.434 1.233-.35.1-.71.16-1.075.172-.96.036-1.755-.6-1.92-1.544-.14-.812.23-1.685 1.154-2.075.357-.15.73-.232 1.108-.31.287-.06.575-.116.86-.177.383-.083.583-.323.6-.714v-.15c0-2.96 0-5.922.002-8.882 0-.123.013-.25.042-.37.07-.285.273-.448.546-.518.255-.066.515-.112.774-.165.733-.15 1.466-.296 2.2-.444l2.27-.46c.67-.134 1.34-.27 2.01-.403.22-.043.442-.088.663-.106.31-.025.523.17.554.482.008.073.012.148.012.223.002 1.91.002 3.822 0 5.732z\"/></svg>",sc:"<svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M23.999 14.165c-.052 1.796-1.612 3.169-3.4 3.169h-8.18a.68.68 0 0 1-.675-.683V7.862a.747.747 0 0 1 .452-.724s.75-.513 2.333-.513a5.364 5.364 0 0 1 2.763.755 5.433 5.433 0 0 1 2.57 3.54c.282-.08.574-.121.868-.12.884 0 1.73.358 2.347.992s.948 1.49.922 2.373ZM10.721 8.421c.247 2.98.427 5.697 0 8.672a.264.264 0 0 1-.53 0c-.395-2.946-.22-5.718 0-8.672a.264.264 0 0 1 .53 0ZM9.072 9.448c.285 2.659.37 4.986-.006 7.655a.277.277 0 0 1-.55 0c-.331-2.63-.256-5.02 0-7.655a.277.277 0 0 1 .556 0Zm-1.663-.257c.27 2.726.39 5.171 0 7.904a.266.266 0 0 1-.532 0c-.38-2.69-.257-5.21 0-7.904a.266.266 0 0 1 .532 0Zm-1.647.77a26.108 26.108 0 0 1-.008 7.147.272.272 0 0 1-.542 0 27.955 27.955 0 0 1 0-7.147.275.275 0 0 1 .55 0Zm-1.67 1.769c.421 1.865.228 3.5-.029 5.388a.257.257 0 0 1-.514 0c-.21-1.858-.398-3.549 0-5.389a.272.272 0 0 1 .543 0Zm-1.655-.273c.388 1.897.26 3.508-.01 5.412-.026.28-.514.283-.54 0-.244-1.878-.347-3.54-.01-5.412a.283.283 0 0 1 .56 0Zm-1.668.911c.4 1.268.257 2.292-.026 3.572a.257.257 0 0 1-.514 0c-.241-1.262-.354-2.312-.023-3.572a.283.283 0 0 1 .563 0Z\"/></svg>"};
 
 const state={data:null,level:'All',selected:null,error:null,bioExpanded:false,id:null};
 
@@ -186,13 +183,14 @@ function buildModal(a){
   const bioTrunc=bio.length>BIO_LIMIT&&!state.bioExpanded;
   const bioText=bioTrunc?bio.slice(0,BIO_LIMIT).trimEnd()+'...':bio;
   const contactBtn=a.contact?`<a class="btn-contact" href="mailto:${a.contactEmail||''}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="7" r="4" stroke="var(--green)" stroke-width="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/></svg></a>`:'';
+  const sl=(url,icon)=>`<a class="social-link" href="${url}" target="_blank" rel="noopener">${icon}</a>`;
   const socialBtns=[
-    a.instagram&&`<a class="btn-action btn-icon" href="https://instagram.com/${a.instagram}" target="_blank" rel="noopener">${IG}</a>`,
-    a.twitter&&`<a class="btn-action btn-icon" href="https://x.com/${a.twitter}" target="_blank" rel="noopener">${TW}</a>`,
-    a.tiktok&&`<a class="btn-action btn-icon" href="https://tiktok.com/@${a.tiktok}" target="_blank" rel="noopener">${TK}</a>`,
-    a.spotifyUrl&&`<a class="btn-action btn-icon" href="${a.spotifyUrl}" target="_blank" rel="noopener">${SP}</a>`,
-    a.appleMusicUrl&&`<a class="btn-action btn-icon" href="${a.appleMusicUrl}" target="_blank" rel="noopener">${favicon('music.apple.com',32)}</a>`,
-    a.soundcloudUrl&&`<a class="btn-action btn-icon" href="${a.soundcloudUrl}" target="_blank" rel="noopener">${favicon('soundcloud.com',32)}</a>`,
+    a.instagram&&sl(`https://instagram.com/${a.instagram}`,ICONS.ig),
+    a.twitter&&sl(`https://x.com/${a.twitter}`,ICONS.tw),
+    a.tiktok&&sl(`https://tiktok.com/@${a.tiktok}`,ICONS.tk),
+    a.spotifyUrl&&sl(a.spotifyUrl,ICONS.sp),
+    a.appleMusicUrl&&sl(a.appleMusicUrl,ICONS.apple),
+    a.soundcloudUrl&&sl(a.soundcloudUrl,ICONS.sc),
   ].filter(Boolean).join('');
   return `<div class="overlay" id="overlay"><div class="modal">
     <div class="modal-topbar"><button class="btn-close" id="modal-close">&#x2715;</button></div>
@@ -212,8 +210,10 @@ function buildModal(a){
     </div>
     <div class="modal-body">
       ${bio?`<div><p class="bio">${bioText}</p>${bio.length>BIO_LIMIT?`<button class="btn-viewmore" id="bio-toggle">${state.bioExpanded?'View less':'View more'} <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="transform:${state.bioExpanded?'rotate(90deg)':'none'}"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`:''}</div>`:''}
-      ${a.credits?.length?`<div class="tags">${a.credits.map(cr=>`<span class="tag">${cr}</span>`).join('')}</div>`:''}
+      ${a.credits?.length?`<div><div class="sec-label">Artists Worked With</div><div class="tags">${a.credits.map(cr=>`<span class="tag">${cr}</span>`).join('')}</div></div>`:''}
       ${logos.length?`<div class="logo-strip" style="grid-template-columns:repeat(${Math.min(logos.length,3)},1fr)">${logos.map(l=>`<div class="logo-strip-item">${l.url?`<div class="logo-strip-logo"><img src="${faviconUrl(l.url)}" alt="${l.name}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`:''}<div class="logo-strip-item-name">${l.name}</div></div>`).join('')}</div>`:''}
+      ${a.spotifyRecentReleases?.length?`<div><div class="sec-label">Recent Releases</div><div class="media-grid">${a.spotifyRecentReleases.map(r=>`<a class="media-item" href="${r.url||'#'}" target="_blank" rel="noopener">${r.artwork?`<img src="${r.artwork}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:''}<div class="media-t">${r.name||''}</div><div class="media-s">${(r.releaseDate||'').slice(0,4)}</div></a>`).join('')}</div></div>`:''}
+      ${a.spotifySongCredits?.length?`<div><div class="sec-label">Songs Worked On</div><div class="media-grid songs">${a.spotifySongCredits.map(sg=>`<a class="media-item" href="${sg.url||'#'}" target="_blank" rel="noopener">${sg.artwork?`<img src="${sg.artwork}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:''}<div class="media-t">${sg.title||''}</div><div class="media-s">${sg.artist||''}</div></a>`).join('')}</div></div>`:''}
     </div>
   </div></div>`;
 }
