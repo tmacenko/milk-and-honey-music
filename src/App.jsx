@@ -994,8 +994,16 @@ function App() {
       setSelected(client);
       setViewState('detail');
     } else {
-      window.history.pushState({ view: 'roster' }, '', window.location.pathname);
-      setViewState('roster');
+      // Going back to the roster: if we're on a detail entry we pushed, pop it
+      // (so the browser Back button stays in sync and doesn't re-open the detail
+      // we just closed). Otherwise (e.g. a deep-linked ?client= load) replace.
+      if (window.history.state?.view === 'detail') {
+        window.history.back();
+      } else {
+        window.history.replaceState({ view: 'roster' }, '', window.location.pathname);
+        setSelected(null);
+        setViewState('roster');
+      }
     }
   };
   const [editing, setEditing] = useState(null);
@@ -1028,11 +1036,30 @@ function App() {
         const c = clients.find(c => c.id === id);
         if (c) { setSelected(c); setViewState('detail'); return; }
       }
+      setSelected(null);
       setViewState('roster');
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [clients]);
+
+  // Cmd/Ctrl+F focuses the roster search instead of the browser's native find.
+  const searchRef = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        // Search lives on the roster, so return there first if we're on a detail.
+        if (window.history.state?.view === 'detail') window.history.back();
+        setSelected(null);
+        setViewState('roster');
+        if (isMobile) setMobileSearchOpen(true);
+        setTimeout(() => { searchRef.current?.focus(); searchRef.current?.select?.(); }, 90);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isMobile]);
 
   // On load, if URL has a client param, select it once clients load
   useEffect(() => {
@@ -1166,7 +1193,7 @@ function App() {
                 {mobileSearchOpen ? (
                   <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
-                    <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
+                    <input ref={searchRef} autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
                       style={{ background: "none", border: "none", outline: "none", fontSize: 15, color: G.text, fontFamily: ff, flex: 1 }} />
                     <button onClick={() => { setMobileSearchOpen(false); setSearch(''); }} style={{ background: "none", border: "none", color: G.textSecondary, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: ff }}>✕</button>
                   </div>
@@ -1221,7 +1248,7 @@ function App() {
               </>
             ) : (
               <>
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
+                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
                   style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
                 <div style={{ display: "flex", gap: 8, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
                   <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
