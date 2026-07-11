@@ -580,7 +580,8 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
   const lblLogo = lookupLogo(logos, c.label);
 
   // Build deduplicated location string -- one flag per country, cities separated by bullet
-  const locationEl = (() => {
+  const typesText = [...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).join(' \u00b7 ');
+  const locationParts = (() => {
     const locs = [
       { city: c.city, state: c.state, country: c.country },
       { city: c.city2, state: c.state2, country: c.country2 },
@@ -588,17 +589,21 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
     ].filter(l => l.city || l.country);
     if (!locs.length) return null;
     const seen = new Set();
-    // Collect unique flags
     const flags = locs.map(l => flag(l.country)).filter(f => { if (!f || seen.has(f)) return false; seen.add(f); return true; });
-    // All city strings
     const cities = locs.map(l => [l.city, l.state].filter(Boolean).join(', ')).filter(Boolean);
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-        {flags.length > 0 && <span style={{ fontSize: 16 }}>{flags.join(' ')}</span>}
-        <span style={{ fontSize: 14, color: G.textSecondary }}>{cities.join(' \u00b7 ')}</span>
-      </div>
-    );
+    return { flags: flags.join(' '), cities: cities.join(' \u00b7 ') };
   })();
+  const locationEl = locationParts && (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {locationParts.flags && <span style={{ fontSize: 16 }}>{locationParts.flags}</span>}
+      <span style={{ fontSize: 14, color: G.textSecondary }}>{locationParts.cities}</span>
+    </div>
+  );
+  const creditsPills = c.credits?.length > 0 && (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: G.textSecondary, whiteSpace: "nowrap" }}>{cr}</span>)}
+    </div>
+  );
 
   // Action buttons row
   const actionBtn = (content, href, green = false) => href ? (
@@ -659,12 +664,9 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
                 </a>
               )}
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-              {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
-            </div>
-            {locationEl}
+            {typesText && <div style={{ fontSize: 14, color: G.textSecondary, fontWeight: 500 }}>{typesText}</div>}
             {socialBtns.length > 0 && (
-              <div style={{ display: "flex", gap: 18, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
                 {socialBtns.map((btn, i) => (
                   <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", textDecoration: "none", color: G.textSecondary, transition: "color 0.15s" }}
                     onMouseEnter={e => e.currentTarget.style.color = G.text}
@@ -676,6 +678,12 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             )}
           </div>
         </div>
+        {(locationEl || creditsPills) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+            {locationEl}
+            {creditsPills}
+          </div>
+        )}
       </div>
       <div style={{ padding: "18px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
         {c.bio && (
@@ -688,14 +696,6 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ transform: bioExpanded ? "rotate(90deg)" : "none", transition: `transform 0.2s ${G.ease}` }}><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
             )}
-          </div>
-        )}
-        {c.credits?.length > 0 && (
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Artists Worked With</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "7px 16px", fontSize: 14, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
-            </div>
           </div>
         )}
         {logoItems.length > 0 && (
@@ -711,12 +711,12 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
         {c.spotifyTopTracks?.length > 0 && (
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Popular</div>
-            <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
               {c.spotifyTopTracks.map((s, i) => (
-                <a key={i} href={s.url || undefined} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", width: 78, flexShrink: 0 }}>
+                <a key={i} href={s.url || undefined} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", minWidth: 0 }}>
                   {s.artwork
-                    ? <img src={s.artwork} alt={s.title} style={{ width: 78, height: 78, borderRadius: 8, objectFit: "cover", display: "block" }} />
-                    : <div style={{ width: 78, height: 78, borderRadius: 8, background: G.surfaceRaised, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: G.textTertiary }}>♪</div>}
+                    ? <img src={s.artwork} alt={s.title} style={{ width: "100%", aspectRatio: "1", borderRadius: 8, objectFit: "cover", display: "block" }} />
+                    : <div style={{ width: "100%", aspectRatio: "1", borderRadius: 8, background: G.surfaceRaised, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: G.textTertiary }}>♪</div>}
                   <div style={{ fontSize: 10, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
                   <div style={{ fontSize: 9, color: G.textTertiary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.artist}</div>
                 </a>
@@ -727,10 +727,10 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
         {!c.spotifyTopTracks?.length && c.spotifyRecentReleases?.length > 0 && (
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Recent Releases</div>
-            <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
               {c.spotifyRecentReleases.map((r, i) => (
-                <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", width: 72, flexShrink: 0 }}>
-                  {r.artwork && <img src={r.artwork} alt={r.name} style={{ width: 72, height: 72, borderRadius: 8, objectFit: "cover", display: "block" }} />}
+                <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", minWidth: 0 }}>
+                  {r.artwork && <img src={r.artwork} alt={r.name} style={{ width: "100%", aspectRatio: "1", borderRadius: 8, objectFit: "cover", display: "block" }} />}
                   <div style={{ fontSize: 10, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
                   <div style={{ fontSize: 9, color: G.textTertiary, marginTop: 1 }}>{r.releaseDate?.slice(0,4)}</div>
                 </a>
@@ -741,10 +741,10 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
         {c.spotifySongCredits?.length > 0 && (
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Songs Worked On</div>
-            <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
               {c.spotifySongCredits.map((s, i) => (
-                <a key={i} href={s.url || undefined} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", width: 78, flexShrink: 0 }}>
-                  {s.artwork && <img src={s.artwork} alt={s.title} style={{ width: 78, height: 78, borderRadius: 8, objectFit: "cover", display: "block" }} />}
+                <a key={i} href={s.url || undefined} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", minWidth: 0 }}>
+                  {s.artwork && <img src={s.artwork} alt={s.title} style={{ width: "100%", aspectRatio: "1", borderRadius: 8, objectFit: "cover", display: "block" }} />}
                   <div style={{ fontSize: 10, fontWeight: 600, color: G.text, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
                   <div style={{ fontSize: 9, color: G.textTertiary, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.artist}</div>
                 </a>
@@ -774,32 +774,29 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
                 </a>
               )}
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
-              {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 4 }}>
+              {typesText && <span style={{ fontSize: 15, color: G.textSecondary, fontWeight: 500 }}>{typesText}</span>}
+              {locationEl}
             </div>
-            {locationEl}
-            <div style={{ display: "flex", gap: 18, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
-              {socialBtns.map((btn, i) => (
-                <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", textDecoration: "none", color: G.textSecondary, transition: "color 0.15s" }}
-                  onMouseEnter={e => e.currentTarget.style.color = G.text}
-                  onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>
-                  {btn.icon}
-                </a>
-              ))}
+            <div style={{ display: "flex", gap: 22, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+              {socialBtns.length > 0 && (
+                <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
+                  {socialBtns.map((btn, i) => (
+                    <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", textDecoration: "none", color: G.textSecondary, transition: "color 0.15s" }}
+                      onMouseEnter={e => e.currentTarget.style.color = G.text}
+                      onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>
+                      {btn.icon}
+                    </a>
+                  ))}
+                </div>
+              )}
+              {creditsPills}
             </div>
           </div>
         </div>
       </div>
       <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
         {c.bio && <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{c.bio}</p>}
-        {c.credits?.length > 0 && (
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Artists Worked With</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-              {c.credits.map((cr, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 14px", fontSize: 13, fontWeight: 500, color: G.textSecondary }}>{cr}</span>)}
-            </div>
-          </div>
-        )}
         {logoItems.length > 0 && (
           <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, display: "flex", overflow: "hidden" }}>
             {logoItems.map((item, i) => (
