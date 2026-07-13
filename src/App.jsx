@@ -649,7 +649,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
   ].filter(Boolean);
 
   if (isMobile) return (
-    <div style={{ flex: 1, overflow: "auto", paddingBottom: 24, position: "relative" }}>
+    <div style={{ flex: 1, overflow: "visible", paddingBottom: 24, position: "relative" }}>
       {c.headerUrl && (
         <div style={{ position: "sticky", top: 0, height: 200, overflow: "hidden", zIndex: 0, pointerEvents: "none" }}>
           <img src={c.headerUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 30%", display: "block" }} />
@@ -766,7 +766,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
   );
 
   return (
-    <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
+    <div style={{ flex: 1, overflow: "visible", position: "relative" }}>
       {c.headerUrl && (
         <div style={{ position: "sticky", top: 0, height: 340, overflow: "hidden", zIndex: 0, pointerEvents: "none" }}>
           <img src={c.headerUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 30%", display: "block" }} />
