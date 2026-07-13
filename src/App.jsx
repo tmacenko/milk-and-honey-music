@@ -19,6 +19,9 @@ const G = {
 };
 const ff = "-apple-system,'SF Pro Display','Helvetica Neue',sans-serif";
 
+// Public URL slug for a client, e.g. "Oliver Heldens" -> "oliverheldens".
+const slugOf = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+
 // ── Country flags (emoji) ─────────────────────────────────────────────────────
 const FLAG = {
   "united states": "🇺🇸", "usa": "🇺🇸", "us": "🇺🇸", "u.s.": "🇺🇸",
@@ -1062,27 +1065,35 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [authConfigured, setAuthConfigured] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  // URL-based navigation -- persist state across refresh and enable browser back
-  const getClientFromUrl = (clients) => {
+  // URL-based navigation -- clean /{slug} paths, refresh-safe, browser-back aware.
+  const urlSlug = () => decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').split('/')[0];
+  const resolveUrlClient = (list) => {
+    const seg = urlSlug();
+    if (seg) {
+      const s = slugOf(seg);
+      const hit = list.find(c => slugOf(c.name) === s);
+      if (hit) return hit;
+    }
+    // Backward-compat with older ?client={id} links.
     const id = new URLSearchParams(window.location.search).get('client');
-    return id ? clients.find(c => c.id === id) || null : null;
+    return id ? list.find(c => c.id === id) || null : null;
   };
-  const [view, setViewState] = useState(() => window.location.search.includes('client=') ? 'detail' : 'roster');
+  const [view, setViewState] = useState(() => (urlSlug() || window.location.search.includes('client=')) ? 'detail' : 'roster');
   const [selected, setSelected] = useState(null);
 
   const setView = (v, client) => {
     if (v === 'detail' && client) {
-      window.history.pushState({ view: 'detail', clientId: client.id }, '', `?client=${client.id}`);
+      window.history.pushState({ view: 'detail', slug: slugOf(client.name) }, '', `/${slugOf(client.name)}`);
       setSelected(client);
       setViewState('detail');
     } else {
       // Going back to the roster: if we're on a detail entry we pushed, pop it
       // (so the browser Back button stays in sync and doesn't re-open the detail
-      // we just closed). Otherwise (e.g. a deep-linked ?client= load) replace.
+      // we just closed). Otherwise (e.g. a deep-linked load) replace with root.
       if (window.history.state?.view === 'detail') {
         window.history.back();
       } else {
-        window.history.replaceState({ view: 'roster' }, '', window.location.pathname);
+        window.history.replaceState({ view: 'roster' }, '', '/');
         setSelected(null);
         setViewState('roster');
       }
@@ -1113,9 +1124,8 @@ function App() {
   // Handle browser back/forward
   useEffect(() => {
     const onPop = (e) => {
-      const id = new URLSearchParams(window.location.search).get('client');
-      if (id && clients.length) {
-        const c = clients.find(c => c.id === id);
+      if (clients.length) {
+        const c = resolveUrlClient(clients);
         if (c) { setSelected(c); setViewState('detail'); return; }
       }
       setSelected(null);
@@ -1143,14 +1153,12 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isMobile]);
 
-  // On load, if URL has a client param, select it once clients load
+  // On load, resolve a deep-linked /{slug} (or legacy ?client=) once clients load.
   useEffect(() => {
     if (!clients.length) return;
-    const id = new URLSearchParams(window.location.search).get('client');
-    if (id) {
-      const c = clients.find(c => c.id === id);
-      if (c) { setSelected(c); setViewState('detail'); }
-    }
+    const c = resolveUrlClient(clients);
+    if (c) { setSelected(c); setViewState('detail'); }
+    else if (urlSlug()) { window.history.replaceState({ view: 'roster' }, '', '/'); setViewState('roster'); }
   }, [clients]);
   const [shareRosterOpen, setShareRosterOpen] = useState(false);
   const [shareRosterUrl, setShareRosterUrl] = useState(null);
