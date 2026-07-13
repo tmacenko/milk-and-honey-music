@@ -1058,40 +1058,53 @@ function LoginModal({ onClose }) {
 // ── Sports (athletes) ─────────────────────────────────────────────────────────
 const LEVEL_COLORS = { 'NFL': '#3eaa78', 'College': '#3b82f6', 'High School': '#d97706' };
 const levelColor = l => LEVEL_COLORS[l] || G.textSecondary;
+const LEAGUE_RANK = { 'NFL': 0, 'College': 1, 'High School': 2 };
+const parseReach = v => {
+  if (!v) return 0;
+  const s = String(v).trim().toUpperCase();
+  const n = parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
+  if (s.includes('M')) return n * 1e6;
+  if (s.includes('K')) return n * 1e3;
+  return n;
+};
+const athleteReach = a => parseReach(a.igFollowers) + parseReach(a.twitterFollowers) + parseReach(a.tiktokFollowers);
+
+// Team logo in a white rounded tile, matching the music favicon badges.
+function TeamLogo({ url, size = 38 }) {
+  if (!url) return null;
+  return (
+    <div style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.12)", flexShrink: 0 }}>
+      <img src={url} alt="" referrerPolicy="no-referrer" style={{ width: "82%", height: "82%", objectFit: "contain", display: "block" }} />
+    </div>
+  );
+}
 
 function SportsCard({ athlete: a, isMobile, onClick }) {
   const [hov, setHov] = useState(false);
   const team = a.nflTeam || a.college || '';
-  const followers = a.igFollowers || a.twitterFollowers || a.tiktokFollowers;
+  const meta = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join(' · ');
   if (isMobile) return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, background: hov ? G.surfaceRaised : "transparent", cursor: "pointer", transition: `background 0.15s ${G.ease}` }}>
       <Avatar name={a.name} photoUrl={a.photoUrl} size={56} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 16, color: G.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{a.name}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: levelColor(a.level), background: `${levelColor(a.level)}1f`, borderRadius: 5, padding: "2px 7px" }}>{a.level}</span>
-          <span style={{ fontSize: 13, color: G.textSecondary }}>{[a.position, team].filter(Boolean).join(' · ')}</span>
-        </div>
+        <div style={{ fontSize: 13, color: G.textSecondary }}>{meta}</div>
       </div>
-      {a.teamLogo && <img src={a.teamLogo} alt="" referrerPolicy="no-referrer" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0 }} />}
+      <TeamLogo url={a.teamLogo} size={30} />
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
     </div>
   );
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 16, padding: 18, cursor: "pointer", transition: `all 0.15s ${G.ease}`, position: "relative" }}>
-      {a.teamLogo && <img src={a.teamLogo} alt="" referrerPolicy="no-referrer" style={{ position: "absolute", top: 16, right: 16, width: 32, height: 32, objectFit: "contain" }} />}
-      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-        <Avatar name={a.name} photoUrl={a.photoUrl} size={64} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 18, color: G.text, letterSpacing: "-0.02em" }}>{a.name}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 5, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: levelColor(a.level), background: `${levelColor(a.level)}1f`, borderRadius: 5, padding: "2px 8px" }}>{a.level}</span>
-            <span style={{ fontSize: 13, color: G.textSecondary }}>{[a.position, team].filter(Boolean).join(' · ')}</span>
-          </div>
-          {followers && <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 6 }}>{followers} followers</div>}
+      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow }}>
+      <div style={{ padding: "18px 18px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <Avatar name={a.name} photoUrl={a.photoUrl} size={80} />
+          <TeamLogo url={a.teamLogo} size={38} />
         </div>
+        <div style={{ fontWeight: 800, fontSize: 20, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: 6 }}>{a.name}</div>
+        <div style={{ fontSize: 14, color: G.textSecondary }}>{meta}</div>
       </div>
     </div>
   );
@@ -1147,7 +1160,7 @@ function SportsDetail({ athlete: a, isMobile }) {
             <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
               <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.05 }}>{a.name}</h1>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
-                {a.teamLogo && <img src={a.teamLogo} alt="" referrerPolicy="no-referrer" style={{ width: 24, height: 24, objectFit: "contain" }} />}
+                <TeamLogo url={a.teamLogo} size={28} />
                 <span style={{ fontSize: 11, fontWeight: 700, color: levelColor(a.level), background: `${levelColor(a.level)}26`, borderRadius: 6, padding: "3px 9px" }}>{a.level}</span>
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: "#fff", fontWeight: 500 }}>{typeLine}</span>}
                 {a.status && <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>{a.status}</span>}
@@ -1444,7 +1457,12 @@ function App() {
       }
       return true;
     });
-    return [...list].sort((a, b) => a.name.localeCompare(b.name));
+    // Default sort: by league (NFL → College → HS), then by social reach.
+    return [...list].sort((a, b) => {
+      const lr = (LEAGUE_RANK[a.level] ?? 9) - (LEAGUE_RANK[b.level] ?? 9);
+      if (lr !== 0) return lr;
+      return athleteReach(b) - athleteReach(a);
+    });
   }, [athletes, sportsLevel, search]);
 
   const saveClient = (updatedClient) => {
