@@ -1212,7 +1212,10 @@ function App() {
     title: 'Milk & Honey Music',
     clients: filtered.map(c => ({ name: c.name, types: c.types, photoUrl: c.photoUrl, label: c.label, pro: c.pro, logoUrl: lookupLogo(logos, c.label || c.pro || c.publisher) })),
   }, 'Milk-and-Honey-Roster.pdf');
-  const downloadClientPdf = (c) => downloadPdf({ action: 'client-pdf', client: c, logos }, `${slugOf(c.name)}.pdf`);
+  const downloadClientPdf = (c) => {
+    const contactEmail = (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(',');
+    return downloadPdf({ action: 'client-pdf', client: { ...c, contactEmail }, logos }, `${slugOf(c.name)}.pdf`);
+  };
 
   const types = useMemo(() => {
     const all = new Set();

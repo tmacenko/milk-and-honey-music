@@ -27,6 +27,65 @@ const PDF_BG = '#080809', PDF_SURFACE = '#111113', PDF_BORDER = '#1e1e22';
 const PDF_TEXT = '#f4f4f5', PDF_TEXT2 = '#b4b4be', PDF_TEXT3 = '#8a8a98';
 const PDF_GREEN = '#3eaa78';
 
+// Single-path brand glyphs (24x24 viewBox) for social icons in the one-sheet.
+const ICON_PATHS = {
+  twitter: 'M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z',
+  tiktok: 'M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.73a4.85 4.85 0 01-1.01-.04z',
+  spotify: 'M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z',
+  apple: 'M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.04-.003-.083-.01-.124-.013H5.986c-.152.01-.303.017-.455.026-.747.043-1.49.123-2.193.4-1.336.53-2.3 1.452-2.865 2.78-.192.448-.292.925-.363 1.408-.056.392-.088.785-.1 1.18 0 .032-.007.062-.01.093v12.223c.01.14.017.283.027.424.05.815.154 1.624.497 2.373.65 1.42 1.738 2.353 3.234 2.801.42.127.856.187 1.293.228.555.053 1.11.06 1.667.06h11.03a12.5 12.5 0 001.57-.1c.822-.106 1.596-.35 2.295-.81a5.046 5.046 0 001.88-2.207c.186-.42.293-.87.37-1.324.113-.675.138-1.358.137-2.04-.002-3.8 0-7.595-.003-11.393zm-6.423 3.99v5.712c0 .417-.058.827-.244 1.206-.29.59-.76.962-1.388 1.14-.35.1-.706.157-1.07.173-.95.045-1.773-.6-1.943-1.536a1.88 1.88 0 011.038-2.022c.323-.16.67-.25 1.018-.324.378-.082.758-.153 1.134-.24.274-.063.457-.23.51-.516a.904.904 0 00.02-.193c0-1.815 0-3.63-.002-5.443a.725.725 0 00-.026-.185c-.04-.15-.15-.243-.304-.234-.16.01-.318.035-.475.066-.76.15-1.52.303-2.28.456l-2.325.47-1.374.278c-.016.003-.032.01-.048.013-.277.077-.377.203-.39.49-.002.042 0 .086 0 .13-.002 2.602 0 5.204-.003 7.805 0 .42-.047.836-.215 1.227-.278.64-.77 1.04-1.434 1.233-.35.1-.71.16-1.075.172-.96.036-1.755-.6-1.92-1.544-.14-.812.23-1.685 1.154-2.075.357-.15.73-.232 1.108-.31.287-.06.575-.116.86-.177.383-.083.583-.323.6-.714v-.15c0-2.96 0-5.922.002-8.882 0-.123.013-.25.042-.37.07-.285.273-.448.546-.518.255-.066.515-.112.774-.165.733-.15 1.466-.296 2.2-.444l2.27-.46c.67-.134 1.34-.27 2.01-.403.22-.043.442-.088.663-.106.31-.025.523.17.554.482.008.073.012.148.012.223.002 1.91.002 3.822 0 5.732z',
+  soundcloud: 'M23.999 14.165c-.052 1.796-1.612 3.169-3.4 3.169h-8.18a.68.68 0 0 1-.675-.683V7.862a.747.747 0 0 1 .452-.724s.75-.513 2.333-.513a5.364 5.364 0 0 1 2.763.755 5.433 5.433 0 0 1 2.57 3.54c.282-.08.574-.121.868-.12.884 0 1.73.358 2.347.992s.948 1.49.922 2.373ZM10.721 8.421c.247 2.98.427 5.697 0 8.672a.264.264 0 0 1-.53 0c-.395-2.946-.22-5.718 0-8.672a.264.264 0 0 1 .53 0ZM9.072 9.448c.285 2.659.37 4.986-.006 7.655a.277.277 0 0 1-.55 0c-.331-2.63-.256-5.02 0-7.655a.277.277 0 0 1 .556 0Zm-1.663-.257c.27 2.726.39 5.171 0 7.904a.266.266 0 0 1-.532 0c-.38-2.69-.257-5.21 0-7.904a.266.266 0 0 1 .532 0Zm-1.647.77a26.108 26.108 0 0 1-.008 7.147.272.272 0 0 1-.542 0 27.955 27.955 0 0 1 0-7.147.275.275 0 0 1 .55 0Zm-1.67 1.769c.421 1.865.228 3.5-.029 5.388a.257.257 0 0 1-.514 0c-.21-1.858-.398-3.549 0-5.389a.272.272 0 0 1 .543 0Zm-1.655-.273c.388 1.897.26 3.508-.01 5.412-.026.28-.514.283-.54 0-.244-1.878-.347-3.54-.01-5.412a.283.283 0 0 1 .56 0Zm-1.668.911c.4 1.268.257 2.292-.026 3.572a.257.257 0 0 1-.514 0c-.241-1.262-.354-2.312-.023-3.572a.283.283 0 0 1 .563 0Z',
+  youtube: 'M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z',
+  beatport: 'M21.429 17.055a7.114 7.114 0 0 1-.794 3.246 6.917 6.917 0 0 1-2.181 2.492 6.698 6.698 0 0 1-3.063 1.163 6.653 6.653 0 0 1-3.239-.434 6.796 6.796 0 0 1-2.668-1.932 7.03 7.03 0 0 1-1.481-2.983 7.124 7.124 0 0 1 .049-3.345 7.015 7.015 0 0 1 1.566-2.937l-4.626 4.73-2.421-2.479 5.201-5.265a3.791 3.791 0 0 0 1.066-2.675V0h3.41v6.613a7.172 7.172 0 0 1-.519 2.794 7.02 7.02 0 0 1-1.559 2.353l-.153.156a6.768 6.768 0 0 1 3.49-1.725 6.687 6.687 0 0 1 3.845.5 6.873 6.873 0 0 1 2.959 2.564 7.118 7.118 0 0 1 1.118 3.8Zm-3.089 0a3.89 3.89 0 0 0-.611-2.133 3.752 3.752 0 0 0-1.666-1.424 3.65 3.65 0 0 0-2.158-.233 3.704 3.704 0 0 0-1.92 1.037 3.852 3.852 0 0 0-1.031 1.955 3.908 3.908 0 0 0 .205 2.213c.282.7.76 1.299 1.374 1.721a3.672 3.672 0 0 0 2.076.647 3.637 3.637 0 0 0 2.635-1.096c.347-.351.622-.77.81-1.231.188-.461.285-.956.286-1.456Z',
+};
+
+// Country -> ISO code (lowercase; flagcdn regional codes for the home nations).
+const COUNTRY_ISO = {
+  'united states': 'us', 'usa': 'us', 'us': 'us', 'u.s.': 'us',
+  'united kingdom': 'gb', 'uk': 'gb', 'britain': 'gb', 'great britain': 'gb',
+  'england': 'gb-eng', 'scotland': 'gb-sct', 'wales': 'gb-wls',
+  'canada': 'ca', 'australia': 'au', 'germany': 'de', 'france': 'fr',
+  'sweden': 'se', 'norway': 'no', 'denmark': 'dk', 'netherlands': 'nl',
+  'spain': 'es', 'italy': 'it', 'brazil': 'br', 'mexico': 'mx',
+  'japan': 'jp', 'south korea': 'kr', 'new zealand': 'nz', 'ireland': 'ie',
+  'belgium': 'be', 'switzerland': 'ch', 'austria': 'at', 'portugal': 'pt',
+  'south africa': 'za', 'nigeria': 'ng', 'ghana': 'gh', 'colombia': 'co',
+  'argentina': 'ar', 'chile': 'cl', 'israel': 'il',
+};
+function flagUrl(country) {
+  const iso = COUNTRY_ISO[String(country || '').split('/')[0].trim().toLowerCase()];
+  return iso ? `https://flagcdn.com/w40/${iso}.png` : null;
+}
+
+// Draw a monochrome social glyph (24x24 path) scaled to `size`.
+function drawSocialIcon(doc, kind, x, y, size, color) {
+  const s = size / 24;
+  doc.save();
+  doc.translate(x, y).scale(s);
+  try {
+    if (kind === 'instagram') {
+      doc.lineWidth(2).roundedRect(2, 2, 20, 20, 5.5).stroke(color);
+      doc.circle(12, 12, 4.5).lineWidth(2).stroke(color);
+      doc.circle(17.5, 6.5, 1.3).fill(color);
+    } else if (ICON_PATHS[kind]) {
+      doc.path(ICON_PATHS[kind]).fill(color);
+    }
+  } catch {}
+  doc.restore();
+}
+
+// White rounded-square logo tile that matches the dashboard (cover-fit, clipped).
+function drawLogoTile(doc, buf, x, y, size) {
+  const r = Math.round(size * 0.22);
+  doc.roundedRect(x, y, size, size, r).fill('#ffffff');
+  if (!buf) return;
+  doc.save();
+  try {
+    doc.roundedRect(x, y, size, size, r).clip();
+    doc.image(buf, x - size * 0.05, y - size * 0.05, { cover: [size * 1.1, size * 1.1], align: 'center', valign: 'center' });
+  } catch {}
+  doc.restore();
+}
+
 function pdfInitials(name) {
   return (name || '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 }
@@ -53,7 +112,7 @@ function resolveLogoUrl(url) {
 function cardFields(c) {
   const types = (c.types || []).join(' · ');
   const team = c.label || c.pro || '';
-  return { photoUrl: c.photoUrl, logoUrl: resolveLogoUrl(c.logoUrl), line1: types, line2: team };
+  return { photoUrl: c.photoUrl, logoUrl: resolveLogoUrl(c.logoUrl), flag: flagUrl(c.country), line1: types, line2: team };
 }
 function pdfDrawHeader(doc, title, count, isFirst) {
   doc.image(MH_LOGO_BUF, PDF_MARGIN, PDF_MARGIN + 8, { fit: [60, 26], align: 'left', valign: 'top' });
@@ -70,9 +129,10 @@ function pdfDrawHeader(doc, title, count, isFirst) {
 async function pdfPrefetchImages(items) {
   const urls = new Set();
   items.forEach(item => {
-    const { photoUrl, logoUrl } = cardFields(item);
+    const { photoUrl, logoUrl, flag } = cardFields(item);
     if (photoUrl) urls.add(photoUrl);
     if (logoUrl) urls.add(logoUrl);
+    if (flag) urls.add(flag);
   });
   const cache = new Map();
   const list = Array.from(urls);
@@ -87,7 +147,7 @@ async function pdfPrefetchImages(items) {
 function pdfDrawCard(doc, item, x, y, imageCache) {
   doc.roundedRect(x, y, PDF_CARD_W, PDF_CARD_H, 8).fillAndStroke(PDF_SURFACE, PDF_BORDER);
 
-  const { photoUrl, logoUrl, line1, line2 } = cardFields(item);
+  const { photoUrl, logoUrl, flag, line1, line2 } = cardFields(item);
   const pad = 12;
   const avR = 18;
   const avCx = x + pad + avR, avCy = y + pad + avR;
@@ -110,12 +170,8 @@ function pdfDrawCard(doc, item, x, y, imageCache) {
 
   const logoBuf = logoUrl ? imageCache.get(logoUrl) : null;
   if (logoBuf) {
-    const lr = 11;
-    const lcx = x + PDF_CARD_W - pad - lr, lcy = y + pad + lr;
-    try {
-      doc.circle(lcx, lcy, lr).fill('#ffffff');
-      doc.image(logoBuf, lcx - lr + 2, lcy - lr + 2, { fit: [lr * 2 - 4, lr * 2 - 4], align: 'center', valign: 'center' });
-    } catch {}
+    const ls = 24;
+    drawLogoTile(doc, logoBuf, x + PDF_CARD_W - pad - ls, y + pad, ls);
   }
 
   const textX = x + pad;
@@ -125,7 +181,10 @@ function pdfDrawCard(doc, item, x, y, imageCache) {
 
   let ny = textY + 14;
   if (line1) {
-    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(9).text(line1, textX, ny, { width: textW, height: 11, ellipsis: true });
+    let lx = textX;
+    const flagBuf = flag ? imageCache.get(flag) : null;
+    if (flagBuf) { try { doc.image(flagBuf, lx, ny, { fit: [14, 10], valign: 'center' }); } catch {} lx += 19; }
+    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(9).text(line1, lx, ny, { width: textX + textW - lx, height: 11, ellipsis: true });
     ny += 12;
   }
   if (line2) {
@@ -205,7 +264,8 @@ async function buildClientPdf(c, logos) {
   const tracks = (isArtist ? c.spotifyTopTracks : (c.spotifySongCredits || [])).slice(0, 6);
   const tracksLabel = isArtist ? 'Popular' : 'Songs worked on';
 
-  const urls = [...new Set([c.headerUrl, c.photoUrl, ...logoItems.map(l => l.url), ...tracks.map(t => t.artwork)].filter(Boolean))];
+  const flagU = flagUrl(c.country);
+  const urls = [...new Set([c.headerUrl, c.photoUrl, flagU, ...logoItems.map(l => l.url), ...tracks.map(t => t.artwork)].filter(Boolean))];
   const cache = new Map();
   await Promise.all(urls.map(async u => cache.set(u, await pdfFetchImageBuffer(u))));
 
@@ -239,14 +299,35 @@ async function buildClientPdf(c, logos) {
   }
 
   const nameX = avCx + avR + 18, nameW = W - M - nameX;
-  let ny = avCy - 22;
-  doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(22).text(c.name || '', nameX, ny, { width: nameW, height: 26, ellipsis: true });
-  const typesText = (c.types || []).join('  ·  ');
-  const locText = [c.city, c.state].filter(Boolean).join(', ') || c.country || '';
-  const sub = [typesText, locText].filter(Boolean).join('      ');
-  if (sub) doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(10.5).text(sub, nameX, avCy + 6, { width: nameW, height: 14, ellipsis: true });
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(22).text(c.name || '', nameX, avCy - 24, { width: nameW, height: 26, ellipsis: true });
 
-  let y = avCy + avR + 24;
+  // Types · flag · location, on one line
+  const typesText = (c.types || []).join('  ·  ');
+  const locText = [c.city, c.state].filter(Boolean).join(', ') || (c.country ? String(c.country).split('/')[0].trim() : '');
+  const flagBuf = flagU ? cache.get(flagU) : null;
+  const subY = avCy + 2;
+  let sx = nameX;
+  doc.font('Helvetica').fontSize(10.5).fillColor('#ffffff');
+  if (typesText) { doc.text(typesText, sx, subY, { lineBreak: false }); sx += doc.widthOfString(typesText) + 16; }
+  if (flagBuf) { try { doc.image(flagBuf, sx, subY - 1, { fit: [15, 11] }); } catch {} sx += 20; }
+  if (locText) { doc.fillColor('#ffffff').font('Helvetica').fontSize(10.5).text(locText, sx, subY, { lineBreak: false }); }
+
+  // Socials row
+  const socials = [c.instagram && 'instagram', c.twitter && 'twitter', c.tiktok && 'tiktok', c.spotifyUrl && 'spotify', c.appleMusicUrl && 'apple', c.soundcloudUrl && 'soundcloud', c.youtube && 'youtube', c.beatport && 'beatport'].filter(Boolean);
+  let ix = nameX; const socY = avCy + 20;
+  socials.forEach(k => { drawSocialIcon(doc, k, ix, socY, 16, '#ffffff'); ix += 25; });
+
+  // Contact Rep pill (top-right)
+  if (c.contact) {
+    const label = 'Contact Rep';
+    doc.font('Helvetica-Bold').fontSize(9.5);
+    const tw = doc.widthOfString(label), pw = tw + 22, ph = 23, px = W - M - pw, py = bannerBuf ? 16 : M;
+    doc.roundedRect(px, py, pw, ph, 8).lineWidth(1.2).fillAndStroke('#0c1712', PDF_GREEN);
+    doc.fillColor(PDF_GREEN).font('Helvetica-Bold').fontSize(9.5).text(label, px + 11, py + 6.5, { lineBreak: false });
+    if (c.contactEmail) doc.link(px, py, pw, ph, `mailto:${c.contactEmail}`);
+  }
+
+  let y = avCy + avR + 26;
 
   if (c.bio) {
     doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(10).text(String(c.bio), M, y, { width: CW, align: 'left', lineGap: 3, height: 92, ellipsis: true });
@@ -256,11 +337,11 @@ async function buildClientPdf(c, logos) {
   if (logoItems.length) {
     const bh = 56, iconR = 15, cellW = CW / logoItems.length;
     doc.roundedRect(M, y, CW, bh, 12).fillAndStroke(PDF_SURFACE, PDF_BORDER);
+    const ls = iconR * 2;
     logoItems.forEach((l, i) => {
       const cx0 = M + cellW * i + 16, cy = y + bh / 2, buf = cache.get(l.url);
-      doc.circle(cx0 + iconR, cy, iconR).fill('#ffffff');
-      if (buf) { doc.save(); try { doc.circle(cx0 + iconR, cy, iconR).clip(); doc.image(buf, cx0 + 2, cy - iconR + 2, { fit: [iconR * 2 - 4, iconR * 2 - 4], align: 'center', valign: 'center' }); } catch {} doc.restore(); }
-      doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9).text(l.name, cx0 + iconR * 2 + 8, cy - 5, { width: cellW - iconR * 2 - 30, height: 12, ellipsis: true, lineBreak: false });
+      drawLogoTile(doc, buf, cx0, cy - ls / 2, ls);
+      doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9).text(l.name, cx0 + ls + 8, cy - 5, { width: cellW - ls - 24, height: 12, ellipsis: true, lineBreak: false });
     });
     y += bh + 20;
   }
