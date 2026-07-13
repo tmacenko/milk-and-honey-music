@@ -130,7 +130,8 @@ function collegeKeyMatch(college, key) {
 function espnHeadshot(espnId, espnSport) {
   if (!espnId) return '';
   const sport = (espnSport || 'nfl') === 'college' ? 'college-football' : 'nfl';
-  return `https://a.espncdn.com/i/headshots/${sport}/players/full/${espnId}.png`;
+  // ESPN's resizing combiner -> ~30KB instead of ~300KB full-size headshots.
+  return `https://a.espncdn.com/combiner/i?img=/i/headshots/${sport}/players/full/${espnId}.png&w=200`;
 }
 function teamLogoFor(level, nflTeam, college, override) {
   const team = (nflTeam || '').toLowerCase().trim();
