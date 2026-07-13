@@ -232,12 +232,17 @@ async function sheetAppend(token, range, values) {
 
 function parseClient(row, idx) {
   const g = col => String(row[col] ?? '').trim();
+  // Case-insensitive header lookup (tolerates "public"/"PUBLIC"/" Public ").
+  const gci = wanted => {
+    const key = Object.keys(row).find(k => k.toLowerCase() === wanted.toLowerCase());
+    return key ? String(row[key] ?? '').trim() : '';
+  };
   const name = g('Name');
   if (!name) return null;
   return {
     _rowIndex:    idx + 2,
     id:           name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    public:       ['true', 'yes', '1', 'x', 'y', '✓'].includes(g('Public').toLowerCase()),
+    public:       ['true', 'yes', '1', 'x', 'y', '✓'].includes(gci('Public').toLowerCase()),
     name,
     types:        g('Type') ? g('Type').split(',').map(s => s.trim()).filter(Boolean) : [],
     contact:      g('Contact'),
@@ -543,11 +548,11 @@ module.exports = async (req, res) => {
       // Public (once that column exists); admins get everything. Legacy open
       // mode (no AUTH_SECRET) returns all, as before.
       const { configured, admin } = authState(req);
-      const publicColumnExists = headers.includes('Public');
+      const publicColumnExists = headers.some(h => h.toLowerCase() === 'public');
       const outClients = (configured && !admin && publicColumnExists)
         ? clients.filter(c => c.public)
         : clients;
-      return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured });
+      return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists });
     }
 
     // ── POST ─────────────────────────────────────────────────────────────────
