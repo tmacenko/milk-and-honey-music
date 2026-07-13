@@ -1074,12 +1074,14 @@ function SportsCard({ athlete: a, isMobile, onClick }) {
           <span style={{ fontSize: 13, color: G.textSecondary }}>{[a.position, team].filter(Boolean).join(' · ')}</span>
         </div>
       </div>
+      {a.teamLogo && <img src={a.teamLogo} alt="" referrerPolicy="no-referrer" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0 }} />}
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
     </div>
   );
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 16, padding: 18, cursor: "pointer", transition: `all 0.15s ${G.ease}` }}>
+      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 16, padding: 18, cursor: "pointer", transition: `all 0.15s ${G.ease}`, position: "relative" }}>
+      {a.teamLogo && <img src={a.teamLogo} alt="" referrerPolicy="no-referrer" style={{ position: "absolute", top: 16, right: 16, width: 32, height: 32, objectFit: "contain" }} />}
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
         <Avatar name={a.name} photoUrl={a.photoUrl} size={64} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1145,6 +1147,7 @@ function SportsDetail({ athlete: a, isMobile }) {
             <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
               <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.05 }}>{a.name}</h1>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
+                {a.teamLogo && <img src={a.teamLogo} alt="" referrerPolicy="no-referrer" style={{ width: 24, height: 24, objectFit: "contain" }} />}
                 <span style={{ fontSize: 11, fontWeight: 700, color: levelColor(a.level), background: `${levelColor(a.level)}26`, borderRadius: 6, padding: "3px 9px" }}>{a.level}</span>
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: "#fff", fontWeight: 500 }}>{typeLine}</span>}
                 {a.status && <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>{a.status}</span>}

@@ -81,11 +81,80 @@ const isPublicFlag = ext => {
   return key ? ['true', 'yes', '1', 'x', 'y', '✓'].includes(String(ext[key]).trim().toLowerCase()) : false;
 };
 
+// ── ESPN image derivation (headshot + team logo) ──────────────────────────────
+const NFL_LOGOS = {
+  "arizona cardinals": "ari", "atlanta falcons": "atl", "baltimore ravens": "bal",
+  "buffalo bills": "buf", "carolina panthers": "car", "chicago bears": "chi",
+  "cincinnati bengals": "cin", "cleveland browns": "cle", "dallas cowboys": "dal",
+  "denver broncos": "den", "detroit lions": "det", "green bay packers": "gb",
+  "houston texans": "hou", "indianapolis colts": "ind", "jacksonville jaguars": "jax",
+  "kansas city chiefs": "kc", "las vegas raiders": "lv", "los angeles chargers": "lac",
+  "los angeles rams": "lar", "miami dolphins": "mia", "minnesota vikings": "min",
+  "new england patriots": "ne", "new orleans saints": "no", "new york giants": "nyg",
+  "new york jets": "nyj", "philadelphia eagles": "phi", "pittsburgh steelers": "pit",
+  "san francisco 49ers": "sf", "seattle seahawks": "sea", "tampa bay buccaneers": "tb",
+  "tennessee titans": "ten", "washington commanders": "wsh",
+};
+const COLLEGE_LOGOS = {
+  "michigan": 130, "ohio state": 194, "penn state": 213, "michigan state": 127,
+  "iowa": 2294, "wisconsin": 275, "minnesota": 135, "illinois": 356, "indiana": 84,
+  "purdue": 2509, "northwestern": 77, "nebraska": 158, "maryland": 166, "rutgers": 164,
+  "usc": 30, "ucla": 26, "oregon": 2483, "washington": 264, "stanford": 24,
+  "california": 25, "oregon state": 204, "washington state": 265,
+  "alabama": 333, "georgia": 61, "lsu": 99, "florida": 57, "tennessee": 2633,
+  "texas a&m": 245, "auburn": 2, "arkansas": 8, "mississippi state": 344,
+  "ole miss": 145, "south carolina": 2579, "vanderbilt": 238, "missouri": 142,
+  "kentucky": 96, "texas": 251, "oklahoma": 201,
+  "clemson": 228, "florida state": 52, "miami": 2390, "north carolina": 153,
+  "nc state": 152, "virginia": 258, "virginia tech": 259, "pittsburgh": 221,
+  "pitt": 221, "boston college": 103, "duke": 150, "wake forest": 154, "wake forrest": 154,
+  "georgia tech": 59, "louisville": 97, "syracuse": 183,
+  "kansas": 2305, "kansas state": 2306, "iowa state": 66, "baylor": 239,
+  "tcu": 2628, "texas tech": 2641, "oklahoma state": 197, "west virginia": 277,
+  "colorado": 38, "arizona": 12, "arizona state": 9, "utah": 254,
+  "cincinnati": 2132, "ucf": 2116, "houston": 248, "byu": 252,
+  "memphis": 235, "smu": 2567, "tulane": 2655, "temple": 119,
+  "app state": 2026, "appalachian state": 2026,
+  "western michigan": 2711, "western kentucky": 98, "toledo": 2649, "kent state": 2309, "kennesaw state": 338, "kennesaw": 338,
+  "san diego state": 21, "unlv": 2439, "fresno state": 278,
+  "ohio": 195, "northern illinois": 2459, "miami (oh)": 193,
+  "notre dame": 87, "army": 349, "navy": 2426, "liberty": 2335, "james madison": 256, "jmu": 256,
+  "uconn": 41, "connecticut": 41, "holy cross": 107, "montana state": 147, "montana": 149,
+};
+function collegeKeyMatch(college, key) {
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp('(?:^|\\s)' + esc(key) + '(?:\\s|$)').test(college)) return true;
+  if (new RegExp('(?:^|\\s)' + esc(college) + '(?:\\s|$)').test(key)) return true;
+  return false;
+}
+function espnHeadshot(espnId, espnSport) {
+  if (!espnId) return '';
+  const sport = (espnSport || 'nfl') === 'college' ? 'college-football' : 'nfl';
+  return `https://a.espncdn.com/i/headshots/${sport}/players/full/${espnId}.png`;
+}
+function teamLogoFor(level, nflTeam, college, override) {
+  const team = (nflTeam || '').toLowerCase().trim();
+  const col = (college || '').toLowerCase().trim();
+  if (team && NFL_LOGOS[team]) return `https://a.espncdn.com/i/teamlogos/nfl/500/${NFL_LOGOS[team]}.png`;
+  if (level === 'NFL') return override || '';
+  if (level === 'College' && col) {
+    if (COLLEGE_LOGOS[col]) return `https://a.espncdn.com/i/teamlogos/ncaa/500/${COLLEGE_LOGOS[col]}.png`;
+    const key = Object.keys(COLLEGE_LOGOS).find(k => collegeKeyMatch(col, k));
+    if (key) return `https://a.espncdn.com/i/teamlogos/ncaa/500/${COLLEGE_LOGOS[key]}.png`;
+  }
+  return override || '';
+}
+
 function mergeAthlete(row, ext, level) {
   const isNFL = level === 'NFL';
   const team = isNFL ? (row['Team'] || '') : (row['School'] || '');
   const status = ext['status'] ? ext['status'] : (isNFL ? deriveStatus(team) : 'Active');
   const tabTiktok = handle(row['TikTok'] || row['Tiktok'] || '');
+  const nflTeam = isNFL ? team : '';
+  const college = isNFL ? (ext['college'] || '') : team;
+  // ESPN-derived images (manual sheet values win): all NFL/College players have them.
+  const photoUrl = ext['photoUrl'] || espnHeadshot(ext['espnId'], ext['espnSport'] || (isNFL ? 'nfl' : 'college'));
+  const teamLogo = teamLogoFor(level, nflTeam, college, ext['teamLogo']);
   return {
     _rowIndex: row._rowIndex,
     id: slugOf(row['Name']),
@@ -94,8 +163,8 @@ function mergeAthlete(row, ext, level) {
     level,
     public: isPublicFlag(ext),
     position: row['Position'] || '',
-    nflTeam: isNFL ? team : '',
-    college: isNFL ? (ext['college'] || '') : team,
+    nflTeam,
+    college,
     status,
     instagram: handle(row['Instagram']),
     twitter: handle(row['Twitter']),
@@ -117,8 +186,8 @@ function mergeAthlete(row, ext, level) {
     draftPick: ext['draftPick'] || '',
     espnId: ext['espnId'] || '',
     espnSport: ext['espnSport'] || (isNFL ? 'nfl' : 'college'),
-    teamLogo: ext['teamLogo'] || '',
-    photoUrl: ext['photoUrl'] || '',
+    teamLogo,
+    photoUrl,
     heroImageUrl: ext['heroImageUrl'] || '',
     profileUrl247: ext['profileUrl247'] || '',
     // ── internal-only (stripped for anonymous visitors) ──
