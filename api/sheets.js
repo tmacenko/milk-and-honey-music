@@ -252,11 +252,14 @@ function parseClient(row, idx) {
     publisher:    g('Publisher'),
     label:        g('Record Label'),
     credits:      g('Artists Worked With') ? g('Artists Worked With').split(',').map(s => s.trim()).filter(Boolean) : [],
+    supporters:   g('Supporters') ? g('Supporters').split(',').map(s => s.trim()).filter(Boolean) : [],
+    keyShows:     (g('Key Shows') || g('Top Shows')) ? (g('Key Shows') || g('Top Shows')).split(',').map(s => s.trim()).filter(Boolean) : [],
     bio:          g('Bio'),
     photoUrl:     g('Photo URL'),
     instagram:    g('Instagram').replace(/^@/, ''),
     twitter:      g('Twitter/X').replace(/^@/, ''),
     tiktok:       g('TikTok').replace(/^@/, ''),
+    youtube:      g('YouTube'),
     spotifyMonthly: g('Spotify Monthly Listeners'),
     spotifyUrl:   g('Spotify URL'),
     appleMusicUrl: g('Apple Music URL'),
@@ -267,38 +270,44 @@ function parseClient(row, idx) {
   };
 }
 
-function clientRow(c) {
+// Serialize one client field for a given sheet header. Returns undefined for
+// headers we don't manage, so callers can preserve those cells untouched. This
+// is keyed by header NAME (not position), so columns can be reordered or
+// removed in the sheet without breaking writes.
+function serializeField(header, c) {
   const handle = h => h ? (h.startsWith('@') ? h : '@' + h) : '';
-  return [
-    c.name             || '',  // A
-    (c.types || []).join(', ') || c.type || '', // B
-    c.contact          || '',  // C
-    c.city             || '',  // D
-    c.state            || '',  // E
-    c.country          || '',  // F
-    c.city2            || '',  // G
-    c.state2           || '',  // H
-    c.country2         || '',  // I
-    c.city3            || '',  // J
-    c.state3           || '',  // K
-    c.country3         || '',  // L
-    c.pro              || '',  // M
-    c.publisher        || '',  // N
-    c.label            || '',  // O
-    (c.credits || []).join(', '), // P
-    c.bio              || '',  // Q
-    c.photoUrl         || '',  // R
-    handle(c.instagram),       // S
-    handle(c.twitter),         // T
-    handle(c.tiktok),          // U
-    c.spotifyMonthly   || '',  // V
-    c.spotifyUrl       || '',  // W
-    c.appleMusicUrl    || '',  // X
-    c.soundcloudUrl    || '',  // Y
-    c.notes            || '',  // Z
-    c.onboardedAt      || '',  // AA
-    c.spotifyId        || '',  // AB
-  ];
+  const map = {
+    'Name':                      c.name,
+    'Type':                      (c.types || []).join(', ') || c.type,
+    'Contact':                   c.contact,
+    'City 1':    c.city,  'State 1':  c.state,  'Country 1': c.country,
+    'City 2':    c.city2, 'State 2':  c.state2, 'Country 2': c.country2,
+    'City 3':    c.city3, 'State 3':  c.state3, 'Country 3': c.country3,
+    'PRO':       c.pro,   'Publisher': c.publisher, 'Record Label': c.label,
+    'Artists Worked With':       (c.credits || []).join(', '),
+    'Supporters':                (c.supporters || []).join(', '),
+    'Key Shows':                 (c.keyShows || []).join(', '),
+    'Top Shows':                 (c.keyShows || []).join(', '),
+    'Bio':                       c.bio,
+    'Photo URL':                 c.photoUrl,
+    'Instagram': handle(c.instagram), 'Twitter/X': handle(c.twitter), 'TikTok': handle(c.tiktok),
+    'YouTube':                   c.youtube,
+    'Spotify Monthly Listeners': c.spotifyMonthly,
+    'Spotify URL':               c.spotifyUrl,
+    'Apple Music URL':           c.appleMusicUrl,
+    'SoundCloud URL':            c.soundcloudUrl,
+    'Notes':                     c.notes,
+    'Onboarded At':              c.onboardedAt,
+    'Spotify Artist ID':         c.spotifyId,
+  };
+  return header in map ? (map[header] ?? '') : undefined;
+}
+
+// 1-based column count -> A1 column letter (1->A, 26->Z, 27->AA).
+function colLetter(n) {
+  let s = '';
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s || 'A';
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -564,16 +573,25 @@ module.exports = async (req, res) => {
         return res.json({ text: raw });
       }
 
-      // Save / create client
+      // Save / create client. Rows are built against the live header row (by
+      // name), so the sheet's columns can be reordered or trimmed freely.
       const { action, client: c } = req.body;
       if (!c?.name) return res.status(400).json({ error: 'Missing client name' });
-      const row = clientRow(c);
+      const headerRes = await sheetGet(token, 'Clients!1:1');
+      const headers = (headerRes.values?.[0] || []).map(h => String(h || '').trim());
+      if (!headers.length) return res.status(500).json({ error: 'Could not read sheet headers' });
+      const lastCol = colLetter(headers.length);
 
       if (action === 'create') {
-        await sheetAppend(token, 'Clients!A:AB', [row]);
+        const row = headers.map(h => { const v = serializeField(h, c); return v === undefined ? '' : v; });
+        await sheetAppend(token, `Clients!A:${lastCol}`, [row]);
       } else {
         if (!c._rowIndex) return res.status(400).json({ error: 'Missing row index' });
-        await sheetUpdate(token, `Clients!A${c._rowIndex}:AB${c._rowIndex}`, [row]);
+        // Preserve any columns we don't manage by reading the existing row first.
+        const existingRes = await sheetGet(token, `Clients!A${c._rowIndex}:${lastCol}${c._rowIndex}`);
+        const existing = existingRes.values?.[0] || [];
+        const row = headers.map((h, i) => { const v = serializeField(h, c); return v === undefined ? (existing[i] ?? '') : v; });
+        await sheetUpdate(token, `Clients!A${c._rowIndex}:${lastCol}${c._rowIndex}`, [row]);
       }
       return res.json({ success: true });
     }
