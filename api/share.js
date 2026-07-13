@@ -4,6 +4,7 @@ const PDFDocument = require('pdfkit');
 
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://milk-and-honey-music.vercel.app').replace(/\/$/, '');
+const slugOf = name => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 const BLOB_API = 'https://blob.vercel-storage.com';
 
 // ── Roster PDF generation (merged here, not a standalone file, to stay
@@ -146,6 +147,8 @@ async function pdfPrefetchImages(items) {
 
 function pdfDrawCard(doc, item, x, y, imageCache) {
   doc.roundedRect(x, y, PDF_CARD_W, PDF_CARD_H, 8).fillAndStroke(PDF_SURFACE, PDF_BORDER);
+  const slug = slugOf(item.name);
+  if (slug) doc.link(x, y, PDF_CARD_W, PDF_CARD_H, `${APP_URL}/${slug}`);
 
   const { photoUrl, logoUrl, flag, line1, line2 } = cardFields(item);
   const pad = 12;
@@ -312,10 +315,23 @@ async function buildClientPdf(c, logos) {
   if (flagBuf) { try { doc.image(flagBuf, sx, subY - 1, { fit: [15, 11] }); } catch {} sx += 20; }
   if (locText) { doc.fillColor('#ffffff').font('Helvetica').fontSize(10.5).text(locText, sx, subY, { lineBreak: false }); }
 
-  // Socials row
-  const socials = [c.instagram && 'instagram', c.twitter && 'twitter', c.tiktok && 'tiktok', c.spotifyUrl && 'spotify', c.appleMusicUrl && 'apple', c.soundcloudUrl && 'soundcloud', c.youtube && 'youtube', c.beatport && 'beatport'].filter(Boolean);
+  // Socials row (each icon is a clickable link)
+  const socials = [
+    c.instagram && { k: 'instagram', url: `https://instagram.com/${c.instagram}` },
+    c.twitter && { k: 'twitter', url: `https://x.com/${c.twitter}` },
+    c.tiktok && { k: 'tiktok', url: `https://tiktok.com/@${c.tiktok}` },
+    c.spotifyUrl && { k: 'spotify', url: c.spotifyUrl },
+    c.appleMusicUrl && { k: 'apple', url: c.appleMusicUrl },
+    c.soundcloudUrl && { k: 'soundcloud', url: c.soundcloudUrl },
+    c.youtube && { k: 'youtube', url: c.youtube },
+    c.beatport && { k: 'beatport', url: c.beatport },
+  ].filter(Boolean);
   let ix = nameX; const socY = avCy + 20;
-  socials.forEach(k => { drawSocialIcon(doc, k, ix, socY, 16, '#ffffff'); ix += 25; });
+  socials.forEach(s => {
+    drawSocialIcon(doc, s.k, ix, socY, 16, '#ffffff');
+    if (s.url) doc.link(ix - 2, socY - 2, 20, 20, s.url);
+    ix += 25;
+  });
 
   // Contact Rep pill (top-right)
   if (c.contact) {
@@ -360,6 +376,7 @@ async function buildClientPdf(c, logos) {
       if (!drewArt) doc.roundedRect(tx, y, tw, tw, 6).fill(PDF_SURFACE);
       doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(7).text(t.title || '', tx, y + tw + 5, { width: tw, height: 9, ellipsis: true, lineBreak: false });
       doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(6.5).text(t.artist || '', tx, y + tw + 14, { width: tw, height: 8, ellipsis: true, lineBreak: false });
+      if (t.url) doc.link(tx, y, tw, tw + 22, t.url);
     });
     y += tw + 34;
   }
