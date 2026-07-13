@@ -180,10 +180,15 @@ module.exports = async (req, res) => {
       ...parseRows(hs).map(r => mergeAthlete(r, lookup(r['Name']), 'High School')),
     ].filter(a => a.name);
 
-    const { configured, admin } = authState(req);
-    if (configured && !admin) athletes = athletes.filter(a => a.public).map(pickPublic);
+    const appHeaders = (app?.values?.[0] || []).map(h => String(h || '').trim());
+    const publicColumnExists = appHeaders.some(h => h.toLowerCase() === 'public');
 
-    return res.json({ athletes, isAdmin: !configured || admin, authConfigured: configured });
+    const { configured, admin } = authState(req);
+    if (configured && !admin) {
+      athletes = (publicColumnExists ? athletes.filter(a => a.public) : athletes).map(pickPublic);
+    }
+
+    return res.json({ athletes, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists });
   } catch (err) {
     console.error('Athletes error:', err.message);
     return res.status(500).json({ error: err.message });

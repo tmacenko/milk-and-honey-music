@@ -1055,6 +1055,142 @@ function LoginModal({ onClose }) {
   );
 }
 
+// ── Sports (athletes) ─────────────────────────────────────────────────────────
+const LEVEL_COLORS = { 'NFL': '#3eaa78', 'College': '#3b82f6', 'High School': '#d97706' };
+const levelColor = l => LEVEL_COLORS[l] || G.textSecondary;
+
+function SportsCard({ athlete: a, isMobile, onClick }) {
+  const [hov, setHov] = useState(false);
+  const team = a.nflTeam || a.college || '';
+  const followers = a.igFollowers || a.twitterFollowers || a.tiktokFollowers;
+  if (isMobile) return (
+    <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, background: hov ? G.surfaceRaised : "transparent", cursor: "pointer", transition: `background 0.15s ${G.ease}` }}>
+      <Avatar name={a.name} photoUrl={a.photoUrl} size={56} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 16, color: G.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{a.name}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: levelColor(a.level), background: `${levelColor(a.level)}1f`, borderRadius: 5, padding: "2px 7px" }}>{a.level}</span>
+          <span style={{ fontSize: 13, color: G.textSecondary }}>{[a.position, team].filter(Boolean).join(' · ')}</span>
+        </div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+    </div>
+  );
+  return (
+    <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 16, padding: 18, cursor: "pointer", transition: `all 0.15s ${G.ease}` }}>
+      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+        <Avatar name={a.name} photoUrl={a.photoUrl} size={64} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 18, color: G.text, letterSpacing: "-0.02em" }}>{a.name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 5, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: levelColor(a.level), background: `${levelColor(a.level)}1f`, borderRadius: 5, padding: "2px 8px" }}>{a.level}</span>
+            <span style={{ fontSize: 13, color: G.textSecondary }}>{[a.position, team].filter(Boolean).join(' · ')}</span>
+          </div>
+          {followers && <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 6 }}>{followers} followers</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SportsDetail({ athlete: a, isMobile }) {
+  const [bioExp, setBioExp] = useState(false);
+  const team = a.nflTeam || a.college || '';
+  const typeLine = [a.position, team].filter(Boolean).join('  ·  ');
+  const socialBtns = [
+    a.instagram && { icon: <IgIcon size={isMobile ? 21 : 22} />, url: `https://instagram.com/${a.instagram}` },
+    a.twitter && { icon: <TwIcon size={isMobile ? 19 : 20} />, url: `https://x.com/${a.twitter}` },
+    a.tiktok && { icon: <TkIcon size={isMobile ? 19 : 20} />, url: `https://tiktok.com/@${a.tiktok}` },
+  ].filter(Boolean);
+  const stats = [
+    a.igFollowers && { label: 'IG Followers', value: a.igFollowers },
+    a.twitterFollowers && { label: 'X Followers', value: a.twitterFollowers },
+    a.tiktokFollowers && { label: 'TikTok', value: a.tiktokFollowers },
+    a.igEngagement && { label: 'IG Engagement', value: a.igEngagement },
+  ].filter(Boolean);
+  const info = [
+    a.height && { label: 'Height', value: a.height },
+    a.weight && { label: 'Weight', value: a.weight },
+    a.jerseyNumber && { label: 'Jersey', value: `#${a.jerseyNumber}` },
+    a.hometown && { label: 'Hometown', value: a.hometown },
+    a.classOf && { label: 'Class of', value: a.classOf },
+    a.committedTo && { label: 'Committed', value: a.committedTo },
+    (a.draftYear || a.draftRound || a.draftPick) && { label: 'Draft', value: [a.draftYear, a.draftRound && `R${a.draftRound}`, a.draftPick && `P${a.draftPick}`].filter(Boolean).join(' ') },
+  ].filter(Boolean);
+  const banner = a.heroImageUrl;
+  const bannerH = isMobile ? 200 : 340;
+  const avSize = isMobile ? 90 : 120;
+  const pad = isMobile ? 16 : 32;
+  const BIO_LIMIT = 280;
+  const bioTrunc = a.bio && a.bio.length > BIO_LIMIT && !bioExp;
+  const bioText = bioTrunc ? a.bio.slice(0, BIO_LIMIT).trimEnd() + '...' : a.bio;
+  const statusColor = a.status === 'Free Agent' ? G.yellow : G.green;
+
+  return (
+    <div style={{ flex: 1, overflow: "visible", position: "relative" }}>
+      {banner && (
+        <div style={{ position: "sticky", top: 0, height: bannerH, overflow: "hidden", zIndex: 0, pointerEvents: "none" }}>
+          <img src={banner} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 30%", display: "block" }} />
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(to bottom, rgba(8,8,9,0.25) 0%, rgba(8,8,9,0.1) 35%, rgba(8,8,9,0.72) 78%, ${G.bg} 100%)` }} />
+        </div>
+      )}
+      <div style={{ position: "relative", zIndex: 1, marginTop: banner ? -bannerH : 0 }}>
+        <div style={{ padding: banner ? `${bannerH - avSize / 2}px ${pad}px 20px` : `${pad}px ${pad}px 20px`, borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <div style={{ display: "flex", gap: isMobile ? 16 : 24, alignItems: "flex-end" }}>
+            <div style={{ flexShrink: 0, width: avSize, height: avSize, borderRadius: "50%", overflow: "hidden", border: `2px solid ${G.surfaceBorderLight}` }}>
+              <Avatar name={a.name} photoUrl={a.photoUrl} size={avSize} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
+              <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.05 }}>{a.name}</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: levelColor(a.level), background: `${levelColor(a.level)}26`, borderRadius: 6, padding: "3px 9px" }}>{a.level}</span>
+                {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: "#fff", fontWeight: 500 }}>{typeLine}</span>}
+                {a.status && <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>{a.status}</span>}
+              </div>
+              {socialBtns.length > 0 && (
+                <div style={{ display: "flex", gap: 18, marginTop: 12, alignItems: "center" }}>
+                  {socialBtns.map((b, i) => <a key={i} href={b.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", color: "#fff", textDecoration: "none", transition: "opacity 0.15s" }} onMouseEnter={e => e.currentTarget.style.opacity = 0.65} onMouseLeave={e => e.currentTarget.style.opacity = 1}>{b.icon}</a>)}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
+          {stats.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(stats.length, isMobile ? 2 : 4)}, 1fr)`, gap: 10 }}>
+              {stats.map((s, i) => (
+                <div key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 16px" }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.value}</div>
+                  <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 5 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {a.bio && (
+            <div>
+              <p style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{bioText}</p>
+              {a.bio.length > BIO_LIMIT && <button onClick={() => setBioExp(v => !v)} style={{ background: "none", border: "none", color: G.green, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0 0", fontFamily: ff }}>{bioExp ? 'View less' : 'View more'}</button>}
+            </div>
+          )}
+          {info.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${isMobile ? 2 : 4}, 1fr)`, gap: 10 }}>
+              {info.map((s, i) => (
+                <div key={i} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{s.label}</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: G.text, marginTop: 3 }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {a.profileUrl247 && <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>View 247Sports profile →</a>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
   const [clients, setClients] = useState([]);
@@ -1065,39 +1201,48 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [authConfigured, setAuthConfigured] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  // URL-based navigation -- clean /{slug} paths, refresh-safe, browser-back aware.
-  const urlSlug = () => decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').split('/')[0];
-  const resolveUrlClient = (list) => {
-    const seg = urlSlug();
-    if (seg) {
-      const s = slugOf(seg);
-      const hit = list.find(c => slugOf(c.name) === s);
-      if (hit) return hit;
-    }
-    // Backward-compat with older ?client={id} links.
+  // Sports domain: music lives at "/" + "/{slug}", sports at "/sports" + "/sports/{slug}".
+  const [athletes, setAthletes] = useState([]);
+  const [athletesLoaded, setAthletesLoaded] = useState(false);
+  const [sportsLevel, setSportsLevel] = useState('All');
+  const parseUrl = () => {
+    const parts = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+    if (parts[0] === 'sports') return { domain: 'sports', slug: parts[1] || '' };
+    return { domain: 'music', slug: parts[0] || '' };
+  };
+  const [domain, setDomainState] = useState(() => parseUrl().domain);
+  const pathFor = (d, slug) => d === 'sports' ? (slug ? `/sports/${slug}` : '/sports') : (slug ? `/${slug}` : '/');
+  const resolveItem = (list, dslug) => {
+    const s = slugOf(dslug != null ? dslug : parseUrl().slug);
+    if (s) { const hit = list.find(c => slugOf(c.name) === s); if (hit) return hit; }
     const id = new URLSearchParams(window.location.search).get('client');
     return id ? list.find(c => c.id === id) || null : null;
   };
-  const [view, setViewState] = useState(() => (urlSlug() || window.location.search.includes('client=')) ? 'detail' : 'roster');
+  const [view, setViewState] = useState(() => (parseUrl().slug || window.location.search.includes('client=')) ? 'detail' : 'roster');
   const [selected, setSelected] = useState(null);
 
-  const setView = (v, client) => {
-    if (v === 'detail' && client) {
-      window.history.pushState({ view: 'detail', slug: slugOf(client.name) }, '', `/${slugOf(client.name)}`);
-      setSelected(client);
+  const setView = (v, item) => {
+    if (v === 'detail' && item) {
+      window.history.pushState({ view: 'detail', slug: slugOf(item.name), domain }, '', pathFor(domain, slugOf(item.name)));
+      setSelected(item);
       setViewState('detail');
     } else {
-      // Going back to the roster: if we're on a detail entry we pushed, pop it
-      // (so the browser Back button stays in sync and doesn't re-open the detail
-      // we just closed). Otherwise (e.g. a deep-linked load) replace with root.
       if (window.history.state?.view === 'detail') {
         window.history.back();
       } else {
-        window.history.replaceState({ view: 'roster' }, '', '/');
+        window.history.replaceState({ view: 'roster', domain }, '', pathFor(domain));
         setSelected(null);
         setViewState('roster');
       }
     }
+  };
+  const setDomain = (d) => {
+    if (d === domain) return;
+    setDomainState(d);
+    setSelected(null);
+    setViewState('roster');
+    setSearch('');
+    window.history.pushState({ view: 'roster', domain: d }, '', pathFor(d));
   };
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
@@ -1121,19 +1266,31 @@ function App() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Handle browser back/forward
+  // Handle browser back/forward (domain-aware)
   useEffect(() => {
     const onPop = (e) => {
-      if (clients.length) {
-        const c = resolveUrlClient(clients);
-        if (c) { setSelected(c); setViewState('detail'); return; }
+      const { domain: d, slug } = parseUrl();
+      setDomainState(d);
+      const list = d === 'sports' ? athletes : clients;
+      if (list.length && slug) {
+        const it = resolveItem(list, slug);
+        if (it) { setSelected(it); setViewState('detail'); return; }
       }
       setSelected(null);
       setViewState('roster');
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [clients]);
+  }, [clients, athletes]);
+
+  // Lazily load the Sports roster the first time the Sports domain is shown.
+  useEffect(() => {
+    if (domain !== 'sports' || athletesLoaded) return;
+    fetch('/api/athletes')
+      .then(r => r.json())
+      .then(d => { setAthletes(d.athletes || []); setAthletesLoaded(true); })
+      .catch(() => setAthletesLoaded(true));
+  }, [domain, athletesLoaded]);
 
   // Cmd/Ctrl+F focuses the roster search instead of the browser's native find.
   const searchRef = useRef(null);
@@ -1153,18 +1310,21 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isMobile]);
 
-  // On load, resolve a deep-linked /{slug} (or legacy ?client=) once clients load.
+  // On load, resolve a deep-linked /{slug} or /sports/{slug} once data loads.
   useEffect(() => {
-    if (!clients.length) return;
-    const c = resolveUrlClient(clients);
-    if (c) { setSelected(c); setViewState('detail'); }
-    else if (urlSlug()) { window.history.replaceState({ view: 'roster' }, '', '/'); setViewState('roster'); }
-  }, [clients]);
+    const { domain: d, slug } = parseUrl();
+    const list = d === 'sports' ? athletes : clients;
+    if (!slug || !list.length) return;
+    const it = resolveItem(list, slug);
+    if (it) { setSelected(it); setViewState('detail'); }
+    else { window.history.replaceState({ view: 'roster', domain: d }, '', pathFor(d)); setViewState('roster'); }
+  }, [clients, athletes]);
 
   // Reflect the current view in the browser tab title.
   useEffect(() => {
-    document.title = (view === 'detail' && selected) ? `${selected.name} — Milk & Honey Music` : 'Milk & Honey Music';
-  }, [view, selected]);
+    const brand = `Milk & Honey ${domain === 'sports' ? 'Sports' : 'Music'}`;
+    document.title = (view === 'detail' && selected) ? `${selected.name} — ${brand}` : brand;
+  }, [view, selected, domain]);
   const [shareRosterOpen, setShareRosterOpen] = useState(false);
   const [shareRosterUrl, setShareRosterUrl] = useState(null);
   const [shareRosterCopied, setShareRosterCopied] = useState(false);
@@ -1271,6 +1431,19 @@ function App() {
     return list;
   }, [clients, filterTypes, filterContact, filterLabel, filterCountry, search, clientSort]);
 
+  const filteredAthletes = useMemo(() => {
+    const list = athletes.filter(a => {
+      if (sportsLevel !== 'All' && a.level !== sportsLevel) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return a.name.toLowerCase().includes(q) || (a.position || '').toLowerCase().includes(q) ||
+          (a.nflTeam || '').toLowerCase().includes(q) || (a.college || '').toLowerCase().includes(q);
+      }
+      return true;
+    });
+    return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  }, [athletes, sportsLevel, search]);
+
   const saveClient = (updatedClient) => {
     setClients(prev => {
       const idx = prev.findIndex(c => c.name === updatedClient.name);
@@ -1301,6 +1474,30 @@ function App() {
     </button>
   );
 
+  // Music / Sports domain toggle (header).
+  const domainToggle = (
+    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+      {['music', 'sports'].map(d => (
+        <button key={d} onClick={() => setDomain(d)}
+          style={{ padding: "7px 14px", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, textTransform: "capitalize" }}>
+          {d}
+        </button>
+      ))}
+    </div>
+  );
+  // Sports level filter (All / NFL / College / High School).
+  const sportsLevels = ['All', 'NFL', 'College', 'High School'];
+  const sportsLevelBar = (
+    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+      {sportsLevels.map((l, i) => (
+        <button key={l} onClick={() => setSportsLevel(l)}
+          style={{ padding: "8px 14px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 12, fontWeight: sportsLevel === l ? 700 : 500, cursor: "pointer", background: sportsLevel === l ? G.greenSubtle : "transparent", color: sportsLevel === l ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: G.bg, color: G.text, fontFamily: ff }}>
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
@@ -1326,9 +1523,9 @@ function App() {
           // ── Mobile header ─────────────────────────────────────────────────
           view === 'detail' ? (
             <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
-              {selected && pdfBtn(() => downloadClientPdf(selected), null)}
+              {domain === 'music' && selected && pdfBtn(() => downloadClientPdf(selected), null)}
               {authBtn}
-              {isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
+              {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
             </div>
           ) : (
@@ -1350,35 +1547,40 @@ function App() {
                       <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                     </button>
                     <div style={{ flex: 1 }} />
-                    {isAdmin && <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
+                    {domain === 'music' && isAdmin && <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
                       style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 16px", cursor: "pointer", color: G.text, fontFamily: ff, display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 13 }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                       Share
                     </button>}
-                    {isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>}
-                    {pdfBtn(downloadRosterPdf, null)}
+                    {domain === 'music' && isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>}
+                    {domain === 'music' && pdfBtn(downloadRosterPdf, null)}
                     {authBtn}
                   </>
                 )}
               </div>
-              {/* Type toggle + filter/sort dropdowns */}
+              {/* Domain toggle + filters */}
               <div style={{ margin: "0 16px 12px", display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, overflow: "hidden", flexShrink: 0 }}>
-                  {types.map((t, i) => (
-                    <button key={t} onClick={() => toggleFilterType(t)}
-                      style={{ padding: "7px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 11, fontWeight: typeActive(t) ? 700 : 500, cursor: "pointer", background: typeActive(t) ? G.greenSubtle : "transparent", color: typeActive(t) ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-                <ClientFiltersDropdown
-                  filterContact={filterContact} setFilterContact={setFilterContact}
-                  filterLabel={filterLabel} setFilterLabel={setFilterLabel}
-                  filterCountry={filterCountry} setFilterCountry={setFilterCountry}
-                  contacts={contacts} labels={labels} countries={countries}
-                  activeCount={(filterContact !== 'All' ? 1 : 0) + (filterLabel !== 'All' ? 1 : 0) + (filterCountry !== 'All' ? 1 : 0)}
-                />
-                <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
+                {domainToggle}
+                {domain === 'sports' ? sportsLevelBar : (
+                  <>
+                    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, overflow: "hidden", flexShrink: 0 }}>
+                      {types.map((t, i) => (
+                        <button key={t} onClick={() => toggleFilterType(t)}
+                          style={{ padding: "7px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 11, fontWeight: typeActive(t) ? 700 : 500, cursor: "pointer", background: typeActive(t) ? G.greenSubtle : "transparent", color: typeActive(t) ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                    <ClientFiltersDropdown
+                      filterContact={filterContact} setFilterContact={setFilterContact}
+                      filterLabel={filterLabel} setFilterLabel={setFilterLabel}
+                      filterCountry={filterCountry} setFilterCountry={setFilterCountry}
+                      contacts={contacts} labels={labels} countries={countries}
+                      activeCount={(filterContact !== 'All' ? 1 : 0) + (filterLabel !== 'All' ? 1 : 0) + (filterCountry !== 'All' ? 1 : 0)}
+                    />
+                    <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
+                  </>
+                )}
               </div>
               <div style={{ height: 1, background: G.surfaceBorder }} />
             </div>
@@ -1388,43 +1590,48 @@ function App() {
           <div style={{ padding: "12px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0, position: view === 'detail' ? "static" : "sticky", top: 0, zIndex: 40, background: G.bg }}>
             <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
             <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
+            {domainToggle}
             {view === 'detail' ? (
               <>
                 <div style={{ flex: 1 }} />
-                {selected && pdfBtn(() => downloadClientPdf(selected), 'PDF')}
+                {domain === 'music' && selected && pdfBtn(() => downloadClientPdf(selected), 'PDF')}
                 {authBtn}
-                {isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
+                {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
               </>
             ) : (
               <>
-                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
+                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : "Search clients..."}
                   style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
                 <div style={{ display: "flex", gap: 8, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
-                  <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
-                    {types.map((t, i) => (
-                      <button key={t} onClick={() => toggleFilterType(t)}
-                        style={{ padding: "8px 16px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 13, fontWeight: typeActive(t) ? 700 : 500, cursor: "pointer", background: typeActive(t) ? G.greenSubtle : "transparent", color: typeActive(t) ? G.green : G.textSecondary, transition: `all 0.18s ${G.ease}`, whiteSpace: "nowrap" }}>
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  <ClientFiltersDropdown
-                    filterContact={filterContact} setFilterContact={setFilterContact}
-                    filterLabel={filterLabel} setFilterLabel={setFilterLabel}
-                    filterCountry={filterCountry} setFilterCountry={setFilterCountry}
-                    contacts={contacts} labels={labels} countries={countries}
-                    activeCount={(filterContact !== 'All' ? 1 : 0) + (filterLabel !== 'All' ? 1 : 0) + (filterCountry !== 'All' ? 1 : 0)}
-                  />
-                  <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
+                  {domain === 'sports' ? sportsLevelBar : (
+                    <>
+                      <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
+                        {types.map((t, i) => (
+                          <button key={t} onClick={() => toggleFilterType(t)}
+                            style={{ padding: "8px 16px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 13, fontWeight: typeActive(t) ? 700 : 500, cursor: "pointer", background: typeActive(t) ? G.greenSubtle : "transparent", color: typeActive(t) ? G.green : G.textSecondary, transition: `all 0.18s ${G.ease}`, whiteSpace: "nowrap" }}>
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                      <ClientFiltersDropdown
+                        filterContact={filterContact} setFilterContact={setFilterContact}
+                        filterLabel={filterLabel} setFilterLabel={setFilterLabel}
+                        filterCountry={filterCountry} setFilterCountry={setFilterCountry}
+                        contacts={contacts} labels={labels} countries={countries}
+                        activeCount={(filterContact !== 'All' ? 1 : 0) + (filterLabel !== 'All' ? 1 : 0) + (filterCountry !== 'All' ? 1 : 0)}
+                      />
+                      <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
+                    </>
+                  )}
                 </div>
-                {pdfBtn(downloadRosterPdf, 'PDF')}
-                {isAdmin && <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
+                {domain === 'music' && pdfBtn(downloadRosterPdf, 'PDF')}
+                {domain === 'music' && isAdmin && <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
                   style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Share
                 </button>}
-                {isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>}
+                {domain === 'music' && isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>}
                 {authBtn}
               </>
             )}
@@ -1433,38 +1640,62 @@ function App() {
 
         {/* Content */}
         <div style={{ flex: 1, overflow: "visible" }}>
-          {loading && (
+          {(domain === 'sports' ? !athletesLoaded : loading) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: 14 }}>
               <span style={{ fontSize: 24, animation: "spin 1s linear infinite", display: "inline-block", color: G.textTertiary }}>⟳</span>
-              <span style={{ fontSize: 13, color: G.textTertiary }}>Loading clients...</span>
+              <span style={{ fontSize: 13, color: G.textTertiary }}>Loading {domain === 'sports' ? 'athletes' : 'clients'}...</span>
             </div>
           )}
           {error && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: 10, textAlign: "center", padding: 32 }}>
               <div style={{ fontSize: 22, color: G.red }}>!</div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: G.text }}>Could not load clients</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: G.text }}>Could not load {domain === 'sports' ? 'athletes' : 'clients'}</div>
               <div style={{ fontSize: 13, color: G.textSecondary }}>{error}</div>
             </div>
           )}
 
-          {!loading && !error && view === 'detail' && selected && (
-            <ClientDetail client={selected} logos={logos} staff={staff} isMobile={isMobile} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
-          )}
-
-          {!loading && !error && view === 'roster' && (
-            <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
-              {filtered.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
-                  <div style={{ fontSize: 15 }}>{search || filterTypes.length > 0 || filterContact !== 'All' || filterLabel !== 'All' || filterCountry !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
-                  {filtered.map((c, i) => (
-                    <ClientCard key={c.id || i} client={c} logos={logos} isMobile={isMobile} onClick={() => setView('detail', c)} />
-                  ))}
+          {domain === 'sports' ? (
+            <>
+              {!error && athletesLoaded && view === 'detail' && selected && (
+                <SportsDetail athlete={selected} isMobile={isMobile} />
+              )}
+              {!error && athletesLoaded && view === 'roster' && (
+                <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
+                  {filteredAthletes.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
+                      <div style={{ fontSize: 15 }}>{search || sportsLevel !== 'All' ? 'No athletes match your filters.' : 'No athletes to show yet.'}</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
+                      {filteredAthletes.map((a, i) => (
+                        <SportsCard key={a.id || i} athlete={a} isMobile={isMobile} onClick={() => setView('detail', a)} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
+          ) : (
+            <>
+              {!loading && !error && view === 'detail' && selected && (
+                <ClientDetail client={selected} logos={logos} staff={staff} isMobile={isMobile} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
+              )}
+              {!loading && !error && view === 'roster' && (
+                <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
+                  {filtered.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
+                      <div style={{ fontSize: 15 }}>{search || filterTypes.length > 0 || filterContact !== 'All' || filterLabel !== 'All' || filterCountry !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
+                      {filtered.map((c, i) => (
+                        <ClientCard key={c.id || i} client={c} logos={logos} isMobile={isMobile} onClick={() => setView('detail', c)} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
