@@ -137,6 +137,7 @@ function Textarea({ value, onChange, placeholder, rows = 4 }) {
 
 // ── Blank client template ─────────────────────────────────────────────────────
 const BLANK = {
+  public: false,
   name: '', types: [], contact: '', city: '', state: '', country: '',
   pro: '', publisher: '', label: '', credits: [], supporters: [], keyShows: [], bio: '', photoUrl: '',
   instagram: '', twitter: '', tiktok: '', youtube: '', beatport: '', spotifyMonthly: '',
@@ -421,6 +422,17 @@ function ClientForm({ initial, onSave, onCancel }) {
         </div>
         <div style={{ overflowY: "auto", padding: "20px 24px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+            <div style={{ gridColumn: "1/-1", marginBottom: 16 }}>
+              <div onClick={() => set('public', !form.public)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: form.public ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${form.public ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 16px", cursor: "pointer" }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: form.public ? G.green : G.text }}>Public on roster</div>
+                  <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{form.public ? 'Visible on the public site.' : 'Hidden — internal only.'}</div>
+                </div>
+                <div style={{ width: 44, height: 26, borderRadius: 20, background: form.public ? G.green : G.surfaceBorderLight, position: "relative", flexShrink: 0, transition: `background 0.15s ${G.ease}` }}>
+                  <div style={{ position: "absolute", top: 3, left: form.public ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: `left 0.15s ${G.ease}` }} />
+                </div>
+              </div>
+            </div>
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Name"><Input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Full name" /></Field>
             </div>
@@ -1008,6 +1020,38 @@ function ClientSortDropdown({ clientSort, setClientSort }) {
   );
 }
 
+// ── Internal login ────────────────────────────────────────────────────────────
+function LoginModal({ onClose }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!password || busy) return;
+    setBusy(true); setError('');
+    try {
+      const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+      if (r.ok) { window.location.reload(); return; }
+      const d = await r.json().catch(() => ({}));
+      setError(d.error || 'Incorrect password.'); setBusy(false);
+    } catch { setError('Something went wrong. Try again.'); setBusy(false); }
+  };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: 28, width: "100%", maxWidth: 360, boxShadow: G.shadowLg }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: G.text, marginBottom: 6 }}>Internal login</div>
+        <div style={{ fontSize: 13, color: G.textSecondary, marginBottom: 18 }}>Enter the team passphrase to manage the roster.</div>
+        <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="Passphrase"
+          style={{ width: "100%", background: G.surfaceRaised, border: `1px solid ${error ? G.red : G.surfaceBorder}`, borderRadius: 10, padding: "11px 14px", fontSize: 15, color: G.text, fontFamily: ff, outline: "none", boxSizing: "border-box" }} />
+        {error && <div style={{ fontSize: 12, color: G.red, marginTop: 8 }}>{error}</div>}
+        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+          <button onClick={onClose} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>Cancel</button>
+          <button onClick={submit} disabled={busy || !password} style={{ flex: 2, background: busy || !password ? G.surfaceRaised : G.green, border: "none", borderRadius: 10, padding: "11px", color: busy || !password ? G.textTertiary : "#0a0a0a", fontWeight: 700, fontSize: 14, cursor: busy || !password ? "not-allowed" : "pointer", fontFamily: ff }}>{busy ? 'Checking…' : 'Log in'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
   const [clients, setClients] = useState([]);
@@ -1015,6 +1059,9 @@ function App() {
   const [staff, setStaff] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authConfigured, setAuthConfigured] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   // URL-based navigation -- persist state across refresh and enable browser back
   const getClientFromUrl = (clients) => {
     const id = new URLSearchParams(window.location.search).get('client');
@@ -1123,9 +1170,14 @@ function App() {
   useEffect(() => {
     fetch('/api/sheets')
       .then(r => r.json())
-      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setLoading(false); })
+      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setAuthConfigured(!!d.authConfigured); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
+
+  const doLogout = async () => {
+    try { await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
+    window.location.reload();
+  };
 
   const types = useMemo(() => {
     const all = new Set();
@@ -1191,10 +1243,18 @@ function App() {
     if (view === 'detail') setSelected(updatedClient);
   };
 
-
+  // Login / logout control (only once auth is configured on the server).
+  const authBtn = authConfigured ? (
+    <button onClick={() => isAdmin ? doLogout() : setLoginOpen(true)}
+      style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, color: G.textSecondary, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d={isAdmin ? "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" : "M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      {isAdmin ? 'Log out' : 'Log in'}
+    </button>
+  ) : null;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: G.bg, color: G.text, fontFamily: ff }}>
+      {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
       <style>{`
         @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
         @keyframes chatDot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
@@ -1217,7 +1277,8 @@ function App() {
           // ── Mobile header ─────────────────────────────────────────────────
           view === 'detail' ? (
             <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
-              <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>
+              {authBtn}
+              {isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
             </div>
           ) : (
@@ -1239,12 +1300,13 @@ function App() {
                       <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                     </button>
                     <div style={{ flex: 1 }} />
-                    <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
+                    {isAdmin && <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
                       style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 16px", cursor: "pointer", color: G.text, fontFamily: ff, display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 13 }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                       Share
-                    </button>
-                    <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
+                    </button>}
+                    {isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>}
+                    {authBtn}
                   </>
                 )}
               </div>
@@ -1278,7 +1340,8 @@ function App() {
             {view === 'detail' ? (
               <>
                 <div style={{ flex: 1 }} />
-                <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>
+                {authBtn}
+                {isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
               </>
             ) : (
@@ -1303,12 +1366,13 @@ function App() {
                   />
                   <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
                 </div>
-                <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
+                {isAdmin && <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
                   style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Share
-                </button>
-                <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>
+                </button>}
+                {isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>}
+                {authBtn}
               </>
             )}
           </div>

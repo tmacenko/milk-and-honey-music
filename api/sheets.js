@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { authState } = require('../lib/auth');
 
 const SHEET_ID = process.env.MUSIC_SHEET_ID;
 const BLOB_API = 'https://blob.vercel-storage.com';
@@ -236,6 +237,7 @@ function parseClient(row, idx) {
   return {
     _rowIndex:    idx + 2,
     id:           name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    public:       ['true', 'yes', '1', 'x', 'y', '✓'].includes(g('Public').toLowerCase()),
     name,
     types:        g('Type') ? g('Type').split(',').map(s => s.trim()).filter(Boolean) : [],
     contact:      g('Contact'),
@@ -278,6 +280,7 @@ function parseClient(row, idx) {
 function serializeField(header, c) {
   const handle = h => h ? (h.startsWith('@') ? h : '@' + h) : '';
   const map = {
+    'Public':                    c.public ? 'TRUE' : 'FALSE',
     'Name':                      c.name,
     'Type':                      (c.types || []).join(', ') || c.type,
     'Contact':                   c.contact,
@@ -325,7 +328,7 @@ module.exports = async (req, res) => {
     // ── GET: load clients + logos ────────────────────────────────────────────
     if (req.method === 'GET') {
       const [clientData, logoData, staffData] = await Promise.all([
-        sheetGet(token, 'Clients!A:AB'),
+        sheetGet(token, 'Clients!A:AZ'),
         sheetGet(token, 'Logos!A:F').catch(() => ({ values: [] })),
         sheetGet(token, 'Staff!A:B').catch(() => ({ values: [] })),
       ]);
@@ -536,11 +539,22 @@ module.exports = async (req, res) => {
         if (name && email) staff[name.toLowerCase()] = { name, email };
       });
 
-      return res.json({ clients, logos, staff });
+      // Public/private gating. Anonymous visitors get only clients flagged
+      // Public (once that column exists); admins get everything. Legacy open
+      // mode (no AUTH_SECRET) returns all, as before.
+      const { configured, admin } = authState(req);
+      const publicColumnExists = headers.includes('Public');
+      const outClients = (configured && !admin && publicColumnExists)
+        ? clients.filter(c => c.public)
+        : clients;
+      return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured });
     }
 
     // ── POST ─────────────────────────────────────────────────────────────────
     if (req.method === 'POST') {
+      // Writes require an authenticated admin once auth is configured.
+      const { configured, admin } = authState(req);
+      if (configured && !admin) return res.status(401).json({ error: 'Not authorized' });
 
       // Chat proxy
       if (req.body?.action === 'chat') {
