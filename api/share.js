@@ -93,17 +93,17 @@ function pdfDrawCard(doc, item, x, y, imageCache) {
   const avCx = x + pad + avR, avCy = y + pad + avR;
 
   const photoBuf = photoUrl ? imageCache.get(photoUrl) : null;
+  let drewPhoto = false;
   if (photoBuf) {
+    doc.save();
     try {
-      doc.save();
       doc.circle(avCx, avCy, avR).clip();
       doc.image(photoBuf, avCx - avR, avCy - avR, { fit: [avR * 2, avR * 2], align: 'center', valign: 'center' });
-      doc.restore();
-    } catch {
-      doc.circle(avCx, avCy, avR).fillAndStroke('#18181b', PDF_BORDER);
-      doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(11).text(pdfInitials(item.name), avCx - avR, avCy - 5, { width: avR * 2, align: 'center', lineBreak: false });
-    }
-  } else {
+      drewPhoto = true;
+    } catch { drewPhoto = false; }
+    doc.restore(); // always restore -- otherwise a failed image leaks the clip
+  }
+  if (!drewPhoto) {
     doc.circle(avCx, avCy, avR).fillAndStroke('#18181b', PDF_BORDER);
     doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(11).text(pdfInitials(item.name), avCx - avR, avCy - 5, { width: avR * 2, align: 'center', lineBreak: false });
   }
@@ -215,7 +215,9 @@ async function buildClientPdf(c, logos) {
   const bannerBuf = c.headerUrl && cache.get(c.headerUrl);
   const bannerH = 150;
   if (bannerBuf) {
-    try { doc.save(); doc.rect(0, 0, W, bannerH).clip(); doc.image(bannerBuf, 0, 0, { cover: [W, bannerH], align: 'center', valign: 'center' }); doc.restore(); } catch {}
+    doc.save();
+    try { doc.rect(0, 0, W, bannerH).clip(); doc.image(bannerBuf, 0, 0, { cover: [W, bannerH], align: 'center', valign: 'center' }); } catch {}
+    doc.restore();
     doc.save(); doc.fillOpacity(0.45); doc.rect(0, 0, W, bannerH).fill('#080809'); doc.restore(); doc.fillOpacity(1);
   }
 
@@ -225,10 +227,13 @@ async function buildClientPdf(c, logos) {
   const avCx = M + avR;
   doc.circle(avCx, avCy, avR + 2.5).fillAndStroke(PDF_BG, '#28282d');
   const photoBuf = c.photoUrl && cache.get(c.photoUrl);
+  let drewAvatar = false;
   if (photoBuf) {
-    try { doc.save(); doc.circle(avCx, avCy, avR).clip(); doc.image(photoBuf, avCx - avR, avCy - avR, { cover: [avR * 2, avR * 2], align: 'center', valign: 'center' }); doc.restore(); }
-    catch { doc.circle(avCx, avCy, avR).fill(PDF_SURFACE); }
-  } else {
+    doc.save();
+    try { doc.circle(avCx, avCy, avR).clip(); doc.image(photoBuf, avCx - avR, avCy - avR, { cover: [avR * 2, avR * 2], align: 'center', valign: 'center' }); drewAvatar = true; } catch {}
+    doc.restore();
+  }
+  if (!drewAvatar) {
     doc.circle(avCx, avCy, avR).fill(PDF_SURFACE);
     doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(20).text(pdfInitials(c.name), avCx - avR, avCy - 11, { width: avR * 2, align: 'center', lineBreak: false });
   }
@@ -254,7 +259,7 @@ async function buildClientPdf(c, logos) {
     logoItems.forEach((l, i) => {
       const cx0 = M + cellW * i + 16, cy = y + bh / 2, buf = cache.get(l.url);
       doc.circle(cx0 + iconR, cy, iconR).fill('#ffffff');
-      if (buf) { try { doc.save(); doc.circle(cx0 + iconR, cy, iconR).clip(); doc.image(buf, cx0 + 2, cy - iconR + 2, { fit: [iconR * 2 - 4, iconR * 2 - 4], align: 'center', valign: 'center' }); doc.restore(); } catch {} }
+      if (buf) { doc.save(); try { doc.circle(cx0 + iconR, cy, iconR).clip(); doc.image(buf, cx0 + 2, cy - iconR + 2, { fit: [iconR * 2 - 4, iconR * 2 - 4], align: 'center', valign: 'center' }); } catch {} doc.restore(); }
       doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9).text(l.name, cx0 + iconR * 2 + 8, cy - 5, { width: cellW - iconR * 2 - 30, height: 12, ellipsis: true, lineBreak: false });
     });
     y += bh + 20;
@@ -269,8 +274,9 @@ async function buildClientPdf(c, logos) {
     const cols = 6, gap = 10, tw = (CW - (cols - 1) * gap) / cols;
     tracks.forEach((t, i) => {
       const tx = M + i * (tw + gap), buf = t.artwork && cache.get(t.artwork);
-      if (buf) { try { doc.save(); doc.roundedRect(tx, y, tw, tw, 6).clip(); doc.image(buf, tx, y, { cover: [tw, tw], align: 'center', valign: 'center' }); doc.restore(); } catch { doc.roundedRect(tx, y, tw, tw, 6).fill(PDF_SURFACE); } }
-      else doc.roundedRect(tx, y, tw, tw, 6).fill(PDF_SURFACE);
+      let drewArt = false;
+      if (buf) { doc.save(); try { doc.roundedRect(tx, y, tw, tw, 6).clip(); doc.image(buf, tx, y, { cover: [tw, tw], align: 'center', valign: 'center' }); drewArt = true; } catch {} doc.restore(); }
+      if (!drewArt) doc.roundedRect(tx, y, tw, tw, 6).fill(PDF_SURFACE);
       doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(7).text(t.title || '', tx, y + tw + 5, { width: tw, height: 9, ellipsis: true, lineBreak: false });
       doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(6.5).text(t.artist || '', tx, y + tw + 14, { width: tw, height: 8, ellipsis: true, lineBreak: false });
     });
