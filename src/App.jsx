@@ -1160,6 +1160,11 @@ function App() {
     if (c) { setSelected(c); setViewState('detail'); }
     else if (urlSlug()) { window.history.replaceState({ view: 'roster' }, '', '/'); setViewState('roster'); }
   }, [clients]);
+
+  // Reflect the current view in the browser tab title.
+  useEffect(() => {
+    document.title = (view === 'detail' && selected) ? `${selected.name} — Milk & Honey Music` : 'Milk & Honey Music';
+  }, [view, selected]);
   const [shareRosterOpen, setShareRosterOpen] = useState(false);
   const [shareRosterUrl, setShareRosterUrl] = useState(null);
   const [shareRosterCopied, setShareRosterCopied] = useState(false);
@@ -1186,6 +1191,28 @@ function App() {
     try { await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
     window.location.reload();
   };
+
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const downloadPdf = async (payload, filename) => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      const r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error('PDF failed');
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (e) { alert('Could not generate the PDF. Please try again.'); }
+    setPdfBusy(false);
+  };
+  const downloadRosterPdf = () => downloadPdf({
+    action: 'roster-pdf',
+    title: 'Milk & Honey Music',
+    clients: filtered.map(c => ({ name: c.name, types: c.types, photoUrl: c.photoUrl, label: c.label, pro: c.pro, logoUrl: lookupLogo(logos, c.label || c.pro || c.publisher) })),
+  }, 'Milk-and-Honey-Roster.pdf');
+  const downloadClientPdf = (c) => downloadPdf({ action: 'client-pdf', client: c, logos }, `${slugOf(c.name)}.pdf`);
 
   const types = useMemo(() => {
     const all = new Set();
@@ -1260,6 +1287,17 @@ function App() {
     </button>
   ) : null;
 
+  // Download-PDF button (available to everyone, public + admin).
+  const pdfBtn = (onClick, label) => (
+    <button onClick={onClick} disabled={pdfBusy} title="Download PDF"
+      style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: label ? "8px 14px" : "8px 10px", fontWeight: 600, fontSize: 13, cursor: pdfBusy ? "wait" : "pointer", fontFamily: ff, color: G.textSecondary, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      {pdfBusy
+        ? <span style={{ display: "inline-block", animation: "spin 1s linear infinite", fontSize: 13 }}>⟳</span>
+        : <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+      {label && <span>{label}</span>}
+    </button>
+  );
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: G.bg, color: G.text, fontFamily: ff }}>
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
@@ -1285,6 +1323,7 @@ function App() {
           // ── Mobile header ─────────────────────────────────────────────────
           view === 'detail' ? (
             <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
+              {selected && pdfBtn(() => downloadClientPdf(selected), null)}
               {authBtn}
               {isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
@@ -1314,6 +1353,7 @@ function App() {
                       Share
                     </button>}
                     {isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>}
+                    {pdfBtn(downloadRosterPdf, null)}
                     {authBtn}
                   </>
                 )}
@@ -1348,6 +1388,7 @@ function App() {
             {view === 'detail' ? (
               <>
                 <div style={{ flex: 1 }} />
+                {selected && pdfBtn(() => downloadClientPdf(selected), 'PDF')}
                 {authBtn}
                 {isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
@@ -1374,6 +1415,7 @@ function App() {
                   />
                   <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
                 </div>
+                {pdfBtn(downloadRosterPdf, 'PDF')}
                 {isAdmin && <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
                   style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>

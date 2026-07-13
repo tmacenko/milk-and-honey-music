@@ -165,13 +165,130 @@ async function buildRosterPdf(items, title) {
 }
 
 async function sendRosterPdf(data, res) {
-  const items = data.athletes || [];
+  const items = data.athletes || data.clients || [];
   const title = data.title || 'Milk & Honey Music — Client Roster';
   const pdf = await buildRosterPdf(items, title);
   const filename = title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   return res.send(pdf);
+}
+
+// One row of pill chips with an uppercase label; returns the new y cursor.
+function pdfChipRow(doc, label, items, x, y, maxW) {
+  if (!items || !items.length) return y;
+  doc.fillColor(PDF_TEXT3).font('Helvetica-Bold').fontSize(8).text(label.toUpperCase(), x, y, { characterSpacing: 1, lineBreak: false });
+  y += 15;
+  let cx = x; const gap = 6, padX = 10, chipH = 20;
+  items.forEach(it => {
+    doc.font('Helvetica').fontSize(9.5);
+    const w = doc.widthOfString(String(it)) + padX * 2;
+    if (cx + w > x + maxW) { cx = x; y += chipH + 6; }
+    doc.roundedRect(cx, y, w, chipH, 10).fillAndStroke(PDF_SURFACE, PDF_BORDER);
+    doc.fillColor(PDF_TEXT).text(String(it), cx + padX, y + 5.5, { lineBreak: false });
+    cx += w + gap;
+  });
+  return y + chipH + 16;
+}
+
+// Individual "one-sheet" PDF for a single client.
+async function buildClientPdf(c, logos) {
+  const doc = new PDFDocument({ size: 'LETTER', margin: 0, bufferPages: true });
+  const chunks = []; doc.on('data', x => chunks.push(x));
+  const done = new Promise(r => doc.on('end', r));
+  const W = PDF_PAGE_W, M = 40, CW = W - M * 2;
+
+  const logoNames = [c.pro, c.publisher, c.label].filter(Boolean)
+    .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean);
+  const logoItems = logoNames.map(name => ({ name, url: resolveLogoUrl((logos[name.toLowerCase()] || {}).url) })).filter(l => l.url);
+  const isArtist = c.spotifyTopTracks && c.spotifyTopTracks.length;
+  const tracks = (isArtist ? c.spotifyTopTracks : (c.spotifySongCredits || [])).slice(0, 6);
+  const tracksLabel = isArtist ? 'Popular' : 'Songs worked on';
+
+  const urls = [...new Set([c.headerUrl, c.photoUrl, ...logoItems.map(l => l.url), ...tracks.map(t => t.artwork)].filter(Boolean))];
+  const cache = new Map();
+  await Promise.all(urls.map(async u => cache.set(u, await pdfFetchImageBuffer(u))));
+
+  doc.rect(0, 0, W, PDF_PAGE_H).fill(PDF_BG);
+
+  // Banner
+  const bannerBuf = c.headerUrl && cache.get(c.headerUrl);
+  const bannerH = 150;
+  if (bannerBuf) {
+    try { doc.save(); doc.rect(0, 0, W, bannerH).clip(); doc.image(bannerBuf, 0, 0, { cover: [W, bannerH], align: 'center', valign: 'center' }); doc.restore(); } catch {}
+    doc.save(); doc.fillOpacity(0.45); doc.rect(0, 0, W, bannerH).fill('#080809'); doc.restore(); doc.fillOpacity(1);
+  }
+
+  // Avatar (straddles the banner bottom when present) + name/type/location
+  const avR = 38;
+  const avCy = bannerBuf ? bannerH : M + avR;
+  const avCx = M + avR;
+  doc.circle(avCx, avCy, avR + 2.5).fillAndStroke(PDF_BG, '#28282d');
+  const photoBuf = c.photoUrl && cache.get(c.photoUrl);
+  if (photoBuf) {
+    try { doc.save(); doc.circle(avCx, avCy, avR).clip(); doc.image(photoBuf, avCx - avR, avCy - avR, { cover: [avR * 2, avR * 2], align: 'center', valign: 'center' }); doc.restore(); }
+    catch { doc.circle(avCx, avCy, avR).fill(PDF_SURFACE); }
+  } else {
+    doc.circle(avCx, avCy, avR).fill(PDF_SURFACE);
+    doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(20).text(pdfInitials(c.name), avCx - avR, avCy - 11, { width: avR * 2, align: 'center', lineBreak: false });
+  }
+
+  const nameX = avCx + avR + 18, nameW = W - M - nameX;
+  let ny = avCy - 22;
+  doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(22).text(c.name || '', nameX, ny, { width: nameW, height: 26, ellipsis: true });
+  const typesText = (c.types || []).join('  ·  ');
+  const locText = [c.city, c.state].filter(Boolean).join(', ') || c.country || '';
+  const sub = [typesText, locText].filter(Boolean).join('      ');
+  if (sub) doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(10.5).text(sub, nameX, avCy + 6, { width: nameW, height: 14, ellipsis: true });
+
+  let y = avCy + avR + 24;
+
+  if (c.bio) {
+    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(10).text(String(c.bio), M, y, { width: CW, align: 'left', lineGap: 3, height: 92, ellipsis: true });
+    y = doc.y + 20;
+  }
+
+  if (logoItems.length) {
+    const bh = 56, iconR = 15, cellW = CW / logoItems.length;
+    doc.roundedRect(M, y, CW, bh, 12).fillAndStroke(PDF_SURFACE, PDF_BORDER);
+    logoItems.forEach((l, i) => {
+      const cx0 = M + cellW * i + 16, cy = y + bh / 2, buf = cache.get(l.url);
+      doc.circle(cx0 + iconR, cy, iconR).fill('#ffffff');
+      if (buf) { try { doc.save(); doc.circle(cx0 + iconR, cy, iconR).clip(); doc.image(buf, cx0 + 2, cy - iconR + 2, { fit: [iconR * 2 - 4, iconR * 2 - 4], align: 'center', valign: 'center' }); doc.restore(); } catch {} }
+      doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9).text(l.name, cx0 + iconR * 2 + 8, cy - 5, { width: cellW - iconR * 2 - 30, height: 12, ellipsis: true, lineBreak: false });
+    });
+    y += bh + 20;
+  }
+
+  y = pdfChipRow(doc, 'Supporters', c.supporters, M, y, CW);
+  y = pdfChipRow(doc, 'Key shows', c.keyShows, M, y, CW);
+
+  if (tracks.length) {
+    doc.fillColor(PDF_TEXT3).font('Helvetica-Bold').fontSize(8).text(tracksLabel.toUpperCase(), M, y, { characterSpacing: 1, lineBreak: false });
+    y += 15;
+    const cols = 6, gap = 10, tw = (CW - (cols - 1) * gap) / cols;
+    tracks.forEach((t, i) => {
+      const tx = M + i * (tw + gap), buf = t.artwork && cache.get(t.artwork);
+      if (buf) { try { doc.save(); doc.roundedRect(tx, y, tw, tw, 6).clip(); doc.image(buf, tx, y, { cover: [tw, tw], align: 'center', valign: 'center' }); doc.restore(); } catch { doc.roundedRect(tx, y, tw, tw, 6).fill(PDF_SURFACE); } }
+      else doc.roundedRect(tx, y, tw, tw, 6).fill(PDF_SURFACE);
+      doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(7).text(t.title || '', tx, y + tw + 5, { width: tw, height: 9, ellipsis: true, lineBreak: false });
+      doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(6.5).text(t.artist || '', tx, y + tw + 14, { width: tw, height: 8, ellipsis: true, lineBreak: false });
+    });
+    y += tw + 34;
+  }
+
+  // Footer brand mark
+  doc.image(MH_LOGO_BUF, W / 2 - 30, PDF_PAGE_H - 44, { fit: [60, 24], align: 'center', valign: 'center' });
+
+  doc.end();
+  await done;
+  return Buffer.concat(chunks);
+}
+
+function sendPdf(buf, filename, res) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  return res.send(buf);
 }
 
 module.exports = async function handler(req, res) {
@@ -186,6 +303,21 @@ module.exports = async function handler(req, res) {
     try {
       const body = req.body;
       if (!body) return res.status(400).json({ error: 'No data provided' });
+
+      // Live PDF generation (no blob write): renders whatever the caller sends,
+      // which is data they already have — so it needs no extra auth.
+      if (body.action === 'roster-pdf') {
+        const items = body.clients || [];
+        const title = body.title || 'Milk & Honey Music — Client Roster';
+        const pdf = await buildRosterPdf(items, title);
+        return sendPdf(pdf, title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf', res);
+      }
+      if (body.action === 'client-pdf') {
+        if (!body.client?.name) return res.status(400).json({ error: 'No client provided' });
+        const pdf = await buildClientPdf(body.client, body.logos || {});
+        const fname = body.client.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
+        return sendPdf(pdf, fname, res);
+      }
 
       const id = crypto.randomBytes(8).toString('hex');
       const filename = `share-${id}.json`;
