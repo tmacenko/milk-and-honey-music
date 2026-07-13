@@ -102,8 +102,9 @@ function parseCreditSongs(html) {
 function parseArtistEmbed(html) {
   try {
     const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-    if (!m) return { photoUrl: null, tracks: [] };
-    const e = JSON.parse(m[1]).props?.pageProps?.state?.data?.entity || {};
+    if (!m) return { photoUrl: null, tracks: [], token: null };
+    const pp = JSON.parse(m[1]).props?.pageProps || {};
+    const e = pp.state?.data?.entity || {};
     const img = (e.visualIdentity?.image || []).slice().sort((a, b) => (b.maxWidth || 0) - (a.maxWidth || 0))[0];
     const photoUrl = img && img.url && /scdn\.co|spotifycdn\.com/.test(img.url) ? img.url : null;
     const tracks = (e.trackList || [])
@@ -111,8 +112,35 @@ function parseArtistEmbed(html) {
       .slice(0, 8)
       .map(t => ({ title: t.title, artist: t.subtitle || '', id: String(t.uri || '').split(':').pop() }))
       .filter(t => t.id);
-    return { photoUrl, tracks };
-  } catch { return { photoUrl: null, tracks: [] }; }
+    // The embed page carries an anonymous web access token we can reuse to reach
+    // the artist header banner (not exposed anywhere in the public HTML/API).
+    const token = pp.state?.settings?.session?.accessToken || null;
+    return { photoUrl, tracks, token };
+  } catch { return { photoUrl: null, tracks: [], token: null }; }
+}
+
+// Fetch an artist's header/banner image via Spotify's internal GraphQL, reusing
+// the anonymous token from the embed page. Degrades to null on any failure (e.g.
+// the persisted-query hash rotating), so a missing banner never breaks the page.
+const ARTIST_OVERVIEW_HASH = '4bc52527bb77a5f8bbb9afe491e9aa725698d29ab73bff58d49169ee29800167';
+async function fetchArtistHeader(artistId, token) {
+  if (!token) return null;
+  try {
+    const r = await fetch('https://api-partner.spotify.com/pathfinder/v2/query', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        operationName: 'queryArtistOverview',
+        variables: { uri: `spotify:artist:${artistId}`, locale: '', includePrerelease: true },
+        extensions: { persistedQuery: { version: 1, sha256Hash: ARTIST_OVERVIEW_HASH } },
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const url = j?.data?.artistUnion?.visuals?.headerImage?.sources?.[0]?.url;
+    return url && /scdn\.co|spotifycdn\.com/.test(url) ? url : null;
+  } catch { return null; }
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -339,6 +367,7 @@ module.exports = async (req, res) => {
         if (hit.photoUrl && !c.photoUrl?.trim()) c.photoUrl = hit.photoUrl;
         if (hit.songs?.length) c.spotifySongCredits = hit.songs;
         if (hit.topTracks?.length) c.spotifyTopTracks = hit.topTracks;
+        if (hit.headerUrl) c.headerUrl = hit.headerUrl;
       };
 
       // Apply fresh cache hits up front; collect the rest to resolve.
@@ -358,29 +387,30 @@ module.exports = async (req, res) => {
       // separately and bounded (below), because the oEmbed art endpoint is slow.
       const resolveArtist = async (url) => {
         const m = url.match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
-        if (!m) return { photoUrl: null, songs: [], topTracks: [] };
+        if (!m) return { photoUrl: null, songs: [], topTracks: [], headerUrl: null };
         try {
           const r = await fetch(`https://open.spotify.com/embed/artist/${m[1]}`, { signal: AbortSignal.timeout(8000) });
-          if (!r.ok) return { photoUrl: null, songs: [], topTracks: [] };
-          const { photoUrl, tracks } = parseArtistEmbed(await r.text());
+          if (!r.ok) return { photoUrl: null, songs: [], topTracks: [], headerUrl: null };
+          const { photoUrl, tracks, token } = parseArtistEmbed(await r.text());
           const topTracks = tracks.map(t => ({ title: t.title, artist: t.artist, id: t.id, url: `https://open.spotify.com/track/${t.id}` }));
-          return { photoUrl, songs: [], topTracks };
+          const headerUrl = await fetchArtistHeader(m[1], token);
+          return { photoUrl, songs: [], topTracks, headerUrl };
         } catch(e) {}
-        return { photoUrl: null, songs: [], topTracks: [] };
+        return { photoUrl: null, songs: [], topTracks: [], headerUrl: null };
       };
       const resolveCredit = async (url) => {
         try {
           const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
-          if (!r.ok) return { photoUrl: null, songs: [], topTracks: [] };
+          if (!r.ok) return { photoUrl: null, songs: [], topTracks: [], headerUrl: null };
           const html = await r.text();
           let photoUrl = null;
           const tag = html.match(/<meta[^>]*property=["']og:image["'][^>]*>/i);
           const cm = tag && tag[0].match(/content=["']([^"']+)["']/i);
           const img = cm && cm[1];
           if (img && img.startsWith('http') && /scdn\.co|spotifycdn\.com/.test(img)) photoUrl = img;
-          return { photoUrl, songs: parseCreditSongs(html), topTracks: [] };
+          return { photoUrl, songs: parseCreditSongs(html), topTracks: [], headerUrl: null };
         } catch(e) {}
-        return { photoUrl: null, songs: [], topTracks: [] };
+        return { photoUrl: null, songs: [], topTracks: [], headerUrl: null };
       };
 
       // Resolve cache misses in small concurrent chunks; save after each chunk so
@@ -389,7 +419,7 @@ module.exports = async (req, res) => {
         await Promise.all(toResolve.slice(i, i + 4).map(async ({ c, url, isArtist }) => {
           const res = isArtist ? await resolveArtist(url) : await resolveCredit(url);
           applyHit(c, res);
-          mediaCache[url] = { photoUrl: res.photoUrl || null, songs: res.songs || [], topTracks: res.topTracks || [], fetchedAt: now };
+          mediaCache[url] = { photoUrl: res.photoUrl || null, songs: res.songs || [], topTracks: res.topTracks || [], headerUrl: res.headerUrl || null, fetchedAt: now };
           mediaCacheDirty = true;
         }));
         if (mediaCacheDirty) { await saveBlobCache(MEDIA_CACHE_PATH, mediaCache); mediaCacheDirty = false; }
