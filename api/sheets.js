@@ -6,7 +6,7 @@ const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const RELEASES_CACHE_PATH = 'spotify-releases-cache.json';
 // v3 -- entries now also hold artists' popular tracks (topTracks); new path
 // forces a clean repopulate since the shape changed again.
-const MEDIA_CACHE_PATH = 'spotify-media-cache-v3.json';
+const MEDIA_CACHE_PATH = 'spotify-media-cache-v4.json';
 // Track album art never changes, so it's cached separately and long-lived,
 // reused across artists (collabs overlap) and across weekly media rebuilds.
 const TRACK_ART_CACHE_PATH = 'spotify-track-art-cache.json';
