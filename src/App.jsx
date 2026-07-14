@@ -1042,8 +1042,8 @@ function LoginModal({ onClose }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 20 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: 28, width: "100%", maxWidth: 360, boxShadow: G.shadowLg }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: G.text, marginBottom: 6 }}>Internal login</div>
-        <div style={{ fontSize: 13, color: G.textSecondary, marginBottom: 18 }}>Enter the team passphrase to manage the roster.</div>
-        <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="Passphrase"
+        <div style={{ fontSize: 13, color: G.textSecondary, marginBottom: 18 }}>Enter the team password to manage the roster.</div>
+        <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="Password"
           style={{ width: "100%", background: G.surfaceRaised, border: `1px solid ${error ? G.red : G.surfaceBorder}`, borderRadius: 10, padding: "11px 14px", fontSize: 15, color: G.text, fontFamily: ff, outline: "none", boxSizing: "border-box" }} />
         {error && <div style={{ fontSize: 12, color: G.red, marginTop: 8 }}>{error}</div>}
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
@@ -1218,6 +1218,114 @@ function SportsDetail({ athlete: a, isMobile }) {
   );
 }
 
+// ── Landing gate ──────────────────────────────────────────────────────────────
+// Front door: pick Music or Sports, then enter the shared site password.
+// Separate from the internal/admin login (which unlocks editing).
+const SITE_PASSWORD = 'beverlyhills';
+
+function GateBtn({ label, onClick }) {
+  const [h, setH] = useState(false);
+  return (
+    <button onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+      style={{
+        padding: "13px 34px", borderRadius: 999, cursor: "pointer", fontFamily: ff,
+        fontSize: 13, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase",
+        color: h ? "#fff" : "rgba(255,255,255,0.82)",
+        background: h ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.055)",
+        border: `1px solid ${h ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.14)"}`,
+        backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+        transition: `all 0.22s ${G.ease}`, transform: h ? "translateY(-1px)" : "none",
+      }}>
+      {label}
+    </button>
+  );
+}
+
+function Landing({ onEnter }) {
+  const [pending, setPending] = useState(null); // 'music' | 'sports' once a section is chosen
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const glowRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Soft glow that trails the cursor, eased toward the pointer each frame.
+  useEffect(() => {
+    let raf, tx = window.innerWidth * 0.5, ty = window.innerHeight * 0.5, cx = tx, cy = ty;
+    const onMove = e => { tx = e.clientX; ty = e.clientY; };
+    window.addEventListener('pointermove', onMove);
+    const tick = () => {
+      cx += (tx - cx) * 0.045; cy += (ty - cy) * 0.045;
+      if (glowRef.current) glowRef.current.style.transform = `translate(${cx}px, ${cy}px) translate(-50%, -50%)`;
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => { window.removeEventListener('pointermove', onMove); cancelAnimationFrame(raf); };
+  }, []);
+
+  useEffect(() => { if (pending && inputRef.current) inputRef.current.focus(); }, [pending]);
+
+  const submit = () => {
+    if (password.trim().toLowerCase() === SITE_PASSWORD) onEnter(pending);
+    else setError('Incorrect password.');
+  };
+
+  const blob = (extra) => ({
+    position: "absolute", borderRadius: "50%", filter: "blur(90px)",
+    willChange: "transform", pointerEvents: "none", ...extra,
+  });
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: ff, zIndex: 5000 }}>
+      <style>{`
+        @keyframes mhGrad1{0%{transform:translate(-8%,-6%) scale(1)}50%{transform:translate(22%,18%) scale(1.35)}100%{transform:translate(-8%,-6%) scale(1)}}
+        @keyframes mhGrad2{0%{transform:translate(12%,22%) scale(1.25)}50%{transform:translate(-16%,-12%) scale(1)}100%{transform:translate(12%,22%) scale(1.25)}}
+        @keyframes mhGrad3{0%{transform:translate(28%,-18%) scale(1)}50%{transform:translate(-22%,26%) scale(1.4)}100%{transform:translate(28%,-18%) scale(1)}}
+        @keyframes mhLandIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+      `}</style>
+
+      {/* Free-flowing gradient field */}
+      <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+        <div style={blob({ width: "62vw", height: "62vw", top: "-14vw", left: "-10vw", background: "radial-gradient(circle, rgba(62,170,120,0.42), transparent 66%)", animation: "mhGrad1 24s ease-in-out infinite" })} />
+        <div style={blob({ width: "68vw", height: "68vw", bottom: "-22vw", right: "-16vw", background: "radial-gradient(circle, rgba(52,150,110,0.5), transparent 64%)", animation: "mhGrad2 30s ease-in-out infinite" })} />
+        <div style={blob({ width: "46vw", height: "46vw", top: "30vh", left: "34vw", background: "radial-gradient(circle, rgba(46,120,96,0.34), transparent 68%)", animation: "mhGrad3 27s ease-in-out infinite" })} />
+      </div>
+      {/* Cursor-trailing glow */}
+      <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "40vw", height: "40vw", borderRadius: "50%", filter: "blur(100px)", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.28), transparent 62%)", willChange: "transform" }} />
+      {/* Vignette to keep edges black */}
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 100%)", pointerEvents: "none" }} />
+
+      {/* Content */}
+      <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", padding: 24, animation: `mhLandIn 0.6s ${G.ease}` }}>
+        <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 96, maxWidth: "80vw", objectFit: "contain", marginBottom: 44 }} />
+
+        {!pending ? (
+          <div style={{ display: "flex", gap: 16 }}>
+            <GateBtn label="Music" onClick={() => { setPending('music'); setError(''); }} />
+            <GateBtn label="Sports" onClick={() => { setPending('sports'); setError(''); }} />
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, width: 300, maxWidth: "82vw", animation: `mhLandIn 0.35s ${G.ease}` }}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>{pending === 'sports' ? 'Sports' : 'Music'}</div>
+            <input ref={inputRef} type="password" value={password}
+              onChange={e => { setPassword(e.target.value); setError(''); }}
+              onKeyDown={e => e.key === 'Enter' && submit()} placeholder="Password"
+              style={{ width: "100%", boxSizing: "border-box", textAlign: "center", background: "rgba(255,255,255,0.06)", border: `1px solid ${error ? G.red : "rgba(255,255,255,0.16)"}`, borderRadius: 12, padding: "13px 16px", fontSize: 15, color: "#fff", fontFamily: ff, outline: "none", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }} />
+            {error && <div style={{ fontSize: 12, color: G.red }}>{error}</div>}
+            <button onClick={submit} disabled={!password}
+              style={{ width: "100%", background: password ? G.green : "rgba(255,255,255,0.08)", color: password ? "#0a0a0a" : "rgba(255,255,255,0.4)", border: "none", borderRadius: 12, padding: "13px", fontWeight: 700, fontSize: 14, cursor: password ? "pointer" : "not-allowed", fontFamily: ff, transition: `all 0.2s ${G.ease}` }}>
+              Enter
+            </button>
+            <button onClick={() => { setPending(null); setPassword(''); setError(''); }}
+              style={{ background: "none", border: "none", color: "rgba(255,255,255,0.55)", fontSize: 13, cursor: "pointer", fontFamily: ff, marginTop: 2 }}>
+              ← Back
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
   const [clients, setClients] = useState([]);
@@ -1228,6 +1336,15 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [authConfigured, setAuthConfigured] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  // Front-door gate (shared site password). Deep links to a one-sheet bypass it so
+  // public share links keep working; otherwise it persists once unlocked.
+  const [gateUnlocked, setGateUnlocked] = useState(() => {
+    try {
+      if (localStorage.getItem('mh_gate') === '1') return true;
+    } catch { /* ignore */ }
+    const parts = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+    return parts[0] === 'sports' ? !!parts[1] : !!parts[0];
+  });
   // Sports domain: music lives at "/" + "/{slug}", sports at "/sports" + "/sports/{slug}".
   const [athletes, setAthletes] = useState([]);
   const [athletesLoaded, setAthletesLoaded] = useState(false);
@@ -1270,6 +1387,12 @@ function App() {
     setViewState('roster');
     setSearch('');
     window.history.pushState({ view: 'roster', domain: d }, '', pathFor(d));
+  };
+  // Called by the landing gate once the site password is accepted.
+  const enterSite = (d) => {
+    try { localStorage.setItem('mh_gate', '1'); } catch { /* ignore */ }
+    setGateUnlocked(true);
+    setDomain(d);
   };
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
@@ -1529,6 +1652,8 @@ function App() {
       ))}
     </div>
   );
+
+  if (!gateUnlocked) return <Landing onEnter={enterSite} />;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: G.bg, color: G.text, fontFamily: ff }}>
