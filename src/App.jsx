@@ -1114,6 +1114,7 @@ function SportsDetail({ athlete: a, isMobile }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
   const typeLine = [a.position, team].filter(Boolean).join('  ·  ');
+  const espnUrl = a.espnId ? `https://www.espn.com/${a.espnSport === 'college' ? 'college-football' : 'nfl'}/player/_/id/${a.espnId}` : '';
   const socialBtns = [
     a.instagram && { icon: <IgIcon size={isMobile ? 21 : 22} />, url: `https://instagram.com/${a.instagram}` },
     a.twitter && { icon: <TwIcon size={isMobile ? 19 : 20} />, url: `https://x.com/${a.twitter}` },
@@ -1186,8 +1187,8 @@ function SportsDetail({ athlete: a, isMobile }) {
           )}
           {a.bio && (
             <div>
-              <p style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{bioText}</p>
-              {a.bio.length > BIO_LIMIT && <button onClick={() => setBioExp(v => !v)} style={{ background: "none", border: "none", color: G.green, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0 0", fontFamily: ff }}>{bioExp ? 'View less' : 'View more'}</button>}
+              <p style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{isMobile ? bioText : a.bio}</p>
+              {isMobile && a.bio.length > BIO_LIMIT && <button onClick={() => setBioExp(v => !v)} style={{ background: "none", border: "none", color: G.green, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0 0", fontFamily: ff }}>{bioExp ? 'View less' : 'View more'}</button>}
             </div>
           )}
           {info.length > 0 && (
@@ -1200,7 +1201,10 @@ function SportsDetail({ athlete: a, isMobile }) {
               ))}
             </div>
           )}
-          {a.profileUrl247 && <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>View 247Sports profile →</a>}
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+            {espnUrl && <a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>ESPN profile →</a>}
+            {a.profileUrl247 && <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>}
+          </div>
         </div>
       </div>
     </div>
