@@ -1095,6 +1095,52 @@ function ClientSortDropdown({ clientSort, setClientSort }) {
   );
 }
 
+// Consolidated "View:" dropdown — type multi-select + Custom Group, in one box.
+function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCount, onOpenCustom }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef();
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const active = customCount > 0 || filterTypes.length > 0;
+  const label = customCount > 0 ? `Custom · ${customCount}` : (filterTypes.length ? filterTypes.join(', ') : 'All');
+  const typeOpts = types.filter(t => t !== 'All');
+  const item = (on, content, onClick) => (
+    <button onClick={onClick}
+      style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 12px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, fontSize: 13, fontWeight: on ? 700 : 400, color: on ? G.green : G.text, textAlign: "left" }}
+      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+      {content}
+      {on && <span style={{ color: G.green, fontSize: 12 }}>✓</span>}
+    </button>
+  );
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", background: active ? G.greenSubtle : G.surface, border: `1px solid ${active ? G.green : G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: active ? 700 : 500, color: active ? G.green : G.textSecondary, cursor: "pointer", whiteSpace: "nowrap", maxWidth: 280 }}>
+        <span style={{ color: G.textTertiary, fontWeight: 500, flexShrink: 0 }}>View:</span>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+        <span style={{ fontSize: 9, opacity: 0.6, flexShrink: 0 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, minWidth: 220, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 500, boxShadow: G.shadowLg }}>
+          {item(filterTypes.length === 0 && customCount === 0, 'All', () => onAll())}
+          {typeOpts.map(t => item(customCount === 0 && filterTypes.includes(t), t, () => onToggleType(t)))}
+          <div style={{ height: 1, background: G.surfaceBorder, margin: "6px 8px" }} />
+          {item(customCount > 0, (
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              Custom Group {customCount > 0 && <span style={{ color: G.green }}>· {customCount}</span>}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </span>
+          ), () => { onOpenCustom(); setOpen(false); })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Internal login ────────────────────────────────────────────────────────────
 function LoginModal({ onClose }) {
   const [password, setPassword] = useState('');
@@ -1351,13 +1397,6 @@ function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const row = (title, sub, onClick, active) => (
-    <button onClick={onClick} disabled={pdfBusy}
-      style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: 10, border: `1px solid ${active ? G.green : G.surfaceBorder}`, background: active ? G.greenSubtle : G.surfaceRaised, cursor: pdfBusy ? "wait" : "pointer", fontFamily: ff, marginBottom: 8 }}>
-      <span style={{ fontSize: 13, fontWeight: 700, color: active ? G.green : G.text }}>{title}</span>
-      <span style={{ fontSize: 11, color: G.textTertiary, marginTop: 2 }}>{sub}</span>
-    </button>
-  );
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button onClick={() => setOpen(v => !v)}
@@ -1367,9 +1406,12 @@ function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading
       </button>
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, width: 280, maxWidth: "calc(100vw - 32px)", background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, padding: 14, zIndex: 500, boxShadow: G.shadowLg }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Download PDF · {count}</div>
-          {row('Detailed', '1 × 4 — bio, socials, logos', () => { onPdf('detailed'); setOpen(false); }, view === 'detailed')}
-          {row('Simple', '3 × 5 — compact cards', () => { onPdf('simple'); setOpen(false); }, view !== 'detailed')}
+          {/* PDF matches the current layout (List → 3×5, Detailed → 1×4). */}
+          <button onClick={() => { onPdf(); setOpen(false); }} disabled={pdfBusy}
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised, cursor: pdfBusy ? "wait" : "pointer", fontFamily: ff }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>Download PDF</span>
+            <span style={{ fontSize: 11, color: G.textTertiary }}>{view === 'detailed' ? 'Detailed' : 'Simple'} · {count}</span>
+          </button>
           {isAdmin && (
             <>
               <div style={{ height: 1, background: G.surfaceBorder, margin: "12px 0" }} />
@@ -1919,19 +1961,12 @@ function App() {
       ))}
     </div>
   );
-  // Custom group button (+ active-state clear). Works in both domains.
-  const customGroupBtn = (
-    <div style={{ display: "flex", alignItems: "center", background: customGroup.length ? G.greenSubtle : G.surface, border: `1px solid ${customGroup.length ? G.green : G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-      <button onClick={() => setCustomGroupOpen(true)}
-        style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "transparent", border: "none", cursor: "pointer", fontFamily: ff, fontSize: 13, fontWeight: customGroup.length ? 700 : 500, color: customGroup.length ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        {customGroup.length ? `Custom group · ${customGroup.length}` : 'Custom group'}
-      </button>
-      {customGroup.length > 0 && (
-        <button onClick={clearCustomGroup} title="Clear group"
-          style={{ padding: "8px 10px 8px 4px", background: "transparent", border: "none", cursor: "pointer", color: G.green, fontSize: 14, fontFamily: ff }}>✕</button>
-      )}
-    </div>
+  // Consolidated View dropdown: type multi-select + Custom Group in one box (music).
+  const viewFilter = (
+    <ViewFilterDropdown types={types} filterTypes={filterTypes}
+      onToggleType={(t) => { clearCustomGroup(); toggleFilterType(t); }}
+      onAll={() => { clearCustomGroup(); setFilterTypes([]); }}
+      customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   );
   const exportControl = (
     <ExportMenu view={rosterView} count={filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
@@ -1995,36 +2030,20 @@ function App() {
                     </button>
                     <div style={{ flex: 1 }} />
                     {domain === 'music' && exportControl}
-                    {domain === 'music' && isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>}
                     {authBtn}
                   </>
                 )}
               </div>
-              {/* Domain toggle + filters */}
+              {/* Domain toggle + consolidated view + sort + layout */}
               <div style={{ margin: "0 16px 12px", display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {domainToggle}
-                {domain === 'music' && viewToggle}
-                {customGroupBtn}
                 {domain === 'sports' ? sportsLevelBar : (
                   <>
-                    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, overflow: "hidden", flexShrink: 0 }}>
-                      {types.map((t, i) => (
-                        <button key={t} onClick={() => toggleFilterType(t)}
-                          style={{ padding: "7px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 11, fontWeight: typeActive(t) ? 700 : 500, cursor: "pointer", background: typeActive(t) ? G.greenSubtle : "transparent", color: typeActive(t) ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                    <ClientFiltersDropdown
-                      filterContact={filterContact} setFilterContact={setFilterContact}
-                      filterLabel={filterLabel} setFilterLabel={setFilterLabel}
-                      filterCountry={filterCountry} setFilterCountry={setFilterCountry}
-                      contacts={contacts} labels={labels} countries={countries}
-                      activeCount={(filterContact !== 'All' ? 1 : 0) + (filterLabel !== 'All' ? 1 : 0) + (filterCountry !== 'All' ? 1 : 0)}
-                    />
+                    {viewFilter}
                     <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
                   </>
                 )}
+                {domain === 'music' && viewToggle}
               </div>
               <div style={{ height: 1, background: G.surfaceBorder }} />
             </div>
@@ -2050,29 +2069,13 @@ function App() {
                 <div style={{ display: "flex", gap: 8, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
                   {domain === 'sports' ? sportsLevelBar : (
                     <>
-                      <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
-                        {types.map((t, i) => (
-                          <button key={t} onClick={() => toggleFilterType(t)}
-                            style={{ padding: "8px 16px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 13, fontWeight: typeActive(t) ? 700 : 500, cursor: "pointer", background: typeActive(t) ? G.greenSubtle : "transparent", color: typeActive(t) ? G.green : G.textSecondary, transition: `all 0.18s ${G.ease}`, whiteSpace: "nowrap" }}>
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                      <ClientFiltersDropdown
-                        filterContact={filterContact} setFilterContact={setFilterContact}
-                        filterLabel={filterLabel} setFilterLabel={setFilterLabel}
-                        filterCountry={filterCountry} setFilterCountry={setFilterCountry}
-                        contacts={contacts} labels={labels} countries={countries}
-                        activeCount={(filterContact !== 'All' ? 1 : 0) + (filterLabel !== 'All' ? 1 : 0) + (filterCountry !== 'All' ? 1 : 0)}
-                      />
+                      {viewFilter}
                       <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
                     </>
                   )}
+                  {domain === 'music' && viewToggle}
                 </div>
-                {domain === 'music' && viewToggle}
-                {customGroupBtn}
                 {domain === 'music' && exportControl}
-                {domain === 'music' && isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>}
                 {authBtn}
               </>
             )}
