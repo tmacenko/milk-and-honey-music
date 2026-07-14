@@ -297,12 +297,12 @@ function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor) {
   let ix = tx; const socY = by + pad + 38;
   socials.forEach(s => { drawSocialIcon(doc, s.k, ix, socY, 13, PDF_TEXT2); if (s.url) doc.link(ix - 2, socY - 2, 17, 17, s.url); ix += 20; });
 
-  // Bio + supporters/key shows
+  // Bio + credits/supporters/key shows
   const contentW = bw - pad * 2;
-  const hasChips = (c.supporters && c.supporters.length) || (c.keyShows && c.keyShows.length);
+  const hasExtra = (c.credits && c.credits.length) || (c.supporters && c.supporters.length) || (c.keyShows && c.keyShows.length);
   let y = socY + 22;
   if (c.bio) {
-    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(8.5).text(String(c.bio), bx + pad, y, { width: contentW, height: hasChips ? 24 : 44, ellipsis: true, lineGap: 2 });
+    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(8.5).text(String(c.bio), bx + pad, y, { width: contentW, height: hasExtra ? 24 : 44, ellipsis: true, lineGap: 2 });
     y = doc.y + 8;
   }
   const compactLine = (label, items) => {
@@ -312,6 +312,7 @@ function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor) {
     doc.font('Helvetica').fontSize(8.5).fillColor(PDF_TEXT).text(items.join('   ·   '), bx + pad + lw, y, { width: contentW - lw, height: 11, ellipsis: true, lineBreak: false });
     y += 13;
   };
+  compactLine('Credits', c.credits);
   compactLine('Supporters', c.supporters);
   compactLine('Key shows', c.keyShows);
 }

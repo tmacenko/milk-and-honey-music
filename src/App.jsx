@@ -622,26 +622,19 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
     </div>
   );
   const av = isMobile ? 60 : 76;
+  const hasBody = c.bio || c.credits?.length > 0 || c.supporters?.length > 0 || c.keyShows?.length > 0;
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, padding: isMobile ? 16 : 20, cursor: "pointer", transition: `all 0.18s ${G.ease}`, boxShadow: hov ? G.shadowLg : G.shadow }}>
+      {/* Header: avatar + name/roles/socials, logos far right */}
       <div style={{ display: "flex", gap: isMobile ? 14 : 18, alignItems: "flex-start" }}>
         <Avatar name={c.name} photoUrl={c.photoUrl} size={av} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: isMobile ? 18 : 21, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2 }}>{c.name}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
-                {flags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1 }}>{flags.join(' ')}</span>}
-                <span style={{ fontSize: 13, color: G.textSecondary, fontWeight: 500 }}>{sortedTypes.join(' · ')}</span>
-                {loc && <><span style={{ color: G.textTertiary, fontSize: 12 }}>·</span><span style={{ fontSize: 13, color: G.textTertiary }}>{loc}</span></>}
-              </div>
-            </div>
-            {logoItems.length > 0 && (
-              <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                {logoItems.slice(0, 4).map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={34} />)}
-              </div>
-            )}
+          <div style={{ fontWeight: 800, fontSize: isMobile ? 18 : 21, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2 }}>{c.name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+            {flags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1 }}>{flags.join(' ')}</span>}
+            <span style={{ fontSize: 13, color: G.textSecondary, fontWeight: 500 }}>{sortedTypes.join(' · ')}</span>
+            {loc && <><span style={{ color: G.textTertiary, fontSize: 12 }}>·</span><span style={{ fontSize: 13, color: G.textTertiary }}>{loc}</span></>}
           </div>
           {socials.length > 0 && (
             <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 12, color: G.textSecondary }}>
@@ -654,11 +647,19 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
               ))}
             </div>
           )}
-          {c.bio && <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginTop: 12, display: "-webkit-box", WebkitLineClamp: 6, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.bio}</div>}
-          {chips('Supporters', c.supporters)}
-          {chips('Key Shows', c.keyShows)}
         </div>
+        {logoItems.length > 0 && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+            {logoItems.slice(0, 4).map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={34} />)}
+          </div>
+        )}
       </div>
+      {/* Divider, then full-width bio / credits / chips (never left of the photo) */}
+      {hasBody && <div style={{ height: 1, background: G.surfaceBorder, margin: "16px 0 0" }} />}
+      {c.bio && <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginTop: 14, display: "-webkit-box", WebkitLineClamp: 6, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.bio}</div>}
+      {chips('Credits', c.credits)}
+      {chips('Supporters', c.supporters)}
+      {chips('Key Shows', c.keyShows)}
     </div>
   );
 }
@@ -1068,7 +1069,7 @@ function ClientSortDropdown({ clientSort, setClientSort }) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-  const SORTS = [["default","Roster Order"], ["alpha","A – Z"], ["label","Record Label"], ["listeners","Monthly Listeners"], ["type","Type"]];
+  const SORTS = [["default","Roster Order"], ["alpha","A – Z"]];
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button onClick={() => setOpen(v => !v)}
@@ -1756,7 +1757,7 @@ function App() {
           instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
           spotifyUrl: c.spotifyUrl, appleMusicUrl: c.appleMusicUrl, soundcloudUrl: c.soundcloudUrl,
           youtube: c.youtube, beatport: c.beatport,
-          bio: c.bio, supporters: c.supporters, keyShows: c.keyShows,
+          bio: c.bio, credits: c.credits, supporters: c.supporters, keyShows: c.keyShows,
           pro: c.pro, publisher: c.publisher, label: c.label, contact: c.contact,
           contactEmail: (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(','),
         })),
