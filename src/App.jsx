@@ -1366,7 +1366,7 @@ function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading
         Export
       </button>
       {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 280, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, padding: 14, zIndex: 500, boxShadow: G.shadowLg }}>
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, width: 280, maxWidth: "calc(100vw - 32px)", background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, padding: 14, zIndex: 500, boxShadow: G.shadowLg }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Download PDF · {count}</div>
           {row('Detailed', '1 × 4 — bio, socials, logos', () => { onPdf('detailed'); setOpen(false); }, view === 'detailed')}
           {row('Simple', '3 × 5 — compact cards', () => { onPdf('simple'); setOpen(false); }, view !== 'detailed')}
