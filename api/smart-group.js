@@ -3,6 +3,7 @@
 // "producers signed to BMI", "Jake Presser's clients") plus a compact roster,
 // and returns the matching names + a descriptive title, via Claude Sonnet 5.
 const Anthropic = require('@anthropic-ai/sdk');
+const { authState } = require('../lib/auth');
 
 const MODEL = 'claude-sonnet-5';
 const MAX_ROSTER = 400;   // safety cap on how many rows we'll reason over
@@ -24,6 +25,7 @@ const SYSTEM = `You are a roster filter for the talent agency Milk & Honey. You 
 Return ONLY the people who genuinely match the request:
 - Reason about attributes that aren't literal fields. "Defensive players" = defensive football positions (DE, DT, LB, CB, S, etc.). "Midwest" = states/teams in that US region. "Signed to BMI" = pro is BMI. Someone's "clients" = people whose contact/rep is that person.
 - Match on meaning, not just substring. If the request names a rep, region, genre, position group, label, PRO, etc., include everyone who fits.
+- Numeric fields are plain numbers: "socialReach" is total followers across platforms, "monthlyListeners" is Spotify monthly listeners. Compare thresholds directly — e.g. "over 50k social reach" means socialReach >= 50000; "50k" = 50000, "1M" = 1000000. Per-platform counts (instagramFollowers etc.) may be formatted like "7.7M" or "257K".
 - Use the EXACT "name" strings from the roster in your output. Do not invent, rename, or partially match names.
 - If nothing matches, return an empty list.
 
@@ -38,6 +40,9 @@ module.exports = async function handler(req, res) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(503).json({ error: 'AI search is not configured yet. Add ANTHROPIC_API_KEY in Vercel to enable it.' });
   }
+  // Admin-only: AI search reasons over the full sheet, including internal fields.
+  const { configured, admin } = authState(req);
+  if (configured && !admin) return res.status(403).json({ error: 'Log in to use AI search.' });
 
   try {
     const body = req.body || {};

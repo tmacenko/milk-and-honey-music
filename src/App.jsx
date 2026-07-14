@@ -1395,7 +1395,7 @@ function SportsDetail({ athlete: a, isMobile }) {
 }
 
 // Search-and-add picker for building a custom group of clients/athletes.
-function CustomGroupPicker({ items, selected, groupTitle, onToggle, onClear, onClose, onSmartSearch, domain }) {
+function CustomGroupPicker({ items, selected, groupTitle, onToggle, onClear, onClose, onSmartSearch, domain, isAdmin }) {
   const [q, setQ] = useState('');
   const [ai, setAi] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
@@ -1420,26 +1420,30 @@ function CustomGroupPicker({ items, selected, groupTitle, onToggle, onClear, onC
             <div style={{ fontSize: 17, fontWeight: 700, color: G.text }}>Custom group {selected.length > 0 && <span style={{ color: G.green }}>· {selected.length}</span>}</div>
             <button onClick={onClose} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 12px", fontSize: 14, fontFamily: ff }}>Done</button>
           </div>
-          {/* AI smart search — natural language → group */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={ai} onChange={e => { setAi(e.target.value); setAiError(''); }} onKeyDown={e => e.key === 'Enter' && runAi()}
-                placeholder={aiPlaceholder}
-                style={{ ...inputBase, padding: "11px 14px", fontSize: 14, border: `1px solid ${G.greenBorder}` }} />
-              <button onClick={runAi} disabled={aiBusy || !ai.trim()}
-                style={{ background: aiBusy || !ai.trim() ? G.surfaceRaised : G.green, color: aiBusy || !ai.trim() ? G.textTertiary : "#0a0a0a", border: "none", borderRadius: 10, padding: "0 16px", fontWeight: 700, fontSize: 13, cursor: aiBusy || !ai.trim() ? "default" : "pointer", fontFamily: ff, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
-                {aiBusy ? <span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⟳</span> : '✨'} Find
-              </button>
-            </div>
-            <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 6 }}>Describe a group in plain English — AI builds it from the roster.</div>
-            {aiError && <div style={{ fontSize: 12, color: G.red, marginTop: 6 }}>{aiError}</div>}
-            {groupTitle && !aiError && <div style={{ fontSize: 12, color: G.green, marginTop: 6, fontWeight: 600 }}>✓ {groupTitle} · {selected.length}</div>}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 12px" }}>
-            <div style={{ flex: 1, height: 1, background: G.surfaceBorder }} />
-            <span style={{ fontSize: 10, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.08em" }}>or add manually</span>
-            <div style={{ flex: 1, height: 1, background: G.surfaceBorder }} />
-          </div>
+          {/* AI smart search — natural language → group (admins only; sees full sheet data) */}
+          {isAdmin && (
+            <>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input value={ai} onChange={e => { setAi(e.target.value); setAiError(''); }} onKeyDown={e => e.key === 'Enter' && runAi()}
+                    placeholder={aiPlaceholder}
+                    style={{ ...inputBase, padding: "11px 14px", fontSize: 14, border: `1px solid ${G.greenBorder}` }} />
+                  <button onClick={runAi} disabled={aiBusy || !ai.trim()}
+                    style={{ background: aiBusy || !ai.trim() ? G.surfaceRaised : G.green, color: aiBusy || !ai.trim() ? G.textTertiary : "#0a0a0a", border: "none", borderRadius: 10, padding: "0 16px", fontWeight: 700, fontSize: 13, cursor: aiBusy || !ai.trim() ? "default" : "pointer", fontFamily: ff, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+                    {aiBusy ? <span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⟳</span> : '✨'} Find
+                  </button>
+                </div>
+                <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 6 }}>Describe a group in plain English — AI builds it from the full roster.</div>
+                {aiError && <div style={{ fontSize: 12, color: G.red, marginTop: 6 }}>{aiError}</div>}
+                {groupTitle && !aiError && <div style={{ fontSize: 12, color: G.green, marginTop: 6, fontWeight: 600 }}>✓ {groupTitle} · {selected.length}</div>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 12px" }}>
+                <div style={{ flex: 1, height: 1, background: G.surfaceBorder }} />
+                <span style={{ fontSize: 10, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.08em" }}>or add manually</span>
+                <div style={{ flex: 1, height: 1, background: G.surfaceBorder }} />
+              </div>
+            </>
+          )}
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search to add…"
             style={{ ...inputBase, padding: "11px 14px", fontSize: 14 }} />
         </div>
@@ -1838,13 +1842,18 @@ function App() {
   // AI-powered custom group: send a compact roster + a plain-English query,
   // get back the matching names and a descriptive title.
   const smartGroup = async (query) => {
-    const roster = (domain === 'sports' ? athletes : clients).map(x => domain === 'sports' ? ({
-      name: x.name, position: x.position, level: x.level, team: x.nflTeam || x.college,
-      hometown: x.hometown, brands: x.brands, interests: x.interests,
-    }) : ({
-      name: x.name, types: x.types, label: x.label, pro: x.pro, publisher: x.publisher,
-      contact: x.contact, city: x.city, state: x.state, country: x.country,
-    }));
+    // Send EVERY field the sheet has (admins only), minus heavy media blobs that
+    // don't help filtering but bloat tokens. This gives the AI full context —
+    // addresses, reps, NIL, brand targets, sizes, notes, followers, everything.
+    const HEAVY = new Set(['id', 'photoUrl', 'headerUrl', 'teamLogo', 'heroImageUrl', 'logoUrl',
+      'spotifyTopTracks', 'spotifyRecentReleases', 'spotifySongCredits']);
+    const strip = (o, extra) => {
+      const out = {};
+      for (const k in o) if (!HEAVY.has(k) && o[k] != null && o[k] !== '') out[k] = o[k];
+      return { ...out, ...extra };
+    };
+    const roster = (domain === 'sports' ? athletes : clients).map(x =>
+      domain === 'sports' ? strip(x, { socialReach: athleteReach(x) }) : strip(x));
     const r = await fetch('/api/smart-group', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain, query, roster }),
@@ -2304,7 +2313,7 @@ function App() {
       {customGroupOpen && (
         <CustomGroupPicker items={customItems} selected={customGroup} groupTitle={customGroupTitle}
           onToggle={toggleCustomMember} onClear={clearCustomGroup} onClose={() => setCustomGroupOpen(false)}
-          onSmartSearch={smartGroup} domain={domain} />
+          onSmartSearch={smartGroup} domain={domain} isAdmin={isAdmin} />
       )}
 
       {/* Edit modal */}
