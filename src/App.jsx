@@ -1395,10 +1395,22 @@ function SportsDetail({ athlete: a, isMobile }) {
 }
 
 // Search-and-add picker for building a custom group of clients/athletes.
-function CustomGroupPicker({ items, selected, onToggle, onClear, onClose }) {
+function CustomGroupPicker({ items, selected, groupTitle, onToggle, onClear, onClose, onSmartSearch, domain }) {
   const [q, setQ] = useState('');
+  const [ai, setAi] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState('');
   const ql = q.trim().toLowerCase();
   const list = ql ? items.filter(it => it.name.toLowerCase().includes(ql) || (it.subtitle || '').toLowerCase().includes(ql)) : items;
+  const runAi = async () => {
+    const query = ai.trim();
+    if (!query || aiBusy || !onSmartSearch) return;
+    setAiBusy(true); setAiError('');
+    try { await onSmartSearch(query); }
+    catch (e) { setAiError(e.message || 'Search failed'); }
+    setAiBusy(false);
+  };
+  const aiPlaceholder = domain === 'sports' ? "e.g. defensive players in the Midwest" : "e.g. producers signed to BMI";
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(16px)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -1408,7 +1420,27 @@ function CustomGroupPicker({ items, selected, onToggle, onClear, onClose }) {
             <div style={{ fontSize: 17, fontWeight: 700, color: G.text }}>Custom group {selected.length > 0 && <span style={{ color: G.green }}>· {selected.length}</span>}</div>
             <button onClick={onClose} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 12px", fontSize: 14, fontFamily: ff }}>Done</button>
           </div>
-          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search to add…"
+          {/* AI smart search — natural language → group */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={ai} onChange={e => { setAi(e.target.value); setAiError(''); }} onKeyDown={e => e.key === 'Enter' && runAi()}
+                placeholder={aiPlaceholder}
+                style={{ ...inputBase, padding: "11px 14px", fontSize: 14, border: `1px solid ${G.greenBorder}` }} />
+              <button onClick={runAi} disabled={aiBusy || !ai.trim()}
+                style={{ background: aiBusy || !ai.trim() ? G.surfaceRaised : G.green, color: aiBusy || !ai.trim() ? G.textTertiary : "#0a0a0a", border: "none", borderRadius: 10, padding: "0 16px", fontWeight: 700, fontSize: 13, cursor: aiBusy || !ai.trim() ? "default" : "pointer", fontFamily: ff, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+                {aiBusy ? <span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⟳</span> : '✨'} Find
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 6 }}>Describe a group in plain English — AI builds it from the roster.</div>
+            {aiError && <div style={{ fontSize: 12, color: G.red, marginTop: 6 }}>{aiError}</div>}
+            {groupTitle && !aiError && <div style={{ fontSize: 12, color: G.green, marginTop: 6, fontWeight: 600 }}>✓ {groupTitle} · {selected.length}</div>}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 12px" }}>
+            <div style={{ flex: 1, height: 1, background: G.surfaceBorder }} />
+            <span style={{ fontSize: 10, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.08em" }}>or add manually</span>
+            <div style={{ flex: 1, height: 1, background: G.surfaceBorder }} />
+          </div>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search to add…"
             style={{ ...inputBase, padding: "11px 14px", fontSize: 14 }} />
         </div>
         <div style={{ overflowY: "auto", padding: "8px 10px", flex: 1 }}>
@@ -1687,9 +1719,11 @@ function App() {
   // overriding the type/other filters (search still narrows within it). Works for both domains.
   const [customGroup, setCustomGroup] = useState([]);
   const [customGroupOpen, setCustomGroupOpen] = useState(false);
+  const [customGroupTitle, setCustomGroupTitle] = useState(''); // AI-generated title, when a smart group is active
   const inCustomGroup = (name) => customGroup.includes(name);
-  const toggleCustomMember = (name) => setCustomGroup(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
-  const clearCustomGroup = () => setCustomGroup([]);
+  // Manual edits invalidate the AI title so the export label never mislabels the set.
+  const toggleCustomMember = (name) => { setCustomGroupTitle(''); setCustomGroup(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]); };
+  const clearCustomGroup = () => { setCustomGroup([]); setCustomGroupTitle(''); };
   // Multi-select type filter. Empty array = show all; otherwise a client matches
   // if it has ANY selected type (so "Producer" + "Songwriter" shows both).
   const [filterTypes, setFilterTypes] = useState([]);
@@ -1800,7 +1834,27 @@ function App() {
     } catch (e) { alert('Could not generate the PDF. Please try again.'); }
     setPdfBusy(false);
   };
-  const rosterTitle = () => customGroup.length ? 'Milk & Honey — Custom Group' : (domain === 'sports' ? 'Milk & Honey Sports' : 'Milk & Honey Music');
+  const rosterTitle = () => customGroup.length ? (customGroupTitle || 'Milk & Honey — Custom Group') : (domain === 'sports' ? 'Milk & Honey Sports' : 'Milk & Honey Music');
+  // AI-powered custom group: send a compact roster + a plain-English query,
+  // get back the matching names and a descriptive title.
+  const smartGroup = async (query) => {
+    const roster = (domain === 'sports' ? athletes : clients).map(x => domain === 'sports' ? ({
+      name: x.name, position: x.position, level: x.level, team: x.nflTeam || x.college,
+      hometown: x.hometown, brands: x.brands, interests: x.interests,
+    }) : ({
+      name: x.name, types: x.types, label: x.label, pro: x.pro, publisher: x.publisher,
+      contact: x.contact, city: x.city, state: x.state, country: x.country,
+    }));
+    const r = await fetch('/api/smart-group', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, query, roster }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'AI search failed');
+    setCustomGroup(d.names || []);
+    setCustomGroupTitle(d.title || '');
+    return { count: (d.names || []).length, title: d.title };
+  };
   // Export the current filtered roster. Detailed = rich 1×4 (mirrors the detailed cards);
   // Simple = compact 3×5. Defaults to the on-screen view mode.
   const downloadRosterPdf = (layout) => {
@@ -2248,8 +2302,9 @@ function App() {
 
       {/* Custom group picker */}
       {customGroupOpen && (
-        <CustomGroupPicker items={customItems} selected={customGroup}
-          onToggle={toggleCustomMember} onClear={clearCustomGroup} onClose={() => setCustomGroupOpen(false)} />
+        <CustomGroupPicker items={customItems} selected={customGroup} groupTitle={customGroupTitle}
+          onToggle={toggleCustomMember} onClear={clearCustomGroup} onClose={() => setCustomGroupOpen(false)}
+          onSmartSearch={smartGroup} domain={domain} />
       )}
 
       {/* Edit modal */}
