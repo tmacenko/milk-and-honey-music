@@ -217,6 +217,8 @@ const PUBLIC_FIELDS = new Set([
   'instagram', 'twitter', 'tiktok', 'igFollowers', 'twitterFollowers', 'tiktokFollowers', 'igEngagement',
   'bio', 'hometown', 'height', 'weight', 'jerseyNumber', 'classOf', 'committedTo', 'yearInSchool',
   'draftYear', 'draftRound', 'draftPick', 'espnId', 'espnSport', 'teamLogo', 'photoUrl', 'heroImageUrl', 'profileUrl247',
+  // Brand-facing marketing content (the "beyond ESPN" value):
+  'brands', 'interests',
 ]);
 const pickPublic = a => {
   const o = {};

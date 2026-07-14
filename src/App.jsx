@@ -1146,7 +1146,12 @@ function SportsDetail({ athlete: a, isMobile }) {
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1, marginTop: banner ? -bannerH : 0 }}>
-        <div style={{ padding: banner ? `${bannerH - avSize / 2}px ${pad}px 20px` : `${pad}px ${pad}px 20px`, borderBottom: `1px solid ${G.surfaceBorder}` }}>
+        <div style={{ position: "relative", padding: banner ? `${bannerH - avSize / 2}px ${pad}px 20px` : `${pad}px ${pad}px 20px`, borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <a href={`mailto:marketing@milkhoneysports.com?subject=${encodeURIComponent('Partnership inquiry — ' + a.name)}`}
+            style={{ position: "absolute", top: banner ? 16 : pad, right: pad, display: "flex", alignItems: "center", gap: 7, background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: isMobile ? "8px 10px" : "9px 14px", textDecoration: "none", zIndex: 3 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z" stroke={G.green} strokeWidth="2"/><path d="m22 6-10 7L2 6" stroke={G.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            {!isMobile && <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact</span>}
+          </a>
           <div style={{ display: "flex", gap: isMobile ? 16 : 24, alignItems: "flex-end" }}>
             <div style={{ flexShrink: 0, width: avSize, height: avSize, borderRadius: "50%", overflow: "hidden", border: `2px solid ${G.surfaceBorderLight}` }}>
               <Avatar name={a.name} photoUrl={a.photoUrl} size={avSize} />
@@ -1175,6 +1180,22 @@ function SportsDetail({ athlete: a, isMobile }) {
             <div>
               <p style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{isMobile ? bioText : a.bio}</p>
               {isMobile && a.bio.length > BIO_LIMIT && <button onClick={() => setBioExp(v => !v)} style={{ background: "none", border: "none", color: G.green, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0 0", fontFamily: ff }}>{bioExp ? 'View less' : 'View more'}</button>}
+            </div>
+          )}
+          {a.brands?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Brands worked with</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {a.brands.map((b, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{b}</span>)}
+              </div>
+            </div>
+          )}
+          {a.interests?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Interests</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {a.interests.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
+              </div>
             </div>
           )}
           {info.length > 0 && (
