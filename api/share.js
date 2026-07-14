@@ -245,11 +245,26 @@ async function pdfPrefetchDetailed(items, logoUrlFor) {
   return cache;
 }
 
+// Small pill chips drawn inline (e.g. credits next to the socials). Stops at maxX.
+function drawInlineChips(doc, items, x, y, maxX) {
+  if (!items || !items.length) return;
+  let cx = x; const h = 15, padX = 7, gap = 5;
+  doc.font('Helvetica').fontSize(8);
+  for (const it of items) {
+    const s = String(it);
+    const w = doc.widthOfString(s) + padX * 2;
+    if (cx + w > maxX) break;
+    doc.roundedRect(cx, y, w, h, 7).fillAndStroke('#18181b', PDF_BORDER);
+    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(8).text(s, cx + padX, y + 3.7, { lineBreak: false });
+    cx += w + gap;
+  }
+}
+
 function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor, pathPrefix = '') {
   doc.roundedRect(bx, by, bw, bh, 12).fillAndStroke(PDF_SURFACE, PDF_BORDER);
   const slug = slugOf(c.name);
   if (slug) doc.link(bx, by, bw, bh, `${APP_URL}/${pathPrefix}${slug}`);
-  const pad = 16, avR = 30;
+  const pad = 18, avR = 32;
   const avCx = bx + pad + avR, avCy = by + pad + avR;
 
   const photoBuf = c.photoUrl && cache.get(c.photoUrl);
@@ -261,7 +276,7 @@ function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor, pathPrefix 
   }
   if (!drew) {
     doc.circle(avCx, avCy, avR).fillAndStroke('#18181b', PDF_BORDER);
-    doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(15).text(pdfInitials(c.name), avCx - avR, avCy - 8, { width: avR * 2, align: 'center', lineBreak: false });
+    doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(16).text(pdfInitials(c.name), avCx - avR, avCy - 9, { width: avR * 2, align: 'center', lineBreak: false });
   }
 
   const tx = avCx + avR + 16;
@@ -273,20 +288,20 @@ function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor, pathPrefix 
     : [c.pro, c.publisher, c.label].filter(Boolean)
         .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean)
         .map(n => ({ name: n, url: logoUrlFor(n) })).filter(l => l.url);
-  let lx = rightPad; const ls = 26;
+  let lx = rightPad; const ls = 28;
   logoItems.slice(0, 4).reverse().forEach(l => { lx -= ls; drawLogoTile(doc, cache.get(l.url), lx, by + pad, ls); lx -= 6; });
   const textRight = logoItems.length ? lx - 4 : rightPad;
 
-  doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(15).text(c.name || '', tx, by + pad, { width: textRight - tx, height: 18, ellipsis: true });
+  doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(16).text(c.name || '', tx, by + pad, { width: textRight - tx, height: 19, ellipsis: true });
 
   // Types · flag · location
-  let sy = by + pad + 21, sx = tx;
+  let sy = by + pad + 22, sx = tx;
   const flagBuf = flagUrl(c.country) && cache.get(flagUrl(c.country));
   if (flagBuf) { try { doc.image(flagBuf, sx, sy - 1, { fit: [13, 9] }); } catch {} sx += 17; }
   const subText = [(c.types || []).join(' · '), [c.city, c.state].filter(Boolean).join(', ')].filter(Boolean).join('   ·   ');
-  if (subText) { doc.font('Helvetica').fontSize(9).fillColor(PDF_TEXT2).text(subText, sx, sy, { width: textRight - sx, height: 11, ellipsis: true, lineBreak: false }); }
+  if (subText) { doc.font('Helvetica').fontSize(9.5).fillColor(PDF_TEXT2).text(subText, sx, sy, { width: textRight - sx, height: 12, ellipsis: true, lineBreak: false }); }
 
-  // Socials
+  // Socials, with credits pills inline right after them (mirrors the one-sheet).
   const socials = [
     c.instagram && { k: 'instagram', url: `https://instagram.com/${c.instagram}` },
     c.twitter && { k: 'twitter', url: `https://x.com/${c.twitter}` },
@@ -297,17 +312,24 @@ function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor, pathPrefix 
     c.youtube && { k: 'youtube', url: c.youtube },
     c.beatport && { k: 'beatport', url: c.beatport },
   ].filter(Boolean);
-  let ix = tx; const socY = by + pad + 38;
-  socials.forEach(s => { drawSocialIcon(doc, s.k, ix, socY, 13, PDF_TEXT2); if (s.url) doc.link(ix - 2, socY - 2, 17, 17, s.url); ix += 20; });
+  let ix = tx; const socY = by + pad + 40;
+  socials.forEach(s => { drawSocialIcon(doc, s.k, ix, socY, 14, PDF_TEXT2); if (s.url) doc.link(ix - 2, socY - 2, 18, 18, s.url); ix += 21; });
+  if (c.credits && c.credits.length) drawInlineChips(doc, c.credits, ix + (socials.length ? 8 : 0), socY - 3, textRight);
 
-  // Bio + labeled lines (music: credits/supporters/key shows; sports: brands/interests).
-  const sections = c.sections || [['Credits', c.credits], ['Supporters', c.supporters], ['Key shows', c.keyShows]];
+  // Divider below the header (keeps the bio clear of the photo).
+  const dividerY = Math.max(avCy + avR, socY + 15) + 12;
+  doc.moveTo(bx + pad, dividerY).lineTo(bx + bw - pad, dividerY).lineWidth(1).strokeColor(PDF_BORDER).stroke();
+
+  // Bio (roomy) + labeled lines (music: supporters/key shows; sports: brands/interests).
+  const sections = c.sections || [['Supporters', c.supporters], ['Key shows', c.keyShows]];
   const contentW = bw - pad * 2;
-  const hasExtra = sections.some(([, items]) => items && items.length);
-  let y = socY + 22;
+  const nSec = sections.filter(([, items]) => items && items.length).length;
+  const bottomReserve = nSec ? nSec * 13 + 8 + pad : pad;
+  let y = dividerY + 12;
   if (c.bio) {
-    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(8.5).text(String(c.bio), bx + pad, y, { width: contentW, height: hasExtra ? 24 : 44, ellipsis: true, lineGap: 2 });
-    y = doc.y + 8;
+    const bioH = Math.max(by + bh - y - bottomReserve, 24);
+    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(9).text(String(c.bio), bx + pad, y, { width: contentW, height: bioH, ellipsis: true, lineGap: 2.5 });
+    y = doc.y + 10;
   }
   const compactLine = (label, items) => {
     if (!items || !items.length) return;
@@ -329,7 +351,7 @@ async function buildDetailedRosterPdf(items, title, logos, pathPrefix = '') {
   const M = PDF_MARGIN, bandW = PDF_CONTENT_W;
   const top = PDF_MARGIN + PDF_HEADER_H + PDF_HEADER_GAP;
   const bottom = PDF_PAGE_H - 34;
-  const ROWS = 4, gap = 12;
+  const ROWS = 3, gap = 14;
   const bandH = Math.floor((bottom - top - (ROWS - 1) * gap) / ROWS);
 
   const pages = [];

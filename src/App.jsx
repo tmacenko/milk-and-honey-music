@@ -622,7 +622,7 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
     </div>
   );
   const av = isMobile ? 60 : 76;
-  const hasBody = c.bio || c.credits?.length > 0 || c.supporters?.length > 0 || c.keyShows?.length > 0;
+  const hasBody = c.bio || c.supporters?.length > 0 || c.keyShows?.length > 0;
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, padding: isMobile ? 16 : 20, cursor: "pointer", transition: `all 0.18s ${G.ease}`, boxShadow: hov ? G.shadowLg : G.shadow }}>
@@ -636,14 +636,21 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
             <span style={{ fontSize: 13, color: G.textSecondary, fontWeight: 500 }}>{sortedTypes.join(' · ')}</span>
             {loc && <><span style={{ color: G.textTertiary, fontSize: 12 }}>·</span><span style={{ fontSize: 13, color: G.textTertiary }}>{loc}</span></>}
           </div>
-          {socials.length > 0 && (
-            <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 12, color: G.textSecondary }}>
-              {socials.map((s, i) => (
-                <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-                  style={{ color: "inherit", display: "flex", transition: `color 0.15s ${G.ease}` }}
-                  onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = "inherit"}>
-                  {s.icon}
-                </a>
+          {(socials.length > 0 || c.credits?.length > 0) && (
+            <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+              {socials.length > 0 && (
+                <div style={{ display: "flex", gap: 14, alignItems: "center", color: G.textSecondary }}>
+                  {socials.map((s, i) => (
+                    <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                      style={{ color: "inherit", display: "flex", transition: `color 0.15s ${G.ease}` }}
+                      onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = "inherit"}>
+                      {s.icon}
+                    </a>
+                  ))}
+                </div>
+              )}
+              {c.credits?.map((cr, i) => (
+                <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 500, color: G.textSecondary, whiteSpace: "nowrap" }}>{cr}</span>
               ))}
             </div>
           )}
@@ -654,10 +661,9 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
           </div>
         )}
       </div>
-      {/* Divider, then full-width bio / credits / chips (never left of the photo) */}
-      {hasBody && <div style={{ height: 1, background: G.surfaceBorder, margin: "16px 0 0" }} />}
-      {c.bio && <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginTop: 14, display: "-webkit-box", WebkitLineClamp: 6, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.bio}</div>}
-      {chips('Credits', c.credits)}
+      {/* Divider, then full-width bio + chips (never left of the photo) */}
+      {hasBody && <div style={{ height: 1, background: G.surfaceBorder, margin: "18px 0 0" }} />}
+      {c.bio && <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginTop: 16, display: "-webkit-box", WebkitLineClamp: 8, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.bio}</div>}
       {chips('Supporters', c.supporters)}
       {chips('Key Shows', c.keyShows)}
     </div>
