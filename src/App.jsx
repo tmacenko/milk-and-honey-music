@@ -1270,27 +1270,27 @@ function Landing({ onEnter }) {
   };
 
   const blob = (extra) => ({
-    position: "absolute", borderRadius: "50%", filter: "blur(90px)",
-    willChange: "transform", pointerEvents: "none", ...extra,
+    position: "absolute", borderRadius: "50%", filter: "blur(55px)",
+    willChange: "transform", backfaceVisibility: "hidden", pointerEvents: "none", ...extra,
   });
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: ff, zIndex: 5000 }}>
       <style>{`
-        @keyframes mhGrad1{0%{transform:translate(-8%,-6%) scale(1)}50%{transform:translate(22%,18%) scale(1.35)}100%{transform:translate(-8%,-6%) scale(1)}}
-        @keyframes mhGrad2{0%{transform:translate(12%,22%) scale(1.25)}50%{transform:translate(-16%,-12%) scale(1)}100%{transform:translate(12%,22%) scale(1.25)}}
-        @keyframes mhGrad3{0%{transform:translate(28%,-18%) scale(1)}50%{transform:translate(-22%,26%) scale(1.4)}100%{transform:translate(28%,-18%) scale(1)}}
+        @keyframes mhGrad1{0%,100%{transform:translate3d(-6vw,-4vw,0)}50%{transform:translate3d(10vw,8vw,0)}}
+        @keyframes mhGrad2{0%,100%{transform:translate3d(8vw,10vw,0)}50%{transform:translate3d(-9vw,-7vw,0)}}
+        @keyframes mhGrad3{0%,100%{transform:translate3d(7vw,-8vw,0)}50%{transform:translate3d(-10vw,9vw,0)}}
         @keyframes mhLandIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
       `}</style>
 
-      {/* Free-flowing gradient field */}
+      {/* Free-flowing gradient field — translate-only animation stays on the GPU compositor */}
       <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-        <div style={blob({ width: "62vw", height: "62vw", top: "-14vw", left: "-10vw", background: "radial-gradient(circle, rgba(62,170,120,0.42), transparent 66%)", animation: "mhGrad1 24s ease-in-out infinite" })} />
-        <div style={blob({ width: "68vw", height: "68vw", bottom: "-22vw", right: "-16vw", background: "radial-gradient(circle, rgba(52,150,110,0.5), transparent 64%)", animation: "mhGrad2 30s ease-in-out infinite" })} />
-        <div style={blob({ width: "46vw", height: "46vw", top: "30vh", left: "34vw", background: "radial-gradient(circle, rgba(46,120,96,0.34), transparent 68%)", animation: "mhGrad3 27s ease-in-out infinite" })} />
+        <div style={blob({ width: "60vw", height: "60vw", top: "-12vw", left: "-8vw", background: "radial-gradient(circle, rgba(62,170,120,0.5), transparent 62%)", animation: "mhGrad1 26s ease-in-out infinite" })} />
+        <div style={blob({ width: "64vw", height: "64vw", bottom: "-18vw", right: "-14vw", background: "radial-gradient(circle, rgba(52,150,110,0.55), transparent 60%)", animation: "mhGrad2 32s ease-in-out infinite" })} />
+        <div style={blob({ width: "44vw", height: "44vw", top: "28vh", left: "34vw", background: "radial-gradient(circle, rgba(46,120,96,0.4), transparent 64%)", animation: "mhGrad3 29s ease-in-out infinite" })} />
       </div>
       {/* Cursor-trailing glow */}
-      <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "40vw", height: "40vw", borderRadius: "50%", filter: "blur(100px)", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.28), transparent 62%)", willChange: "transform" }} />
+      <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "34vw", height: "34vw", borderRadius: "50%", filter: "blur(70px)", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.3), transparent 60%)", willChange: "transform" }} />
       {/* Vignette to keep edges black */}
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 100%)", pointerEvents: "none" }} />
 
