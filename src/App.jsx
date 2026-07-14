@@ -592,6 +592,78 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
   );
 }
 
+// Rich roster card — mirrors the "detailed" (1×4) PDF: avatar, name, socials,
+// bio, label/PRO logos, supporters, key shows. No releases. Full-width band.
+function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
+  const [hov, setHov] = useState(false);
+  const sortedTypes = [...(c.types || [])].sort((a, b) => a === 'Artist' ? -1 : b === 'Artist' ? 1 : a.localeCompare(b));
+  const seenFlags = new Set();
+  const flags = [c.country, c.country2, c.country3].filter(Boolean).map(flag).filter(f => f && !seenFlags.has(f) && seenFlags.add(f));
+  const loc = [c.city, c.state].filter(Boolean).join(', ');
+  const logoItems = [c.pro, c.publisher, c.label].filter(Boolean)
+    .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean)
+    .map(name => ({ url: lookupLogo(logos, name), label: name }));
+  const socials = [
+    c.instagram && { icon: <IgIcon size={18} />, url: `https://instagram.com/${c.instagram}` },
+    c.twitter && { icon: <TwIcon size={16} />, url: `https://x.com/${c.twitter}` },
+    c.tiktok && { icon: <TkIcon size={16} />, url: `https://tiktok.com/@${c.tiktok}` },
+    c.spotifyUrl && { icon: <SpotifyIcon size={17} />, url: c.spotifyUrl },
+    c.appleMusicUrl && { icon: <AppleMusicIcon size={17} />, url: c.appleMusicUrl },
+    c.soundcloudUrl && { icon: <SoundCloudIcon size={19} />, url: c.soundcloudUrl },
+    c.youtube && { icon: <YtIcon size={19} />, url: c.youtube },
+    c.beatport && { icon: <BeatportIcon size={16} />, url: c.beatport },
+  ].filter(Boolean);
+  const bio = c.bio && (c.bio.length > 260 ? c.bio.slice(0, 260).trimEnd() + '…' : c.bio);
+  const chips = (label, items) => items?.length > 0 && (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 8 }}>{label}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+        {items.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
+      </div>
+    </div>
+  );
+  const av = isMobile ? 60 : 76;
+  return (
+    <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, padding: isMobile ? 16 : 20, cursor: "pointer", transition: `all 0.18s ${G.ease}`, boxShadow: hov ? G.shadowLg : G.shadow }}>
+      <div style={{ display: "flex", gap: isMobile ? 14 : 18, alignItems: "flex-start" }}>
+        <Avatar name={c.name} photoUrl={c.photoUrl} size={av} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: isMobile ? 18 : 21, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2 }}>{c.name}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+                {flags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1 }}>{flags.join(' ')}</span>}
+                <span style={{ fontSize: 13, color: G.textSecondary, fontWeight: 500 }}>{sortedTypes.join(' · ')}</span>
+                {loc && <><span style={{ color: G.textTertiary, fontSize: 12 }}>·</span><span style={{ fontSize: 13, color: G.textTertiary }}>{loc}</span></>}
+              </div>
+            </div>
+            {logoItems.length > 0 && (
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                {logoItems.slice(0, 4).map((l, i) => <LogoBadge key={i} url={l.url} label={l.label} size={34} />)}
+              </div>
+            )}
+          </div>
+          {socials.length > 0 && (
+            <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 12, color: G.textSecondary }}>
+              {socials.map((s, i) => (
+                <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                  style={{ color: "inherit", display: "flex", transition: `color 0.15s ${G.ease}` }}
+                  onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = "inherit"}>
+                  {s.icon}
+                </a>
+              ))}
+            </div>
+          )}
+          {bio && <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.55, marginTop: 12 }}>{bio}</div>}
+          {chips('Supporters', c.supporters)}
+          {chips('Key Shows', c.keyShows)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Client detail view ────────────────────────────────────────────────────────
 function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
   const proLogo = lookupLogo(logos, c.pro);
@@ -1218,6 +1290,119 @@ function SportsDetail({ athlete: a, isMobile }) {
   );
 }
 
+// Search-and-add picker for building a custom group of clients/athletes.
+function CustomGroupPicker({ items, selected, onToggle, onClear, onClose }) {
+  const [q, setQ] = useState('');
+  const ql = q.trim().toLowerCase();
+  const list = ql ? items.filter(it => it.name.toLowerCase().includes(ql) || (it.subtitle || '').toLowerCase().includes(ql)) : items;
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(16px)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "rgba(18,18,20,0.98)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 24, width: "100%", maxWidth: 460, maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: G.shadowLg, overflow: "hidden" }}>
+        <div style={{ padding: "20px 22px 14px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: G.text }}>Custom group {selected.length > 0 && <span style={{ color: G.green }}>· {selected.length}</span>}</div>
+            <button onClick={onClose} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 12px", fontSize: 14, fontFamily: ff }}>Done</button>
+          </div>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search to add…"
+            style={{ ...inputBase, padding: "11px 14px", fontSize: 14 }} />
+        </div>
+        <div style={{ overflowY: "auto", padding: "8px 10px", flex: 1 }}>
+          {list.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 20px", color: G.textTertiary, fontSize: 13 }}>No matches.</div>
+          ) : list.map((it, i) => {
+            const on = selected.includes(it.name);
+            return (
+              <div key={it.name || i} onClick={() => onToggle(it.name)}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 12, cursor: "pointer", background: on ? G.greenSubtle : "transparent" }}
+                onMouseEnter={e => { if (!on) e.currentTarget.style.background = G.surfaceRaised; }}
+                onMouseLeave={e => { if (!on) e.currentTarget.style.background = "transparent"; }}>
+                <Avatar name={it.name} photoUrl={it.photoUrl} size={38} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.name}</div>
+                  {it.subtitle && <div style={{ fontSize: 12, color: G.textTertiary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.subtitle}</div>}
+                </div>
+                <div style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: on ? G.green : "transparent", border: `1.5px solid ${on ? G.green : G.surfaceBorderLight}`, color: "#0a0a0a", fontSize: 15, fontWeight: 700 }}>
+                  {on ? '✓' : <span style={{ color: G.textTertiary, fontWeight: 400 }}>+</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {selected.length > 0 && (
+          <div style={{ padding: "12px 16px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <button onClick={onClear} style={{ background: "none", border: "none", color: G.textSecondary, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Clear all</button>
+            <button onClick={onClose} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>View {selected.length}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Unified export control: Download PDF (Simple/Detailed) + hosted share link.
+function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading, onLink, onClearLink }) {
+  const [open, setOpen] = useState(false);
+  const [expiry, setExpiry] = useState('90');
+  const [copied, setCopied] = useState(false);
+  const ref = useRef();
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const row = (title, sub, onClick, active) => (
+    <button onClick={onClick} disabled={pdfBusy}
+      style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: 10, border: `1px solid ${active ? G.green : G.surfaceBorder}`, background: active ? G.greenSubtle : G.surfaceRaised, cursor: pdfBusy ? "wait" : "pointer", fontFamily: ff, marginBottom: 8 }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: active ? G.green : G.text }}>{title}</span>
+      <span style={{ fontSize: 11, color: G.textTertiary, marginTop: 2 }}>{sub}</span>
+    </button>
+  );
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        Export
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 280, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, padding: 14, zIndex: 500, boxShadow: G.shadowLg }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Download PDF · {count}</div>
+          {row('Detailed', '1 × 4 — bio, socials, logos', () => { onPdf('detailed'); setOpen(false); }, view === 'detailed')}
+          {row('Simple', '3 × 5 — compact cards', () => { onPdf('simple'); setOpen(false); }, view !== 'detailed')}
+          {isAdmin && (
+            <>
+              <div style={{ height: 1, background: G.surfaceBorder, margin: "12px 0" }} />
+              <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Share link</div>
+              {linkUrl ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "9px 11px", fontSize: 12, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{linkUrl}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { navigator.clipboard.writeText(linkUrl); setCopied(true); setTimeout(() => setCopied(false), 1800); }}
+                      style={{ flex: 1, background: copied ? G.green : "transparent", color: copied ? "#0a0a0a" : G.green, border: `1.5px solid ${G.green}`, borderRadius: 9, padding: "9px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>{copied ? '✓ Copied' : 'Copy link'}</button>
+                    <button onClick={() => onClearLink()} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "9px 12px", color: G.textSecondary, fontSize: 13, cursor: "pointer", fontFamily: ff }}>New</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                    {[['30', '30d'], ['90', '90d'], ['180', '6mo'], ['never', '∞']].map(([val, lbl]) => (
+                      <button key={val} onClick={() => setExpiry(val)}
+                        style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: `1px solid ${expiry === val ? G.green : G.surfaceBorder}`, background: expiry === val ? G.greenSubtle : G.surfaceRaised, color: expiry === val ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{lbl}</button>
+                    ))}
+                  </div>
+                  <button onClick={() => onLink(expiry)} disabled={linkLoading}
+                    style={{ width: "100%", background: linkLoading ? G.surfaceRaised : G.green, color: linkLoading ? G.textTertiary : "#0a0a0a", border: "none", borderRadius: 9, padding: "10px", fontWeight: 700, fontSize: 13, cursor: linkLoading ? "wait" : "pointer", fontFamily: ff }}>{linkLoading ? 'Generating…' : 'Generate link'}</button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Landing gate ──────────────────────────────────────────────────────────────
 // Front door: pick Music or Sports, then enter the shared site password.
 // Separate from the internal/admin login (which unlocks editing).
@@ -1396,6 +1581,15 @@ function App() {
   };
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
+  // Roster display: 'list' (compact cards / 3x5 PDF) or 'detailed' (rich cards / 1x4 PDF).
+  const [rosterView, setRosterView] = useState('list');
+  // Custom group: a hand-picked set of names. When non-empty it becomes the roster,
+  // overriding the type/other filters (search still narrows within it). Works for both domains.
+  const [customGroup, setCustomGroup] = useState([]);
+  const [customGroupOpen, setCustomGroupOpen] = useState(false);
+  const inCustomGroup = (name) => customGroup.includes(name);
+  const toggleCustomMember = (name) => setCustomGroup(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
+  const clearCustomGroup = () => setCustomGroup([]);
   // Multi-select type filter. Empty array = show all; otherwise a client matches
   // if it has ANY selected type (so "Producer" + "Songwriter" shows both).
   const [filterTypes, setFilterTypes] = useState([]);
@@ -1475,20 +1669,9 @@ function App() {
     const brand = `Milk & Honey ${domain === 'sports' ? 'Sports' : 'Music'}`;
     document.title = (view === 'detail' && selected) ? `${selected.name} — ${brand}` : brand;
   }, [view, selected, domain]);
-  const [shareRosterOpen, setShareRosterOpen] = useState(false);
+  // Hosted share-link state (generated from the current filtered roster via the Export menu).
   const [shareRosterUrl, setShareRosterUrl] = useState(null);
-  const [shareRosterCopied, setShareRosterCopied] = useState(false);
   const [shareRosterLoading, setShareRosterLoading] = useState(false);
-  const [shareRosterTitle, setShareRosterTitle] = useState('Milk & Honey Music');
-  const [shareRosterTypes, setShareRosterTypes] = useState([]); // empty = All (like the main filter)
-  const [shareRosterSort, setShareRosterSort] = useState('default');
-  const [shareRosterExpiry, setShareRosterExpiry] = useState('90');
-  const [shareRosterShowLogos, setShareRosterShowLogos] = useState(true);
-  const [shareRosterShowCredits, setShareRosterShowCredits] = useState(true);
-  const [shareRosterShowBio, setShareRosterShowBio] = useState(true);
-  const [shareRosterShowContact, setShareRosterShowContact] = useState(true);
-  const [shareRosterShowMusic, setShareRosterShowMusic] = useState(true);
-  const [shareFeaturesOpen, setShareFeaturesOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/sheets')
@@ -1517,14 +1700,71 @@ function App() {
     } catch (e) { alert('Could not generate the PDF. Please try again.'); }
     setPdfBusy(false);
   };
-  const downloadRosterPdf = () => downloadPdf({
-    action: 'roster-pdf',
-    title: 'Milk & Honey Music',
-    clients: filtered.map(c => ({ name: c.name, types: c.types, photoUrl: c.photoUrl, label: c.label, pro: c.pro, country: c.country, logoUrl: lookupLogo(logos, c.label || c.pro || c.publisher) })),
-  }, 'Milk-and-Honey-Roster.pdf');
+  const rosterTitle = () => customGroup.length ? 'Milk & Honey — Custom Group' : 'Milk & Honey Music';
+  // Export the current filtered roster. Detailed = rich 1×4 (mirrors the detailed cards);
+  // Simple = compact 3×5. Defaults to the on-screen view mode.
+  const downloadRosterPdf = (layout) => {
+    const detailed = layout ? layout === 'detailed' : rosterView === 'detailed';
+    const base = slugOf(rosterTitle()) || 'roster';
+    if (detailed) {
+      return downloadPdf({
+        action: 'roster-pdf', layout: 'detailed', title: rosterTitle(), logos,
+        clients: filtered.map(c => ({
+          name: c.name, types: c.types, photoUrl: c.photoUrl, headerUrl: c.headerUrl,
+          country: c.country, city: c.city, state: c.state,
+          instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
+          spotifyUrl: c.spotifyUrl, appleMusicUrl: c.appleMusicUrl, soundcloudUrl: c.soundcloudUrl,
+          youtube: c.youtube, beatport: c.beatport,
+          bio: c.bio, supporters: c.supporters, keyShows: c.keyShows,
+          pro: c.pro, publisher: c.publisher, label: c.label, contact: c.contact,
+          contactEmail: (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(','),
+        })),
+      }, `${base}-detailed.pdf`);
+    }
+    return downloadPdf({
+      action: 'roster-pdf', title: rosterTitle(),
+      clients: filtered.map(c => ({ name: c.name, types: c.types, photoUrl: c.photoUrl, label: c.label, pro: c.pro, country: c.country, logoUrl: lookupLogo(logos, c.label || c.pro || c.publisher) })),
+    }, `${base}.pdf`);
+  };
   const downloadClientPdf = (c) => {
     const contactEmail = (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(',');
     return downloadPdf({ action: 'client-pdf', client: { ...c, contactEmail }, logos }, `${slugOf(c.name)}.pdf`);
+  };
+
+  // Generate a hosted interactive share link from the current filtered roster.
+  const generateShareLink = async (expiry) => {
+    setShareRosterLoading(true); setShareRosterUrl(null);
+    try {
+      const mapped = filtered.map(c => ({
+        name: c.name, types: c.types, level: (c.types || [])[0] || 'Client',
+        photoUrl: c.photoUrl,
+        logoUrl: lookupLogo(logos, c.pro) || lookupLogo(logos, c.publisher) || lookupLogo(logos, c.label),
+        proLogos: (c.pro || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
+        pubLogos: (c.publisher || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
+        labelLogos: (c.label || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
+        pro: c.pro, publisher: c.publisher, label: c.label,
+        city: c.city, state: c.state, country: c.country,
+        city2: c.city2, state2: c.state2, country2: c.country2,
+        city3: c.city3, state3: c.state3, country3: c.country3,
+        credits: c.credits, bio: c.bio, contact: c.contact,
+        contactEmail: (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(','),
+        instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
+        appleMusicUrl: c.appleMusicUrl, soundcloudUrl: c.soundcloudUrl,
+        spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
+        spotifyRecentReleases: c.spotifyRecentReleases || null,
+        spotifySongCredits: c.spotifySongCredits || null,
+        spotifyTopTracks: c.spotifyTopTracks || null,
+      }));
+      const expiresAt = expiry !== 'never' ? new Date(Date.now() + parseInt(expiry) * 864e5).toISOString() : null;
+      const resp = await fetch('/api/share', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'roster-share', title: rosterTitle(), athletes: mapped, expiresAt }),
+      });
+      const data = await resp.json();
+      if (data.url) setShareRosterUrl(data.url);
+      else throw new Error(data.error || 'Failed');
+    } catch (e) { alert('Share failed: ' + e.message); }
+    setShareRosterLoading(false);
   };
 
   const types = useMemo(() => {
@@ -1558,6 +1798,14 @@ function App() {
   };
 
   const filtered = useMemo(() => {
+    // A custom group overrides the type/contact/label/country filters (search still narrows).
+    if (customGroup.length > 0) {
+      const q = search.toLowerCase();
+      return clients
+        .filter(c => customGroup.includes(c.name))
+        .filter(c => !search || c.name.toLowerCase().includes(q))
+        .sort((a, b) => customGroup.indexOf(a.name) - customGroup.indexOf(b.name));
+    }
     const list = clients.filter(c => {
       if (filterTypes.length > 0 && !filterTypes.some(t => (c.types || []).includes(t))) return false;
       if (filterContact !== 'All' && !(c.contact || '').split(',').map(s => s.trim()).includes(filterContact)) return false;
@@ -1579,9 +1827,16 @@ function App() {
     if (clientSort === 'listeners') return [...list].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly));
     if (clientSort === 'type') return [...list].sort((a, b) => (a.types?.[0] || '').localeCompare(b.types?.[0] || ''));
     return list;
-  }, [clients, filterTypes, filterContact, filterLabel, filterCountry, search, clientSort]);
+  }, [clients, filterTypes, filterContact, filterLabel, filterCountry, search, clientSort, customGroup]);
 
   const filteredAthletes = useMemo(() => {
+    if (customGroup.length > 0) {
+      const q = search.toLowerCase();
+      return athletes
+        .filter(a => customGroup.includes(a.name))
+        .filter(a => !search || a.name.toLowerCase().includes(q))
+        .sort((a, b) => customGroup.indexOf(a.name) - customGroup.indexOf(b.name));
+    }
     const list = athletes.filter(a => {
       if (sportsLevel !== 'All' && a.level !== sportsLevel) return false;
       if (search) {
@@ -1597,7 +1852,7 @@ function App() {
       if (lr !== 0) return lr;
       return athleteReach(b) - athleteReach(a);
     });
-  }, [athletes, sportsLevel, search]);
+  }, [athletes, sportsLevel, search, customGroup]);
 
   const saveClient = (updatedClient) => {
     setClients(prev => {
@@ -1653,6 +1908,41 @@ function App() {
     </div>
   );
 
+  // List / Detailed view toggle (music only for now).
+  const viewToggle = (
+    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+      {[['list', 'M4 6h16M4 12h16M4 18h16'], ['detailed', 'M4 5h16v6H4zM4 15h16v4H4z']].map(([v, d], i) => (
+        <button key={v} onClick={() => setRosterView(v)} title={v === 'list' ? 'List view' : 'Detailed view'}
+          style={{ padding: "8px 12px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer", background: rosterView === v ? G.greenSubtle : "transparent", color: rosterView === v ? G.green : G.textSecondary, display: "flex", alignItems: "center" }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d={d} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+      ))}
+    </div>
+  );
+  // Custom group button (+ active-state clear). Works in both domains.
+  const customGroupBtn = (
+    <div style={{ display: "flex", alignItems: "center", background: customGroup.length ? G.greenSubtle : G.surface, border: `1px solid ${customGroup.length ? G.green : G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+      <button onClick={() => setCustomGroupOpen(true)}
+        style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "transparent", border: "none", cursor: "pointer", fontFamily: ff, fontSize: 13, fontWeight: customGroup.length ? 700 : 500, color: customGroup.length ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        {customGroup.length ? `Custom group · ${customGroup.length}` : 'Custom group'}
+      </button>
+      {customGroup.length > 0 && (
+        <button onClick={clearCustomGroup} title="Clear group"
+          style={{ padding: "8px 10px 8px 4px", background: "transparent", border: "none", cursor: "pointer", color: G.green, fontSize: 14, fontFamily: ff }}>✕</button>
+      )}
+    </div>
+  );
+  const exportControl = (
+    <ExportMenu view={rosterView} count={filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
+      onPdf={downloadRosterPdf} linkUrl={shareRosterUrl} linkLoading={shareRosterLoading}
+      onLink={generateShareLink} onClearLink={() => setShareRosterUrl(null)} />
+  );
+  const customItems = (domain === 'sports' ? athletes : clients).map(x => ({
+    name: x.name, photoUrl: x.photoUrl,
+    subtitle: domain === 'sports' ? [x.position, x.nflTeam || x.college].filter(Boolean).join(' · ') : (x.types || []).join(' · '),
+  }));
+
   if (!gateUnlocked) return <Landing onEnter={enterSite} />;
 
   return (
@@ -1704,13 +1994,8 @@ function App() {
                       <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                     </button>
                     <div style={{ flex: 1 }} />
-                    {domain === 'music' && isAdmin && <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
-                      style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 16px", cursor: "pointer", color: G.text, fontFamily: ff, display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 13 }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                      Share
-                    </button>}
+                    {domain === 'music' && exportControl}
                     {domain === 'music' && isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>}
-                    {domain === 'music' && pdfBtn(downloadRosterPdf, null)}
                     {authBtn}
                   </>
                 )}
@@ -1718,6 +2003,8 @@ function App() {
               {/* Domain toggle + filters */}
               <div style={{ margin: "0 16px 12px", display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {domainToggle}
+                {domain === 'music' && viewToggle}
+                {customGroupBtn}
                 {domain === 'sports' ? sportsLevelBar : (
                   <>
                     <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, overflow: "hidden", flexShrink: 0 }}>
@@ -1782,12 +2069,9 @@ function App() {
                     </>
                   )}
                 </div>
-                {domain === 'music' && pdfBtn(downloadRosterPdf, 'PDF')}
-                {domain === 'music' && isAdmin && <button onClick={() => { setShareRosterOpen(true); setShareRosterUrl(null); }}
-                  style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  Share
-                </button>}
+                {domain === 'music' && viewToggle}
+                {customGroupBtn}
+                {domain === 'music' && exportControl}
                 {domain === 'music' && isAdmin && <button onClick={() => setEditing({ ...BLANK })} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>+ Add Client</button>}
                 {authBtn}
               </>
@@ -1843,6 +2127,12 @@ function App() {
                     <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
                       <div style={{ fontSize: 15 }}>{search || filterTypes.length > 0 || filterContact !== 'All' || filterLabel !== 'All' || filterCountry !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
                     </div>
+                  ) : rosterView === 'detailed' ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14, maxWidth: 860, margin: "0 auto" }}>
+                      {filtered.map((c, i) => (
+                        <DetailedClientCard key={c.id || i} client={c} logos={logos} isMobile={isMobile} onClick={() => setView('detail', c)} />
+                      ))}
+                    </div>
                   ) : (
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
                       {filtered.map((c, i) => (
@@ -1857,166 +2147,12 @@ function App() {
         </div>
       </div>
 
-      {/* Share Roster Modal */}
-      {shareRosterOpen && (() => {
-        const doShare = async () => {
-          setShareRosterLoading(true); setShareRosterUrl(null);
-          try {
-            let filtered = clients.filter(c =>
-              shareRosterTypes.length === 0 || (c.types||[]).some(t => shareRosterTypes.includes(t))
-            );
-            if (shareRosterSort === 'alpha') filtered = [...filtered].sort((a,b) => (a.name||'').localeCompare(b.name||''));
-            const mapped = filtered.map(c => ({
-              name: c.name, types: c.types, level: (c.types||[])[0] || 'Client',
-              photoUrl: c.photoUrl,
-              logoUrl: lookupLogo(logos, c.pro) || lookupLogo(logos, c.publisher) || lookupLogo(logos, c.label),
-              proLogoUrl: shareRosterShowLogos ? lookupLogo(logos, c.pro) : null,
-              pubLogoUrl: shareRosterShowLogos ? lookupLogo(logos, c.publisher) : null,
-              labelLogoUrl: shareRosterShowLogos ? lookupLogo(logos, c.label) : null,
-              // Per-company logo maps for multi-value fields
-              proLogos: shareRosterShowLogos ? (c.pro||'').split(',').map(v=>v.trim()).filter(Boolean).map(v=>({name:v,url:lookupLogo(logos,v)})) : [],
-              pubLogos: shareRosterShowLogos ? (c.publisher||'').split(',').map(v=>v.trim()).filter(Boolean).map(v=>({name:v,url:lookupLogo(logos,v)})) : [],
-              labelLogos: shareRosterShowLogos ? (c.label||'').split(',').map(v=>v.trim()).filter(Boolean).map(v=>({name:v,url:lookupLogo(logos,v)})) : [],
-              pro: shareRosterShowLogos ? c.pro : null,
-              publisher: shareRosterShowLogos ? c.publisher : null,
-              label: shareRosterShowLogos ? c.label : null,
-              city: c.city, state: c.state, country: c.country,
-              city2: c.city2, state2: c.state2, country2: c.country2,
-              city3: c.city3, state3: c.state3, country3: c.country3,
-              credits: shareRosterShowCredits ? c.credits : null,
-              bio: shareRosterShowBio ? c.bio : null,
-              contact: shareRosterShowContact ? c.contact : null,
-              contactEmail: (shareRosterShowContact && c.contact)
-                ? c.contact.split(',').map(n => staff[n.trim().toLowerCase()]).filter(Boolean).map(s => s.email).filter(Boolean).join(',')
-                : null,
-              instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
-              appleMusicUrl: c.appleMusicUrl, soundcloudUrl: c.soundcloudUrl,
-              spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
-              spotifyRecentReleases: shareRosterShowMusic ? (c.spotifyRecentReleases || null) : null,
-              spotifySongCredits: shareRosterShowMusic ? (c.spotifySongCredits || null) : null,
-              spotifyTopTracks: shareRosterShowMusic ? (c.spotifyTopTracks || null) : null,
-            }));
-            const expiresAt = shareRosterExpiry !== 'never'
-              ? new Date(Date.now() + parseInt(shareRosterExpiry) * 24*60*60*1000).toISOString() : null;
-            const resp = await fetch('/api/share', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ type: 'roster-share', title: shareRosterTitle, athletes: mapped, expiresAt }),
-            });
-            const data = await resp.json();
-            if (data.url) { setShareRosterUrl(data.url); window.open(data.url, '_blank'); }
-            else throw new Error(data.error || 'Failed');
-          } catch(e) { alert('Share failed: ' + e.message); }
-          setShareRosterLoading(false);
-        };
-        // Same model as the main-page filter: 'All' (empty) or a multi-select of types.
-        const shareTypeOptions = ['All', ...types.filter(t => t !== 'All')];
-        const PLURALS = { Artist: 'Artists', Producer: 'Producers', Songwriter: 'Songwriters', Composer: 'Composers', Mixer: 'Mixers', Remixer: 'Remixers' };
-        const deriveTitle = sel => {
-          if (sel.length === 1) return `Milk & Honey ${PLURALS[sel[0]] || sel[0] + 's'}`;
-          return 'Milk & Honey Music';
-        };
-        const toggleShareType = t => {
-          const next = t === 'All' ? [] : (shareRosterTypes.includes(t) ? shareRosterTypes.filter(x => x !== t) : [...shareRosterTypes, t]);
-          setShareRosterTypes(next);
-          setShareRosterTitle(deriveTitle(next));
-        };
-        const shareTypeActive = t => t === 'All' ? shareRosterTypes.length === 0 : shareRosterTypes.includes(t);
 
-
-        const Toggle = ({ val, set, label }) => (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, color: G.textSecondary }}>{label}</span>
-            <div onClick={() => set(v => !v)} style={{ width: 34, height: 19, borderRadius: 10, background: val ? G.green : G.surfaceBorderLight, position: "relative", cursor: "pointer", flexShrink: 0, transition: `background 0.2s ${G.ease}` }}>
-              <div style={{ position: "absolute", top: 3, left: val ? 17 : 3, width: 13, height: 13, borderRadius: "50%", background: "#fff", transition: `left 0.2s ${G.ease}`, boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }} />
-            </div>
-          </div>
-        );
-        const DropBox = ({ label, value, children, open, onToggle }) => (
-          <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column" }}>
-            <div onClick={onToggle} style={{ background: G.surfaceRaised, border: `1px solid ${open ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", transition: `border-color 0.15s ${G.ease}`, height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: G.text, textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ transform: open ? "rotate(180deg)" : "none", transition: `transform 0.2s ${G.ease}`, flexShrink: 0 }}><path d="M6 9l6 6 6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </div>
-            </div>
-            {open && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: G.surfaceGlass, backdropFilter: "blur(16px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: "10px 14px", zIndex: 10, boxShadow: G.shadowLg, display: "flex", flexDirection: "column", gap: 10 }}>
-                {children}
-              </div>
-            )}
-          </div>
-        );
-
-        return (
-          <div onClick={e => { if (e.target === e.currentTarget) { setShareRosterOpen(false); setShareRosterUrl(null); setShareFeaturesOpen(false); } }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(20px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-            <div style={{ background: "rgba(18,18,20,0.96)", backdropFilter: "blur(24px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 28, width: "100%", maxWidth: 520, boxShadow: G.shadowLg, overflow: "visible" }}>
-
-              {/* Close */}
-              <div style={{ display: "flex", justifyContent: "flex-end", padding: "16px 16px 0" }}>
-                <button onClick={() => { setShareRosterOpen(false); setShareRosterUrl(null); setShareFeaturesOpen(false); }}
-                  style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, color: G.textSecondary, cursor: "pointer", padding: "8px 14px", fontSize: 15, fontFamily: ff, lineHeight: 1 }}>✕</button>
-              </div>
-
-              <div style={{ padding: "12px 24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
-
-                {/* Title */}
-                <input value={shareRosterTitle} onChange={e => setShareRosterTitle(e.target.value)}
-                  style={{ ...inputBase, fontSize: 18, fontWeight: 600, padding: "14px 16px", borderRadius: 14, background: G.surfaceRaised }} />
-
-                {/* Type toggles -- All + multi-select, same as the main roster filter */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {shareTypeOptions.map(t => {
-                    const on = shareTypeActive(t);
-                    return <button key={t} onClick={() => toggleShareType(t)}
-                      style={{ padding: "9px 18px", border: `1.5px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 12, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textSecondary, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
-                      {t}
-                    </button>;
-                  })}
-                </div>
-
-                {/* Three dropboxes */}
-                <div style={{ display: "flex", gap: 10, position: "relative", alignItems: "stretch" }}>
-                  <DropBox label="Features" value="" open={shareFeaturesOpen === 'features'} onToggle={() => setShareFeaturesOpen(v => v === 'features' ? false : 'features')}>
-                    <Toggle label="Logos" val={shareRosterShowLogos} set={setShareRosterShowLogos} />
-                    <Toggle label="Credits" val={shareRosterShowCredits} set={setShareRosterShowCredits} />
-                    <Toggle label="Bio" val={shareRosterShowBio} set={setShareRosterShowBio} />
-                    <Toggle label="Contact" val={shareRosterShowContact} set={setShareRosterShowContact} />
-                    <Toggle label="Music" val={shareRosterShowMusic} set={setShareRosterShowMusic} />
-                  </DropBox>
-                  <DropBox label="Sort" value="" open={shareFeaturesOpen === 'sort'} onToggle={() => setShareFeaturesOpen(v => v === 'sort' ? false : 'sort')}>
-                    {[['default','Default'],['alpha','A--Z']].map(([val, lbl]) => (
-                      <div key={val} onClick={() => { setShareRosterSort(val); setShareFeaturesOpen(false); }}
-                        style={{ padding: "6px 0", fontSize: 13, fontWeight: shareRosterSort === val ? 700 : 400, color: shareRosterSort === val ? G.green : G.textSecondary, cursor: "pointer" }}>{lbl}</div>
-                    ))}
-                  </DropBox>
-                  <DropBox label="Expires" value="" open={shareFeaturesOpen === 'expires'} onToggle={() => setShareFeaturesOpen(v => v === 'expires' ? false : 'expires')}>
-                    {[['30','30 Days'],['90','90 Days'],['180','6 Months'],['never','Never']].map(([val, lbl]) => (
-                      <div key={val} onClick={() => { setShareRosterExpiry(val); setShareFeaturesOpen(false); }}
-                        style={{ padding: "6px 0", fontSize: 13, fontWeight: shareRosterExpiry === val ? 700 : 400, color: shareRosterExpiry === val ? G.green : G.textSecondary, cursor: "pointer" }}>{lbl}</div>
-                    ))}
-                  </DropBox>
-                </div>
-
-                {/* URL / Generate */}
-                {shareRosterUrl ? (
-                  <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
-                    <div style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: "14px 16px", fontSize: 13, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareRosterUrl}</div>
-                    <button onClick={() => { navigator.clipboard.writeText(shareRosterUrl); setShareRosterCopied(true); setTimeout(() => setShareRosterCopied(false), 2000); }}
-                      style={{ background: shareRosterCopied ? G.green : "transparent", color: shareRosterCopied ? "#0a0a0a" : G.green, border: `1.5px solid ${G.green}`, borderRadius: 14, padding: "14px 22px", fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap", transition: `all 0.2s ${G.ease}` }}>
-                      {shareRosterCopied ? "✓ Copied" : "Copy"}
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={doShare} disabled={shareRosterLoading}
-                    style={{ background: shareRosterLoading ? G.surfaceRaised : G.green, color: shareRosterLoading ? G.textTertiary : "#0a0a0a", border: "none", borderRadius: 14, padding: "14px", fontWeight: 700, fontSize: 15, cursor: shareRosterLoading ? "not-allowed" : "pointer", fontFamily: ff, transition: `all 0.2s ${G.ease}` }}>
-                    {shareRosterLoading ? "Generating..." : "Generate Share Link"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Custom group picker */}
+      {customGroupOpen && (
+        <CustomGroupPicker items={customItems} selected={customGroup}
+          onToggle={toggleCustomMember} onClear={clearCustomGroup} onClose={() => setCustomGroupOpen(false)} />
+      )}
 
       {/* Edit modal */}
       {editing && <ClientForm initial={editing} onSave={saveClient} onCancel={() => setEditing(null)} />}

@@ -226,6 +226,125 @@ async function buildRosterPdf(items, title) {
   return Buffer.concat(chunks);
 }
 
+// ── Detailed roster PDF (1 × 4 rich bands, mirrors the on-screen detailed card) ──
+async function pdfPrefetchDetailed(items, logoUrlFor) {
+  const urls = new Set();
+  items.forEach(c => {
+    if (c.photoUrl) urls.add(c.photoUrl);
+    const f = flagUrl(c.country); if (f) urls.add(f);
+    [c.pro, c.publisher, c.label].filter(Boolean)
+      .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean)
+      .forEach(n => { const u = logoUrlFor(n); if (u) urls.add(u); });
+  });
+  const cache = new Map();
+  const list = Array.from(urls);
+  for (let i = 0; i < list.length; i += 20) {
+    await Promise.all(list.slice(i, i + 20).map(async u => cache.set(u, await pdfFetchImageBuffer(u))));
+  }
+  return cache;
+}
+
+function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor) {
+  doc.roundedRect(bx, by, bw, bh, 12).fillAndStroke(PDF_SURFACE, PDF_BORDER);
+  const slug = slugOf(c.name);
+  if (slug) doc.link(bx, by, bw, bh, `${APP_URL}/${slug}`);
+  const pad = 16, avR = 30;
+  const avCx = bx + pad + avR, avCy = by + pad + avR;
+
+  const photoBuf = c.photoUrl && cache.get(c.photoUrl);
+  let drew = false;
+  if (photoBuf) {
+    doc.save();
+    try { doc.circle(avCx, avCy, avR).clip(); doc.image(photoBuf, avCx - avR, avCy - avR, { cover: [avR * 2, avR * 2], align: 'center', valign: 'center' }); drew = true; } catch {}
+    doc.restore();
+  }
+  if (!drew) {
+    doc.circle(avCx, avCy, avR).fillAndStroke('#18181b', PDF_BORDER);
+    doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(15).text(pdfInitials(c.name), avCx - avR, avCy - 8, { width: avR * 2, align: 'center', lineBreak: false });
+  }
+
+  const tx = avCx + avR + 16;
+  const rightPad = bx + bw - pad;
+
+  // Label/PRO logo tiles, right-aligned in the header row.
+  const logoItems = [c.pro, c.publisher, c.label].filter(Boolean)
+    .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean)
+    .map(n => ({ name: n, url: logoUrlFor(n) })).filter(l => l.url);
+  let lx = rightPad; const ls = 26;
+  logoItems.slice(0, 4).reverse().forEach(l => { lx -= ls; drawLogoTile(doc, cache.get(l.url), lx, by + pad, ls); lx -= 6; });
+  const textRight = logoItems.length ? lx - 4 : rightPad;
+
+  doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(15).text(c.name || '', tx, by + pad, { width: textRight - tx, height: 18, ellipsis: true });
+
+  // Types · flag · location
+  let sy = by + pad + 21, sx = tx;
+  const flagBuf = flagUrl(c.country) && cache.get(flagUrl(c.country));
+  if (flagBuf) { try { doc.image(flagBuf, sx, sy - 1, { fit: [13, 9] }); } catch {} sx += 17; }
+  const subText = [(c.types || []).join(' · '), [c.city, c.state].filter(Boolean).join(', ')].filter(Boolean).join('   ·   ');
+  if (subText) { doc.font('Helvetica').fontSize(9).fillColor(PDF_TEXT2).text(subText, sx, sy, { width: textRight - sx, height: 11, ellipsis: true, lineBreak: false }); }
+
+  // Socials
+  const socials = [
+    c.instagram && { k: 'instagram', url: `https://instagram.com/${c.instagram}` },
+    c.twitter && { k: 'twitter', url: `https://x.com/${c.twitter}` },
+    c.tiktok && { k: 'tiktok', url: `https://tiktok.com/@${c.tiktok}` },
+    c.spotifyUrl && { k: 'spotify', url: c.spotifyUrl },
+    c.appleMusicUrl && { k: 'apple', url: c.appleMusicUrl },
+    c.soundcloudUrl && { k: 'soundcloud', url: c.soundcloudUrl },
+    c.youtube && { k: 'youtube', url: c.youtube },
+    c.beatport && { k: 'beatport', url: c.beatport },
+  ].filter(Boolean);
+  let ix = tx; const socY = by + pad + 38;
+  socials.forEach(s => { drawSocialIcon(doc, s.k, ix, socY, 13, PDF_TEXT2); if (s.url) doc.link(ix - 2, socY - 2, 17, 17, s.url); ix += 20; });
+
+  // Bio + supporters/key shows
+  const contentW = bw - pad * 2;
+  const hasChips = (c.supporters && c.supporters.length) || (c.keyShows && c.keyShows.length);
+  let y = socY + 22;
+  if (c.bio) {
+    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(8.5).text(String(c.bio), bx + pad, y, { width: contentW, height: hasChips ? 24 : 44, ellipsis: true, lineGap: 2 });
+    y = doc.y + 8;
+  }
+  const compactLine = (label, items) => {
+    if (!items || !items.length) return;
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(PDF_TEXT3).text(label.toUpperCase(), bx + pad, y + 1.5, { lineBreak: false, characterSpacing: 0.5 });
+    const lw = doc.widthOfString(label.toUpperCase()) + 10;
+    doc.font('Helvetica').fontSize(8.5).fillColor(PDF_TEXT).text(items.join('   ·   '), bx + pad + lw, y, { width: contentW - lw, height: 11, ellipsis: true, lineBreak: false });
+    y += 13;
+  };
+  compactLine('Supporters', c.supporters);
+  compactLine('Key shows', c.keyShows);
+}
+
+async function buildDetailedRosterPdf(items, title, logos) {
+  const doc = new PDFDocument({ size: 'LETTER', margin: 0, bufferPages: true });
+  const chunks = []; doc.on('data', c => chunks.push(c));
+  const done = new Promise(r => doc.on('end', r));
+  const logoUrlFor = name => resolveLogoUrl((logos[String(name).toLowerCase()] || {}).url);
+  const cache = await pdfPrefetchDetailed(items, logoUrlFor);
+
+  const M = PDF_MARGIN, bandW = PDF_CONTENT_W;
+  const top = PDF_MARGIN + PDF_HEADER_H + PDF_HEADER_GAP;
+  const bottom = PDF_PAGE_H - 34;
+  const ROWS = 4, gap = 12;
+  const bandH = Math.floor((bottom - top - (ROWS - 1) * gap) / ROWS);
+
+  const pages = [];
+  for (let i = 0; i < items.length; i += ROWS) pages.push(items.slice(i, i + ROWS));
+  if (!pages.length) pages.push([]);
+
+  for (let p = 0; p < pages.length; p++) {
+    if (p > 0) doc.addPage({ size: 'LETTER', margin: 0 });
+    doc.rect(0, 0, PDF_PAGE_W, PDF_PAGE_H).fill(PDF_BG);
+    pdfDrawHeader(doc, title, items.length, p === 0);
+    pages[p].forEach((c, i) => drawDetailedBand(doc, c, M, top + i * (bandH + gap), bandW, bandH, cache, logoUrlFor));
+  }
+
+  doc.end();
+  await done;
+  return Buffer.concat(chunks);
+}
+
 async function sendRosterPdf(data, res) {
   const items = data.athletes || data.clients || [];
   const title = data.title || 'Milk & Honey Music — Client Roster';
@@ -413,8 +532,11 @@ module.exports = async function handler(req, res) {
       if (body.action === 'roster-pdf') {
         const items = body.clients || [];
         const title = body.title || 'Milk & Honey Music — Client Roster';
-        const pdf = await buildRosterPdf(items, title);
-        return sendPdf(pdf, title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf', res);
+        const pdf = body.layout === 'detailed'
+          ? await buildDetailedRosterPdf(items, title, body.logos || {})
+          : await buildRosterPdf(items, title);
+        const suffix = body.layout === 'detailed' ? '-detailed' : '';
+        return sendPdf(pdf, title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + suffix + '.pdf', res);
       }
       if (body.action === 'client-pdf') {
         if (!body.client?.name) return res.status(400).json({ error: 'No client provided' });
