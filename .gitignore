@@ -1,0 +1,6 @@
+
+# Generated PDF exports / local reference files
+*.pdf
+.DS_Store
+node_modules/
+dist/
