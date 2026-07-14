@@ -613,7 +613,6 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
     c.youtube && { icon: <YtIcon size={19} />, url: c.youtube },
     c.beatport && { icon: <BeatportIcon size={16} />, url: c.beatport },
   ].filter(Boolean);
-  const bio = c.bio && (c.bio.length > 260 ? c.bio.slice(0, 260).trimEnd() + '…' : c.bio);
   const chips = (label, items) => items?.length > 0 && (
     <div style={{ marginTop: 12 }}>
       <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 8 }}>{label}</div>
@@ -655,7 +654,7 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
               ))}
             </div>
           )}
-          {bio && <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.55, marginTop: 12 }}>{bio}</div>}
+          {c.bio && <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginTop: 12, display: "-webkit-box", WebkitLineClamp: 6, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.bio}</div>}
           {chips('Supporters', c.supporters)}
           {chips('Key Shows', c.keyShows)}
         </div>
@@ -2131,7 +2130,7 @@ function App() {
                       <div style={{ fontSize: 15 }}>{search || filterTypes.length > 0 || filterContact !== 'All' || filterLabel !== 'All' || filterCountry !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
                     </div>
                   ) : rosterView === 'detailed' ? (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14, maxWidth: 860, margin: "0 auto" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
                       {filtered.map((c, i) => (
                         <DetailedClientCard key={c.id || i} client={c} logos={logos} isMobile={isMobile} onClick={() => setView('detail', c)} />
                       ))}
