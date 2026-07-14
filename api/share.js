@@ -145,10 +145,10 @@ async function pdfPrefetchImages(items) {
   return cache;
 }
 
-function pdfDrawCard(doc, item, x, y, imageCache) {
+function pdfDrawCard(doc, item, x, y, imageCache, pathPrefix = '') {
   doc.roundedRect(x, y, PDF_CARD_W, PDF_CARD_H, 8).fillAndStroke(PDF_SURFACE, PDF_BORDER);
   const slug = slugOf(item.name);
-  if (slug) doc.link(x, y, PDF_CARD_W, PDF_CARD_H, `${APP_URL}/${slug}`);
+  if (slug) doc.link(x, y, PDF_CARD_W, PDF_CARD_H, `${APP_URL}/${pathPrefix}${slug}`);
 
   const { photoUrl, logoUrl, flag, line1, line2 } = cardFields(item);
   const pad = 12;
@@ -195,7 +195,7 @@ function pdfDrawCard(doc, item, x, y, imageCache) {
   }
 }
 
-async function buildRosterPdf(items, title) {
+async function buildRosterPdf(items, title, pathPrefix = '') {
   const doc = new PDFDocument({ size: 'LETTER', margin: 0, bufferPages: true });
   const chunks = [];
   doc.on('data', c => chunks.push(c));
@@ -217,7 +217,7 @@ async function buildRosterPdf(items, title) {
       const col = i % PDF_COLS, row = Math.floor(i / PDF_COLS);
       const cx = PDF_MARGIN + col * (PDF_CARD_W + PDF_GAP);
       const cy = PDF_MARGIN + PDF_HEADER_H + PDF_HEADER_GAP + row * (PDF_CARD_H + PDF_GAP);
-      pdfDrawCard(doc, pageItems[i], cx, cy, imageCache);
+      pdfDrawCard(doc, pageItems[i], cx, cy, imageCache, pathPrefix);
     }
   }
 
@@ -232,6 +232,7 @@ async function pdfPrefetchDetailed(items, logoUrlFor) {
   items.forEach(c => {
     if (c.photoUrl) urls.add(c.photoUrl);
     const f = flagUrl(c.country); if (f) urls.add(f);
+    (c.logoUrls || []).filter(Boolean).forEach(u => urls.add(u));
     [c.pro, c.publisher, c.label].filter(Boolean)
       .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean)
       .forEach(n => { const u = logoUrlFor(n); if (u) urls.add(u); });
@@ -244,10 +245,10 @@ async function pdfPrefetchDetailed(items, logoUrlFor) {
   return cache;
 }
 
-function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor) {
+function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor, pathPrefix = '') {
   doc.roundedRect(bx, by, bw, bh, 12).fillAndStroke(PDF_SURFACE, PDF_BORDER);
   const slug = slugOf(c.name);
-  if (slug) doc.link(bx, by, bw, bh, `${APP_URL}/${slug}`);
+  if (slug) doc.link(bx, by, bw, bh, `${APP_URL}/${pathPrefix}${slug}`);
   const pad = 16, avR = 30;
   const avCx = bx + pad + avR, avCy = by + pad + avR;
 
@@ -266,10 +267,12 @@ function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor) {
   const tx = avCx + avR + 16;
   const rightPad = bx + bw - pad;
 
-  // Label/PRO logo tiles, right-aligned in the header row.
-  const logoItems = [c.pro, c.publisher, c.label].filter(Boolean)
-    .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean)
-    .map(n => ({ name: n, url: logoUrlFor(n) })).filter(l => l.url);
+  // Logo tiles (right-aligned): direct URLs (sports team logo) or resolved by name.
+  const logoItems = (c.logoUrls && c.logoUrls.length)
+    ? c.logoUrls.filter(Boolean).map(u => ({ url: u }))
+    : [c.pro, c.publisher, c.label].filter(Boolean)
+        .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean)
+        .map(n => ({ name: n, url: logoUrlFor(n) })).filter(l => l.url);
   let lx = rightPad; const ls = 26;
   logoItems.slice(0, 4).reverse().forEach(l => { lx -= ls; drawLogoTile(doc, cache.get(l.url), lx, by + pad, ls); lx -= 6; });
   const textRight = logoItems.length ? lx - 4 : rightPad;
@@ -297,9 +300,10 @@ function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor) {
   let ix = tx; const socY = by + pad + 38;
   socials.forEach(s => { drawSocialIcon(doc, s.k, ix, socY, 13, PDF_TEXT2); if (s.url) doc.link(ix - 2, socY - 2, 17, 17, s.url); ix += 20; });
 
-  // Bio + credits/supporters/key shows
+  // Bio + labeled lines (music: credits/supporters/key shows; sports: brands/interests).
+  const sections = c.sections || [['Credits', c.credits], ['Supporters', c.supporters], ['Key shows', c.keyShows]];
   const contentW = bw - pad * 2;
-  const hasExtra = (c.credits && c.credits.length) || (c.supporters && c.supporters.length) || (c.keyShows && c.keyShows.length);
+  const hasExtra = sections.some(([, items]) => items && items.length);
   let y = socY + 22;
   if (c.bio) {
     doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(8.5).text(String(c.bio), bx + pad, y, { width: contentW, height: hasExtra ? 24 : 44, ellipsis: true, lineGap: 2 });
@@ -312,12 +316,10 @@ function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor) {
     doc.font('Helvetica').fontSize(8.5).fillColor(PDF_TEXT).text(items.join('   ·   '), bx + pad + lw, y, { width: contentW - lw, height: 11, ellipsis: true, lineBreak: false });
     y += 13;
   };
-  compactLine('Credits', c.credits);
-  compactLine('Supporters', c.supporters);
-  compactLine('Key shows', c.keyShows);
+  sections.forEach(([label, items]) => compactLine(label, items));
 }
 
-async function buildDetailedRosterPdf(items, title, logos) {
+async function buildDetailedRosterPdf(items, title, logos, pathPrefix = '') {
   const doc = new PDFDocument({ size: 'LETTER', margin: 0, bufferPages: true });
   const chunks = []; doc.on('data', c => chunks.push(c));
   const done = new Promise(r => doc.on('end', r));
@@ -338,7 +340,7 @@ async function buildDetailedRosterPdf(items, title, logos) {
     if (p > 0) doc.addPage({ size: 'LETTER', margin: 0 });
     doc.rect(0, 0, PDF_PAGE_W, PDF_PAGE_H).fill(PDF_BG);
     pdfDrawHeader(doc, title, items.length, p === 0);
-    pages[p].forEach((c, i) => drawDetailedBand(doc, c, M, top + i * (bandH + gap), bandW, bandH, cache, logoUrlFor));
+    pages[p].forEach((c, i) => drawDetailedBand(doc, c, M, top + i * (bandH + gap), bandW, bandH, cache, logoUrlFor, pathPrefix));
   }
 
   doc.end();
@@ -533,9 +535,10 @@ module.exports = async function handler(req, res) {
       if (body.action === 'roster-pdf') {
         const items = body.clients || [];
         const title = body.title || 'Milk & Honey Music — Client Roster';
+        const pathPrefix = body.pathPrefix || '';
         const pdf = body.layout === 'detailed'
-          ? await buildDetailedRosterPdf(items, title, body.logos || {})
-          : await buildRosterPdf(items, title);
+          ? await buildDetailedRosterPdf(items, title, body.logos || {}, pathPrefix)
+          : await buildRosterPdf(items, title, pathPrefix);
         const suffix = body.layout === 'detailed' ? '-detailed' : '';
         return sendPdf(pdf, title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + suffix + '.pdf', res);
       }

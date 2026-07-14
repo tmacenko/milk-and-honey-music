@@ -1228,6 +1228,58 @@ function SportsCard({ athlete: a, isMobile, onClick }) {
   );
 }
 
+// Rich roster card for athletes — mirrors the music DetailedClientCard:
+// header (avatar + name + position/team + socials, team logo top-right), a
+// divider, then full-width bio, Brands and Interests. No releases.
+function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
+  const [hov, setHov] = useState(false);
+  const team = a.nflTeam || a.college || '';
+  const meta = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join(' · ');
+  const socials = [
+    a.instagram && { icon: <IgIcon size={18} />, url: `https://instagram.com/${a.instagram}`, count: a.igFollowers },
+    a.twitter && { icon: <TwIcon size={16} />, url: `https://x.com/${a.twitter}`, count: a.twitterFollowers },
+    a.tiktok && { icon: <TkIcon size={16} />, url: `https://tiktok.com/@${a.tiktok}`, count: a.tiktokFollowers },
+  ].filter(Boolean);
+  const chips = (label, items) => items?.length > 0 && (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 8 }}>{label}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+        {items.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
+      </div>
+    </div>
+  );
+  const av = isMobile ? 60 : 76;
+  const hasBody = a.bio || a.brands?.length > 0 || a.interests?.length > 0;
+  return (
+    <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, padding: isMobile ? 16 : 20, cursor: "pointer", transition: `all 0.18s ${G.ease}`, boxShadow: hov ? G.shadowLg : G.shadow }}>
+      <div style={{ display: "flex", gap: isMobile ? 14 : 18, alignItems: "flex-start" }}>
+        <Avatar name={a.name} photoUrl={a.photoUrl} size={av} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: isMobile ? 18 : 21, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2 }}>{a.name}</div>
+          {meta && <div style={{ fontSize: 13, color: G.textSecondary, fontWeight: 500, marginTop: 5 }}>{meta}</div>}
+          {socials.length > 0 && (
+            <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 12, color: G.textSecondary }}>
+              {socials.map((s, i) => (
+                <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                  style={{ display: "flex", alignItems: "center", gap: 6, color: "inherit", textDecoration: "none", transition: `color 0.15s ${G.ease}` }}
+                  onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = "inherit"}>
+                  {s.icon}{s.count && <span style={{ fontSize: 12, fontWeight: 700 }}>{s.count}</span>}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+        {a.teamLogo && <TeamLogo url={a.teamLogo} size={44} />}
+      </div>
+      {hasBody && <div style={{ height: 1, background: G.surfaceBorder, margin: "16px 0 0" }} />}
+      {a.bio && <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginTop: 14, display: "-webkit-box", WebkitLineClamp: 6, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{a.bio}</div>}
+      {chips('Brands', a.brands)}
+      {chips('Interests', a.interests)}
+    </div>
+  );
+}
+
 function SportsDetail({ athlete: a, isMobile }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
@@ -1742,12 +1794,33 @@ function App() {
     } catch (e) { alert('Could not generate the PDF. Please try again.'); }
     setPdfBusy(false);
   };
-  const rosterTitle = () => customGroup.length ? 'Milk & Honey — Custom Group' : 'Milk & Honey Music';
+  const rosterTitle = () => customGroup.length ? 'Milk & Honey — Custom Group' : (domain === 'sports' ? 'Milk & Honey Sports' : 'Milk & Honey Music');
   // Export the current filtered roster. Detailed = rich 1×4 (mirrors the detailed cards);
   // Simple = compact 3×5. Defaults to the on-screen view mode.
   const downloadRosterPdf = (layout) => {
     const detailed = layout ? layout === 'detailed' : rosterView === 'detailed';
     const base = slugOf(rosterTitle()) || 'roster';
+    if (domain === 'sports') {
+      if (detailed) {
+        return downloadPdf({
+          action: 'roster-pdf', layout: 'detailed', title: rosterTitle(), pathPrefix: 'sports/',
+          clients: filteredAthletes.map(a => {
+            const team = a.nflTeam || a.college || '';
+            return {
+              name: a.name, photoUrl: a.photoUrl, headerUrl: a.heroImageUrl,
+              types: [a.position, team].filter(Boolean),
+              instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
+              bio: a.bio, logoUrls: [a.teamLogo].filter(Boolean),
+              sections: [['Brands', a.brands], ['Interests', a.interests]],
+            };
+          }),
+        }, `${base}-detailed.pdf`);
+      }
+      return downloadPdf({
+        action: 'roster-pdf', title: rosterTitle(), pathPrefix: 'sports/',
+        clients: filteredAthletes.map(a => ({ name: a.name, types: [a.position].filter(Boolean), photoUrl: a.photoUrl, label: (a.nflTeam || a.college || ''), logoUrl: a.teamLogo })),
+      }, `${base}.pdf`);
+    }
     if (detailed) {
       return downloadPdf({
         action: 'roster-pdf', layout: 'detailed', title: rosterTitle(), logos,
@@ -1777,7 +1850,17 @@ function App() {
   const generateShareLink = async (expiry) => {
     setShareRosterLoading(true); setShareRosterUrl(null);
     try {
-      const mapped = filtered.map(c => ({
+      const mapped = domain === 'sports' ? filteredAthletes.map(a => {
+        const team = a.nflTeam || a.college || '';
+        return {
+          name: a.name, level: a.level || 'Athlete', photoUrl: a.photoUrl,
+          logoUrl: a.teamLogo, types: [a.position, team].filter(Boolean),
+          position: a.position, team, bio: a.bio,
+          instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
+          igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
+          brands: a.brands, interests: a.interests,
+        };
+      }) : filtered.map(c => ({
         name: c.name, types: c.types, level: (c.types || [])[0] || 'Client',
         photoUrl: c.photoUrl,
         logoUrl: lookupLogo(logos, c.pro) || lookupLogo(logos, c.publisher) || lookupLogo(logos, c.label),
@@ -1888,13 +1971,14 @@ function App() {
       }
       return true;
     });
-    // Default sort: by league (NFL → College → HS), then by social reach.
+    if (clientSort === 'alpha') return [...list].sort((a, b) => a.name.localeCompare(b.name));
+    // Default (Roster Order): by league (NFL → College → HS), then by social reach.
     return [...list].sort((a, b) => {
       const lr = (LEAGUE_RANK[a.level] ?? 9) - (LEAGUE_RANK[b.level] ?? 9);
       if (lr !== 0) return lr;
       return athleteReach(b) - athleteReach(a);
     });
-  }, [athletes, sportsLevel, search, customGroup]);
+  }, [athletes, sportsLevel, search, customGroup, clientSort]);
 
   const saveClient = (updatedClient) => {
     setClients(prev => {
@@ -1950,7 +2034,7 @@ function App() {
     </div>
   );
 
-  // List / Detailed view toggle (music only for now).
+  // List / Detailed view toggle (both domains).
   const viewToggle = (
     <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
       {[['list', 'M4 6h16M4 12h16M4 18h16'], ['detailed', 'M4 5h16v6H4zM4 15h16v4H4z']].map(([v, d], i) => (
@@ -1961,15 +2045,22 @@ function App() {
       ))}
     </div>
   );
-  // Consolidated View dropdown: type multi-select + Custom Group in one box (music).
-  const viewFilter = (
+  // Consolidated View dropdown: multi-select types (music) or single-select level
+  // (sports), plus a Custom Group entry — same component for both domains.
+  const viewFilter = domain === 'sports' ? (
+    <ViewFilterDropdown types={['All', 'NFL', 'College', 'High School']}
+      filterTypes={sportsLevel === 'All' ? [] : [sportsLevel]}
+      onToggleType={(t) => { clearCustomGroup(); setSportsLevel(prev => prev === t ? 'All' : t); }}
+      onAll={() => { clearCustomGroup(); setSportsLevel('All'); }}
+      customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
+  ) : (
     <ViewFilterDropdown types={types} filterTypes={filterTypes}
       onToggleType={(t) => { clearCustomGroup(); toggleFilterType(t); }}
       onAll={() => { clearCustomGroup(); setFilterTypes([]); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   );
   const exportControl = (
-    <ExportMenu view={rosterView} count={filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
+    <ExportMenu view={rosterView} count={domain === 'sports' ? filteredAthletes.length : filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
       onPdf={downloadRosterPdf} linkUrl={shareRosterUrl} linkLoading={shareRosterLoading}
       onLink={generateShareLink} onClearLink={() => setShareRosterUrl(null)} />
   );
@@ -2029,7 +2120,7 @@ function App() {
                       <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                     </button>
                     <div style={{ flex: 1 }} />
-                    {domain === 'music' && exportControl}
+                    {exportControl}
                     {authBtn}
                   </>
                 )}
@@ -2037,13 +2128,9 @@ function App() {
               {/* Domain toggle + consolidated view + sort + layout */}
               <div style={{ margin: "0 16px 12px", display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {domainToggle}
-                {domain === 'sports' ? sportsLevelBar : (
-                  <>
-                    {viewFilter}
-                    <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
-                  </>
-                )}
-                {domain === 'music' && viewToggle}
+                {viewFilter}
+                <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
+                {viewToggle}
               </div>
               <div style={{ height: 1, background: G.surfaceBorder }} />
             </div>
@@ -2067,15 +2154,11 @@ function App() {
                 <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : "Search clients..."}
                   style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
                 <div style={{ display: "flex", gap: 8, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
-                  {domain === 'sports' ? sportsLevelBar : (
-                    <>
-                      {viewFilter}
-                      <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
-                    </>
-                  )}
-                  {domain === 'music' && viewToggle}
+                  {viewFilter}
+                  <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
+                  {viewToggle}
                 </div>
-                {domain === 'music' && exportControl}
+                {exportControl}
                 {authBtn}
               </>
             )}
@@ -2108,6 +2191,12 @@ function App() {
                   {filteredAthletes.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
                       <div style={{ fontSize: 15 }}>{search || sportsLevel !== 'All' ? 'No athletes match your filters.' : 'No athletes to show yet.'}</div>
+                    </div>
+                  ) : rosterView === 'detailed' ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+                      {filteredAthletes.map((a, i) => (
+                        <DetailedAthleteCard key={a.id || i} athlete={a} isMobile={isMobile} onClick={() => setView('detail', a)} />
+                      ))}
                     </div>
                   ) : (
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
