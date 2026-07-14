@@ -1116,15 +1116,9 @@ function SportsDetail({ athlete: a, isMobile }) {
   const typeLine = [a.position, team].filter(Boolean).join('  ·  ');
   const espnUrl = a.espnId ? `https://www.espn.com/${a.espnSport === 'college' ? 'college-football' : 'nfl'}/player/_/id/${a.espnId}` : '';
   const socialBtns = [
-    a.instagram && { icon: <IgIcon size={isMobile ? 21 : 22} />, url: `https://instagram.com/${a.instagram}` },
-    a.twitter && { icon: <TwIcon size={isMobile ? 19 : 20} />, url: `https://x.com/${a.twitter}` },
-    a.tiktok && { icon: <TkIcon size={isMobile ? 19 : 20} />, url: `https://tiktok.com/@${a.tiktok}` },
-  ].filter(Boolean);
-  const stats = [
-    a.igFollowers && { label: 'IG Followers', value: a.igFollowers },
-    a.twitterFollowers && { label: 'X Followers', value: a.twitterFollowers },
-    a.tiktokFollowers && { label: 'TikTok', value: a.tiktokFollowers },
-    a.igEngagement && { label: 'IG Engagement', value: a.igEngagement },
+    a.instagram && { icon: <IgIcon size={isMobile ? 20 : 22} />, url: `https://instagram.com/${a.instagram}`, count: a.igFollowers },
+    a.twitter && { icon: <TwIcon size={isMobile ? 18 : 20} />, url: `https://x.com/${a.twitter}`, count: a.twitterFollowers },
+    a.tiktok && { icon: <TkIcon size={isMobile ? 18 : 20} />, url: `https://tiktok.com/@${a.tiktok}`, count: a.tiktokFollowers },
   ].filter(Boolean);
   const info = [
     a.height && { label: 'Height', value: a.height },
@@ -1142,7 +1136,6 @@ function SportsDetail({ athlete: a, isMobile }) {
   const BIO_LIMIT = 280;
   const bioTrunc = a.bio && a.bio.length > BIO_LIMIT && !bioExp;
   const bioText = bioTrunc ? a.bio.slice(0, BIO_LIMIT).trimEnd() + '...' : a.bio;
-  const statusColor = a.status === 'Free Agent' ? G.yellow : G.green;
 
   return (
     <div style={{ flex: 1, overflow: "visible", position: "relative" }}>
@@ -1161,30 +1154,23 @@ function SportsDetail({ athlete: a, isMobile }) {
             <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
               <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.05 }}>{a.name}</h1>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
-                <TeamLogo url={a.teamLogo} size={28} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: levelColor(a.level), background: `${levelColor(a.level)}26`, borderRadius: 6, padding: "3px 9px" }}>{a.level}</span>
+                <TeamLogo url={a.teamLogo} size={26} />
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: "#fff", fontWeight: 500 }}>{typeLine}</span>}
-                {a.status && <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>{a.status}</span>}
               </div>
               {socialBtns.length > 0 && (
-                <div style={{ display: "flex", gap: 18, marginTop: 12, alignItems: "center" }}>
-                  {socialBtns.map((b, i) => <a key={i} href={b.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", color: "#fff", textDecoration: "none", transition: "opacity 0.15s" }} onMouseEnter={e => e.currentTarget.style.opacity = 0.65} onMouseLeave={e => e.currentTarget.style.opacity = 1}>{b.icon}</a>)}
+                <div style={{ display: "flex", gap: isMobile ? 16 : 24, marginTop: 13, alignItems: "center", flexWrap: "wrap" }}>
+                  {socialBtns.map((b, i) => (
+                    <a key={i} href={b.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 7, color: "#fff", textDecoration: "none", transition: "opacity 0.15s" }} onMouseEnter={e => e.currentTarget.style.opacity = 0.65} onMouseLeave={e => e.currentTarget.style.opacity = 1}>
+                      {b.icon}
+                      {b.count && <span style={{ fontSize: isMobile ? 14 : 15, fontWeight: 700, color: "#fff" }}>{b.count}</span>}
+                    </a>
+                  ))}
                 </div>
               )}
             </div>
           </div>
         </div>
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
-          {stats.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(stats.length, isMobile ? 2 : 4)}, 1fr)`, gap: 10 }}>
-              {stats.map((s, i) => (
-                <div key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 16px" }}>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.value}</div>
-                  <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 5 }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-          )}
           {a.bio && (
             <div>
               <p style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{isMobile ? bioText : a.bio}</p>
