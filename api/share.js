@@ -113,7 +113,11 @@ function resolveLogoUrl(url) {
 function cardFields(c) {
   const types = (c.types || []).join(' · ');
   const team = c.label || c.pro || '';
-  return { photoUrl: c.photoUrl, logoUrl: resolveLogoUrl(c.logoUrl), flag: flagUrl(c.country), line1: types, line2: team };
+  // Accept a full logo array (new) or fall back to the single legacy field.
+  const raw = (c.logoUrls && c.logoUrls.length) ? c.logoUrls : [c.logoUrl];
+  const seen = new Set();
+  const logoUrls = raw.map(resolveLogoUrl).filter(u => u && !seen.has(u) && seen.add(u));
+  return { photoUrl: c.photoUrl, logoUrls, flag: flagUrl(c.country), line1: types, line2: team };
 }
 function pdfDrawHeader(doc, title, count, isFirst) {
   doc.image(MH_LOGO_BUF, PDF_MARGIN, PDF_MARGIN + 8, { fit: [60, 26], align: 'left', valign: 'top' });
@@ -130,9 +134,9 @@ function pdfDrawHeader(doc, title, count, isFirst) {
 async function pdfPrefetchImages(items) {
   const urls = new Set();
   items.forEach(item => {
-    const { photoUrl, logoUrl, flag } = cardFields(item);
+    const { photoUrl, logoUrls, flag } = cardFields(item);
     if (photoUrl) urls.add(photoUrl);
-    if (logoUrl) urls.add(logoUrl);
+    logoUrls.forEach(u => urls.add(u));
     if (flag) urls.add(flag);
   });
   const cache = new Map();
@@ -150,7 +154,7 @@ function pdfDrawCard(doc, item, x, y, imageCache, pathPrefix = '') {
   const slug = slugOf(item.name);
   if (slug) doc.link(x, y, PDF_CARD_W, PDF_CARD_H, `${APP_URL}/${pathPrefix}${slug}`);
 
-  const { photoUrl, logoUrl, flag, line1, line2 } = cardFields(item);
+  const { photoUrl, logoUrls, flag, line1, line2 } = cardFields(item);
   const pad = 12;
   const avR = 18;
   const avCx = x + pad + avR, avCy = y + pad + avR;
@@ -171,12 +175,6 @@ function pdfDrawCard(doc, item, x, y, imageCache, pathPrefix = '') {
     doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(11).text(pdfInitials(item.name), avCx - avR, avCy - 5, { width: avR * 2, align: 'center', lineBreak: false });
   }
 
-  const logoBuf = logoUrl ? imageCache.get(logoUrl) : null;
-  if (logoBuf) {
-    const ls = 24;
-    drawLogoTile(doc, logoBuf, x + PDF_CARD_W - pad - ls, y + pad, ls);
-  }
-
   const textX = x + pad;
   const textY = avCy + avR + 8;
   const textW = PDF_CARD_W - pad * 2;
@@ -190,8 +188,18 @@ function pdfDrawCard(doc, item, x, y, imageCache, pathPrefix = '') {
     doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(9).text(line1, lx, ny, { width: textX + textW - lx, height: 11, ellipsis: true });
     ny += 12;
   }
-  if (line2) {
-    doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(8).text(line2, textX, ny, { width: textW, height: 10, ellipsis: true });
+
+  // Favicon row along the bottom (all PROs / publishers / labels), so every
+  // affiliation shows -- not just the first. Mirrors the share-page badges.
+  const tiles = logoUrls.map(u => imageCache.get(u)).filter(Boolean);
+  if (tiles.length) {
+    const ls = 20, tgap = 5;
+    const ty = y + PDF_CARD_H - pad - ls;
+    let lx = textX;
+    tiles.slice(0, 6).forEach(buf => { drawLogoTile(doc, buf, lx, ty, ls); lx += ls + tgap; });
+  } else if (line2) {
+    // No resolvable logos -- fall back to the text label so the card isn't bare.
+    doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(8).text(line2, textX, y + PDF_CARD_H - pad - 10, { width: textW, height: 10, ellipsis: true });
   }
 }
 

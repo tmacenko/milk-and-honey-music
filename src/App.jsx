@@ -1887,7 +1887,7 @@ function App() {
       }
       return downloadPdf({
         action: 'roster-pdf', title: rosterTitle(), pathPrefix: 'sports/',
-        clients: filteredAthletes.map(a => ({ name: a.name, types: [a.position].filter(Boolean), photoUrl: a.photoUrl, label: (a.nflTeam || a.college || ''), logoUrl: a.teamLogo })),
+        clients: filteredAthletes.map(a => ({ name: a.name, types: [a.position].filter(Boolean), photoUrl: a.photoUrl, label: (a.nflTeam || a.college || ''), logoUrls: [a.teamLogo].filter(Boolean) })),
       }, `${base}.pdf`);
     }
     if (detailed) {
@@ -1907,7 +1907,12 @@ function App() {
     }
     return downloadPdf({
       action: 'roster-pdf', title: rosterTitle(),
-      clients: filtered.map(c => ({ name: c.name, types: c.types, photoUrl: c.photoUrl, label: c.label, pro: c.pro, country: c.country, logoUrl: lookupLogo(logos, c.label || c.pro || c.publisher) })),
+      clients: filtered.map(c => ({
+        name: c.name, types: c.types, photoUrl: c.photoUrl, label: c.label, pro: c.pro, country: c.country,
+        logoUrls: [c.pro, c.publisher, c.label].filter(Boolean)
+          .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean)
+          .map(n => lookupLogo(logos, n)).filter(Boolean),
+      })),
     }, `${base}.pdf`);
   };
   const downloadClientPdf = (c) => {
