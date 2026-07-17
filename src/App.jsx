@@ -1078,7 +1078,7 @@ function ClientSortDropdown({ clientSort, setClientSort, compact }) {
   }, []);
   // Fixed-position menu (anchored to the trigger) so it never gets clipped by a
   // horizontally-scrolling header row.
-  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: r.left }); } setOpen(v => !v); };
+  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 188)) }); } setOpen(v => !v); };
   const SORTS = [["default","Roster Order"], ["alpha","A – Z"]];
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
@@ -1115,7 +1115,7 @@ function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCou
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: r.left }); } setOpen(v => !v); };
+  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 228)) }); } setOpen(v => !v); };
   const active = customCount > 0 || filterTypes.length > 0;
   const label = customCount > 0 ? `Custom · ${customCount}` : (filterTypes.length ? filterTypes.join(', ') : 'All');
   const typeOpts = types.filter(t => t !== 'All');
