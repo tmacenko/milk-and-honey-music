@@ -1132,8 +1132,10 @@ function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCou
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button onClick={toggle}
         style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", background: active ? G.greenSubtle : G.surface, border: `1px solid ${active ? G.green : G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: active ? 700 : 500, color: active ? G.green : G.textSecondary, cursor: "pointer", whiteSpace: "nowrap", maxWidth: 280 }}>
-        <span style={{ color: active ? G.green : G.textTertiary, fontWeight: 500, flexShrink: 0 }}>View:</span>
-        {!(compact && !active) && <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        {/* On mobile (compact) show just "View" + caret — the selection lives in the open menu, so a long name never pushes the row. */}
+        <span style={{ color: active ? G.green : G.textTertiary, fontWeight: 500, flexShrink: 0 }}>{compact ? 'View' : 'View:'}</span>
+        {!compact && <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>}
         <span style={{ fontSize: 9, opacity: 0.6, flexShrink: 0 }}>▾</span>
       </button>
       {open && pos && (
@@ -2122,7 +2124,7 @@ function App() {
     <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
       {['music', 'sports'].map(d => (
         <button key={d} onClick={() => setDomain(d)}
-          style={{ padding: "7px 14px", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, textTransform: "capitalize" }}>
+          style={{ padding: "8px 14px", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textTransform: "capitalize" }}>
           {d}
         </button>
       ))}
@@ -2155,13 +2157,13 @@ function App() {
   // Consolidated View dropdown: multi-select types (music) or single-select level
   // (sports), plus a Custom Group entry — same component for both domains.
   const viewFilter = domain === 'sports' ? (
-    <ViewFilterDropdown types={['All', 'NFL', 'College', 'High School']}
+    <ViewFilterDropdown compact={isMobile} types={['All', 'NFL', 'College', 'High School']}
       filterTypes={sportsLevel === 'All' ? [] : [sportsLevel]}
       onToggleType={(t) => { clearCustomGroup(); setSportsLevel(prev => prev === t ? 'All' : t); }}
       onAll={() => { clearCustomGroup(); setSportsLevel('All'); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   ) : (
-    <ViewFilterDropdown types={types} filterTypes={filterTypes}
+    <ViewFilterDropdown compact={isMobile} types={types} filterTypes={filterTypes}
       onToggleType={(t) => { clearCustomGroup(); toggleFilterType(t); }}
       onAll={() => { clearCustomGroup(); setFilterTypes([]); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
