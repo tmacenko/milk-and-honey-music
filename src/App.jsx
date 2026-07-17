@@ -2069,17 +2069,19 @@ function App() {
   const mapAthleteForShare = (a) => {
     const team = a.nflTeam || a.college || '';
     return {
-      name: a.name, level: a.level || 'Athlete', photoUrl: a.photoUrl,
+      name: a.name, level: a.level || 'Athlete', photoUrl: a.photoUrl, headerUrl: a.heroImageUrl,
       logoUrl: a.teamLogo, types: [a.position, team].filter(Boolean),
       position: a.position, team, bio: a.bio,
       instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
       igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
       brands: a.brands, interests: a.interests,
+      height: a.height, weight: a.weight, jerseyNumber: a.jerseyNumber, hometown: a.hometown,
     };
   };
   const mapClientForShare = (c) => ({
     name: c.name, types: c.types, level: (c.types || [])[0] || 'Client',
-    photoUrl: c.photoUrl,
+    photoUrl: c.photoUrl, headerUrl: c.headerUrl,
+    supporters: c.supporters, keyShows: c.keyShows,
     logoUrl: lookupLogo(logos, c.pro) || lookupLogo(logos, c.publisher) || lookupLogo(logos, c.label),
     proLogos: (c.pro || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
     pubLogos: (c.publisher || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),

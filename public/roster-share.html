@@ -59,11 +59,31 @@
     .overlay{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.75);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;align-items:flex-start;justify-content:center;padding:0;overflow-y:auto}
     .modal{background:rgba(12,12,14,0.97);border:1px solid var(--border-l);border-radius:22px;width:100%;max-width:680px;margin:40px 20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-lg);animation:fadeUp 0.2s var(--ease)}
     @media(max-width:768px){.modal{margin:0;border-radius:0;min-height:100vh}}
-    /* Solo (single-person share): the profile IS the page — inline under the header, no modal chrome */
-    .overlay.solo{position:static;inset:auto;z-index:auto;background:none;backdrop-filter:none;-webkit-backdrop-filter:none}
-    .overlay.solo .modal-topbar{display:none}
-    .overlay.solo .modal{margin-top:24px}
-    @media(max-width:768px){.overlay.solo .modal{margin-top:0;min-height:auto}}
+    /* Solo (single-person share): full profile page mirroring the site's detail view */
+    .p-banner{position:relative;height:340px;overflow:hidden}
+    .p-banner img{width:100%;height:100%;object-fit:cover;object-position:center 30%;display:block}
+    .p-banner-grad{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(8,8,9,0.25) 0%,rgba(8,8,9,0.1) 35%,rgba(8,8,9,0.7) 78%,var(--bg) 100%)}
+    .p-hdr{padding:28px 32px 24px;border-bottom:1px solid var(--border)}
+    .p-hdr.has-banner{position:relative;z-index:2;margin-top:-110px;padding-top:0}
+    .p-hdr-row{display:flex;gap:24px;align-items:flex-end}
+    .p-avatar{flex-shrink:0;width:120px;height:120px;border-radius:50%;overflow:hidden;border:2px solid var(--border-l);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:28px}
+    .p-avatar img{width:100%;height:100%;object-fit:cover}
+    .p-info{flex:1;min-width:0;padding-bottom:4px}
+    .p-name-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+    .p-name{font-size:38px;font-weight:800;color:#fff;letter-spacing:-0.03em;margin:0;line-height:1.05;flex:1;min-width:0}
+    .p-sub{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:15px;color:#fff;font-weight:500}
+    .p-socials{display:flex;gap:18px;margin-top:14px;align-items:center;flex-wrap:wrap}
+    .p-body{padding:24px 32px;display:flex;flex-direction:column;gap:20px;background:var(--bg)}
+    @media(max-width:768px){
+      .p-banner{height:200px}
+      .p-hdr{padding:20px 16px 16px}
+      .p-hdr.has-banner{margin-top:-80px}
+      .p-hdr-row{gap:16px}
+      .p-avatar{width:90px;height:90px;font-size:22px}
+      .p-name{font-size:28px}
+      .p-sub{font-size:14px}
+      .p-body{padding:20px 16px}
+    }
     @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
     .modal-topbar{display:flex;justify-content:flex-end;gap:8px;padding:14px 16px 0}
     .btn-close{background:var(--raised);border:1px solid var(--border);border-radius:10px;color:var(--text3);cursor:pointer;padding:8px 12px;font-size:14px;font-family:var(--ff);line-height:1}
@@ -204,7 +224,7 @@ function buildModal(a){
     a.appleMusicUrl&&sl(a.appleMusicUrl,ICONS.apple),
     a.soundcloudUrl&&sl(a.soundcloudUrl,ICONS.sc),
   ].filter(Boolean).join('');
-  return `<div class="overlay${state.solo?' solo':''}" id="overlay"><div class="modal">
+  return `<div class="overlay" id="overlay"><div class="modal">
     <div class="modal-topbar"><button class="btn-close" id="modal-close">&#x2715;</button></div>
     <div class="modal-hdr">
       <div class="modal-hdr-top">
@@ -231,6 +251,56 @@ function buildModal(a){
   </div></div>`;
 }
 
+// Full-page profile for single-person shares — mirrors the site's detail view
+// (banner, avatar + name + types + socials, bio, chips, logos, releases).
+function buildProfile(a){
+  const loc=locationStr(a);
+  const logos=logoItems(a);
+  const types=(a.types||[]).slice().sort((x,y)=>x==='Artist'?-1:y==='Artist'?1:x.localeCompare(y));
+  const banner=a.headerUrl||'';
+  const BIO_LIMIT=280;
+  const isMobile=window.innerWidth<769;
+  const bio=a.bio||'';
+  const bioTrunc=isMobile&&bio.length>BIO_LIMIT&&!state.bioExpanded;
+  const bioText=bioTrunc?bio.slice(0,BIO_LIMIT).trimEnd()+'...':bio;
+  const contactBtn=a.contact?`<a class="btn-contact" href="mailto:${a.contactEmail||''}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="7" r="4" stroke="var(--green)" stroke-width="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/></svg></a>`:'';
+  const sl=(url,icon)=>`<a class="social-link" href="${url}" target="_blank" rel="noopener">${icon}</a>`;
+  const socialBtns=[
+    a.instagram&&sl(`https://instagram.com/${a.instagram}`,ICONS.ig),
+    a.twitter&&sl(`https://x.com/${a.twitter}`,ICONS.tw),
+    a.tiktok&&sl(`https://tiktok.com/@${a.tiktok}`,ICONS.tk),
+    a.spotifyUrl&&sl(a.spotifyUrl,ICONS.sp),
+    a.appleMusicUrl&&sl(a.appleMusicUrl,ICONS.apple),
+    a.soundcloudUrl&&sl(a.soundcloudUrl,ICONS.sc),
+  ].filter(Boolean).join('');
+  const chipSec=(label,items)=>items?.length?`<div><div class="sec-label">${label}</div><div class="tags">${items.map(x=>`<span class="tag">${x}</span>`).join('')}</div></div>`:'';
+  return `<div class="profile">
+    ${banner?`<div class="p-banner"><img src="${banner}" referrerpolicy="no-referrer" onerror="this.parentElement.style.display='none'" /><div class="p-banner-grad"></div></div>`:''}
+    <div class="p-hdr${banner?' has-banner':''}">
+      <div class="p-hdr-row">
+        <div class="p-avatar" style="${a.photoUrl?'':avatarStyle(a.name)}">${a.photoUrl?`<img src="${a.photoUrl}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:`<span>${initials(a.name)}</span>`}</div>
+        <div class="p-info">
+          <div class="p-name-row"><h1 class="p-name">${a.name||''}</h1>${contactBtn}</div>
+          <div class="p-sub">${types.length?`<span>${types.join(' · ')}</span>`:''}${loc.flags?`<span style="font-size:16px">${loc.flags}</span>`:''}${loc.cities?`<span>${loc.cities}</span>`:''}</div>
+          ${socialBtns?`<div class="p-socials">${socialBtns}</div>`:''}
+        </div>
+      </div>
+    </div>
+    <div class="p-body">
+      ${bio?`<div><p class="bio">${bioText}</p>${isMobile&&bio.length>BIO_LIMIT?`<button class="btn-viewmore" id="bio-toggle">${state.bioExpanded?'View less':'View more'} <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="transform:${state.bioExpanded?'rotate(90deg)':'none'}"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`:''}</div>`:''}
+      ${chipSec('Artists Worked With',a.credits)}
+      ${chipSec('Supporters',a.supporters)}
+      ${chipSec('Key Shows',a.keyShows)}
+      ${chipSec('Brands Worked With',a.brands)}
+      ${chipSec('Interests',a.interests)}
+      ${logos.length?`<div class="logo-strip" style="grid-template-columns:repeat(${Math.min(logos.length,3)},1fr)">${logos.map(l=>`<div class="logo-strip-item">${l.url?`<div class="logo-strip-logo"><img src="${faviconUrl(l.url)}" alt="${l.name}" onerror="this.parentElement.style.display='none'" referrerpolicy="no-referrer" /></div>`:''}<div class="logo-strip-item-name">${l.name}</div></div>`).join('')}</div>`:''}
+      ${a.spotifyTopTracks?.length?`<div><div class="sec-label">Popular</div><div class="media-grid songs">${a.spotifyTopTracks.map(sg=>`<a class="media-item" href="${sg.url||'#'}" target="_blank" rel="noopener">${sg.artwork?`<img src="${sg.artwork}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:`<div class="media-ph">♪</div>`}<div class="media-t">${sg.title||''}</div><div class="media-s">${sg.artist||''}</div></a>`).join('')}</div></div>`:''}
+      ${(!a.spotifyTopTracks?.length&&a.spotifyRecentReleases?.length)?`<div><div class="sec-label">Recent Releases</div><div class="media-grid">${a.spotifyRecentReleases.map(r=>`<a class="media-item" href="${r.url||'#'}" target="_blank" rel="noopener">${r.artwork?`<img src="${r.artwork}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:''}<div class="media-t">${r.name||''}</div><div class="media-s">${(r.releaseDate||'').slice(0,4)}</div></a>`).join('')}</div></div>`:''}
+      ${a.spotifySongCredits?.length?`<div><div class="sec-label">Songs Worked On</div><div class="media-grid songs">${a.spotifySongCredits.map(sg=>`<a class="media-item" href="${sg.url||'#'}" target="_blank" rel="noopener">${sg.artwork?`<img src="${sg.artwork}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`:''}<div class="media-t">${sg.title||''}</div><div class="media-s">${sg.artist||''}</div></a>`).join('')}</div></div>`:''}
+    </div>
+  </div>`;
+}
+
 function getFiltered(){const a=state.data?.athletes||[];return state.levels.length===0?a:a.filter(x=>state.levels.some(t=>(x.types||[]).includes(t)));}
 function toggleLevel(t){if(t==='All'){state.levels=[];}else{state.levels=state.levels.includes(t)?state.levels.filter(x=>x!==t):[...state.levels,t];}state.selected=null;render();}
 function levelActive(t){return t==='All'?state.levels.length===0:state.levels.includes(t);}
@@ -246,7 +316,7 @@ function render(){
     <div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" />${state.data.title?`<span class="hdr-title">${state.data.title}</span>`:''}</div><button class="btn-dl" id="btn-download"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> ${state.solo?'Download PDF':'Download Roster PDF'}</button></div>
     ${!state.solo&&allTypes.length>1?`<div class="tabs-wrap"><button class="tab${levelActive('All')?' active':''}" data-level="All">All</button>${allTypes.map(t=>`<button class="tab${levelActive(t)?' active':''}" data-level="${t}">${t}</button>`).join('')}</div>`:''}
     ${state.solo?'':`<div class="grid-wrap"><div class="grid">${filtered.map((a,i)=>buildCard(a,i)).join('')}</div></div>`}
-    ${state.selected?buildModal(state.selected):''}`;
+    ${state.solo?buildProfile(state.selected):state.selected?buildModal(state.selected):''}`;
   document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>toggleLevel(btn.dataset.level)));
   const dlBtn=document.getElementById('btn-download');
   if(dlBtn)dlBtn.addEventListener('click',downloadPdf);
