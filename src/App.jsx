@@ -1633,9 +1633,11 @@ function Landing({ onEnter }) {
   // The animated background never changes with pending/password/error state,
   // so build it once — React bails out of reconciling it on every keystroke.
   const background = useMemo(() => {
-    // Lighter on touch devices: smaller blur radius = cheaper composite.
+    // Keep the blur radius SMALL — big blur() radii force per-frame rasterization
+    // that blocks the main thread (laggy hover/typing). The radial gradients are
+    // already soft, so a light blur is all that's needed to blend them.
     const blob = (extra) => ({
-      position: "absolute", borderRadius: "50%", filter: `blur(${canHover ? 55 : 40}px)`,
+      position: "absolute", borderRadius: "50%", filter: "blur(14px)",
       willChange: "transform", backfaceVisibility: "hidden", pointerEvents: "none", ...extra,
     });
     return (
@@ -1653,7 +1655,7 @@ function Landing({ onEnter }) {
           {/* Third blob + cursor glow only on hover-capable devices — keeps phones light. */}
           {canHover && <div style={blob({ width: "44vw", height: "44vw", top: "28vh", left: "34vw", background: "radial-gradient(circle, rgba(46,120,96,0.4), transparent 64%)", animation: "mhGrad3 29s ease-in-out infinite" })} />}
         </div>
-        {canHover && <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "34vw", height: "34vw", borderRadius: "50%", filter: "blur(60px)", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.3), transparent 60%)", willChange: "transform" }} />}
+        {canHover && <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "38vw", height: "38vw", borderRadius: "50%", filter: "blur(18px)", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.28), transparent 62%)", willChange: "transform" }} />}
         {/* Vignette to keep edges black */}
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 100%)", pointerEvents: "none" }} />
       </>
