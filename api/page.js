@@ -88,31 +88,45 @@ module.exports = async (req, res) => {
     }
   }
 
-  // Crawlers: emit OG tags for the public client (defaults if not found/private).
-  let title = 'Milk & Honey Music', description = 'Milk & Honey Music roster', image = OG_IMAGE;
+  // Crawlers: emit OG tags for the public client/athlete (defaults if not found/private).
+  const isSport = !!req.query.sport;
+  const siteName = isSport ? 'Milk & Honey Sports' : 'Milk & Honey Music';
+  let title = siteName, description = `${siteName} roster`, image = OG_IMAGE;
   try {
-    const token = await getToken();
-    const rows = (await sheetGet(token, 'Clients!A:AZ')).values || [];
-    const headers = (rows[0] || []).map(h => String(h || '').trim());
-    const idx = n => headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-    const iName = idx('Name'), iPublic = idx('Public'), iBio = idx('Bio'), iPhoto = idx('Photo URL'), iSpotify = idx('Spotify URL'), iType = idx('Type');
-    const row = rows.slice(1).find(r => slugOf(r[iName]) === slug && (iPublic < 0 || isPublic(r[iPublic])));
-    if (row) {
-      const name = String(row[iName] || '').trim();
-      title = `${name} — Milk & Honey Music`;
-      const type = iType >= 0 ? String(row[iType] || '').split(',').map(s => s.trim()).filter(Boolean).join(' · ') : '';
-      const bio = iBio >= 0 ? String(row[iBio] || '').trim() : '';
-      description = bio ? bio.slice(0, 180) : (type || 'Milk & Honey Music');
-      let img = iPhoto >= 0 ? String(row[iPhoto] || '').trim() : '';
-      if (!img && iSpotify >= 0) {
-        const hit = (await loadBlob(MEDIA_CACHE_PATH))[String(row[iSpotify] || '').trim()];
-        img = hit?.headerUrl || hit?.photoUrl || '';
+    if (isSport) {
+      // Reuse the athletes API (anonymous → public-safe fields only).
+      const r = await fetch(`${APP_URL}/api/athletes`);
+      const a = ((await r.json()).athletes || []).find(x => slugOf(x.name) === slug);
+      if (a) {
+        title = `${a.name} — Milk & Honey Sports`;
+        const sub = [a.position, a.nflTeam || a.college].filter(Boolean).join(' · ');
+        description = (a.bio ? String(a.bio).trim().slice(0, 180) : sub) || 'Milk & Honey Sports';
+        if (a.heroImageUrl || a.photoUrl) image = a.heroImageUrl || a.photoUrl;
       }
-      if (img) image = img;
+    } else {
+      const token = await getToken();
+      const rows = (await sheetGet(token, 'Clients!A:AZ')).values || [];
+      const headers = (rows[0] || []).map(h => String(h || '').trim());
+      const idx = n => headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
+      const iName = idx('Name'), iPublic = idx('Public'), iBio = idx('Bio'), iPhoto = idx('Photo URL'), iSpotify = idx('Spotify URL'), iType = idx('Type');
+      const row = rows.slice(1).find(r => slugOf(r[iName]) === slug && (iPublic < 0 || isPublic(r[iPublic])));
+      if (row) {
+        const name = String(row[iName] || '').trim();
+        title = `${name} — Milk & Honey Music`;
+        const type = iType >= 0 ? String(row[iType] || '').split(',').map(s => s.trim()).filter(Boolean).join(' · ') : '';
+        const bio = iBio >= 0 ? String(row[iBio] || '').trim() : '';
+        description = bio ? bio.slice(0, 180) : (type || 'Milk & Honey Music');
+        let img = iPhoto >= 0 ? String(row[iPhoto] || '').trim() : '';
+        if (!img && iSpotify >= 0) {
+          const hit = (await loadBlob(MEDIA_CACHE_PATH))[String(row[iSpotify] || '').trim()];
+          img = hit?.headerUrl || hit?.photoUrl || '';
+        }
+        if (img) image = img;
+      }
     }
   } catch { /* defaults */ }
 
-  const pageUrl = `${APP_URL}/${slug}`;
+  const pageUrl = isSport ? `${APP_URL}/sports/${slug}` : `${APP_URL}/${slug}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.setHeader('Vary', 'User-Agent');
@@ -124,7 +138,7 @@ module.exports = async (req, res) => {
 <meta property="og:image" content="${esc(image)}" />
 <meta property="og:url" content="${esc(pageUrl)}" />
 <meta property="og:type" content="profile" />
-<meta property="og:site_name" content="Milk &amp; Honey Music" />
+<meta property="og:site_name" content="${esc(siteName)}" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${esc(title)}" />
 <meta name="twitter:description" content="${esc(description)}" />

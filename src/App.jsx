@@ -1067,7 +1067,7 @@ function ClientFiltersDropdown({ filterContact, setFilterContact, filterLabel, s
   );
 }
 
-function ClientSortDropdown({ clientSort, setClientSort }) {
+function ClientSortDropdown({ clientSort, setClientSort, compact }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const ref = useRef();
@@ -1083,9 +1083,9 @@ function ClientSortDropdown({ clientSort, setClientSort }) {
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button onClick={toggle}
-        style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: 500, color: G.textSecondary, cursor: "pointer", whiteSpace: "nowrap" }}>
+        style={{ display: "flex", alignItems: "center", gap: compact ? 4 : 6, padding: compact ? "8px 10px" : "8px 14px", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: 500, color: G.textSecondary, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M4 4h8M6 12h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-        Sort
+        {!compact && 'Sort'}
         <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
       </button>
       {open && pos && (
@@ -1131,10 +1131,12 @@ function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCou
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button onClick={toggle}
-        style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", background: active ? G.greenSubtle : G.surface, border: `1px solid ${active ? G.green : G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: active ? 700 : 500, color: active ? G.green : G.textSecondary, cursor: "pointer", whiteSpace: "nowrap", maxWidth: 280 }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        {/* On mobile (compact) show just "View" + caret — the selection lives in the open menu, so a long name never pushes the row. */}
-        <span style={{ color: active ? G.green : G.textTertiary, fontWeight: 500, flexShrink: 0 }}>{compact ? 'View' : 'View:'}</span>
+        style={{ display: "flex", alignItems: "center", gap: compact ? 5 : 7, padding: compact ? "8px 10px" : "8px 14px", background: active ? G.greenSubtle : G.surface, border: `1px solid ${active ? G.green : G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: active ? 700 : 500, color: active ? G.green : G.textSecondary, cursor: "pointer", whiteSpace: "nowrap", maxWidth: 280, flexShrink: 0 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        {/* On mobile (compact) show just the filter icon + caret so the whole
+            control row fits without scrolling; the selection lives in the open
+            menu, and the box turns green when a filter is active. */}
+        {!compact && <span style={{ color: active ? G.green : G.textTertiary, fontWeight: 500, flexShrink: 0 }}>View:</span>}
         {!compact && <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>}
         <span style={{ fontSize: 9, opacity: 0.6, flexShrink: 0 }}>▾</span>
       </button>
@@ -2124,7 +2126,7 @@ function App() {
     <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
       {['music', 'sports'].map(d => (
         <button key={d} onClick={() => setDomain(d)}
-          style={{ padding: "8px 14px", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textTransform: "capitalize" }}>
+          style={{ padding: "8px 12px", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
           {d}
         </button>
       ))}
@@ -2148,7 +2150,7 @@ function App() {
     <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
       {[['list', 'M4 6h16M4 12h16M4 18h16'], ['detailed', 'M4 5h16v6H4zM4 15h16v4H4z']].map(([v, d], i) => (
         <button key={v} onClick={() => setRosterView(v)} title={v === 'list' ? 'List view' : 'Detailed view'}
-          style={{ padding: "8px 12px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer", background: rosterView === v ? G.greenSubtle : "transparent", color: rosterView === v ? G.green : G.textSecondary, display: "flex", alignItems: "center" }}>
+          style={{ padding: "8px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer", background: rosterView === v ? G.greenSubtle : "transparent", color: rosterView === v ? G.green : G.textSecondary, display: "flex", alignItems: "center" }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d={d} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
       ))}
@@ -2231,13 +2233,14 @@ function App() {
                     <button onClick={() => { setMobileSearchOpen(false); setSearch(''); }} style={{ background: "none", border: "none", color: G.textSecondary, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: ff }}>✕</button>
                   </div>
                 ) : (
-                  <div className="mh-hscroll" style={{ display: "flex", gap: 6, alignItems: "center", overflowX: "auto" }}>
+                  <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
                     {domainToggle}
                     {viewFilter}
-                    <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
+                    <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} compact />
                     {viewToggle}
+                    <div style={{ flex: 1, minWidth: 4 }} />
                     <button onClick={() => setMobileSearchOpen(true)} title="Search"
-                      style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
+                      style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 11px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                     </button>
                   </div>
