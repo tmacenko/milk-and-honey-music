@@ -1859,9 +1859,15 @@ function App() {
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
+  // Log out / exit → back to the landing gate. Ends the admin session when
+  // signed in, and always clears the front-door gate so both viewers (public)
+  // and employees (admin) land back on the gate.
   const doLogout = async () => {
-    try { await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
-    window.location.reload();
+    if (isAdmin && authConfigured) {
+      try { await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
+    }
+    try { localStorage.removeItem('mh_gate'); } catch {}
+    window.location.href = '/';
   };
 
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -2109,22 +2115,24 @@ function App() {
     if (view === 'detail') setSelected(updatedClient);
   };
 
-  // Login / logout control (only once auth is configured on the server).
-  const authBtn = authConfigured ? (
-    <button onClick={() => isAdmin ? doLogout() : setLoginOpen(true)}
+  // Log out / exit control. Login happens on the landing page now, so there is
+  // no "Log in" button — this always reads "Log out" and returns to the gate,
+  // for both public viewers and signed-in employees.
+  const authBtn = (
+    <button onClick={doLogout} title="Log out"
       style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, color: G.textSecondary, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d={isAdmin ? "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" : "M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-      {isAdmin ? 'Log out' : 'Log in'}
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      Log out
     </button>
-  ) : null;
+  );
 
-  // Compact icon-only auth button for the mobile top row (person glyph).
-  const authBtnMobile = authConfigured ? (
-    <button onClick={() => isAdmin ? doLogout() : setLoginOpen(true)} title={isAdmin ? 'Log out' : 'Log in'}
+  // Compact icon-only version for the mobile top row.
+  const authBtnMobile = (
+    <button onClick={doLogout} title="Log out"
       style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2"/></svg>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
     </button>
-  ) : null;
+  );
 
   // Download-PDF button (available to everyone, public + admin).
   const pdfBtn = (onClick, label) => (
