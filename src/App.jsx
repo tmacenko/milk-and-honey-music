@@ -1556,6 +1556,55 @@ function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading
   );
 }
 
+// Per-artist export menu on the detail page: Download PDF (everyone) + a
+// copyable share link to this person's public page (admins only) — mirrors the
+// home page Export menu.
+function DetailExportMenu({ onPdf, pdfBusy, shareUrl, isAdmin, iconOnly }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const ref = useRef();
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) }); } setOpen(v => !v); };
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button onClick={toggle} title="Export" disabled={pdfBusy}
+        style={iconOnly
+          ? { background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 12px", cursor: pdfBusy ? "wait" : "pointer", fontFamily: ff, display: "flex", alignItems: "center" }
+          : { background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: pdfBusy ? "wait" : "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6 }}>
+        {pdfBusy
+          ? <span style={{ display: "inline-block", animation: "spin 1s linear infinite", fontSize: 14 }}>⟳</span>
+          : <svg width={iconOnly ? 18 : 14} height={iconOnly ? 18 : 14} viewBox="0 0 24 24" fill="none"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7M16 6l-4-4-4 4M12 2v14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        {!iconOnly && 'Share'}
+      </button>
+      {open && pos && (
+        <div style={{ position: "fixed", top: pos.top, right: pos.right, width: 280, maxWidth: "calc(100vw - 32px)", background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, padding: 14, zIndex: 500, boxShadow: G.shadowLg }}>
+          <button onClick={() => { onPdf(); setOpen(false); }} disabled={pdfBusy}
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised, cursor: pdfBusy ? "wait" : "pointer", fontFamily: ff }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>Download PDF</span>
+            <span style={{ fontSize: 11, color: G.textTertiary }}>One-sheet</span>
+          </button>
+          {isAdmin && shareUrl && (
+            <>
+              <div style={{ height: 1, background: G.surfaceBorder, margin: "12px 0" }} />
+              <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Share link</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "9px 11px", fontSize: 12, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl}</div>
+                <button onClick={() => { navigator.clipboard.writeText(shareUrl); setCopied(true); setTimeout(() => setCopied(false), 1800); }}
+                  style={{ width: "100%", background: copied ? G.green : "transparent", color: copied ? "#0a0a0a" : G.green, border: `1.5px solid ${G.green}`, borderRadius: 9, padding: "9px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>{copied ? '✓ Copied' : 'Copy link'}</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Landing gate ──────────────────────────────────────────────────────────────
 // Front door: pick Music or Sports, then enter the shared site password.
 // Separate from the internal/admin login (which unlocks editing).
@@ -2246,7 +2295,9 @@ function App() {
           // ── Mobile header ─────────────────────────────────────────────────
           view === 'detail' ? (
             <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
-              {selected && pdfBtn(() => domain === 'sports' ? downloadAthletePdf(selected) : downloadClientPdf(selected), null)}
+              {selected && <DetailExportMenu iconOnly pdfBusy={pdfBusy}
+                onPdf={() => domain === 'sports' ? downloadAthletePdf(selected) : downloadClientPdf(selected)}
+                shareUrl={window.location.origin + pathFor(domain, slugOf(selected.name))} isAdmin={isAdmin} />}
               {authBtn}
               {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
@@ -2295,7 +2346,9 @@ function App() {
             {view === 'detail' ? (
               <>
                 <div style={{ flex: 1 }} />
-                {selected && pdfBtn(() => domain === 'sports' ? downloadAthletePdf(selected) : downloadClientPdf(selected), 'PDF')}
+                {selected && <DetailExportMenu pdfBusy={pdfBusy}
+                  onPdf={() => domain === 'sports' ? downloadAthletePdf(selected) : downloadClientPdf(selected)}
+                  shareUrl={window.location.origin + pathFor(domain, slugOf(selected.name))} isAdmin={isAdmin} />}
                 {authBtn}
                 {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
