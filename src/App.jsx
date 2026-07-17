@@ -1818,12 +1818,12 @@ function App() {
 
   // Lazily load the Sports roster the first time the Sports domain is shown.
   useEffect(() => {
-    if (domain !== 'sports' || athletesLoaded) return;
+    if (!gateUnlocked || domain !== 'sports' || athletesLoaded) return;
     fetch('/api/athletes')
       .then(r => r.json())
       .then(d => { setAthletes(d.athletes || []); setAthletesLoaded(true); })
       .catch(() => setAthletesLoaded(true));
-  }, [domain, athletesLoaded]);
+  }, [gateUnlocked, domain, athletesLoaded]);
 
   // Cmd/Ctrl+F focuses the roster search instead of the browser's native find.
   const searchRef = useRef(null);
@@ -1863,11 +1863,14 @@ function App() {
   const [shareRosterLoading, setShareRosterLoading] = useState(false);
 
   useEffect(() => {
+    // Don't fetch/parse the (large) roster JSON until the visitor is past the
+    // landing gate — otherwise that main-thread work makes the gate feel laggy.
+    if (!gateUnlocked) return;
     fetch('/api/sheets')
       .then(r => r.json())
       .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setAuthConfigured(!!d.authConfigured); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
-  }, []);
+  }, [gateUnlocked]);
 
   // Log out / exit → back to the landing gate. Ends the admin session when
   // signed in, and always clears the front-door gate so both viewers (public)
