@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://milk-and-honey-music.vercel.app').replace(/\/$/, '');
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://www.milkandhoneyfamily.com').replace(/\/$/, '');
 const slugOf = name => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 const BLOB_API = 'https://blob.vercel-storage.com';
 

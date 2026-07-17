@@ -8,8 +8,8 @@ const SHEET_ID = process.env.MUSIC_SHEET_ID;
 const BLOB_API = 'https://blob.vercel-storage.com';
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const MEDIA_CACHE_PATH = 'spotify-media-cache-v4.json';
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://milk-and-honey-music.vercel.app').replace(/\/$/, '');
-const OG_IMAGE = 'https://milkhoneysports.app/share-image.jpg';
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://www.milkandhoneyfamily.com').replace(/\/$/, '');
+const OG_IMAGE = `${APP_URL}/share-image.jpg`;
 
 const BOT_AGENTS = [
   'facebookexternalhit', 'twitterbot', 'linkedinbot', 'slackbot', 'whatsapp',

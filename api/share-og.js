@@ -5,9 +5,8 @@
 
 const BLOB_API = 'https://blob.vercel-storage.com';
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://milk-and-honey-music.vercel.app').replace(/\/$/, '');
-// TODO: replace with a Music-specific share image once designed; reusing Sports' for now.
-const OG_IMAGE = 'https://milkhoneysports.app/share-image.jpg';
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://www.milkandhoneyfamily.com').replace(/\/$/, '');
+const OG_IMAGE = `${APP_URL}/share-image.jpg`;
 
 const BOT_AGENTS = [
   'facebookexternalhit','twitterbot','linkedinbot','slackbot','whatsapp',
