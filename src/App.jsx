@@ -1587,8 +1587,15 @@ function Landing({ onEnter }) {
   const glowRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Only devices with a real pointer (mouse) get the cursor-trailing glow; on
+  // touch it's meaningless and the per-frame blurred-layer composite is what made
+  // the page lag on phones.
+  const canHover = useMemo(() => typeof window !== 'undefined' && window.matchMedia
+    && window.matchMedia('(hover: hover) and (pointer: fine)').matches, []);
+
   // Soft glow that trails the cursor, eased toward the pointer each frame.
   useEffect(() => {
+    if (!canHover) return;
     let raf, tx = window.innerWidth * 0.5, ty = window.innerHeight * 0.5, cx = tx, cy = ty;
     const onMove = e => { tx = e.clientX; ty = e.clientY; };
     window.addEventListener('pointermove', onMove);
@@ -1599,7 +1606,7 @@ function Landing({ onEnter }) {
     };
     tick();
     return () => { window.removeEventListener('pointermove', onMove); cancelAnimationFrame(raf); };
-  }, []);
+  }, [canHover]);
 
   useEffect(() => { if (pending && inputRef.current) inputRef.current.focus(); }, [pending]);
 
@@ -1626,8 +1633,9 @@ function Landing({ onEnter }) {
   // The animated background never changes with pending/password/error state,
   // so build it once — React bails out of reconciling it on every keystroke.
   const background = useMemo(() => {
+    // Lighter on touch devices: smaller blur radius = cheaper composite.
     const blob = (extra) => ({
-      position: "absolute", borderRadius: "50%", filter: "blur(55px)",
+      position: "absolute", borderRadius: "50%", filter: `blur(${canHover ? 55 : 40}px)`,
       willChange: "transform", backfaceVisibility: "hidden", pointerEvents: "none", ...extra,
     });
     return (
@@ -1642,15 +1650,15 @@ function Landing({ onEnter }) {
         <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
           <div style={blob({ width: "60vw", height: "60vw", top: "-12vw", left: "-8vw", background: "radial-gradient(circle, rgba(62,170,120,0.5), transparent 62%)", animation: "mhGrad1 26s ease-in-out infinite" })} />
           <div style={blob({ width: "64vw", height: "64vw", bottom: "-18vw", right: "-14vw", background: "radial-gradient(circle, rgba(52,150,110,0.55), transparent 60%)", animation: "mhGrad2 32s ease-in-out infinite" })} />
-          <div style={blob({ width: "44vw", height: "44vw", top: "28vh", left: "34vw", background: "radial-gradient(circle, rgba(46,120,96,0.4), transparent 64%)", animation: "mhGrad3 29s ease-in-out infinite" })} />
+          {/* Third blob + cursor glow only on hover-capable devices — keeps phones light. */}
+          {canHover && <div style={blob({ width: "44vw", height: "44vw", top: "28vh", left: "34vw", background: "radial-gradient(circle, rgba(46,120,96,0.4), transparent 64%)", animation: "mhGrad3 29s ease-in-out infinite" })} />}
         </div>
-        {/* Cursor-trailing glow */}
-        <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "34vw", height: "34vw", borderRadius: "50%", filter: "blur(70px)", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.3), transparent 60%)", willChange: "transform" }} />
+        {canHover && <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "34vw", height: "34vw", borderRadius: "50%", filter: "blur(60px)", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.3), transparent 60%)", willChange: "transform" }} />}
         {/* Vignette to keep edges black */}
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 100%)", pointerEvents: "none" }} />
       </>
     );
-  }, []);
+  }, [canHover]);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: ff, zIndex: 5000 }}>
