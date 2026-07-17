@@ -1565,11 +1565,12 @@ function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading
 }
 
 // Per-artist export menu on the detail page: Download PDF (everyone) + a
-// copyable share link to this person's public page (admins only) — mirrors the
-// home page Export menu.
-function DetailExportMenu({ onPdf, pdfBusy, shareUrl, isAdmin, iconOnly }) {
+// generated unique share link for this person (admins only) — the same token
+// flow as the roster share link, so it never exposes the gated app.
+function DetailExportMenu({ onPdf, pdfBusy, isAdmin, iconOnly, linkUrl, linkLoading, onLink, onClearLink }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
+  const [expiry, setExpiry] = useState('90');
   const [copied, setCopied] = useState(false);
   const ref = useRef();
   useEffect(() => {
@@ -1605,15 +1606,31 @@ function DetailExportMenu({ onPdf, pdfBusy, shareUrl, isAdmin, iconOnly }) {
             <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>Download PDF</span>
             <span style={{ fontSize: 11, color: G.textTertiary }}>One-sheet</span>
           </button>
-          {isAdmin && shareUrl && (
+          {isAdmin && (
             <>
               <div style={{ height: 1, background: G.surfaceBorder, margin: "12px 0" }} />
               <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Share link</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "9px 11px", fontSize: 12, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl}</div>
-                <button onClick={() => { navigator.clipboard.writeText(shareUrl); setCopied(true); setTimeout(() => setCopied(false), 1800); }}
-                  style={{ width: "100%", background: copied ? G.green : "transparent", color: copied ? "#0a0a0a" : G.green, border: `1.5px solid ${G.green}`, borderRadius: 9, padding: "9px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>{copied ? '✓ Copied' : 'Copy link'}</button>
-              </div>
+              {linkUrl ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "9px 11px", fontSize: 12, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{linkUrl}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { navigator.clipboard.writeText(linkUrl); setCopied(true); setTimeout(() => setCopied(false), 1800); }}
+                      style={{ flex: 1, background: copied ? G.green : "transparent", color: copied ? "#0a0a0a" : G.green, border: `1.5px solid ${G.green}`, borderRadius: 9, padding: "9px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>{copied ? '✓ Copied' : 'Copy link'}</button>
+                    <button onClick={() => onClearLink()} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "9px 12px", color: G.textSecondary, fontSize: 13, cursor: "pointer", fontFamily: ff }}>New</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                    {[['30', '30d'], ['90', '90d'], ['180', '6mo'], ['never', '∞']].map(([val, lbl]) => (
+                      <button key={val} onClick={() => setExpiry(val)}
+                        style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: `1px solid ${expiry === val ? G.green : G.surfaceBorder}`, background: expiry === val ? G.greenSubtle : G.surfaceRaised, color: expiry === val ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{lbl}</button>
+                    ))}
+                  </div>
+                  <button onClick={() => onLink(expiry)} disabled={linkLoading}
+                    style={{ width: "100%", background: linkLoading ? G.surfaceRaised : G.green, color: linkLoading ? G.textTertiary : "#0a0a0a", border: "none", borderRadius: 9, padding: "10px", fontWeight: 700, fontSize: 13, cursor: linkLoading ? "wait" : "pointer", fontFamily: ff }}>{linkLoading ? 'Generating…' : 'Generate link'}</button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1774,14 +1791,15 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [authConfigured, setAuthConfigured] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  // Front-door gate (shared site password). Deep links to a one-sheet bypass it so
-  // public share links keep working; otherwise it persists once unlocked.
+  // Front-door gate (shared site password). No URL bypasses it — typing
+  // /{anything} lands on the gate like everywhere else. External sharing goes
+  // through unique hosted links (/roster/{id} · /share/{id}), which are static
+  // pages outside this app and therefore not gated.
   const [gateUnlocked, setGateUnlocked] = useState(() => {
     try {
       if (localStorage.getItem('mh_gate') === '1') return true;
     } catch { /* ignore */ }
-    const parts = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
-    return parts[0] === 'sports' ? !!parts[1] : !!parts[0];
+    return false;
   });
   // Sports domain: music lives at "/" + "/{slug}", sports at "/sports" + "/sports/{slug}".
   const [athletes, setAthletes] = useState([]);
@@ -2047,50 +2065,75 @@ function App() {
   };
   const downloadAthletePdf = (a) => downloadPdf({ action: 'athlete-pdf', athlete: a }, `${slugOf(a.name)}.pdf`);
 
+  // Map one athlete / client into the hosted share-page shape.
+  const mapAthleteForShare = (a) => {
+    const team = a.nflTeam || a.college || '';
+    return {
+      name: a.name, level: a.level || 'Athlete', photoUrl: a.photoUrl,
+      logoUrl: a.teamLogo, types: [a.position, team].filter(Boolean),
+      position: a.position, team, bio: a.bio,
+      instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
+      igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
+      brands: a.brands, interests: a.interests,
+    };
+  };
+  const mapClientForShare = (c) => ({
+    name: c.name, types: c.types, level: (c.types || [])[0] || 'Client',
+    photoUrl: c.photoUrl,
+    logoUrl: lookupLogo(logos, c.pro) || lookupLogo(logos, c.publisher) || lookupLogo(logos, c.label),
+    proLogos: (c.pro || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
+    pubLogos: (c.publisher || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
+    labelLogos: (c.label || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
+    pro: c.pro, publisher: c.publisher, label: c.label,
+    city: c.city, state: c.state, country: c.country,
+    city2: c.city2, state2: c.state2, country2: c.country2,
+    city3: c.city3, state3: c.state3, country3: c.country3,
+    credits: c.credits, bio: c.bio, contact: c.contact,
+    contactEmail: (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(','),
+    instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
+    appleMusicUrl: c.appleMusicUrl, soundcloudUrl: c.soundcloudUrl,
+    spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
+    spotifyRecentReleases: c.spotifyRecentReleases || null,
+    spotifySongCredits: c.spotifySongCredits || null,
+    spotifyTopTracks: c.spotifyTopTracks || null,
+  });
+
+  // POST a set of mapped people to /api/share and return the unique hosted URL.
+  const createShareLink = async (mapped, title, expiry) => {
+    const expiresAt = expiry !== 'never' ? new Date(Date.now() + parseInt(expiry) * 864e5).toISOString() : null;
+    const resp = await fetch('/api/share', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'roster-share', title, athletes: mapped, expiresAt }),
+    });
+    const data = await resp.json();
+    if (!data.url) throw new Error(data.error || 'Failed');
+    return data.url;
+  };
+
   // Generate a hosted interactive share link from the current filtered roster.
   const generateShareLink = async (expiry) => {
     setShareRosterLoading(true); setShareRosterUrl(null);
     try {
-      const mapped = domain === 'sports' ? filteredAthletes.map(a => {
-        const team = a.nflTeam || a.college || '';
-        return {
-          name: a.name, level: a.level || 'Athlete', photoUrl: a.photoUrl,
-          logoUrl: a.teamLogo, types: [a.position, team].filter(Boolean),
-          position: a.position, team, bio: a.bio,
-          instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
-          igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
-          brands: a.brands, interests: a.interests,
-        };
-      }) : filtered.map(c => ({
-        name: c.name, types: c.types, level: (c.types || [])[0] || 'Client',
-        photoUrl: c.photoUrl,
-        logoUrl: lookupLogo(logos, c.pro) || lookupLogo(logos, c.publisher) || lookupLogo(logos, c.label),
-        proLogos: (c.pro || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
-        pubLogos: (c.publisher || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
-        labelLogos: (c.label || '').split(',').map(v => v.trim()).filter(Boolean).map(v => ({ name: v, url: lookupLogo(logos, v) })),
-        pro: c.pro, publisher: c.publisher, label: c.label,
-        city: c.city, state: c.state, country: c.country,
-        city2: c.city2, state2: c.state2, country2: c.country2,
-        city3: c.city3, state3: c.state3, country3: c.country3,
-        credits: c.credits, bio: c.bio, contact: c.contact,
-        contactEmail: (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(','),
-        instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
-        appleMusicUrl: c.appleMusicUrl, soundcloudUrl: c.soundcloudUrl,
-        spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
-        spotifyRecentReleases: c.spotifyRecentReleases || null,
-        spotifySongCredits: c.spotifySongCredits || null,
-        spotifyTopTracks: c.spotifyTopTracks || null,
-      }));
-      const expiresAt = expiry !== 'never' ? new Date(Date.now() + parseInt(expiry) * 864e5).toISOString() : null;
-      const resp = await fetch('/api/share', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'roster-share', title: rosterTitle(), athletes: mapped, expiresAt }),
-      });
-      const data = await resp.json();
-      if (data.url) setShareRosterUrl(data.url);
-      else throw new Error(data.error || 'Failed');
+      const mapped = domain === 'sports' ? filteredAthletes.map(mapAthleteForShare) : filtered.map(mapClientForShare);
+      setShareRosterUrl(await createShareLink(mapped, rosterTitle(), expiry));
     } catch (e) { alert('Share failed: ' + e.message); }
     setShareRosterLoading(false);
+  };
+
+  // Generate a unique hosted share link for ONE person (the open detail page) —
+  // same token flow as the roster link, so it never exposes the gated app.
+  const [shareDetailUrl, setShareDetailUrl] = useState(null);
+  const [shareDetailLoading, setShareDetailLoading] = useState(false);
+  useEffect(() => { setShareDetailUrl(null); }, [selected]);
+  const generateDetailShareLink = async (expiry) => {
+    if (!selected) return;
+    setShareDetailLoading(true); setShareDetailUrl(null);
+    try {
+      const mapped = [domain === 'sports' ? mapAthleteForShare(selected) : mapClientForShare(selected)];
+      const title = `${selected.name} — Milk & Honey ${domain === 'sports' ? 'Sports' : 'Music'}`;
+      setShareDetailUrl(await createShareLink(mapped, title, expiry));
+    } catch (e) { alert('Share failed: ' + e.message); }
+    setShareDetailLoading(false);
   };
 
   const types = useMemo(() => {
@@ -2314,7 +2357,8 @@ function App() {
             <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
               {selected && <DetailExportMenu iconOnly pdfBusy={pdfBusy}
                 onPdf={() => domain === 'sports' ? downloadAthletePdf(selected) : downloadClientPdf(selected)}
-                shareUrl={window.location.origin + pathFor(domain, slugOf(selected.name))} isAdmin={isAdmin} />}
+                isAdmin={isAdmin} linkUrl={shareDetailUrl} linkLoading={shareDetailLoading}
+                onLink={generateDetailShareLink} onClearLink={() => setShareDetailUrl(null)} />}
               {authBtn}
               {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
@@ -2365,7 +2409,8 @@ function App() {
                 <div style={{ flex: 1 }} />
                 {selected && <DetailExportMenu pdfBusy={pdfBusy}
                   onPdf={() => domain === 'sports' ? downloadAthletePdf(selected) : downloadClientPdf(selected)}
-                  shareUrl={window.location.origin + pathFor(domain, slugOf(selected.name))} isAdmin={isAdmin} />}
+                  isAdmin={isAdmin} linkUrl={shareDetailUrl} linkLoading={shareDetailLoading}
+                  onLink={generateDetailShareLink} onClearLink={() => setShareDetailUrl(null)} />}
                 {authBtn}
                 {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
