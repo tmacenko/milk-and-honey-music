@@ -543,6 +543,122 @@ async function buildClientPdf(c, logos) {
   return Buffer.concat(chunks);
 }
 
+// One "one-sheet" PDF for a single athlete (mirrors buildClientPdf's layout).
+async function buildAthletePdf(a) {
+  const doc = new PDFDocument({ size: 'LETTER', margin: 0, bufferPages: true });
+  const chunks = []; doc.on('data', x => chunks.push(x));
+  const done = new Promise(r => doc.on('end', r));
+  const W = PDF_PAGE_W, M = 40, CW = W - M * 2;
+
+  const teamLogoUrl = a.teamLogo || '';
+  const urls = [...new Set([a.heroImageUrl, a.photoUrl, teamLogoUrl].filter(Boolean))];
+  const cache = new Map();
+  await Promise.all(urls.map(async u => cache.set(u, await pdfFetchImageBuffer(u))));
+
+  doc.rect(0, 0, W, PDF_PAGE_H).fill(PDF_BG);
+
+  // Banner
+  const bannerBuf = a.heroImageUrl && cache.get(a.heroImageUrl);
+  const bannerH = 150;
+  if (bannerBuf) {
+    doc.save();
+    try { doc.rect(0, 0, W, bannerH).clip(); doc.image(bannerBuf, 0, 0, { cover: [W, bannerH], align: 'center', valign: 'center' }); } catch {}
+    doc.restore();
+    doc.save(); doc.fillOpacity(0.45); doc.rect(0, 0, W, bannerH).fill('#080809'); doc.restore(); doc.fillOpacity(1);
+  }
+
+  // Avatar
+  const avR = 38;
+  const avCy = bannerBuf ? bannerH : M + avR;
+  const avCx = M + avR;
+  doc.circle(avCx, avCy, avR + 2.5).fillAndStroke(PDF_BG, '#28282d');
+  const photoBuf = a.photoUrl && cache.get(a.photoUrl);
+  let drewAvatar = false;
+  if (photoBuf) {
+    doc.save();
+    try { doc.circle(avCx, avCy, avR).clip(); doc.image(photoBuf, avCx - avR, avCy - avR, { cover: [avR * 2, avR * 2], align: 'center', valign: 'center' }); drewAvatar = true; } catch {}
+    doc.restore();
+  }
+  if (!drewAvatar) {
+    doc.circle(avCx, avCy, avR).fill(PDF_SURFACE);
+    doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(20).text(pdfInitials(a.name), avCx - avR, avCy - 11, { width: avR * 2, align: 'center', lineBreak: false });
+  }
+
+  // Name + position · team (with team logo)
+  const nameX = avCx + avR + 18, nameW = W - M - nameX;
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(22).text(a.name || '', nameX, avCy - 24, { width: nameW, height: 26, ellipsis: true });
+  const team = a.nflTeam || a.college || '';
+  const typeText = [a.position, team].filter(Boolean).join('   ·   ');
+  const subY = avCy + 2;
+  let sx = nameX;
+  const teamBuf = teamLogoUrl ? cache.get(teamLogoUrl) : null;
+  if (teamBuf) { drawLogoTile(doc, teamBuf, sx, subY - 3, 16); sx += 22; }
+  if (typeText) { doc.font('Helvetica').fontSize(10.5).fillColor('#ffffff').text(typeText, sx, subY, { lineBreak: false }); }
+
+  // Socials with follower counts
+  const socials = [
+    a.instagram && { k: 'instagram', url: `https://instagram.com/${a.instagram}`, count: a.igFollowers },
+    a.twitter && { k: 'twitter', url: `https://x.com/${a.twitter}`, count: a.twitterFollowers },
+    a.tiktok && { k: 'tiktok', url: `https://tiktok.com/@${a.tiktok}`, count: a.tiktokFollowers },
+  ].filter(Boolean);
+  let ix = nameX; const socY = avCy + 20;
+  socials.forEach(s => {
+    drawSocialIcon(doc, s.k, ix, socY, 16, '#ffffff');
+    if (s.url) doc.link(ix - 2, socY - 2, 20, 20, s.url);
+    ix += 22;
+    if (s.count) { doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(9.5).text(String(s.count), ix, socY + 3, { lineBreak: false }); ix += doc.widthOfString(String(s.count)) + 16; }
+  });
+
+  // Contact pill (top-right) → partnerships inbox
+  {
+    const label = 'Contact';
+    doc.font('Helvetica-Bold').fontSize(9.5);
+    const tw = doc.widthOfString(label), pw = tw + 22, ph = 23, px = W - M - pw, py = bannerBuf ? 16 : M;
+    doc.roundedRect(px, py, pw, ph, 8).lineWidth(1.2).fillAndStroke('#0c1712', PDF_GREEN);
+    doc.fillColor(PDF_GREEN).font('Helvetica-Bold').fontSize(9.5).text(label, px + 11, py + 6.5, { lineBreak: false });
+    doc.link(px, py, pw, ph, `mailto:marketing@milkhoneysports.com?subject=${encodeURIComponent('Partnership inquiry — ' + (a.name || ''))}`);
+  }
+
+  let y = avCy + avR + 26;
+
+  if (a.bio) {
+    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(10).text(String(a.bio), M, y, { width: CW, align: 'left', lineGap: 3, height: 92, ellipsis: true });
+    y = doc.y + 20;
+  }
+
+  // Stat row (height / weight / jersey / hometown / draft)
+  const info = [
+    a.height && ['Height', a.height],
+    a.weight && ['Weight', a.weight],
+    a.jerseyNumber && ['Jersey', `#${a.jerseyNumber}`],
+    a.hometown && ['Hometown', a.hometown],
+    a.classOf && ['Class of', a.classOf],
+    a.committedTo && ['Committed', a.committedTo],
+    (a.draftYear || a.draftRound || a.draftPick) && ['Draft', [a.draftYear, a.draftRound && `R${a.draftRound}`, a.draftPick && `P${a.draftPick}`].filter(Boolean).join(' ')],
+  ].filter(Boolean).slice(0, 5);
+  if (info.length) {
+    const bh = 52, cellW = CW / info.length;
+    doc.roundedRect(M, y, CW, bh, 12).fillAndStroke(PDF_SURFACE, PDF_BORDER);
+    info.forEach(([label, value], i) => {
+      const cx0 = M + cellW * i;
+      if (i > 0) doc.moveTo(cx0, y + 11).lineTo(cx0, y + bh - 11).lineWidth(1).strokeColor(PDF_BORDER).stroke();
+      doc.fillColor(PDF_TEXT3).font('Helvetica-Bold').fontSize(7.5).text(String(label).toUpperCase(), cx0 + 14, y + 13, { width: cellW - 20, characterSpacing: 0.5, lineBreak: false });
+      doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(12).text(String(value), cx0 + 14, y + 26, { width: cellW - 20, height: 15, ellipsis: true, lineBreak: false });
+    });
+    y += bh + 20;
+  }
+
+  y = pdfChipRow(doc, 'Brands worked with', a.brands, M, y, CW);
+  y = pdfChipRow(doc, 'Interests', a.interests, M, y, CW);
+
+  // Footer brand mark
+  doc.image(MH_LOGO_BUF, W / 2 - 30, PDF_PAGE_H - 44, { fit: [60, 24], align: 'center', valign: 'center' });
+
+  doc.end();
+  await done;
+  return Buffer.concat(chunks);
+}
+
 function sendPdf(buf, filename, res) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -578,6 +694,12 @@ module.exports = async function handler(req, res) {
         if (!body.client?.name) return res.status(400).json({ error: 'No client provided' });
         const pdf = await buildClientPdf(body.client, body.logos || {});
         const fname = body.client.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
+        return sendPdf(pdf, fname, res);
+      }
+      if (body.action === 'athlete-pdf') {
+        if (!body.athlete?.name) return res.status(400).json({ error: 'No athlete provided' });
+        const pdf = await buildAthletePdf(body.athlete);
+        const fname = body.athlete.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
         return sendPdf(pdf, fname, res);
       }
 

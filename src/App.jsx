@@ -524,9 +524,9 @@ function ClientCard({ client: c, logos, isMobile, onClick }) {
         <Avatar name={c.name} photoUrl={c.photoUrl} size={56} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: G.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{c.name}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
             {dedupedFlags.length > 0 && <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{dedupedFlags.map(co => flag(co)).join(' ')}</span>}
-            {[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).map(t => <TypePill key={t} type={t} />)}
+            {(c.types || []).length > 0 && <span style={{ fontSize: 13, color: G.textSecondary, fontWeight: 500 }}>{[...(c.types || [])].sort((a,b) => a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b)).join(' · ')}</span>}
           </div>
           {logoList.length > 0 && (
             <div style={{ display: "flex", gap: 5, marginBottom: 6, flexWrap: "wrap" }}>
@@ -1069,23 +1069,27 @@ function ClientFiltersDropdown({ filterContact, setFilterContact, filterLabel, s
 
 function ClientSortDropdown({ clientSort, setClientSort }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const ref = useRef();
   useEffect(() => {
     const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+  // Fixed-position menu (anchored to the trigger) so it never gets clipped by a
+  // horizontally-scrolling header row.
+  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: r.left }); } setOpen(v => !v); };
   const SORTS = [["default","Roster Order"], ["alpha","A – Z"]];
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button onClick={() => setOpen(v => !v)}
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button onClick={toggle}
         style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: 500, color: G.textSecondary, cursor: "pointer", whiteSpace: "nowrap" }}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M4 4h8M6 12h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
         Sort
         <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
       </button>
-      {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 500, minWidth: 180, boxShadow: G.shadowLg }}>
+      {open && pos && (
+        <div style={{ position: "fixed", top: pos.top, left: pos.left, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 500, minWidth: 180, boxShadow: G.shadowLg }}>
           {SORTS.map(([val, label]) => (
             <button key={val} onClick={() => { setClientSort(val); setOpen(false); }}
               style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, fontSize: 13, fontWeight: clientSort === val ? 700 : 400, color: clientSort === val ? G.green : G.text, textAlign: "left" }}
@@ -1102,14 +1106,16 @@ function ClientSortDropdown({ clientSort, setClientSort }) {
 }
 
 // Consolidated "View:" dropdown — type multi-select + Custom Group, in one box.
-function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCount, onOpenCustom }) {
+function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCount, onOpenCustom, compact }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const ref = useRef();
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: r.left }); } setOpen(v => !v); };
   const active = customCount > 0 || filterTypes.length > 0;
   const label = customCount > 0 ? `Custom · ${customCount}` : (filterTypes.length ? filterTypes.join(', ') : 'All');
   const typeOpts = types.filter(t => t !== 'All');
@@ -1124,14 +1130,14 @@ function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCou
   );
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
-      <button onClick={() => setOpen(v => !v)}
+      <button onClick={toggle}
         style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", background: active ? G.greenSubtle : G.surface, border: `1px solid ${active ? G.green : G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: active ? 700 : 500, color: active ? G.green : G.textSecondary, cursor: "pointer", whiteSpace: "nowrap", maxWidth: 280 }}>
-        <span style={{ color: G.textTertiary, fontWeight: 500, flexShrink: 0 }}>View:</span>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+        <span style={{ color: active ? G.green : G.textTertiary, fontWeight: 500, flexShrink: 0 }}>View:</span>
+        {!(compact && !active) && <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>}
         <span style={{ fontSize: 9, opacity: 0.6, flexShrink: 0 }}>▾</span>
       </button>
-      {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, minWidth: 220, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 500, boxShadow: G.shadowLg }}>
+      {open && pos && (
+        <div style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: 220, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 500, boxShadow: G.shadowLg }}>
           {item(filterTypes.length === 0 && customCount === 0, 'All', () => onAll())}
           {typeOpts.map(t => item(customCount === 0 && filterTypes.includes(t), t, () => onToggleType(t)))}
           <div style={{ height: 1, background: G.surfaceBorder, margin: "6px 8px" }} />
@@ -1323,17 +1329,20 @@ function SportsDetail({ athlete: a, isMobile }) {
       )}
       <div style={{ position: "relative", zIndex: 1, marginTop: banner ? -bannerH : 0 }}>
         <div style={{ position: "relative", padding: banner ? `${bannerH - avSize / 2}px ${pad}px 20px` : `${pad}px ${pad}px 20px`, borderBottom: `1px solid ${G.surfaceBorder}` }}>
-          <a href={`mailto:marketing@milkhoneysports.com?subject=${encodeURIComponent('Partnership inquiry — ' + a.name)}`}
-            style={{ position: "absolute", top: banner ? 16 : pad, right: pad, display: "flex", alignItems: "center", gap: 7, background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: isMobile ? "8px 10px" : "9px 14px", textDecoration: "none", zIndex: 3 }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z" stroke={G.green} strokeWidth="2"/><path d="m22 6-10 7L2 6" stroke={G.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            {!isMobile && <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact</span>}
-          </a>
           <div style={{ display: "flex", gap: isMobile ? 16 : 24, alignItems: "flex-end" }}>
             <div style={{ flexShrink: 0, width: avSize, height: avSize, borderRadius: "50%", overflow: "hidden", border: `2px solid ${G.surfaceBorderLight}` }}>
               <Avatar name={a.name} photoUrl={a.photoUrl} size={avSize} />
             </div>
             <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
-              <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.05 }}>{a.name}</h1>
+              {/* Name + Contact button on one line (mirrors the music detail page). */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.05, flex: 1, minWidth: 0 }}>{a.name}</h1>
+                <a href={`mailto:marketing@milkhoneysports.com?subject=${encodeURIComponent('Partnership inquiry — ' + a.name)}`}
+                  style={{ display: "flex", alignItems: "center", gap: 7, background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: isMobile ? "8px 10px" : "9px 14px", textDecoration: "none", flexShrink: 0, marginTop: 4 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z" stroke={G.green} strokeWidth="2"/><path d="m22 6-10 7L2 6" stroke={G.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  {!isMobile && <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact</span>}
+                </a>
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
                 <TeamLogo url={a.teamLogo} size={26} />
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: "#fff", fontWeight: 500 }}>{typeLine}</span>}
@@ -1481,8 +1490,9 @@ function CustomGroupPicker({ items, selected, groupTitle, onToggle, onClear, onC
 }
 
 // Unified export control: Download PDF (Simple/Detailed) + hosted share link.
-function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading, onLink, onClearLink }) {
+function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading, onLink, onClearLink, iconOnly }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const [expiry, setExpiry] = useState('90');
   const [copied, setCopied] = useState(false);
   const ref = useRef();
@@ -1491,15 +1501,18 @@ function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, right: window.innerWidth - r.right }); } setOpen(v => !v); };
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
-      <button onClick={() => setOpen(v => !v)}
-        style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6 }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        Export
+      <button onClick={toggle} title="Export"
+        style={iconOnly
+          ? { background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center" }
+          : { background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6 }}>
+        <svg width={iconOnly ? 18 : 14} height={iconOnly ? 18 : 14} viewBox="0 0 24 24" fill="none"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        {!iconOnly && 'Export'}
       </button>
-      {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 280, maxWidth: "calc(100vw - 32px)", background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, padding: 14, zIndex: 500, boxShadow: G.shadowLg }}>
+      {open && pos && (
+        <div style={{ position: "fixed", top: pos.top, right: pos.right, width: 280, maxWidth: "calc(100vw - 32px)", background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, padding: 14, zIndex: 500, boxShadow: G.shadowLg }}>
           {/* PDF matches the current layout (List → 3×5, Detailed → 1×4). */}
           <button onClick={() => { onPdf(); setOpen(false); }} disabled={pdfBusy}
             style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised, cursor: pdfBusy ? "wait" : "pointer", fontFamily: ff }}>
@@ -1927,6 +1940,7 @@ function App() {
     const contactEmail = (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(',');
     return downloadPdf({ action: 'client-pdf', client: { ...c, contactEmail }, logos }, `${slugOf(c.name)}.pdf`);
   };
+  const downloadAthletePdf = (a) => downloadPdf({ action: 'athlete-pdf', athlete: a }, `${slugOf(a.name)}.pdf`);
 
   // Generate a hosted interactive share link from the current filtered roster.
   const generateShareLink = async (expiry) => {
@@ -2054,10 +2068,13 @@ function App() {
       return true;
     });
     if (clientSort === 'alpha') return [...list].sort((a, b) => a.name.localeCompare(b.name));
-    // Default (Roster Order): by league (NFL → College → HS), then by social reach.
+    // Default (Roster Order): by league (NFL → College → HS); within a league,
+    // free agents sink to the bottom, then rank by social reach.
     return [...list].sort((a, b) => {
       const lr = (LEAGUE_RANK[a.level] ?? 9) - (LEAGUE_RANK[b.level] ?? 9);
       if (lr !== 0) return lr;
+      const fa = (a.status === 'Free Agent' ? 1 : 0) - (b.status === 'Free Agent' ? 1 : 0);
+      if (fa !== 0) return fa;
       return athleteReach(b) - athleteReach(a);
     });
   }, [athletes, sportsLevel, search, customGroup, clientSort]);
@@ -2078,6 +2095,14 @@ function App() {
       style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, color: G.textSecondary, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d={isAdmin ? "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" : "M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
       {isAdmin ? 'Log out' : 'Log in'}
+    </button>
+  ) : null;
+
+  // Compact icon-only auth button for the mobile top row (person glyph).
+  const authBtnMobile = authConfigured ? (
+    <button onClick={() => isAdmin ? doLogout() : setLoginOpen(true)} title={isAdmin ? 'Log out' : 'Log in'}
+      style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2"/></svg>
     </button>
   ) : null;
 
@@ -2141,8 +2166,8 @@ function App() {
       onAll={() => { clearCustomGroup(); setFilterTypes([]); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   );
-  const exportControl = (
-    <ExportMenu view={rosterView} count={domain === 'sports' ? filteredAthletes.length : filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
+  const exportControl = (iconOnly = false) => (
+    <ExportMenu iconOnly={iconOnly} view={rosterView} count={domain === 'sports' ? filteredAthletes.length : filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
       onPdf={downloadRosterPdf} linkUrl={shareRosterUrl} linkLoading={shareRosterLoading}
       onLink={generateShareLink} onClearLink={() => setShareRosterUrl(null)} />
   );
@@ -2167,6 +2192,8 @@ function App() {
         ::-webkit-scrollbar{width:4px;height:4px}
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:${G.surfaceBorderLight};border-radius:2px}
+        .mh-hscroll{scrollbar-width:none;-ms-overflow-style:none}
+        .mh-hscroll::-webkit-scrollbar{display:none}
       `}</style>
 
 
@@ -2178,41 +2205,41 @@ function App() {
           // ── Mobile header ─────────────────────────────────────────────────
           view === 'detail' ? (
             <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
-              {domain === 'music' && selected && pdfBtn(() => downloadClientPdf(selected), null)}
+              {selected && pdfBtn(() => domain === 'sports' ? downloadAthletePdf(selected) : downloadClientPdf(selected), null)}
               {authBtn}
               {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
             </div>
           ) : (
             <div style={{ flexShrink: 0, position: "sticky", top: 0, zIndex: 40, background: G.bg }}>
-              {/* Logo + Search icon + Share + Add row */}
+              {/* Row 1: logo (left) + export + profile (right) — always just these three */}
               <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
                 <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
+                <div style={{ flex: 1 }} />
+                {exportControl(true)}
+                {authBtnMobile}
+              </div>
+              {/* Row 2: domain + view + sort + layout + search — one line (scrolls if tight) */}
+              <div style={{ padding: "0 16px 12px" }}>
                 {mobileSearchOpen ? (
-                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
-                    <input ref={searchRef} autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients..."
-                      style={{ background: "none", border: "none", outline: "none", fontSize: 15, color: G.text, fontFamily: ff, flex: 1 }} />
+                    <input ref={searchRef} autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : "Search clients..."}
+                      style={{ background: "none", border: "none", outline: "none", fontSize: 16, color: G.text, fontFamily: ff, flex: 1, minWidth: 0 }} />
                     <button onClick={() => { setMobileSearchOpen(false); setSearch(''); }} style={{ background: "none", border: "none", color: G.textSecondary, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: ff }}>✕</button>
                   </div>
                 ) : (
-                  <>
-                    <button onClick={() => setMobileSearchOpen(true)}
-                      style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 14px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center" }}>
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  <div className="mh-hscroll" style={{ display: "flex", gap: 6, alignItems: "center", overflowX: "auto" }}>
+                    {domainToggle}
+                    {viewFilter}
+                    <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
+                    {viewToggle}
+                    <button onClick={() => setMobileSearchOpen(true)} title="Search"
+                      style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                     </button>
-                    <div style={{ flex: 1 }} />
-                    {exportControl}
-                    {authBtn}
-                  </>
+                  </div>
                 )}
-              </div>
-              {/* Domain toggle + consolidated view + sort + layout */}
-              <div style={{ margin: "0 16px 12px", display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {domainToggle}
-                {viewFilter}
-                <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
-                {viewToggle}
               </div>
               <div style={{ height: 1, background: G.surfaceBorder }} />
             </div>
@@ -2226,7 +2253,7 @@ function App() {
             {view === 'detail' ? (
               <>
                 <div style={{ flex: 1 }} />
-                {domain === 'music' && selected && pdfBtn(() => downloadClientPdf(selected), 'PDF')}
+                {selected && pdfBtn(() => domain === 'sports' ? downloadAthletePdf(selected) : downloadClientPdf(selected), 'PDF')}
                 {authBtn}
                 {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
@@ -2240,7 +2267,7 @@ function App() {
                   <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
                   {viewToggle}
                 </div>
-                {exportControl}
+                {exportControl()}
                 {authBtn}
               </>
             )}
