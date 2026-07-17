@@ -1583,6 +1583,7 @@ function Landing({ onEnter }) {
   const [pending, setPending] = useState(null); // 'music' | 'sports' once a section is chosen
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const glowRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -1602,9 +1603,24 @@ function Landing({ onEnter }) {
 
   useEffect(() => { if (pending && inputRef.current) inputRef.current.focus(); }, [pending]);
 
-  const submit = () => {
-    if (password.trim().toLowerCase() === SITE_PASSWORD) onEnter(pending);
-    else setError('Incorrect password.');
+  const submit = async () => {
+    const pw = password.trim();
+    if (!pw || busy) return;
+    // Public site password → enter as a viewer.
+    if (pw.toLowerCase() === SITE_PASSWORD) { onEnter(pending); return; }
+    // Otherwise try the employee/admin password (validated server-side). On
+    // success the auth cookie is set; reload so the app boots into the full
+    // dashboard on the chosen side.
+    setBusy(true); setError('');
+    try {
+      const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+      if (r.ok) {
+        try { localStorage.setItem('mh_gate', '1'); } catch { /* ignore */ }
+        window.location.href = pending === 'sports' ? '/sports' : '/';
+        return;
+      }
+      setError('Incorrect password.'); setBusy(false);
+    } catch { setError('Something went wrong. Try again.'); setBusy(false); }
   };
 
   // The animated background never changes with pending/password/error state,
@@ -1657,9 +1673,9 @@ function Landing({ onEnter }) {
               onKeyDown={e => e.key === 'Enter' && submit()} placeholder="Password"
               style={{ width: "100%", boxSizing: "border-box", textAlign: "center", background: "rgba(30,32,34,0.72)", border: `1px solid ${error ? G.red : "rgba(255,255,255,0.16)"}`, borderRadius: 12, padding: "13px 16px", fontSize: 15, color: "#fff", fontFamily: ff, outline: "none" }} />
             {error && <div style={{ fontSize: 12, color: G.red }}>{error}</div>}
-            <button onClick={submit} disabled={!password}
-              style={{ width: "100%", background: password ? G.green : "rgba(255,255,255,0.08)", color: password ? "#0a0a0a" : "rgba(255,255,255,0.4)", border: "none", borderRadius: 12, padding: "13px", fontWeight: 700, fontSize: 14, cursor: password ? "pointer" : "not-allowed", fontFamily: ff, transition: `all 0.2s ${G.ease}` }}>
-              Enter
+            <button onClick={submit} disabled={!password || busy}
+              style={{ width: "100%", background: password && !busy ? G.green : "rgba(255,255,255,0.08)", color: password && !busy ? "#0a0a0a" : "rgba(255,255,255,0.4)", border: "none", borderRadius: 12, padding: "13px", fontWeight: 700, fontSize: 14, cursor: password && !busy ? "pointer" : "not-allowed", fontFamily: ff, transition: `all 0.2s ${G.ease}` }}>
+              {busy ? 'Entering…' : 'Enter'}
             </button>
             <button onClick={() => { setPending(null); setPassword(''); setError(''); }}
               style={{ background: "none", border: "none", color: "rgba(255,255,255,0.55)", fontSize: 13, cursor: "pointer", fontFamily: ff, marginTop: 2 }}>
