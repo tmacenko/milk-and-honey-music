@@ -1505,7 +1505,15 @@ function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, right: window.innerWidth - r.right }); } setOpen(v => !v); };
+  const toggle = () => {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      const menuW = Math.min(280, window.innerWidth - 32);
+      const right = Math.max(8, Math.min(window.innerWidth - r.right, window.innerWidth - menuW - 8));
+      setPos({ top: r.bottom + 6, right });
+    }
+    setOpen(v => !v);
+  };
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button onClick={toggle} title="Export"
@@ -1569,7 +1577,16 @@ function DetailExportMenu({ onPdf, pdfBusy, shareUrl, isAdmin, iconOnly }) {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) }); } setOpen(v => !v); };
+  const toggle = () => {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      const menuW = Math.min(280, window.innerWidth - 32);
+      // Right-anchor to the button, but never let the menu run off the left edge.
+      const right = Math.max(8, Math.min(window.innerWidth - r.right, window.innerWidth - menuW - 8));
+      setPos({ top: r.bottom + 6, right });
+    }
+    setOpen(v => !v);
+  };
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button onClick={toggle} title="Export" disabled={pdfBusy}
