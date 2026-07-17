@@ -59,6 +59,11 @@
     .overlay{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.75);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;align-items:flex-start;justify-content:center;padding:0;overflow-y:auto}
     .modal{background:rgba(12,12,14,0.97);border:1px solid var(--border-l);border-radius:22px;width:100%;max-width:680px;margin:40px 20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-lg);animation:fadeUp 0.2s var(--ease)}
     @media(max-width:768px){.modal{margin:0;border-radius:0;min-height:100vh}}
+    /* Solo (single-person share): the profile IS the page — inline under the header, no modal chrome */
+    .overlay.solo{position:static;inset:auto;z-index:auto;background:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+    .overlay.solo .modal-topbar{display:none}
+    .overlay.solo .modal{margin-top:24px}
+    @media(max-width:768px){.overlay.solo .modal{margin-top:0;min-height:auto}}
     @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
     .modal-topbar{display:flex;justify-content:flex-end;gap:8px;padding:14px 16px 0}
     .btn-close{background:var(--raised);border:1px solid var(--border);border-radius:10px;color:var(--text3);cursor:pointer;padding:8px 12px;font-size:14px;font-family:var(--ff);line-height:1}
@@ -199,7 +204,7 @@ function buildModal(a){
     a.appleMusicUrl&&sl(a.appleMusicUrl,ICONS.apple),
     a.soundcloudUrl&&sl(a.soundcloudUrl,ICONS.sc),
   ].filter(Boolean).join('');
-  return `<div class="overlay" id="overlay"><div class="modal">
+  return `<div class="overlay${state.solo?' solo':''}" id="overlay"><div class="modal">
     <div class="modal-topbar"><button class="btn-close" id="modal-close">&#x2715;</button></div>
     <div class="modal-hdr">
       <div class="modal-hdr-top">
@@ -238,9 +243,9 @@ function render(){
   const allTypes=[...new Set(athletes.flatMap(a=>a.types||[]))].sort((a,b)=>a==='Artist'?-1:b==='Artist'?1:a.localeCompare(b));
   const filtered=getFiltered();
   app.innerHTML=`
-    <div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" />${state.data.title?`<span class="hdr-title">${state.data.title}</span>`:''}</div><button class="btn-dl" id="btn-download"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Download Roster PDF</button></div>
-    ${allTypes.length>1?`<div class="tabs-wrap"><button class="tab${levelActive('All')?' active':''}" data-level="All">All</button>${allTypes.map(t=>`<button class="tab${levelActive(t)?' active':''}" data-level="${t}">${t}</button>`).join('')}</div>`:''}
-    <div class="grid-wrap"><div class="grid">${filtered.map((a,i)=>buildCard(a,i)).join('')}</div></div>
+    <div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${MH_LOGO}" alt="Milk &amp; Honey" />${state.data.title?`<span class="hdr-title">${state.data.title}</span>`:''}</div><button class="btn-dl" id="btn-download"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> ${state.solo?'Download PDF':'Download Roster PDF'}</button></div>
+    ${!state.solo&&allTypes.length>1?`<div class="tabs-wrap"><button class="tab${levelActive('All')?' active':''}" data-level="All">All</button>${allTypes.map(t=>`<button class="tab${levelActive(t)?' active':''}" data-level="${t}">${t}</button>`).join('')}</div>`:''}
+    ${state.solo?'':`<div class="grid-wrap"><div class="grid">${filtered.map((a,i)=>buildCard(a,i)).join('')}</div></div>`}
     ${state.selected?buildModal(state.selected):''}`;
   document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>toggleLevel(btn.dataset.level)));
   const dlBtn=document.getElementById('btn-download');
@@ -249,10 +254,10 @@ function render(){
   const overlay=document.getElementById('overlay');
   const closeBtn=document.getElementById('modal-close');
   const bioToggle=document.getElementById('bio-toggle');
-  if(closeBtn)closeBtn.addEventListener('click',()=>{state.selected=null;render();});
-  if(overlay)overlay.addEventListener('click',e=>{if(e.target===overlay){state.selected=null;render();}});
+  if(closeBtn&&!state.solo)closeBtn.addEventListener('click',()=>{state.selected=null;render();});
+  if(overlay&&!state.solo)overlay.addEventListener('click',e=>{if(e.target===overlay){state.selected=null;render();}});
   if(bioToggle)bioToggle.addEventListener('click',()=>{state.bioExpanded=!state.bioExpanded;render();window.scrollTo(0,0);});
-  document.onkeydown=e=>{if(e.key==='Escape'&&state.selected){state.selected=null;render();}};
+  document.onkeydown=e=>{if(e.key==='Escape'&&state.selected&&!state.solo){state.selected=null;render();}};
 }
 
 async function load(){
@@ -267,6 +272,8 @@ async function load(){
     if(data.type!=='roster-share'){state.error='invalid';render();return;}
     if(data.expiresAt&&new Date(data.expiresAt)<new Date()){state.error='expired';render();return;}
     state.data=data;
+    // Single-person share → open straight onto their full profile (no roster grid).
+    if((data.athletes||[]).length===1){state.solo=true;state.selected=data.athletes[0];}
     document.title=(data.title||'Client Roster')+' -- Milk & Honey Music';
     render();
   }catch(e){state.error='error';render();}
