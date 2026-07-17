@@ -8,7 +8,10 @@ const SHEET_ID = process.env.MUSIC_SHEET_ID;
 const BLOB_API = 'https://blob.vercel-storage.com';
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const MEDIA_CACHE_PATH = 'spotify-media-cache-v4.json';
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://www.milkandhoneyfamily.com').replace(/\/$/, '');
+// Canonical production domain. Hardcoded (not env-driven) so generated links
+// and OG tags always use the live domain, regardless of stale Vercel env vars.
+// If the domain ever changes, update it here (and in share.js / share-og.js).
+const APP_URL = 'https://www.milkandhoneyfamily.com';
 const OG_IMAGE = `${APP_URL}/share-image.jpg`;
 
 const BOT_AGENTS = [

@@ -5,7 +5,9 @@
 
 const BLOB_API = 'https://blob.vercel-storage.com';
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://www.milkandhoneyfamily.com').replace(/\/$/, '');
+// Canonical production domain — hardcoded so links/OG always use the live
+// domain regardless of stale Vercel env vars. Keep in sync with page.js / share.js.
+const APP_URL = 'https://www.milkandhoneyfamily.com';
 const OG_IMAGE = `${APP_URL}/share-image.jpg`;
 
 const BOT_AGENTS = [
