@@ -80,37 +80,25 @@ function formatNum(n) {
 }
 
 // ── Platform fetchers (return a raw follower number, or null on any failure) ───
-function parseCount(s) {
-  const m = String(s).replace(/,/g, '').trim().match(/^([\d.]+)\s*([KMB])?$/i);
-  if (!m) return null;
-  let n = parseFloat(m[1]);
-  const suf = (m[2] || '').toUpperCase();
-  if (suf === 'K') n *= 1e3; else if (suf === 'M') n *= 1e6; else if (suf === 'B') n *= 1e9;
-  return Number.isFinite(n) ? Math.round(n) : null;
+// Optional residential proxy — Instagram blocks Vercel's datacenter IPs (429 /
+// stripped HTML) but works fine through a residential IP. Set env PROXY_URL
+// (e.g. http://user:pass@host:port) and IG turns on with no code change.
+let proxyDispatcher = null;
+if (process.env.PROXY_URL) {
+  try { const { ProxyAgent } = require('undici'); proxyDispatcher = new ProxyAgent(process.env.PROXY_URL); } catch { /* undici missing */ }
 }
 async function fetchIG(username) {
-  // 1) Exact count via IG's web-profile API (works from residential IPs).
+  // Exact count via IG's web-profile API. Datacenter IPs get 429'd; a proxy
+  // (PROXY_URL) makes this succeed.
   try {
     const r = await fetch(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, {
       headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
-    });
-    if (r.ok) {
-      const j = await r.json();
-      const n = j?.data?.user?.edge_followed_by?.count;
-      if (Number.isFinite(n)) return n;
-    }
-  } catch { /* fall through */ }
-  // 2) Fallback: the OG meta description IG serves to link-preview crawlers
-  //    ("1.2M Followers, ...") — served even to datacenter IPs. Slightly
-  //    rounded for big accounts, exact for smaller ones.
-  try {
-    const r = await fetch(`https://www.instagram.com/${encodeURIComponent(username)}/`, {
-      headers: { 'User-Agent': 'facebookexternalhit/1.1', 'Accept': 'text/html' },
+      dispatcher: proxyDispatcher || undefined,
     });
     if (!r.ok) return null;
-    const html = await r.text();
-    const m = html.match(/([\d.,]+\s*[KMB]?)\s+Followers/i);
-    return m ? parseCount(m[1]) : null;
+    const j = await r.json();
+    const n = j?.data?.user?.edge_followed_by?.count;
+    return Number.isFinite(n) ? n : null;
   } catch { return null; }
 }
 async function fetchTikTok(username) {
@@ -174,32 +162,6 @@ module.exports = async (req, res) => {
   if (!authorized(req)) return res.status(403).json({ error: 'Not authorized' });
 
   const q = req.query || {};
-
-  // Temporary diagnostic: see exactly what each platform returns to Vercel's IP.
-  if (q.debug) {
-    const u = q.handle || 'oliverheldens';
-    const out = {};
-    try {
-      const r = await fetch(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${u}`, { headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA } });
-      const t = await r.text();
-      out.ig_api = { status: r.status, len: t.length, hasFollowed: /edge_followed_by/.test(t), snippet: t.slice(0, 160) };
-    } catch (e) { out.ig_api = { error: e.message }; }
-    for (const [k, ua] of [['ig_og_fb', 'facebookexternalhit/1.1'], ['ig_og_bot', 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)']]) {
-      try {
-        const r = await fetch(`https://www.instagram.com/${u}/`, { headers: { 'User-Agent': ua, 'Accept': 'text/html' } });
-        const t = await r.text();
-        out[k] = {
-          status: r.status, len: t.length,
-          followersText: (t.match(/([\d.,]+\s*[KMB]?)\s+Followers/i) || [])[0] || null,
-          edgeFollowed: (t.match(/"edge_followed_by":\{"count":(\d+)\}/) || [])[1] || null,
-          followerCount: (t.match(/"follower_count":(\d+)/) || [])[1] || null,
-          hasOgDesc: /og:description/.test(t),
-        };
-      } catch (e) { out[k] = { error: e.message }; }
-    }
-    return res.json(out);
-  }
-
   const dryRun = q.dryRun === '1' || q.dryRun === 'true';
   const only = q.platforms ? String(q.platforms).split(',').map(s => s.trim()) : ['ig', 'tiktok', 'x'];
   const limit = q.limit ? parseInt(q.limit, 10) : Infinity;
