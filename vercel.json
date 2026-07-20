@@ -3,8 +3,12 @@
   "outputDirectory": "dist",
   "functions": {
     "api/sheets.js": { "maxDuration": 60 },
-    "api/share.js": { "maxDuration": 60 }
+    "api/share.js": { "maxDuration": 60 },
+    "api/refresh-socials.js": { "maxDuration": 60 }
   },
+  "crons": [
+    { "path": "/api/refresh-socials", "schedule": "0 9 * * *" }
+  ],
   "rewrites": [
     { "source": "/share/:id",  "destination": "/api/share-og?id=:id" },
     { "source": "/roster/:id", "destination": "/api/share-og?id=:id&kind=roster" },
