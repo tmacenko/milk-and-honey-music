@@ -184,11 +184,19 @@ module.exports = async (req, res) => {
       const t = await r.text();
       out.ig_api = { status: r.status, len: t.length, hasFollowed: /edge_followed_by/.test(t), snippet: t.slice(0, 160) };
     } catch (e) { out.ig_api = { error: e.message }; }
-    try {
-      const r = await fetch(`https://www.instagram.com/${u}/`, { headers: { 'User-Agent': 'facebookexternalhit/1.1', 'Accept': 'text/html' } });
-      const t = await r.text();
-      out.ig_og = { status: r.status, len: t.length, hasFollowers: /Followers/.test(t), ogMatch: (t.match(/([\d.,]+\s*[KMB]?)\s+Followers/i) || [])[0] || null, snippet: t.slice(0, 200) };
-    } catch (e) { out.ig_og = { error: e.message }; }
+    for (const [k, ua] of [['ig_og_fb', 'facebookexternalhit/1.1'], ['ig_og_bot', 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)']]) {
+      try {
+        const r = await fetch(`https://www.instagram.com/${u}/`, { headers: { 'User-Agent': ua, 'Accept': 'text/html' } });
+        const t = await r.text();
+        out[k] = {
+          status: r.status, len: t.length,
+          followersText: (t.match(/([\d.,]+\s*[KMB]?)\s+Followers/i) || [])[0] || null,
+          edgeFollowed: (t.match(/"edge_followed_by":\{"count":(\d+)\}/) || [])[1] || null,
+          followerCount: (t.match(/"follower_count":(\d+)/) || [])[1] || null,
+          hasOgDesc: /og:description/.test(t),
+        };
+      } catch (e) { out[k] = { error: e.message }; }
+    }
     return res.json(out);
   }
 
