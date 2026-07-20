@@ -392,12 +392,92 @@ function buildChatHtml(msgText) {
   </body></html>`;
 }
 
+// Searchable multi-select for the edit form: options come straight from the
+// sheet data (alphabetical), type to filter, click to toggle. Value is stored
+// as the sheet's comma-separated string.
+function MultiSelectCombo({ value, onChange, options, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef();
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQ(''); } };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const selected = (value || '').split(',').map(s => s.trim()).filter(Boolean);
+  // Keep any already-saved values selectable even if they're not in the sheet list.
+  const all = Array.from(new Set([...options, ...selected])).sort((a, b) => a.localeCompare(b));
+  const ql = q.trim().toLowerCase();
+  const list = ql ? all.filter(o => o.toLowerCase().includes(ql)) : all;
+  const toggle = (name) => {
+    const next = selected.includes(name) ? selected.filter(x => x !== name) : [...selected, name];
+    onChange(next.join(', '));
+  };
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <div onClick={() => setOpen(v => !v)}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: G.surfaceRaised, border: `1px solid ${open ? G.green : G.surfaceBorder}`, borderRadius: 10, padding: "10px 12px", cursor: "pointer", minHeight: 40, boxSizing: "border-box" }}>
+        <span style={{ fontSize: 13, color: selected.length ? G.text : G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {selected.length ? selected.join(', ') : placeholder}
+        </span>
+        <span style={{ fontSize: 9, color: G.textTertiary, flexShrink: 0 }}>▾</span>
+      </div>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, zIndex: 60, boxShadow: G.shadowLg, overflow: "hidden" }}>
+          <div style={{ padding: 8, borderBottom: `1px solid ${G.surfaceBorder}` }}>
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Type to search..."
+              style={{ width: "100%", boxSizing: "border-box", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "8px 10px", fontSize: 13, color: G.text, fontFamily: ff, outline: "none" }} />
+          </div>
+          <div style={{ maxHeight: 200, overflowY: "auto", padding: 4 }}>
+            {list.length === 0 && <div style={{ padding: "10px 12px", fontSize: 12, color: G.textTertiary }}>No matches.</div>}
+            {list.map(o => {
+              const on = selected.includes(o);
+              return (
+                <button key={o} onClick={() => toggle(o)}
+                  style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 10px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, fontSize: 13, fontWeight: on ? 700 : 400, color: on ? G.green : G.text, textAlign: "left" }}
+                  onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o}</span>
+                  {on && <span style={{ color: G.green, fontSize: 12, flexShrink: 0 }}>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Client edit form ──────────────────────────────────────────────────────────
-function ClientForm({ initial, onSave, onCancel }) {
+function ClientForm({ initial, onSave, onCancel, staff, clients }) {
   const [form, setForm] = useState({ ...BLANK, ...initial });
   const [saving, setSaving] = useState(false);
+  const [photoHint, setPhotoHint] = useState(false);
+  // Locations: show only the ones in use (min 1); "+" reveals up to 3.
+  const [locCount, setLocCount] = useState(() => {
+    if (initial.city3 || initial.state3 || initial.country3) return 3;
+    if (initial.city2 || initial.state2 || initial.country2) return 2;
+    return 1;
+  });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const isNew = !initial._rowIndex;
+
+  // Freeze the page behind the modal (no background scroll).
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // Dropdown options pulled straight from the sheet data, alphabetical.
+  const staffNames = useMemo(() => Object.values(staff || {}).map(s => s.name).sort((a, b) => a.localeCompare(b)), [staff]);
+  const optionsFrom = (key) => Array.from(new Set(
+    (clients || []).flatMap(c => String(c[key] || '').split(',').map(s => s.trim()).filter(Boolean))
+  )).sort((a, b) => a.localeCompare(b));
+  const proOptions = useMemo(() => optionsFrom('pro'), [clients]);
+  const publisherOptions = useMemo(() => optionsFrom('publisher'), [clients]);
+  const labelOptions = useMemo(() => optionsFrom('label'), [clients]);
 
   const save = async () => {
     if (!form.name.trim()) return alert('Name is required');
@@ -452,11 +532,26 @@ function ClientForm({ initial, onSave, onCancel }) {
                 </div>
               </Field>
             </div>
-            <Field label="Contact / MH Rep"><Input value={form.contact} onChange={e => set('contact', e.target.value)} placeholder="Agent name" /></Field>
-            <Field label="Photo URL"><Input value={form.photoUrl} onChange={e => set('photoUrl', e.target.value)} placeholder="https://..." /></Field>
+            <Field label="Contact / MH Rep">
+              <MultiSelectCombo value={form.contact} onChange={v => set('contact', v)} options={staffNames} placeholder="Select rep(s)..." />
+            </Field>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                Profile Photo URL
+                <span onClick={() => setPhotoHint(v => !v)} title="Overrides Spotify profile image" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
+              </div>
+              <Input value={form.photoUrl} onChange={e => set('photoUrl', e.target.value)} placeholder="https://..." />
+              {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5 }}>Overrides the Spotify profile image.</div>}
+            </div>
             <div style={{ gridColumn: "1/-1" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Locations (up to 3)</div>
-              {[['','',''],['2','2','2'],['3','3','3']].map(([s1,s2,s3],i) => (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em" }}>Location{locCount > 1 ? 's' : ''}</div>
+                {locCount < 3 && (
+                  <button onClick={() => setLocCount(n => Math.min(3, n + 1))}
+                    style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, color: G.textSecondary, cursor: "pointer", padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: ff }}>+ Add location</button>
+                )}
+              </div>
+              {[['','',''],['2','2','2'],['3','3','3']].slice(0, locCount).map(([s1,s2,s3],i) => (
                 <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 12px", marginBottom: 8 }}>
                   <Field label={`City ${i+1}`}><Input value={form[`city${s1}`] || ''} onChange={e => set(`city${s1}`, e.target.value)} /></Field>
                   <Field label={`State ${i+1}`}><Input value={form[`state${s2}`] || ''} onChange={e => set(`state${s2}`, e.target.value)} /></Field>
@@ -464,10 +559,16 @@ function ClientForm({ initial, onSave, onCancel }) {
                 </div>
               ))}
             </div>
-            <Field label="PRO"><Input value={form.pro} onChange={e => set('pro', e.target.value)} placeholder="BMI, ASCAP, SESAC..." /></Field>
-            <Field label="Publisher"><Input value={form.publisher} onChange={e => set('publisher', e.target.value)} placeholder="Kobalt, Warner Chappell..." /></Field>
+            <Field label="PRO">
+              <MultiSelectCombo value={form.pro} onChange={v => set('pro', v)} options={proOptions} placeholder="BMI, ASCAP, SESAC..." />
+            </Field>
+            <Field label="Publisher">
+              <MultiSelectCombo value={form.publisher} onChange={v => set('publisher', v)} options={publisherOptions} placeholder="Kobalt, Warner Chappell..." />
+            </Field>
             <div style={{ gridColumn: "1/-1" }}>
-              <Field label="Record Label"><Input value={form.label} onChange={e => set('label', e.target.value)} placeholder="Atlantic, Republic..." /></Field>
+              <Field label="Record Label">
+                <MultiSelectCombo value={form.label} onChange={v => set('label', v)} options={labelOptions} placeholder="Atlantic, Republic..." />
+              </Field>
             </div>
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Artists / Credits (comma-separated)"><Input value={(form.credits||[]).join(', ')} onChange={e => set('credits', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="Drake, Post Malone, Billie Eilish..." /></Field>
@@ -1716,11 +1817,11 @@ function Landing({ onEnter }) {
   // The animated background never changes with pending/password/error state,
   // so build it once — React bails out of reconciling it on every keystroke.
   const background = useMemo(() => {
-    // Keep the blur radius SMALL — big blur() radii force per-frame rasterization
-    // that blocks the main thread (laggy hover/typing). The radial gradients are
-    // already soft, so a light blur is all that's needed to blend them.
+    // NO filter:blur anywhere — blur() forces main-thread rasterization (laggy
+    // hover/typing, especially iOS). Multi-stop radial gradients are natively
+    // soft and composite for free on the GPU.
     const blob = (extra) => ({
-      position: "absolute", borderRadius: "50%", filter: "blur(14px)",
+      position: "absolute", borderRadius: "50%",
       willChange: "transform", backfaceVisibility: "hidden", pointerEvents: "none", ...extra,
     });
     return (
@@ -1733,12 +1834,12 @@ function Landing({ onEnter }) {
         `}</style>
         {/* Free-flowing gradient field — translate-only animation stays on the GPU compositor */}
         <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-          <div style={blob({ width: "60vw", height: "60vw", top: "-12vw", left: "-8vw", background: "radial-gradient(circle, rgba(62,170,120,0.5), transparent 62%)", animation: "mhGrad1 26s ease-in-out infinite" })} />
-          <div style={blob({ width: "64vw", height: "64vw", bottom: "-18vw", right: "-14vw", background: "radial-gradient(circle, rgba(52,150,110,0.55), transparent 60%)", animation: "mhGrad2 32s ease-in-out infinite" })} />
-          {/* Third blob + cursor glow only on hover-capable devices — keeps phones light. */}
-          {canHover && <div style={blob({ width: "44vw", height: "44vw", top: "28vh", left: "34vw", background: "radial-gradient(circle, rgba(46,120,96,0.4), transparent 64%)", animation: "mhGrad3 29s ease-in-out infinite" })} />}
+          <div style={blob({ width: "60vw", height: "60vw", top: "-12vw", left: "-8vw", background: "radial-gradient(circle, rgba(62,170,120,0.42) 0%, rgba(62,170,120,0.16) 38%, rgba(62,170,120,0) 68%)", animation: "mhGrad1 26s ease-in-out infinite" })} />
+          <div style={blob({ width: "64vw", height: "64vw", bottom: "-18vw", right: "-14vw", background: "radial-gradient(circle, rgba(52,150,110,0.46) 0%, rgba(52,150,110,0.18) 36%, rgba(52,150,110,0) 66%)", animation: "mhGrad2 32s ease-in-out infinite" })} />
+          <div style={blob({ width: "44vw", height: "44vw", top: "28vh", left: "34vw", background: "radial-gradient(circle, rgba(46,120,96,0.34) 0%, rgba(46,120,96,0.13) 40%, rgba(46,120,96,0) 70%)", animation: "mhGrad3 29s ease-in-out infinite" })} />
         </div>
-        {canHover && <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "38vw", height: "38vw", borderRadius: "50%", filter: "blur(18px)", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.28), transparent 62%)", willChange: "transform" }} />}
+        {/* Cursor glow only on mouse devices (meaningless on touch). */}
+        {canHover && <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "38vw", height: "38vw", borderRadius: "50%", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.24) 0%, rgba(62,170,120,0.09) 42%, rgba(62,170,120,0) 68%)", willChange: "transform" }} />}
         {/* Vignette to keep edges black */}
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 100%)", pointerEvents: "none" }} />
       </>
@@ -2516,7 +2617,7 @@ function App() {
       )}
 
       {/* Edit modal */}
-      {editing && <ClientForm initial={editing} onSave={saveClient} onCancel={() => setEditing(null)} />}
+      {editing && <ClientForm initial={editing} onSave={saveClient} onCancel={() => setEditing(null)} staff={staff} clients={clients} />}
 
       {/* Chat — temporarily disabled (component kept; re-enable by uncommenting) */}
       {/* {!loading && <FloatingChat clients={clients} isMobile={isMobile} />} */}
