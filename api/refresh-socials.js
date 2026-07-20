@@ -174,6 +174,24 @@ module.exports = async (req, res) => {
   if (!authorized(req)) return res.status(403).json({ error: 'Not authorized' });
 
   const q = req.query || {};
+
+  // Temporary diagnostic: see exactly what each platform returns to Vercel's IP.
+  if (q.debug) {
+    const u = q.handle || 'oliverheldens';
+    const out = {};
+    try {
+      const r = await fetch(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${u}`, { headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA } });
+      const t = await r.text();
+      out.ig_api = { status: r.status, len: t.length, hasFollowed: /edge_followed_by/.test(t), snippet: t.slice(0, 160) };
+    } catch (e) { out.ig_api = { error: e.message }; }
+    try {
+      const r = await fetch(`https://www.instagram.com/${u}/`, { headers: { 'User-Agent': 'facebookexternalhit/1.1', 'Accept': 'text/html' } });
+      const t = await r.text();
+      out.ig_og = { status: r.status, len: t.length, hasFollowers: /Followers/.test(t), ogMatch: (t.match(/([\d.,]+\s*[KMB]?)\s+Followers/i) || [])[0] || null, snippet: t.slice(0, 200) };
+    } catch (e) { out.ig_og = { error: e.message }; }
+    return res.json(out);
+  }
+
   const dryRun = q.dryRun === '1' || q.dryRun === 'true';
   const only = q.platforms ? String(q.platforms).split(',').map(s => s.trim()) : ['ig', 'tiktok', 'x'];
   const limit = q.limit ? parseInt(q.limit, 10) : Infinity;
