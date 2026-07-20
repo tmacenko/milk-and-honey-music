@@ -80,15 +80,37 @@ function formatNum(n) {
 }
 
 // ── Platform fetchers (return a raw follower number, or null on any failure) ───
+function parseCount(s) {
+  const m = String(s).replace(/,/g, '').trim().match(/^([\d.]+)\s*([KMB])?$/i);
+  if (!m) return null;
+  let n = parseFloat(m[1]);
+  const suf = (m[2] || '').toUpperCase();
+  if (suf === 'K') n *= 1e3; else if (suf === 'M') n *= 1e6; else if (suf === 'B') n *= 1e9;
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
 async function fetchIG(username) {
+  // 1) Exact count via IG's web-profile API (works from residential IPs).
   try {
     const r = await fetch(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, {
       headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
     });
+    if (r.ok) {
+      const j = await r.json();
+      const n = j?.data?.user?.edge_followed_by?.count;
+      if (Number.isFinite(n)) return n;
+    }
+  } catch { /* fall through */ }
+  // 2) Fallback: the OG meta description IG serves to link-preview crawlers
+  //    ("1.2M Followers, ...") — served even to datacenter IPs. Slightly
+  //    rounded for big accounts, exact for smaller ones.
+  try {
+    const r = await fetch(`https://www.instagram.com/${encodeURIComponent(username)}/`, {
+      headers: { 'User-Agent': 'facebookexternalhit/1.1', 'Accept': 'text/html' },
+    });
     if (!r.ok) return null;
-    const j = await r.json();
-    const n = j?.data?.user?.edge_followed_by?.count;
-    return Number.isFinite(n) ? n : null;
+    const html = await r.text();
+    const m = html.match(/([\d.,]+\s*[KMB]?)\s+Followers/i);
+    return m ? parseCount(m[1]) : null;
   } catch { return null; }
 }
 async function fetchTikTok(username) {
