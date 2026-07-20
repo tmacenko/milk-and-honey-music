@@ -488,7 +488,7 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
         body: JSON.stringify({ action: isNew ? 'create' : 'save', client: form }),
       });
       const data = await resp.json();
-      if (data.success) onSave(form);
+      if (data.success) onSave({ ...form, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl });
       else throw new Error(data.error || 'Save failed');
     } catch(e) { alert('Save failed: ' + e.message); }
     setSaving(false);
@@ -540,7 +540,7 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
                 Profile Photo URL
                 <span onClick={() => setPhotoHint(v => !v)} title="Overrides Spotify profile image" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
               </div>
-              <Input value={form.photoUrl} onChange={e => set('photoUrl', e.target.value)} placeholder="https://..." />
+              <Input value={form.photoUrlOverride ?? ''} onChange={e => set('photoUrlOverride', e.target.value)} placeholder="Auto from Spotify — paste a URL to override" />
               {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5 }}>Overrides the Spotify profile image.</div>}
             </div>
             <div style={{ gridColumn: "1/-1" }}>
@@ -628,7 +628,7 @@ function AthleteForm({ initial, onSave, onCancel }) {
         body: JSON.stringify({ athlete: form, originalName: initial.name }),
       });
       const data = await resp.json();
-      if (data.success) onSave(form);
+      if (data.success) onSave({ ...form, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl });
       else throw new Error(data.error || 'Save failed');
     } catch (e) { alert('Save failed: ' + e.message); }
     setSaving(false);
@@ -681,7 +681,7 @@ function AthleteForm({ initial, onSave, onCancel }) {
                 Profile Photo URL
                 <span onClick={() => setPhotoHint(v => !v)} title="Overrides ESPN headshot" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
               </div>
-              <Input value={form.photoUrl} onChange={e => set('photoUrl', e.target.value)} placeholder="https://..." />
+              <Input value={form.photoUrlOverride ?? ''} onChange={e => set('photoUrlOverride', e.target.value)} placeholder="Auto from ESPN — paste a URL to override" />
               {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5 }}>Overrides the ESPN headshot.</div>}
             </div>
             <Field label="Hero Image URL"><Input value={form.heroImageUrl} onChange={e => set('heroImageUrl', e.target.value)} placeholder="https://..." /></Field>
@@ -1882,29 +1882,7 @@ function Landing({ onEnter }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const glowRef = useRef(null);
   const inputRef = useRef(null);
-
-  // Only devices with a real pointer (mouse) get the cursor-trailing glow; on
-  // touch it's meaningless and the per-frame blurred-layer composite is what made
-  // the page lag on phones.
-  const canHover = useMemo(() => typeof window !== 'undefined' && window.matchMedia
-    && window.matchMedia('(hover: hover) and (pointer: fine)').matches, []);
-
-  // Soft glow that trails the cursor, eased toward the pointer each frame.
-  useEffect(() => {
-    if (!canHover) return;
-    let raf, tx = window.innerWidth * 0.5, ty = window.innerHeight * 0.5, cx = tx, cy = ty;
-    const onMove = e => { tx = e.clientX; ty = e.clientY; };
-    window.addEventListener('pointermove', onMove);
-    const tick = () => {
-      cx += (tx - cx) * 0.045; cy += (ty - cy) * 0.045;
-      if (glowRef.current) glowRef.current.style.transform = `translate(${cx}px, ${cy}px) translate(-50%, -50%)`;
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => { window.removeEventListener('pointermove', onMove); cancelAnimationFrame(raf); };
-  }, [canHover]);
 
   useEffect(() => { if (pending && inputRef.current) inputRef.current.focus(); }, [pending]);
 
@@ -1928,43 +1906,9 @@ function Landing({ onEnter }) {
     } catch { setError('Something went wrong. Try again.'); setBusy(false); }
   };
 
-  // The animated background never changes with pending/password/error state,
-  // so build it once — React bails out of reconciling it on every keystroke.
-  const background = useMemo(() => {
-    // NO filter:blur anywhere — blur() forces main-thread rasterization (laggy
-    // hover/typing, especially iOS). Multi-stop radial gradients are natively
-    // soft and composite for free on the GPU.
-    const blob = (extra) => ({
-      position: "absolute", borderRadius: "50%",
-      willChange: "transform", backfaceVisibility: "hidden", pointerEvents: "none", ...extra,
-    });
-    return (
-      <>
-        <style>{`
-          @keyframes mhGrad1{0%,100%{transform:translate3d(-6vw,-4vw,0) rotate(0deg) scale(1)}33%{transform:translate3d(6vw,5vw,0) rotate(50deg) scale(1.18,0.92)}66%{transform:translate3d(10vw,8vw,0) rotate(105deg) scale(0.94,1.12)}}
-          @keyframes mhGrad2{0%,100%{transform:translate3d(8vw,10vw,0) rotate(0deg) scale(1)}40%{transform:translate3d(-4vw,-2vw,0) rotate(-65deg) scale(0.9,1.16)}70%{transform:translate3d(-9vw,-7vw,0) rotate(-130deg) scale(1.14,0.95)}}
-          @keyframes mhGrad3{0%,100%{transform:translate3d(7vw,-8vw,0) rotate(0deg) scale(1)}50%{transform:translate3d(-10vw,9vw,0) rotate(85deg) scale(1.2,0.88)}}
-          @keyframes mhLandIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-        `}</style>
-        {/* Free-flowing gradient field — translate-only animation stays on the GPU compositor */}
-        <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-          {/* Each blob stacks two offset elliptical gradients (lumpy, not circular);
-              the rotate/scale keyframes morph the silhouette as it drifts. */}
-          <div style={blob({ width: "60vw", height: "60vw", top: "-12vw", left: "-8vw", background: "radial-gradient(52% 68% at 46% 50%, rgba(62,170,120,0.38) 0%, rgba(62,170,120,0.14) 38%, rgba(62,170,120,0) 68%), radial-gradient(58% 44% at 56% 54%, rgba(62,170,120,0.26) 0%, rgba(62,170,120,0) 72%)", animation: "mhGrad1 34s ease-in-out infinite" })} />
-          <div style={blob({ width: "64vw", height: "64vw", bottom: "-18vw", right: "-14vw", background: "radial-gradient(50% 66% at 52% 46%, rgba(52,150,110,0.4) 0%, rgba(52,150,110,0.15) 36%, rgba(52,150,110,0) 70%), radial-gradient(62% 42% at 44% 58%, rgba(52,150,110,0.28) 0%, rgba(52,150,110,0) 70%)", animation: "mhGrad2 40s ease-in-out infinite" })} />
-          <div style={blob({ width: "44vw", height: "44vw", top: "28vh", left: "34vw", background: "radial-gradient(58% 46% at 48% 54%, rgba(46,120,96,0.3) 0%, rgba(46,120,96,0.11) 40%, rgba(46,120,96,0) 72%), radial-gradient(44% 60% at 56% 42%, rgba(46,120,96,0.22) 0%, rgba(46,120,96,0) 70%)", animation: "mhGrad3 36s ease-in-out infinite" })} />
-        </div>
-        {/* Cursor glow only on mouse devices (meaningless on touch). */}
-        {canHover && <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "38vw", height: "38vw", borderRadius: "50%", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.24) 0%, rgba(62,170,120,0.09) 42%, rgba(62,170,120,0) 68%)", willChange: "transform" }} />}
-        {/* Vignette to keep edges black */}
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 100%)", pointerEvents: "none" }} />
-      </>
-    );
-  }, [canHover]);
-
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: ff, zIndex: 5000 }}>
-      {background}
+      <style>{`@keyframes mhLandIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}`}</style>
 
       {/* Content */}
       <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", padding: 24, animation: `mhLandIn 0.6s ${G.ease}` }}>

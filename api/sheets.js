@@ -263,6 +263,9 @@ function parseClient(row, idx) {
     keyShows:     (g('Key Shows') || g('Top Shows')) ? (g('Key Shows') || g('Top Shows')).split(',').map(s => s.trim()).filter(Boolean) : [],
     bio:          g('Bio'),
     photoUrl:     g('Photo URL'),
+    // Raw sheet value only — photoUrl above later gets the Spotify image merged
+    // in, so the edit form binds to this to show just the manual override.
+    photoUrlOverride: g('Photo URL'),
     instagram:    g('Instagram').replace(/^@/, ''),
     twitter:      g('Twitter/X').replace(/^@/, ''),
     tiktok:       g('TikTok').replace(/^@/, ''),
@@ -298,7 +301,7 @@ function serializeField(header, c) {
     'Key Shows':                 (c.keyShows || []).join(', '),
     'Top Shows':                 (c.keyShows || []).join(', '),
     'Bio':                       c.bio,
-    'Photo URL':                 c.photoUrl,
+    'Photo URL':                 c.photoUrlOverride !== undefined ? c.photoUrlOverride : c.photoUrl,
     'Instagram': handle(c.instagram), 'Twitter/X': handle(c.twitter), 'TikTok': handle(c.tiktok),
     'YouTube':                   c.youtube,
     'Beatport':                  c.beatport,

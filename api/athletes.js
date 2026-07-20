@@ -214,6 +214,9 @@ function mergeAthlete(row, ext, level) {
     espnSport: ext['espnSport'] || (isNFL ? 'nfl' : 'college'),
     teamLogo,
     photoUrl,
+    // Raw sheet value only (photoUrl above falls back to the derived ESPN
+    // headshot) — the edit form binds to this so auto images stay blank there.
+    photoUrlOverride: ext['photoUrl'] || '',
     heroImageUrl: ext['heroImageUrl'] || '',
     profileUrl247: ext['profileUrl247'] || '',
     // ── internal-only (stripped for anonymous visitors) ──
@@ -284,7 +287,10 @@ async function saveAthlete(token, body) {
   const nameCol = appHeaders.findIndex(h => h.toLowerCase() === 'name');
   const extVals = {
     bio: a.bio, hometown: a.hometown, height: a.height, weight: a.weight,
-    jerseyNumber: a.jerseyNumber, photoUrl: a.photoUrl, heroImageUrl: a.heroImageUrl,
+    jerseyNumber: a.jerseyNumber,
+    // Only the manual override goes in the sheet — never the derived ESPN URL.
+    photoUrl: a.photoUrlOverride !== undefined ? a.photoUrlOverride : a.photoUrl,
+    heroImageUrl: a.heroImageUrl,
     igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
     status: a.status, tiktok: a.tiktok,
     interests: Array.isArray(a.interests) ? a.interests.join(', ') : a.interests,
@@ -325,6 +331,47 @@ module.exports = async (req, res) => {
     if (configured && !admin) return res.status(403).json({ error: 'Log in to edit athletes.' });
     try {
       const token = await getToken('https://www.googleapis.com/auth/spreadsheets');
+
+      // One-time/maintenance: mark every athlete on the current roster tabs as
+      // Public in AppData (adding rows for those without one). AppData-only
+      // people (e.g. prospects) are left untouched, so they stay hidden.
+      if ((req.body || {}).action === 'backfill-public') {
+        const [nfl, col, hs, app] = await Promise.all([
+          sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'),
+          sheetGet(token, 'Highschool!A:S'), sheetGet(token, 'AppData!A:AZ'),
+        ]);
+        const rosterNames = new Set([...parseRows(nfl), ...parseRows(col), ...parseRows(hs)]
+          .map(r => String(r['Name'] || '').toLowerCase().trim()).filter(Boolean));
+        const appRows = app.values || [];
+        const headers = (appRows[0] || []).map(h => String(h || '').trim());
+        const nameCol = headers.findIndex(h => h.toLowerCase() === 'name');
+        const pubCol = headers.findIndex(h => h.toLowerCase() === 'public');
+        if (nameCol < 0 || pubCol < 0) return res.status(400).json({ error: 'AppData needs name + Public columns' });
+        const updates = [];
+        const seen = new Set();
+        appRows.forEach((r, i) => {
+          if (i === 0) return;
+          const n = String(r[nameCol] || '').toLowerCase().trim();
+          if (!n || !rosterNames.has(n)) return;
+          seen.add(n);
+          if (String(r[pubCol] || '').trim().toUpperCase() !== 'TRUE') {
+            updates.push({ range: `AppData!${colLetter(pubCol)}${i + 1}`, values: [['TRUE']] });
+          }
+        });
+        await sheetBatchUpdate(token, updates);
+        // Roster athletes with no AppData row yet: append name + Public TRUE.
+        const missing = [...rosterNames].filter(n => !seen.has(n));
+        const properName = {};
+        [...parseRows(nfl), ...parseRows(col), ...parseRows(hs)].forEach(r => {
+          const n = String(r['Name'] || '').trim(); if (n) properName[n.toLowerCase()] = n;
+        });
+        for (const n of missing) {
+          const row = headers.map((h, i) => i === nameCol ? properName[n] : (i === pubCol ? 'TRUE' : ''));
+          await sheetAppend(token, 'AppData!A:AZ', row);
+        }
+        return res.json({ success: true, flagged: updates.length, appended: missing.length, rosterCount: rosterNames.size });
+      }
+
       await saveAthlete(token, req.body || {});
       return res.json({ success: true });
     } catch (err) {
