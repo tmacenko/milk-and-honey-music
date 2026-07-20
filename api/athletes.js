@@ -10,12 +10,12 @@ const SHEET_ID = process.env.SPORTS_SHEET_ID;
 
 function b64url(str) { return Buffer.from(str).toString('base64url'); }
 
-async function getToken() {
+async function getToken(scope = 'https://www.googleapis.com/auth/spreadsheets.readonly') {
   const key = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const payload = b64url(JSON.stringify({
-    iss: key.client_email, scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+    iss: key.client_email, scope,
     aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600,
   }));
   const sign = crypto.createSign('RSA-SHA256');
@@ -36,6 +36,31 @@ async function sheetGet(token, range) {
   const data = await r.json();
   if (data.error) throw new Error(`Sheets API error on "${range}": ${data.error.code} ${data.error.message}`);
   return data;
+}
+
+// Column index (0-based) → A1 letter, e.g. 0→A, 27→AB.
+function colLetter(n) {
+  let s = '';
+  n += 1;
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+async function sheetBatchUpdate(token, data) {
+  if (!data.length) return;
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(`Sheets write error: ${d.error.code} ${d.error.message}`);
+}
+async function sheetAppend(token, range, row) {
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: [row] }),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(`Sheets append error: ${d.error.code} ${d.error.message}`);
 }
 
 function parseRows(data) {
@@ -226,12 +251,87 @@ const pickPublic = a => {
   return o;
 };
 
+// ── Write support (admin-only) ────────────────────────────────────────────────
+// Base tabs own identity fields (Name/Position/Team/socials, addressed by
+// _rowIndex); AppData owns the enrichment fields (matched by athlete name, or
+// appended if the athlete has no AppData row yet). Only columns that actually
+// exist in the sheet are written.
+const BASE_TAB = { 'NFL': 'NFL', 'College': 'College', 'High School': 'Highschool' };
+async function saveAthlete(token, body) {
+  const a = body.athlete || {};
+  const originalName = String(body.originalName || a.name || '').trim();
+  const tab = BASE_TAB[a.level];
+  if (!tab || !a._rowIndex) throw new Error('Missing level or row reference');
+  if (!String(a.name || '').trim()) throw new Error('Name is required');
+
+  // 1) Base tab updates (only headers that exist).
+  const baseHeaders = ((await sheetGet(token, `${tab}!1:1`)).values?.[0] || []).map(h => String(h || '').trim());
+  const baseVals = {
+    'Name': a.name, 'Position': a.position,
+    'Team': a.level === 'NFL' ? a.nflTeam : undefined,
+    'School': a.level !== 'NFL' ? a.college : undefined,
+    'Instagram': a.instagram, 'Twitter': a.twitter, 'TikTok': a.tiktok, 'Tiktok': a.tiktok,
+  };
+  const updates = [];
+  baseHeaders.forEach((h, i) => {
+    if (baseVals[h] !== undefined) updates.push({ range: `${tab}!${colLetter(i)}${a._rowIndex}`, values: [[String(baseVals[h] ?? '')]] });
+  });
+
+  // 2) AppData updates (find row by name; append if absent).
+  const app = await sheetGet(token, 'AppData!A:AZ');
+  const appRows = app.values || [];
+  const appHeaders = (appRows[0] || []).map(h => String(h || '').trim());
+  const nameCol = appHeaders.findIndex(h => h.toLowerCase() === 'name');
+  const extVals = {
+    bio: a.bio, hometown: a.hometown, height: a.height, weight: a.weight,
+    jerseyNumber: a.jerseyNumber, photoUrl: a.photoUrl, heroImageUrl: a.heroImageUrl,
+    igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
+    status: a.status, tiktok: a.tiktok,
+    interests: Array.isArray(a.interests) ? a.interests.join(', ') : a.interests,
+    brands: Array.isArray(a.brands) ? a.brands.join(', ') : a.brands,
+    public: a.public === undefined ? undefined : (a.public ? 'TRUE' : 'FALSE'),
+    name: a.name,
+  };
+  // Header lookup tolerant of sheet-side casing (Name vs name, Public vs public).
+  const getExt = (h) => {
+    if (extVals[h] !== undefined) return extVals[h];
+    const k = Object.keys(extVals).find(x => x.toLowerCase() === h.toLowerCase());
+    return k ? extVals[k] : undefined;
+  };
+  const rowNum = nameCol < 0 ? -1 : appRows.findIndex((r, i) =>
+    i > 0 && String(r[nameCol] || '').toLowerCase().trim() === originalName.toLowerCase());
+  if (rowNum > 0) {
+    appHeaders.forEach((h, i) => {
+      const v = getExt(h);
+      if (v !== undefined) updates.push({ range: `AppData!${colLetter(i)}${rowNum + 1}`, values: [[String(v ?? '')]] });
+    });
+    await sheetBatchUpdate(token, updates);
+  } else {
+    await sheetBatchUpdate(token, updates);
+    const newRow = appHeaders.map(h => { const v = getExt(h); return v === undefined ? '' : String(v ?? ''); });
+    if (appHeaders.length) await sheetAppend(token, 'AppData!A:AZ', newRow);
+  }
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!SHEET_ID) return res.json({ athletes: [], isAdmin: false, authConfigured: false, notConfigured: true });
+
+  if (req.method === 'POST') {
+    const { configured, admin } = authState(req);
+    if (configured && !admin) return res.status(403).json({ error: 'Log in to edit athletes.' });
+    try {
+      const token = await getToken('https://www.googleapis.com/auth/spreadsheets');
+      await saveAthlete(token, req.body || {});
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('Athlete save error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
 
   try {
     const token = await getToken();

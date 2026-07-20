@@ -603,6 +603,120 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
   );
 }
 
+// ── Athlete edit form (sports) ────────────────────────────────────────────────
+// Identity fields write to the athlete's level tab; enrichment fields write to
+// AppData (matched by name server-side). Mirrors the music ClientForm UX.
+function AthleteForm({ initial, onSave, onCancel }) {
+  const [form, setForm] = useState({ ...initial });
+  const [saving, setSaving] = useState(false);
+  const [photoHint, setPhotoHint] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const isNFL = form.level === 'NFL';
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const save = async () => {
+    if (!String(form.name || '').trim()) return alert('Name is required');
+    setSaving(true);
+    try {
+      const resp = await fetch('/api/athletes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete: form, originalName: initial.name }),
+      });
+      const data = await resp.json();
+      if (data.success) onSave(form);
+      else throw new Error(data.error || 'Save failed');
+    } catch (e) { alert('Save failed: ' + e.message); }
+    setSaving(false);
+  };
+
+  const statusOptions = ['Active', 'Free Agent', 'Rookie', 'Inactive', 'Retired'];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(20px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: G.surfaceGlass, backdropFilter: "blur(24px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: G.shadowLg }}>
+        <div style={{ padding: "18px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <span style={{ fontWeight: 700, fontSize: 16, color: G.text }}>Edit Athlete</span>
+          <button onClick={onCancel} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 14, fontFamily: ff }}>✕</button>
+        </div>
+        <div style={{ overflowY: "auto", padding: "20px 24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+            <div style={{ gridColumn: "1/-1", marginBottom: 16 }}>
+              <div onClick={() => set('public', !form.public)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: form.public ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${form.public ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 16px", cursor: "pointer" }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: form.public ? G.green : G.text }}>Public on roster</div>
+                  <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{form.public ? 'Visible on the public site.' : 'Hidden — internal only.'}</div>
+                </div>
+                <div style={{ width: 44, height: 26, borderRadius: 20, background: form.public ? G.green : G.surfaceBorderLight, position: "relative", flexShrink: 0, transition: `background 0.15s ${G.ease}` }}>
+                  <div style={{ position: "absolute", top: 3, left: form.public ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: `left 0.15s ${G.ease}` }} />
+                </div>
+              </div>
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Name"><Input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Full name" /></Field>
+            </div>
+            <Field label="Position"><Input value={form.position} onChange={e => set('position', e.target.value)} placeholder="QB, WR, LB..." /></Field>
+            <Field label={isNFL ? 'Team' : 'School'}>
+              <Input value={isNFL ? (form.nflTeam || '') : (form.college || '')} onChange={e => set(isNFL ? 'nflTeam' : 'college', e.target.value)} placeholder={isNFL ? 'Kansas City Chiefs' : 'Michigan'} />
+            </Field>
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Status">
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {statusOptions.map(s => {
+                    const on = form.status === s;
+                    return <button key={s} onClick={() => set('status', s)}
+                      style={{ flex: 1, minWidth: 80, padding: "8px 0", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}`, whiteSpace: "nowrap" }}>
+                      {s}
+                    </button>;
+                  })}
+                </div>
+              </Field>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                Profile Photo URL
+                <span onClick={() => setPhotoHint(v => !v)} title="Overrides ESPN headshot" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
+              </div>
+              <Input value={form.photoUrl} onChange={e => set('photoUrl', e.target.value)} placeholder="https://..." />
+              {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5 }}>Overrides the ESPN headshot.</div>}
+            </div>
+            <Field label="Hero Image URL"><Input value={form.heroImageUrl} onChange={e => set('heroImageUrl', e.target.value)} placeholder="https://..." /></Field>
+            <Field label="Hometown"><Input value={form.hometown} onChange={e => set('hometown', e.target.value)} placeholder="Cincinnati, OH" /></Field>
+            <Field label="Jersey #"><Input value={form.jerseyNumber} onChange={e => set('jerseyNumber', e.target.value)} placeholder="12" /></Field>
+            <Field label="Height"><Input value={form.height} onChange={e => set('height', e.target.value)} placeholder={`6' 2"`} /></Field>
+            <Field label="Weight"><Input value={form.weight} onChange={e => set('weight', e.target.value)} placeholder="215" /></Field>
+            <Field label="Instagram"><Input value={form.instagram} onChange={e => set('instagram', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
+            <Field label="IG Followers"><Input value={form.igFollowers} onChange={e => set('igFollowers', e.target.value)} placeholder="92.3K" /></Field>
+            <Field label="Twitter / X"><Input value={form.twitter} onChange={e => set('twitter', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
+            <Field label="X Followers"><Input value={form.twitterFollowers} onChange={e => set('twitterFollowers', e.target.value)} placeholder="41K" /></Field>
+            <Field label="TikTok"><Input value={form.tiktok} onChange={e => set('tiktok', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
+            <Field label="TikTok Followers"><Input value={form.tiktokFollowers} onChange={e => set('tiktokFollowers', e.target.value)} placeholder="120K" /></Field>
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Bio"><Textarea value={form.bio} onChange={e => set('bio', e.target.value)} rows={4} /></Field>
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Brands Worked With (comma-separated)"><Input value={(form.brands||[]).join(', ')} onChange={e => set('brands', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="Nike, Gatorade..." /></Field>
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Interests (comma-separated)"><Input value={(form.interests||[]).join(', ')} onChange={e => set('interests', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="Gaming, Fashion, Music..." /></Field>
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: "14px 24px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, flexShrink: 0 }}>
+          <button onClick={onCancel} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>Cancel</button>
+          <button onClick={save} disabled={saving} style={{ flex: 2, background: saving ? G.surfaceRaised : G.green, border: "none", borderRadius: 12, padding: "11px", color: saving ? G.textTertiary : "#0a0a0a", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", fontFamily: ff }}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Client card ───────────────────────────────────────────────────────────────
 function ClientCard({ client: c, logos, isMobile, onClick }) {
   const [hov, setHov] = useState(false);
@@ -1827,16 +1941,18 @@ function Landing({ onEnter }) {
     return (
       <>
         <style>{`
-          @keyframes mhGrad1{0%,100%{transform:translate3d(-6vw,-4vw,0)}50%{transform:translate3d(10vw,8vw,0)}}
-          @keyframes mhGrad2{0%,100%{transform:translate3d(8vw,10vw,0)}50%{transform:translate3d(-9vw,-7vw,0)}}
-          @keyframes mhGrad3{0%,100%{transform:translate3d(7vw,-8vw,0)}50%{transform:translate3d(-10vw,9vw,0)}}
+          @keyframes mhGrad1{0%,100%{transform:translate3d(-6vw,-4vw,0) rotate(0deg) scale(1)}33%{transform:translate3d(6vw,5vw,0) rotate(50deg) scale(1.18,0.92)}66%{transform:translate3d(10vw,8vw,0) rotate(105deg) scale(0.94,1.12)}}
+          @keyframes mhGrad2{0%,100%{transform:translate3d(8vw,10vw,0) rotate(0deg) scale(1)}40%{transform:translate3d(-4vw,-2vw,0) rotate(-65deg) scale(0.9,1.16)}70%{transform:translate3d(-9vw,-7vw,0) rotate(-130deg) scale(1.14,0.95)}}
+          @keyframes mhGrad3{0%,100%{transform:translate3d(7vw,-8vw,0) rotate(0deg) scale(1)}50%{transform:translate3d(-10vw,9vw,0) rotate(85deg) scale(1.2,0.88)}}
           @keyframes mhLandIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
         `}</style>
         {/* Free-flowing gradient field — translate-only animation stays on the GPU compositor */}
         <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-          <div style={blob({ width: "60vw", height: "60vw", top: "-12vw", left: "-8vw", background: "radial-gradient(circle, rgba(62,170,120,0.42) 0%, rgba(62,170,120,0.16) 38%, rgba(62,170,120,0) 68%)", animation: "mhGrad1 26s ease-in-out infinite" })} />
-          <div style={blob({ width: "64vw", height: "64vw", bottom: "-18vw", right: "-14vw", background: "radial-gradient(circle, rgba(52,150,110,0.46) 0%, rgba(52,150,110,0.18) 36%, rgba(52,150,110,0) 66%)", animation: "mhGrad2 32s ease-in-out infinite" })} />
-          <div style={blob({ width: "44vw", height: "44vw", top: "28vh", left: "34vw", background: "radial-gradient(circle, rgba(46,120,96,0.34) 0%, rgba(46,120,96,0.13) 40%, rgba(46,120,96,0) 70%)", animation: "mhGrad3 29s ease-in-out infinite" })} />
+          {/* Each blob stacks two offset elliptical gradients (lumpy, not circular);
+              the rotate/scale keyframes morph the silhouette as it drifts. */}
+          <div style={blob({ width: "60vw", height: "60vw", top: "-12vw", left: "-8vw", background: "radial-gradient(58% 72% at 42% 46%, rgba(62,170,120,0.38) 0%, rgba(62,170,120,0.14) 38%, rgba(62,170,120,0) 68%), radial-gradient(66% 48% at 68% 62%, rgba(62,170,120,0.26) 0%, rgba(62,170,120,0) 62%)", animation: "mhGrad1 34s ease-in-out infinite" })} />
+          <div style={blob({ width: "64vw", height: "64vw", bottom: "-18vw", right: "-14vw", background: "radial-gradient(52% 74% at 55% 40%, rgba(52,150,110,0.4) 0%, rgba(52,150,110,0.15) 36%, rgba(52,150,110,0) 66%), radial-gradient(70% 46% at 34% 66%, rgba(52,150,110,0.28) 0%, rgba(52,150,110,0) 60%)", animation: "mhGrad2 40s ease-in-out infinite" })} />
+          <div style={blob({ width: "44vw", height: "44vw", top: "28vh", left: "34vw", background: "radial-gradient(64% 50% at 46% 55%, rgba(46,120,96,0.3) 0%, rgba(46,120,96,0.11) 40%, rgba(46,120,96,0) 70%), radial-gradient(48% 68% at 62% 38%, rgba(46,120,96,0.22) 0%, rgba(46,120,96,0) 64%)", animation: "mhGrad3 36s ease-in-out infinite" })} />
         </div>
         {/* Cursor glow only on mouse devices (meaningless on touch). */}
         {canHover && <div ref={glowRef} style={{ position: "absolute", top: 0, left: 0, width: "38vw", height: "38vw", borderRadius: "50%", pointerEvents: "none", background: "radial-gradient(circle, rgba(62,170,120,0.24) 0%, rgba(62,170,120,0.09) 42%, rgba(62,170,120,0) 68%)", willChange: "transform" }} />}
@@ -2340,6 +2456,13 @@ function App() {
     if (view === 'detail') setSelected(updatedClient);
   };
 
+  const [editingAthlete, setEditingAthlete] = useState(null);
+  const saveAthlete = (updated) => {
+    setAthletes(prev => prev.map(a => (a.level === updated.level && a._rowIndex === updated._rowIndex) ? updated : a));
+    setEditingAthlete(null);
+    if (view === 'detail') setSelected(updated);
+  };
+
   // Log out / exit control. Login happens on the landing page now, so there is
   // no "Log in" button — this always reads "Log out" and returns to the gate,
   // for both public viewers and signed-in employees.
@@ -2463,7 +2586,7 @@ function App() {
                 isAdmin={isAdmin} linkUrl={shareDetailUrl} linkLoading={shareDetailLoading}
                 onLink={generateDetailShareLink} onClearLink={() => setShareDetailUrl(null)} />}
               {authBtn}
-              {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
+              {isAdmin && selected && <button onClick={() => domain === 'sports' ? setEditingAthlete(selected) : setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
             </div>
           ) : (
@@ -2515,7 +2638,7 @@ function App() {
                   isAdmin={isAdmin} linkUrl={shareDetailUrl} linkLoading={shareDetailLoading}
                   onLink={generateDetailShareLink} onClearLink={() => setShareDetailUrl(null)} />}
                 {authBtn}
-                {domain === 'music' && isAdmin && <button onClick={() => setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
+                {isAdmin && selected && <button onClick={() => domain === 'sports' ? setEditingAthlete(selected) : setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
               </>
             ) : (
@@ -2618,6 +2741,9 @@ function App() {
 
       {/* Edit modal */}
       {editing && <ClientForm initial={editing} onSave={saveClient} onCancel={() => setEditing(null)} staff={staff} clients={clients} />}
+
+      {/* Athlete edit modal (sports) */}
+      {editingAthlete && <AthleteForm initial={editingAthlete} onSave={saveAthlete} onCancel={() => setEditingAthlete(null)} />}
 
       {/* Chat — temporarily disabled (component kept; re-enable by uncommenting) */}
       {/* {!loading && <FloatingChat clients={clients} isMobile={isMobile} />} */}
