@@ -555,7 +555,7 @@ module.exports = async (req, res) => {
       const outClients = (configured && !admin && publicColumnExists)
         ? clients.filter(c => c.public)
         : clients;
-      return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists });
+      return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists, user: authState(req).user });
     }
 
     // ── POST ─────────────────────────────────────────────────────────────────

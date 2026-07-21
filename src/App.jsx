@@ -1321,7 +1321,7 @@ function ClientSortDropdown({ clientSort, setClientSort, compact }) {
 }
 
 // Consolidated "View:" dropdown — type multi-select + Custom Group, in one box.
-function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCount, onOpenCustom, compact, depthOptions, depthValue, onDepth }) {
+function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCount, onOpenCustom, compact, depthOptions, depthValue, onDepth, mineOn, onMine }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const ref = useRef();
@@ -1332,9 +1332,9 @@ function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCou
   }, []);
   const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 228)) }); } setOpen(v => !v); };
   const depthActive = !!depthValue && depthValue !== 'All';
-  const active = customCount > 0 || filterTypes.length > 0 || depthActive;
+  const active = customCount > 0 || filterTypes.length > 0 || depthActive || !!mineOn;
   const label = customCount > 0 ? `Custom · ${customCount}`
-    : ([...filterTypes, depthActive ? depthValue : null].filter(Boolean).join(', ') || 'All');
+    : ([mineOn ? 'My clients' : null, ...filterTypes, depthActive ? depthValue : null].filter(Boolean).join(', ') || 'All');
   const typeOpts = types.filter(t => t !== 'All');
   const item = (on, content, onClick) => (
     <button onClick={onClick}
@@ -1359,7 +1359,13 @@ function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCou
       </button>
       {open && pos && (
         <div style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: 220, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 500, boxShadow: G.shadowLg }}>
-          {item(filterTypes.length === 0 && customCount === 0 && !depthActive, 'All', () => onAll())}
+          {item(filterTypes.length === 0 && customCount === 0 && !depthActive && !mineOn, 'All', () => onAll())}
+          {onMine && (
+            <>
+              {item(customCount === 0 && !!mineOn, 'My clients', () => onMine())}
+              <div style={{ height: 1, background: G.surfaceBorder, margin: "6px 8px" }} />
+            </>
+          )}
           {typeOpts.map(t => item(customCount === 0 && filterTypes.includes(t), t, () => onToggleType(t)))}
           {depthOptions && (
             <>
@@ -1994,17 +2000,24 @@ const parseSheetDate = (s) => {
   return isNaN(d) ? null : { month: d.getMonth() + 1, day: d.getDate(), year: d.getFullYear() };
 };
 const shortDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+// Does a sheet agent cell ("Seth", "Seth Karlins") belong to this user's
+// agent key? Loose containment both ways, case-insensitive.
+const agentMatch = (agent, key) => {
+  const a = String(agent || '').toLowerCase().trim(), k = String(key || '').toLowerCase().trim();
+  return !!a && !!k && (a === k || a.includes(k) || k.includes(a));
+};
 
-function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters }) {
+function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, user }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const s = useMemo(() => {
     const levels = { 'NFL': 0, 'College': 0, 'High School': 0 };
-    let ig = 0, tt = 0, x = 0, starters = 0, nflStarters = 0, collegeStarters = 0;
+    let ig = 0, tt = 0, x = 0, starters = 0, nflStarters = 0, collegeStarters = 0, mine = 0;
     for (const a of athletes) {
       if (levels[a.level] != null) levels[a.level]++;
       ig += countFrom(a.igFollowers); tt += countFrom(a.tiktokFollowers); x += countFrom(a.twitterFollowers);
       if (a.depthRank === 1) { starters++; if (a.level === 'NFL') nflStarters++; else if (a.level === 'College') collegeStarters++; }
+      if (user?.agentKey && agentMatch(a.agentAssigned, user.agentKey)) mine++;
     }
     const reach = ig + tt + x;
     const pct = (n) => reach ? Math.round((n / reach) * 100) : 0;
@@ -2021,11 +2034,11 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       return { a, date: next };
     }).filter(Boolean).sort((p, q) => p.date - q.date);
     return {
-      levels, reach, starters, nflStarters, collegeStarters, signed, bdays,
+      levels, reach, starters, nflStarters, collegeStarters, mine, signed, bdays,
       splits: { ig: pct(ig), tt: pct(tt), x: pct(x) },
       week: bdays.filter(b => (b.date - today) / 86400000 < 7),
     };
-  }, [athletes]);
+  }, [athletes, user]);
 
   const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 7 };
@@ -2046,7 +2059,8 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     </div>
   );
   const empty = (msg) => <div style={{ fontSize: 13, color: G.textTertiary, padding: "14px 0 6px" }}>{msg}</div>;
-  const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
+  const firstName = (user?.name || '').split(' ')[0];
+  const greeting = (now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening') + (firstName ? `, ${firstName}` : '');
 
   return (
     <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
@@ -2056,11 +2070,19 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
-        <div style={{ ...card, cursor: "pointer" }} onClick={onGoRoster}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{athletes.length}</div>
-          <div style={statLabel}>Total athletes</div>
-          <div style={statSub}>{s.levels['NFL']} NFL · {s.levels['College']} College · {s.levels['High School']} HS</div>
-        </div>
+        {s.mine > 0 ? (
+          <div style={{ ...card, cursor: "pointer" }} onClick={onShowMine}>
+            <div style={{ fontSize: 26, fontWeight: 700, color: G.green, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.mine}</div>
+            <div style={statLabel}>My clients</div>
+            <div style={statSub}>of {athletes.length} on the roster</div>
+          </div>
+        ) : (
+          <div style={{ ...card, cursor: "pointer" }} onClick={onGoRoster}>
+            <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{athletes.length}</div>
+            <div style={statLabel}>Total athletes</div>
+            <div style={statSub}>{s.levels['NFL']} NFL · {s.levels['College']} College · {s.levels['High School']} HS</div>
+          </div>
+        )}
         <div style={card}>
           <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{bigNum(s.reach)}</div>
           <div style={statLabel}>Combined reach</div>
@@ -2205,17 +2227,28 @@ function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title }) {
   );
 }
 
-function RecruitingBoard({ isMobile }) {
+function RecruitingBoard({ isMobile, user }) {
   const { data, err, loading, reload } = useAdminTab('recruiting');
   const [editing, setEditing] = useState(null);
   const [q, setQ] = useState('');
+  const [mine, setMine] = useState(false);
+  const mineApplied = useRef(false);
   const post = async (body) => {
     const r = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d.error) throw new Error(d.error || 'Save failed');
   };
   const headers = data?.headers || [];
-  const rows = (data?.rows || []).filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())));
+  const agentCol = headers.findIndex(h => /agent/i.test(h));
+  // Individual logins default to their own recruits (when they have any).
+  useEffect(() => {
+    if (mineApplied.current || !user?.agentKey || !data || agentCol < 0) return;
+    mineApplied.current = true;
+    if (data.rows.some(r => agentMatch(r.cells[agentCol], user.agentKey))) setMine(true);
+  }, [data, user, agentCol]);
+  const rows = (data?.rows || [])
+    .filter(r => !mine || !user?.agentKey || agentCol < 0 || agentMatch(r.cells[agentCol], user.agentKey))
+    .filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())));
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -2224,6 +2257,12 @@ function RecruitingBoard({ isMobile }) {
           <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 3 }}>{data ? `${data.rows.length} recruits · synced with the sheet` : ' '}</div>
         </div>
         <div style={{ flex: 1 }} />
+        {user?.agentKey && agentCol >= 0 && (
+          <button onClick={() => setMine(v => !v)}
+            style={{ background: mine ? G.greenSubtle : G.surface, border: `1px solid ${mine ? G.green : G.surfaceBorder}`, borderRadius: 10, padding: "9px 12px", fontWeight: mine ? 700 : 500, fontSize: 13, color: mine ? G.green : G.textSecondary, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+            My recruits
+          </button>
+        )}
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search recruits..." style={{ ...inputBase, width: isMobile ? 140 : 200 }} />
         <button onClick={() => setEditing('new')} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
       </div>
@@ -2369,6 +2408,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  // Individual identity for per-person logins ({ name, agentKey, userRole })
+  // — null for the house admin password and for public sessions.
+  const [currentUser, setCurrentUser] = useState(null);
   // True once /api/sheets has answered who this session is. Sports rendering
   // waits on it so employees never see a roster flash before the dashboard.
   const [authKnown, setAuthKnown] = useState(false);
@@ -2390,6 +2432,9 @@ function App() {
   const [sportsLevel, setSportsLevel] = useState('All');
   // Depth chart filter (employee-only control): All / Starters / Backups / Not on chart.
   const [depthFilter, setDepthFilter] = useState('All');
+  // "My clients" filter for individual logins (matched on Lead Agent).
+  const [mineOnly, setMineOnly] = useState(false);
+  const mineDefaultApplied = useRef(false);
   const parseUrl = () => {
     const parts = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
     if (parts[0] === 'sports') return { domain: 'sports', slug: parts[1] || '' };
@@ -2541,7 +2586,7 @@ function App() {
     if (!gateUnlocked) return;
     fetch('/api/sheets')
       .then(r => r.json())
-      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setAuthConfigured(!!d.authConfigured); setLoading(false); setAuthKnown(true); })
+      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setCurrentUser(d.user || null); setAuthConfigured(!!d.authConfigured); setLoading(false); setAuthKnown(true); })
       .catch(e => { setError(e.message); setLoading(false); setAuthKnown(true); });
   }, [gateUnlocked]);
 
@@ -2798,6 +2843,7 @@ function App() {
         .sort((a, b) => customGroup.indexOf(a.name) - customGroup.indexOf(b.name));
     }
     const list = athletes.filter(a => {
+      if (mineOnly && currentUser?.agentKey && !agentMatch(a.agentAssigned, currentUser.agentKey)) return false;
       if (sportsLevel !== 'All' && a.level !== sportsLevel) return false;
       if (depthFilter === 'Starters' && a.depthRank !== 1) return false;
       if (depthFilter === 'Backups' && !(a.depthRank >= 2)) return false;
@@ -2819,7 +2865,15 @@ function App() {
       if (fa !== 0) return fa;
       return athleteReach(b) - athleteReach(a);
     });
-  }, [athletes, sportsLevel, depthFilter, search, customGroup, clientSort]);
+  }, [athletes, sportsLevel, depthFilter, mineOnly, currentUser, search, customGroup, clientSort]);
+
+  // Individual logins land on "their" roster: default the My-clients filter on
+  // (once per session) when the logged-in agent actually has matches.
+  useEffect(() => {
+    if (mineDefaultApplied.current || !currentUser?.agentKey || !athletes.length) return;
+    mineDefaultApplied.current = true;
+    if (athletes.some(a => agentMatch(a.agentAssigned, currentUser.agentKey))) setMineOnly(true);
+  }, [athletes, currentUser]);
 
   const saveClient = (updatedClient) => {
     setClients(prev => {
@@ -2951,10 +3005,12 @@ function App() {
     <ViewFilterDropdown compact={isMobile} types={['All', 'NFL', 'College', 'High School']}
       filterTypes={sportsLevel === 'All' ? [] : [sportsLevel]}
       onToggleType={(t) => { clearCustomGroup(); setSportsLevel(prev => prev === t ? 'All' : t); }}
-      onAll={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); }}
+      onAll={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(false); }}
       depthOptions={isAdmin ? ['Starters', 'Backups', 'Not on chart'] : null}
       depthValue={depthFilter}
       onDepth={(o) => { clearCustomGroup(); setDepthFilter(prev => prev === o ? 'All' : o); }}
+      mineOn={mineOnly}
+      onMine={currentUser?.agentKey ? () => { clearCustomGroup(); setMineOnly(v => !v); } : null}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   ) : (
     <ViewFilterDropdown compact={isMobile} types={types} filterTypes={filterTypes}
@@ -3112,12 +3168,13 @@ function App() {
                 <SportsDetail athlete={selected} isMobile={isMobile} />
               )}
               {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
-                <SportsDashboard athletes={athletes} isMobile={isMobile}
+                <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser}
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => setSportsPage('roster')}
-                  onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); setSportsPage('roster'); }} />
+                  onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); setMineOnly(false); setSportsPage('roster'); }}
+                  onShowMine={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(true); setSportsPage('roster'); }} />
               )}
-              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} />}
+              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} />}
               {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (

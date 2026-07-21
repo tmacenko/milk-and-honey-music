@@ -442,6 +442,22 @@ module.exports = async (req, res) => {
         return res.json({ success: true, flagged: updates.length, appended: missing.length, rosterCount: rosterNames.size });
       }
 
+      // One-time: create the Users tab (individual logins) with its headers.
+      // Rows are then managed by hand in the sheet: Name | Password | Role | Agent Key.
+      if ((req.body || {}).action === 'setup-users') {
+        const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'Users' } } }] }),
+        });
+        const d = await r.json();
+        if (d.error && !/already exists/i.test(d.error.message || '')) throw new Error(d.error.message);
+        const head = await sheetGet(token, "'Users'!1:1");
+        if (!(head.values && head.values[0] && head.values[0].some(c => String(c).trim()))) {
+          await sheetBatchUpdate(token, [{ range: "'Users'!A1", values: [['Name', 'Password', 'Role', 'Agent Key']] }]);
+        }
+        return res.json({ success: true, created: !d.error });
+      }
+
       if (String((req.body || {}).action || '').startsWith('tab-')) {
         await handleTabAction(token, req.body || {});
         return res.json({ success: true });
@@ -499,7 +515,7 @@ module.exports = async (req, res) => {
       athletes = (publicColumnExists ? athletes.filter(a => a.public) : athletes).map(pickPublic);
     }
 
-    return res.json({ athletes, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists });
+    return res.json({ athletes, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists, user: authState(req).user });
   } catch (err) {
     console.error('Athletes error:', err.message);
     return res.status(500).json({ error: err.message });
