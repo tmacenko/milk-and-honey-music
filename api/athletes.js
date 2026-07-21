@@ -363,6 +363,7 @@ const ADMIN_TABS = {
   nflteams: { title: 'NFL Team Info', writable: false },
   stateregs: { title: 'State Registration', writable: false },
   appdata: { title: 'AppData', writable: false },
+  stafflegacy: { title: 'Staff', writable: false },
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {
@@ -480,23 +481,23 @@ module.exports = async (req, res) => {
       if ((req.body || {}).action === 'setup-users') {
         const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
           method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'Staff' } } }] }),
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'Users' } } }] }),
         });
         const d = await r.json();
         if (d.error && !/already exists/i.test(d.error.message || '')) throw new Error(d.error.message);
-        const head = await sheetGet(token, "'Staff'!1:1");
+        const head = await sheetGet(token, "'Users'!1:1");
         if (!(head.values && head.values[0] && head.values[0].some(c => String(c).trim()))) {
-          await sheetBatchUpdate(token, [{ range: "'Staff'!A1", values: [['Name', 'Password', 'Role', 'Agent Key', 'Title', 'Email']] }]);
+          await sheetBatchUpdate(token, [{ range: "'Users'!A1", values: [['Name', 'Password', 'Role', 'Agent Key', 'Title', 'Email']] }]);
         }
         // Bootstrap helpers (admin-gated): seed or remove a user row.
         if (Array.isArray(req.body.seedRow)) {
-          await sheetAppend(token, "'Staff'!A:F", req.body.seedRow.slice(0, 6).map(v => String(v ?? '')));
+          await sheetAppend(token, "'Users'!A:F", req.body.seedRow.slice(0, 6).map(v => String(v ?? '')));
         }
         if (req.body.removeName) {
-          const all = await sheetGet(token, "'Staff'!A:F");
+          const all = await sheetGet(token, "'Users'!A:F");
           const idx = (all.values || []).findIndex((r, i) => i > 0 && String(r[0] || '').trim().toLowerCase() === String(req.body.removeName).trim().toLowerCase());
           if (idx > 0) {
-            const gid = await getSheetGid(token, 'Staff');
+            const gid = await getSheetGid(token, 'Users');
             const rr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
               method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } } }] }),
@@ -548,16 +549,10 @@ module.exports = async (req, res) => {
           for (let i = 0; i < seed.length; i += 200) await sheetAppend2(token, "'AutoSync'!A:F", seed.slice(i, i + 200));
           out.autoSeeded = seed.length;
         }
-        // 2) Users -> Staff rename + Title/Email columns.
-        if (titles.includes('Users') && !titles.includes('Staff')) {
-          await sheetReq([{ updateSheetProperties: { properties: { sheetId: gidOf('Users'), title: 'Staff' }, fields: 'title' } }]);
-          out.renamedUsersToStaff = true;
-        }
-        try {
-          const st = await sheetGet(token, "'Staff'!1:1");
-          const h = (st.values?.[0] || []).map(x => String(x || '').trim().toLowerCase());
-          if (!h.includes('title')) await sheetBatchUpdate(token, [{ range: `'Staff'!${colLetter(h.length)}1`, values: [['Title', 'Email']] }]);
-        } catch { /* Staff missing entirely — setup-users can create it later */ }
+        // 2) Users tab keeps its name: a legacy "Staff" tab from the old
+        //    sports app already exists in this sheet, so renaming would
+        //    collide. Logins stay in Users; the legacy Staff tab is the
+        //    staff directory.
         // 3) README.
         if (!titles.includes('README')) {
           await sheetReq([{ addSheet: { properties: { title: 'README' } } }]);
