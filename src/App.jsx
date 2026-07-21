@@ -1985,11 +1985,11 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster }) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const s = useMemo(() => {
     const levels = { 'NFL': 0, 'College': 0, 'High School': 0 };
-    let ig = 0, tt = 0, x = 0, freeAgents = 0;
+    let ig = 0, tt = 0, x = 0, starters = 0, nflStarters = 0, collegeStarters = 0;
     for (const a of athletes) {
       if (levels[a.level] != null) levels[a.level]++;
       ig += countFrom(a.igFollowers); tt += countFrom(a.tiktokFollowers); x += countFrom(a.twitterFollowers);
-      if (a.status === 'Free Agent') freeAgents++;
+      if (a.depthRank === 1) { starters++; if (a.level === 'NFL') nflStarters++; else if (a.level === 'College') collegeStarters++; }
     }
     const reach = ig + tt + x;
     const pct = (n) => reach ? Math.round((n / reach) * 100) : 0;
@@ -2006,7 +2006,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster }) {
       return { a, date: next };
     }).filter(Boolean).sort((p, q) => p.date - q.date);
     return {
-      levels, reach, freeAgents, signed, bdays,
+      levels, reach, starters, nflStarters, collegeStarters, signed, bdays,
       splits: { ig: pct(ig), tt: pct(tt), x: pct(x) },
       week: bdays.filter(b => (b.date - today) / 86400000 < 7),
     };
@@ -2057,9 +2057,9 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster }) {
           <div style={{ ...statSub, color: s.signed.length ? G.green : G.textSecondary }}>Last 30 days</div>
         </div>
         <div style={card}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.freeAgents}</div>
-          <div style={statLabel}>Free agents</div>
-          <div style={statSub}>On the open market</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.starters}</div>
+          <div style={statLabel}>Starters</div>
+          <div style={statSub}>{s.nflStarters} NFL · {s.collegeStarters} College</div>
         </div>
       </div>
 
