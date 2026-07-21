@@ -372,6 +372,7 @@ const ADMIN_TABS = {
   appdata: { title: 'AppData', writable: false },
   stafflegacy: { title: 'Staff', writable: false },
   readme: { title: 'README', writable: true },
+  onboarding: { title: 'Onboarding', writable: false },
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {
@@ -517,6 +518,35 @@ module.exports = async (req, res) => {
           }
         }
         return res.json({ success: true });
+      }
+
+      // Test-data janitor: deletes rows whose name starts with "ZZ " from the
+      // given tabs. The prefix guard is hard-coded so this can never touch a
+      // real person's row.
+      if ((req.body || {}).action === 'delete-test-rows') {
+        const prefix = /^zz /i;
+        const TABS = { 'NFL': 'NFL!A:P', 'College': 'College!A:Q', 'Highschool': 'Highschool!A:S', 'AppData': 'AppData!A:AZ', 'AutoSync': "'AutoSync'!A:L", 'Onboarding': "'Onboarding'!A:X" };
+        const removed = {};
+        for (const [title, range] of Object.entries(TABS)) {
+          const data = await sheetGet(token, range).catch(() => null);
+          if (!data) continue;
+          const rows = data.values || [];
+          const heads = (rows[0] || []).map(h => String(h || '').trim().toLowerCase());
+          const nameIdx = heads.indexOf('name');
+          if (nameIdx < 0) continue;
+          const hits = [];
+          rows.forEach((r, i) => { if (i > 0 && prefix.test(String(r[nameIdx] || '').trim())) hits.push(i); });
+          if (!hits.length) continue;
+          const gid = await getSheetGid(token, title);
+          const rr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: hits.sort((a, b) => b - a).map(i => ({ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: i, endIndex: i + 1 } } })) }),
+          });
+          const dd = await rr.json();
+          if (dd.error) throw new Error(dd.error.message);
+          removed[title] = hits.length;
+        }
+        return res.json({ success: true, removed });
       }
 
       // Remove the Agent Key column from Staff (matching now uses names).

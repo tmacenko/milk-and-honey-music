@@ -2023,9 +2023,10 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     [athletes, user]);
   const personal = mineList.length > 0;
   const scoped = personal ? mineList : athletes;
+  // Agents see their top 4 by reach; the house/admin view gets the roster-wide top 4.
   const topClients = useMemo(
-    () => (personal ? [...mineList].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 4) : []),
-    [personal, mineList]);
+    () => [...(personal ? mineList : athletes)].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 4),
+    [personal, mineList, athletes]);
   const s = useMemo(() => {
     const levels = { 'NFL': 0, 'College': 0, 'High School': 0 };
     let ig = 0, tt = 0, x = 0, starters = 0, nflStarters = 0, collegeStarters = 0;
@@ -2118,7 +2119,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       {topClients.length > 0 && (
         <div style={{ marginTop: 18 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>My top clients</div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{personal ? 'My top clients' : 'Top clients'}</div>
             <div style={{ fontSize: 11, color: G.textTertiary }}>By combined reach</div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
@@ -2152,6 +2153,47 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         </div>
       </div>
 
+    </div>
+  );
+}
+
+// ── Onboarding link chooser ───────────────────────────────────────────────────
+// One link for signed clients (merges into the roster), one for recruits
+// (data collected in the Onboarding tab only). Copy or open either.
+const ONBOARD_URL = 'https://www.milkhoneysports.app/onboard';
+function OnboardLinksModal({ onClose }) {
+  const [copied, setCopied] = useState('');
+  const options = [
+    { key: 'client', title: 'Client onboarding', desc: 'For signed athletes — fills their roster profile.', url: ONBOARD_URL },
+    { key: 'recruit', title: 'Recruit onboarding', desc: 'For unsigned kids — collects info without touching the roster.', url: `${ONBOARD_URL}?recruit=1` },
+  ];
+  const copy = async (o) => {
+    try { await navigator.clipboard.writeText(o.url); setCopied(o.key); setTimeout(() => setCopied(''), 1800); } catch { /* ignore */ }
+  };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 460, padding: 20, animation: "modalIn .18s ease" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>Onboarding links</div>
+          <button onClick={onClose} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+        </div>
+        {options.map(o => (
+          <div key={o.key} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{o.title}</div>
+            <div style={{ fontSize: 12, color: G.textSecondary, margin: "3px 0 10px" }}>{o.desc}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => copy(o)}
+                style={{ flex: 1, background: copied === o.key ? G.greenSubtle : G.surface, border: `1px solid ${copied === o.key ? G.green : G.surfaceBorder}`, borderRadius: 9, padding: "8px 0", color: copied === o.key ? G.green : G.text, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>
+                {copied === o.key ? 'Copied ✓' : 'Copy link'}
+              </button>
+              <a href={o.url} target="_blank" rel="noopener noreferrer"
+                style={{ flex: 1, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "8px 0", color: G.textSecondary, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "center", textDecoration: "none" }}>
+                Open
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2256,8 +2298,56 @@ function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title }) {
   );
 }
 
-function RecruitingBoard({ isMobile, user }) {
+function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
   const { data, err, loading, reload } = useAdminTab('recruiting');
+  const sub = useAdminTab('onboarding');
+  const [promoting, setPromoting] = useState('');
+  const [justPromoted, setJustPromoted] = useState({});
+  const rosterNames = useMemo(() => new Set((athletes || []).map(a => a.name.toLowerCase().trim())), [athletes]);
+  // Latest recruit-type submission per person, newest first.
+  const recruitSubs = useMemo(() => {
+    if (!sub.data) return [];
+    const h = sub.data.headers;
+    const gi = (n) => h.indexOf(n);
+    const ti = gi('type'), ni = gi('name'), si = gi('submittedAt');
+    const seen = new Set();
+    return sub.data.rows
+      .filter(r => (r.cells[ti] || '') === 'recruit' && (r.cells[ni] || '').trim())
+      .sort((a, b) => String(b.cells[si] || '').localeCompare(String(a.cells[si] || '')))
+      .filter(r => { const k = r.cells[ni].toLowerCase().trim(); if (seen.has(k)) return false; seen.add(k); return true; });
+  }, [sub.data]);
+  // Replay a recruit's submission through the signed onboarding path — the
+  // exact same merge that a client filling the form gets (Public stays unset
+  // until staff reviews, like any new signee).
+  const promote = async (r) => {
+    const h = sub.data.headers;
+    const cell = (n) => { const i = h.indexOf(n); return i >= 0 ? (r.cells[i] || '') : ''; };
+    const split = (v) => v ? v.split(',').map(x => x.trim()).filter(Boolean) : [];
+    const name = cell('name');
+    setPromoting(name);
+    try {
+      const resp = await fetch('/api/onboard', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name, level: cell('level') || 'College', position: cell('position'), schoolOrTeam: cell('schoolOrTeam'),
+          classOf: cell('classOf'), jerseyNumber: cell('jerseyNumber'), birthday: cell('birthday'),
+          hometown: cell('hometown'), address: cell('address'),
+          instagram: cell('instagram'), twitter: cell('twitter'), tiktok: cell('tiktok'),
+          shirt: cell('shirt'), hoodie: cell('hoodie'), shorts: cell('shorts'), pants: cell('pants'),
+          shoes: cell('shoes'), gloves: cell('gloves'), gamingSystem: cell('gamingSystem'),
+          musicArtists: split(cell('musicArtists')), interests: split(cell('interests')), brands: split(cell('brandTargets')),
+        }),
+      });
+      const d = await resp.json();
+      if (!resp.ok || !d.success) throw new Error(d.error || 'Promote failed');
+      setJustPromoted(p => ({ ...p, [name.toLowerCase().trim()]: true }));
+      if (onPromoted) onPromoted();
+    } catch (e) {
+      alert(e.message || 'Promote failed');
+    } finally {
+      setPromoting('');
+    }
+  };
   const [editing, setEditing] = useState(null);
   const [q, setQ] = useState('');
   const [mine, setMine] = useState(false);
@@ -2300,6 +2390,43 @@ function RecruitingBoard({ isMobile, user }) {
           : err ? <div style={{ padding: 40, textAlign: "center", color: G.red, fontSize: 13 }}>{err}</div>
           : <SheetTable headers={headers} rows={rows} onRowClick={setEditing} emptyMsg={q ? 'No recruits match.' : 'No recruits yet — add the first one.'} />}
       </div>
+
+      {recruitSubs.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Recruit submissions</div>
+            <div style={{ fontSize: 11, color: G.textTertiary }}>From the recruit onboarding link</div>
+          </div>
+          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+            {recruitSubs.map((r, idx) => {
+              const h = sub.data.headers;
+              const cell = (n) => { const i = h.indexOf(n); return i >= 0 ? (r.cells[i] || '') : ''; };
+              const name = cell('name');
+              const onRoster = rosterNames.has(name.toLowerCase().trim()) || justPromoted[name.toLowerCase().trim()];
+              const meta = [cell('level'), cell('schoolOrTeam'), cell('position')].filter(Boolean).join(' · ');
+              return (
+                <div key={r._row} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: idx < recruitSubs.length - 1 ? `1px solid ${G.surfaceBorder}` : "none" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{name}</div>
+                    <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{meta}{meta ? ' · ' : ''}submitted {String(cell('submittedAt')).slice(0, 10)}</div>
+                  </div>
+                  {onRoster ? (
+                    <span style={{ fontSize: 12, fontWeight: 700, color: G.green, flexShrink: 0 }}>On roster ✓</span>
+                  ) : (
+                    <button onClick={() => promote(r)} disabled={promoting === name}
+                      style={{ background: promoting === name ? G.surfaceRaised : G.greenSubtle, border: `1px solid ${promoting === name ? G.surfaceBorder : G.green}`, borderRadius: 9, padding: "7px 12px", color: promoting === name ? G.textTertiary : G.green, fontWeight: 700, fontSize: 12, cursor: promoting === name ? 'wait' : 'pointer', fontFamily: ff, flexShrink: 0, whiteSpace: "nowrap" }}>
+                      {promoting === name ? 'Promoting…' : 'Promote to client'}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 8 }}>
+            Promoting creates their roster profile from their submission — hidden from the public site until you review and flip Public.
+          </div>
+        </div>
+      )}
       {editing && (
         <TabRowForm headers={headers} initial={editing === 'new' ? null : editing}
           title={editing === 'new' ? 'Add recruit' : (editing.cells[0] || 'Edit recruit')}
@@ -2970,7 +3097,10 @@ function App() {
     { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
     { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z', soon: true },
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
+    { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
   ];
+  const [onboardLinksOpen, setOnboardLinksOpen] = useState(false);
+  const navClick = (it) => { if (it.modal) setOnboardLinksOpen(true); else setSportsPage(it.key); };
   const navActive = domain === 'sports' && isAdmin && view !== 'detail';
   // Roster search/filter/export controls only make sense on the roster itself
   // (and always for music / public sessions). Sports waits for the auth answer
@@ -2981,7 +3111,7 @@ function App() {
       {NAV_SPORTS.map(it => {
         const on = sportsPage === it.key;
         return (
-          <button key={it.key} onClick={() => setSportsPage(it.key)}
+          <button key={it.key} onClick={() => navClick(it)}
             style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: on ? G.greenSubtle : "transparent", border: "none", borderRadius: 9, color: on ? G.green : G.textSecondary, fontWeight: on ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={it.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             <span style={{ flex: 1 }}>{it.label}</span>
@@ -2996,7 +3126,7 @@ function App() {
       {domainToggle}
       <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
         {NAV_SPORTS.map((it, i) => (
-          <button key={it.key} onClick={() => setSportsPage(it.key)}
+          <button key={it.key} onClick={() => navClick(it)}
             style={{ padding: "8px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", background: sportsPage === it.key ? G.greenSubtle : "transparent", color: sportsPage === it.key ? G.green : G.textSecondary, fontWeight: sportsPage === it.key ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
             {it.label}
           </button>
@@ -3062,6 +3192,7 @@ function App() {
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: G.bg, color: G.text, fontFamily: ff }}>
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
+      {onboardLinksOpen && <OnboardLinksModal onClose={() => setOnboardLinksOpen(false)} />}
       <style>{`
         @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
         @keyframes chatDot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
@@ -3203,7 +3334,7 @@ function App() {
                   onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); setSportsPage('roster'); }}
                   onShowMine={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(true); setSportsPage('roster'); }} />
               )}
-              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} />}
+              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} onPromoted={() => setAthletesLoaded(false)} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} />}
               {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
