@@ -670,6 +670,12 @@ function AthleteForm({ initial, onSave, onCancel }) {
               </Field>
             </div>
             <div style={{ gridColumn: "1/-1" }}>
+              <Field label="247Sports profile URL">
+                <Input value={form.profileUrl247 || ''} onChange={e => set('profileUrl247', e.target.value)}
+                  placeholder="https://247sports.com/player/... — headshot auto-pulls nightly for HS" />
+              </Field>
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
               <Field label="Status">
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {statusOptions.map(s => {

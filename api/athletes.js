@@ -311,6 +311,7 @@ async function saveAthlete(token, body) {
     photoUrl: a.photoUrlOverride !== undefined ? a.photoUrlOverride : a.photoUrl,
     heroImageUrl: a.heroImageUrl,
     teamOverride: a.teamOverride,
+    profileUrl247: a.profileUrl247,
     status: a.status, tiktok: a.tiktok,
     interests: Array.isArray(a.interests) ? a.interests.join(', ') : a.interests,
     brands: Array.isArray(a.brands) ? a.brands.join(', ') : a.brands,
