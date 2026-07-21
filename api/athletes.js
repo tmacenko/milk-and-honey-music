@@ -947,6 +947,16 @@ module.exports = async (req, res) => {
   if (tabKey) {
     const { configured, admin } = authState(req);
     if (configured && !admin) return res.status(403).json({ error: 'Admin only' });
+    // Diagnostic: raw grid data (values + per-cell validation) for a range.
+    if (tabKey === 'griddata') {
+      try {
+        const token = await getToken();
+        const range = String((req.query || {}).range || 'NFL!D1:D10');
+        const meta = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?ranges=${encodeURIComponent(range)}&fields=sheets(data(rowData(values(formattedValue,dataValidation,effectiveValue))))`, {
+          headers: { Authorization: `Bearer ${token}` } })).json();
+        return res.json(meta);
+      } catch (err) { return res.status(500).json({ error: err.message }); }
+    }
     // Diagnostic: dump table (typed-column) metadata for the roster tabs.
     if (tabKey === 'tables') {
       try {
