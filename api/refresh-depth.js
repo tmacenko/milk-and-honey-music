@@ -377,7 +377,12 @@ module.exports = async (req, res) => {
           const a = d.athlete || d;
           if (!a || !a.displayName) return;
           const teamObj = a.team || {};
-          const teamVal = t.league === 'nfl' ? (teamObj.displayName || '') : (teamObj.location || '');
+          let teamVal = t.league === 'nfl' ? (teamObj.displayName || '') : (teamObj.location || '');
+          // ESPN keeps a released player's LAST team on the record and flags the
+          // truth in the status field — mirror that so we don't show a stale club.
+          const stType = String((a.status || {}).type || (a.status || {}).name || '').toLowerCase().replace(/\s+/g, '-');
+          if (t.league === 'nfl' && stType === 'free-agent') teamVal = 'Free Agent';
+          if (t.league === 'nfl' && stType === 'retired') teamVal = 'Retired';
           const height = String(a.displayHeight || '').replace(/\s+/g, '');
           const weight = String(a.displayWeight || '').replace(/\s*lbs.*$/i, '');
           const jersey = String(a.jersey || '');
