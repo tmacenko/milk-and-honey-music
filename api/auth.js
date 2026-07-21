@@ -39,11 +39,11 @@ async function findUser(pw) {
   if (!sheetId || !process.env.GOOGLE_SERVICE_ACCOUNT_KEY) return null;
   try {
     const token = await getSheetsToken();
-    // Logins live in the Users tab. (A legacy "Staff" tab from the old sports
-    // app also exists in this sheet — check Users FIRST so it always wins.)
+    // Logins live in the Staff tab (directory + Password/Role/Agent Key after
+    // the 2026-07 merge). Users is checked first for pre-merge compatibility.
     let data = null;
     for (const tab of ['Users', 'Staff']) {
-      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(`'${tab}'!A:F`)}`, {
+      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(`'${tab}'!A:J`)}`, {
         headers: { Authorization: `Bearer ${token}` } });
       const d = await r.json();
       if (!d.error && (d.values || []).length) { data = d; break; }

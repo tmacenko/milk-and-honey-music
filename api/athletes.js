@@ -477,28 +477,30 @@ module.exports = async (req, res) => {
         return res.json({ success: true, flagged: updates.length, appended: missing.length, rosterCount: rosterNames.size });
       }
 
-      // One-time: create the Users tab (individual logins) with its headers.
-      // Rows are then managed by hand in the sheet: Name | Password | Role | Agent Key.
+      // Login bootstrap helpers (admin-gated). Logins live in the Staff tab
+      // (directory + Password/Role/Agent Key columns after the merge).
       if ((req.body || {}).action === 'setup-users') {
-        const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
-          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'Users' } } }] }),
-        });
-        const d = await r.json();
-        if (d.error && !/already exists/i.test(d.error.message || '')) throw new Error(d.error.message);
-        const head = await sheetGet(token, "'Users'!1:1");
-        if (!(head.values && head.values[0] && head.values[0].some(c => String(c).trim()))) {
-          await sheetBatchUpdate(token, [{ range: "'Users'!A1", values: [['Name', 'Password', 'Role', 'Agent Key', 'Title', 'Email']] }]);
-        }
-        // Bootstrap helpers (admin-gated): seed or remove a user row.
+        const staffD = await sheetGet(token, "'Staff'!A:J");
+        const sRows = staffD.values || [];
+        const sHead = (sRows[0] || []).map(h => String(h || '').trim());
+        const sc = n => sHead.findIndex(h => h.toLowerCase() === n.toLowerCase());
+        const nameC = sc('name'), passC = sc('password');
+        if (nameC < 0 || passC < 0) throw new Error('Staff tab needs name + Password columns');
         if (Array.isArray(req.body.seedRow)) {
-          await sheetAppend(token, "'Users'!A:F", req.body.seedRow.slice(0, 6).map(v => String(v ?? '')));
+          const [nm, pw, role, key] = req.body.seedRow.map(v => String(v ?? ''));
+          const vals = { password: pw, role, 'agent key': key };
+          await sheetAppend(token, "'Staff'!A:J", sHead.map((h, i) => {
+            if (i === nameC) return nm;
+            const v = vals[h.toLowerCase()];
+            return v !== undefined ? v : '';
+          }));
         }
         if (req.body.removeName) {
-          const all = await sheetGet(token, "'Users'!A:F");
-          const idx = (all.values || []).findIndex((r, i) => i > 0 && String(r[0] || '').trim().toLowerCase() === String(req.body.removeName).trim().toLowerCase());
+          const idx = sRows.findIndex((r, i) => i > 0
+            && String(r[nameC] || '').trim().toLowerCase() === String(req.body.removeName).trim().toLowerCase()
+            && String(r[passC] || '').trim()); // only rows that are logins — never a directory-only row
           if (idx > 0) {
-            const gid = await getSheetGid(token, 'Users');
+            const gid = await getSheetGid(token, 'Staff');
             const rr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
               method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } } }] }),
@@ -507,7 +509,96 @@ module.exports = async (req, res) => {
             if (dd.error) throw new Error(dd.error.message);
           }
         }
-        return res.json({ success: true, created: !d.error });
+        return res.json({ success: true });
+      }
+
+      // Final tidy pass (2026-07 cleanup, Tyler-approved): merge Users into
+      // Staff, then order/hide/color every tab so humans see only the 8 they
+      // work in. Hidden tabs stay fully API-accessible.
+      if ((req.body || {}).action === 'organize-sheet') {
+        const out = {};
+        const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,index,hidden,gridProperties(columnCount)))`, {
+          headers: { Authorization: `Bearer ${token}` } });
+        const meta = await metaR.json();
+        const sheets = (meta.sheets || []).map(s => s.properties);
+        const byTitle = t => sheets.find(s => s.title === t);
+        const sheetReq = async (requests) => {
+          if (!requests.length) return;
+          const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests }),
+          });
+          const d = await r.json();
+          if (d.error) throw new Error(d.error.message);
+        };
+        // 1) Merge Users -> Staff (Password / Role / Agent Key columns).
+        const usersSh = byTitle('Users'), staffSh = byTitle('Staff');
+        if (usersSh && staffSh) {
+          const staffD = await sheetGet(token, "'Staff'!A:J");
+          const sRows = staffD.values || [];
+          let sHead = (sRows[0] || []).map(h => String(h || '').trim());
+          const need = ['Password', 'Role', 'Agent Key'].filter(h => !sHead.some(x => x.toLowerCase() === h.toLowerCase()));
+          if (need.length) {
+            const width = staffSh.gridProperties?.columnCount || sHead.length;
+            if (sHead.length + need.length > width) {
+              await sheetReq([{ appendDimension: { sheetId: staffSh.sheetId, dimension: 'COLUMNS', length: sHead.length + need.length - width } }]);
+            }
+            await sheetBatchUpdate(token, [{ range: `'Staff'!${colLetter(sHead.length)}1`, values: [need] }]);
+            sHead = [...sHead, ...need];
+          }
+          const sc = n => sHead.findIndex(h => h.toLowerCase() === n.toLowerCase());
+          const sName = sc('name'), sPass = sc('password'), sRole = sc('role'), sKey = sc('agent key');
+          const uD = await sheetGet(token, "'Users'!A:F");
+          const uRows = uD.values || [];
+          const uHead = (uRows[0] || []).map(h => String(h || '').trim().toLowerCase());
+          const uc = n => uHead.indexOf(n);
+          const uName = uc('name'), uPass = uc('password'), uRole = uc('role'), uKey = uc('agent key');
+          const norm = s => String(s || '').toLowerCase().trim();
+          const staffRowByName = {};
+          sRows.forEach((r, i) => { if (i > 0) { const n = norm(r[sName]); if (n) staffRowByName[n] = i + 1; } });
+          const ups = [];
+          let appended = 0;
+          for (const r of uRows.slice(1)) {
+            const nm = String(r[uName] || '').trim();
+            if (!nm) continue;
+            const vals = [[sPass, r[uPass]], [sRole, r[uRole]], [sKey, r[uKey]]];
+            const rowNum = staffRowByName[norm(nm)];
+            if (rowNum) {
+              for (const [ci, v] of vals) if (ci >= 0 && String(v || '').trim()) ups.push({ range: `'Staff'!${colLetter(ci)}${rowNum}`, values: [[String(v)]] });
+            } else {
+              await sheetAppend(token, "'Staff'!A:J", sHead.map((h, i2) => {
+                if (i2 === sName) return nm;
+                const hit = vals.find(([ci]) => ci === i2);
+                return hit && hit[1] !== undefined ? String(hit[1] ?? '') : '';
+              }));
+              appended++;
+            }
+          }
+          await sheetBatchUpdate(token, ups);
+          await sheetReq([{ deleteSheet: { sheetId: usersSh.sheetId } }]);
+          out.merged = { updated: ups.length, appended, usersDeleted: true };
+        }
+        // 2) Order + hide + tab colors: visible working tabs first, machine
+        //    tabs hidden, legacy hidden at the very end.
+        const GREEN = { red: 0.29, green: 0.67, blue: 0.47 };
+        const BLUE = { red: 0.35, green: 0.55, blue: 0.78 };
+        const GRAY = { red: 0.62, green: 0.62, blue: 0.62 };
+        const plan = [
+          ['NFL', false, GREEN], ['College', false, GREEN], ['Highschool', false, GREEN],
+          ['Recruiting Info', false, BLUE], ['NFL Team Info', false, BLUE], ['State Registration', false, BLUE],
+          ['Staff', false, BLUE], ['Prospects', false, GRAY],
+          ['AppData', true, GRAY], ['AutoSync', true, GRAY], ['Onboarding', true, GRAY], ['README', true, GRAY],
+          ['UNRL', true, GRAY], ['AS COLOR', true, GRAY], ['Leads', true, GRAY], ['PitchContent', true, GRAY], ['Materials', true, GRAY],
+        ];
+        const orderReqs = [];
+        plan.forEach(([t, hidden, tabColor], i) => {
+          const sh = byTitle(t);
+          if (!sh) return;
+          orderReqs.push({ updateSheetProperties: { properties: { sheetId: sh.sheetId, index: i, hidden, tabColor }, fields: 'index,hidden,tabColor' } });
+        });
+        await sheetReq(orderReqs);
+        out.organized = orderReqs.length;
+        return res.json({ success: true, ...out });
       }
 
       if (String((req.body || {}).action || '').startsWith('tab-')) {
@@ -631,13 +722,13 @@ module.exports = async (req, res) => {
   if (tabKey) {
     const { configured, admin } = authState(req);
     if (configured && !admin) return res.status(403).json({ error: 'Admin only' });
-    // Diagnostic: list the spreadsheet's tab titles.
+    // Diagnostic: list the spreadsheet's tabs (order + visibility).
     if (tabKey === 'titles') {
       try {
         const token = await getToken();
-        const meta = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties`, {
+        const meta = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(title,index,hidden))`, {
           headers: { Authorization: `Bearer ${token}` } })).json();
-        return res.json({ titles: (meta.sheets || []).map(s => s.properties.title) });
+        return res.json({ titles: (meta.sheets || []).map(s => ({ t: s.properties.title, i: s.properties.index, hidden: !!s.properties.hidden })) });
       } catch (err) { return res.status(500).json({ error: err.message }); }
     }
     const tab = ADMIN_TABS[tabKey];
