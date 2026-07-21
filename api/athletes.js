@@ -184,8 +184,11 @@ function mergeAthlete(row, ext, level) {
   const isNFL = level === 'NFL';
   const sheetTeam = isNFL ? (row['Team'] || '') : (row['School'] || '');
   // Effective team: manual override (trade/transfer grace period) beats the
-  // daily ESPN sync, which beats the sheet value.
-  const team = String(ext['teamOverride'] || '').trim() || String(ext['espnTeam'] || '').trim() || sheetTeam;
+  // daily ESPN sync, which beats the sheet value. When staff have manually
+  // marked someone Free Agent/Retired, the synced ESPN team is stale by
+  // definition (ESPN keeps the last club on the record) — skip it.
+  const manualOut = /free agent|retired/i.test(String(ext['status'] || ''));
+  const team = String(ext['teamOverride'] || '').trim() || (!manualOut && String(ext['espnTeam'] || '').trim()) || sheetTeam;
   const status = ext['status'] ? ext['status'] : (isNFL ? deriveStatus(team) : 'Active');
   const tabTiktok = handle(row['TikTok'] || row['Tiktok'] || '');
   const nflTeam = isNFL ? team : '';
