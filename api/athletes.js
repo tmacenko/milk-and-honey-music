@@ -455,6 +455,23 @@ module.exports = async (req, res) => {
         if (!(head.values && head.values[0] && head.values[0].some(c => String(c).trim()))) {
           await sheetBatchUpdate(token, [{ range: "'Users'!A1", values: [['Name', 'Password', 'Role', 'Agent Key']] }]);
         }
+        // Bootstrap helpers (admin-gated): seed or remove a user row.
+        if (Array.isArray(req.body.seedRow)) {
+          await sheetAppend(token, "'Users'!A:D", req.body.seedRow.slice(0, 4).map(v => String(v ?? '')));
+        }
+        if (req.body.removeName) {
+          const all = await sheetGet(token, "'Users'!A:D");
+          const idx = (all.values || []).findIndex((r, i) => i > 0 && String(r[0] || '').trim().toLowerCase() === String(req.body.removeName).trim().toLowerCase());
+          if (idx > 0) {
+            const gid = await getSheetGid(token, 'Users');
+            const rr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+              method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } } }] }),
+            });
+            const dd = await rr.json();
+            if (dd.error) throw new Error(dd.error.message);
+          }
+        }
         return res.json({ success: true, created: !d.error });
       }
 
