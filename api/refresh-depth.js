@@ -87,9 +87,11 @@ const COLLEGE_ALIASES = {
 
 // Residential proxy (optional, PROXY_URL) — 247sports blocks datacenter IPs
 // with 406s, same as Instagram; Ourlads and ESPN don't need it.
-let proxyDispatcher = null;
+let proxyDispatcher = null, proxyFetch = null;
 if (process.env.PROXY_URL) {
-  try { const { ProxyAgent } = require('undici'); proxyDispatcher = new ProxyAgent(process.env.PROXY_URL); } catch { /* undici unavailable */ }
+  // Use undici's own fetch with its ProxyAgent — Node's built-in fetch can
+  // reject dispatchers from a separately-installed undici.
+  try { const u = require('undici'); proxyDispatcher = new u.ProxyAgent(process.env.PROXY_URL); proxyFetch = u.fetch; } catch { /* undici unavailable */ }
 }
 const BROWSER_HEADERS = {
   'User-Agent': UA,
@@ -100,8 +102,15 @@ const BROWSER_HEADERS = {
 };
 async function fetchText(url, viaProxy = false) {
   const opts = { headers: BROWSER_HEADERS, redirect: 'follow' };
-  if (viaProxy && proxyDispatcher) opts.dispatcher = proxyDispatcher;
-  const r = await fetch(url, opts);
+  const useProxy = viaProxy && proxyDispatcher && proxyFetch;
+  if (useProxy) opts.dispatcher = proxyDispatcher;
+  let r;
+  try {
+    r = await (useProxy ? proxyFetch : fetch)(url, opts);
+  } catch (e) {
+    const why = e.cause ? (e.cause.code || e.cause.message || '') : e.message;
+    throw new Error(`fetch failed (${why}) for ${url}`);
+  }
   if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
   return r.text();
 }

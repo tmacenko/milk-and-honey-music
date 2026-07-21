@@ -92,17 +92,20 @@ function formatNum(n) {
 // Optional residential proxy — Instagram blocks Vercel's datacenter IPs (429 /
 // stripped HTML) but works fine through a residential IP. Set env PROXY_URL
 // (e.g. http://user:pass@host:port) and IG turns on with no code change.
-let proxyDispatcher = null;
+let proxyDispatcher = null, proxyFetch = null;
 if (process.env.PROXY_URL) {
-  try { const { ProxyAgent } = require('undici'); proxyDispatcher = new ProxyAgent(process.env.PROXY_URL); } catch { /* undici missing */ }
+  // undici's own fetch must pair with its ProxyAgent (Node's built-in fetch
+  // can reject dispatchers from a separately-installed undici).
+  try { const u = require('undici'); proxyDispatcher = new u.ProxyAgent(process.env.PROXY_URL); proxyFetch = u.fetch; } catch { /* undici missing */ }
 }
 async function fetchIG(username) {
   // Exact count via IG's web-profile API. Datacenter IPs get 429'd; a proxy
   // (PROXY_URL) makes this succeed.
   try {
-    const r = await fetch(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, {
+    const useProxy = proxyDispatcher && proxyFetch;
+    const r = await (useProxy ? proxyFetch : fetch)(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, {
       headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
-      dispatcher: proxyDispatcher || undefined,
+      dispatcher: useProxy ? proxyDispatcher : undefined,
     });
     if (!r.ok) return null;
     const j = await r.json();
