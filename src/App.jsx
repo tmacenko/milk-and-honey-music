@@ -2348,6 +2348,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  // True once /api/sheets has answered who this session is. Sports rendering
+  // waits on it so employees never see a roster flash before the dashboard.
+  const [authKnown, setAuthKnown] = useState(false);
   const [authConfigured, setAuthConfigured] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   // Front-door gate (shared site password). No URL bypasses it — typing
@@ -2515,8 +2518,8 @@ function App() {
     if (!gateUnlocked) return;
     fetch('/api/sheets')
       .then(r => r.json())
-      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setAuthConfigured(!!d.authConfigured); setLoading(false); })
-      .catch(e => { setError(e.message); setLoading(false); });
+      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setAuthConfigured(!!d.authConfigured); setLoading(false); setAuthKnown(true); })
+      .catch(e => { setError(e.message); setLoading(false); setAuthKnown(true); });
   }, [gateUnlocked]);
 
   // Log out / exit → back to the landing gate. Ends the admin session when
@@ -2861,8 +2864,9 @@ function App() {
   ];
   const navActive = domain === 'sports' && isAdmin && view !== 'detail';
   // Roster search/filter/export controls only make sense on the roster itself
-  // (and always for music / public sessions).
-  const rosterControlsOn = !navActive || sportsPage === 'roster';
+  // (and always for music / public sessions). Sports waits for the auth answer
+  // so employees land straight on the dashboard with no roster flash.
+  const rosterControlsOn = (domain !== 'sports' || authKnown) && (!navActive || sportsPage === 'roster');
   const sidebar = (navActive && !isMobile) ? (
     <div style={{ width: 176, flexShrink: 0, borderRight: `1px solid ${G.surfaceBorder}`, padding: "18px 10px", position: "sticky", top: 62, alignSelf: "flex-start", maxHeight: "calc(100vh - 62px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
       {NAV_SPORTS.map(it => {
@@ -2987,7 +2991,7 @@ function App() {
               </div>
               {/* Row 2: domain + view + sort + layout + search — one line (scrolls if tight) */}
               <div style={{ padding: "0 16px 12px" }}>
-                {!rosterControlsOn ? mobileNavStrip : mobileSearchOpen ? (
+                {!rosterControlsOn ? (navActive ? mobileNavStrip : <div style={{ display: "flex", gap: 4, alignItems: "center" }}>{domainToggle}</div>) : mobileSearchOpen ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
                     <input ref={searchRef} autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : "Search clients..."}
@@ -3059,7 +3063,7 @@ function App() {
         <div style={{ flex: 1, display: "flex", minWidth: 0, alignItems: "stretch" }}>
         {sidebar}
         <div style={{ flex: 1, overflow: "visible", minWidth: 0 }}>
-          {(domain === 'sports' ? !athletesLoaded : loading) && (
+          {(domain === 'sports' ? (!athletesLoaded || !authKnown) : loading) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: 14 }}>
               <span style={{ fontSize: 24, animation: "spin 1s linear infinite", display: "inline-block", color: G.textTertiary }}>⟳</span>
               <span style={{ fontSize: 13, color: G.textTertiary }}>Loading {domain === 'sports' ? 'athletes' : 'clients'}...</span>
