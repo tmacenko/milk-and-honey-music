@@ -564,10 +564,39 @@ module.exports = async (req, res) => {
           }
           return null;
         };
-        // Pass 0: cells can hold multiple agents ("A, B"). Scan every agent
-        // cell, resolve each comma-separated part, and add genuinely unknown
-        // agents to the Staff directory (name-only rows) so the directory is
-        // the complete source of truth before we point dropdowns at it.
+        // Pass -1: purge junk Staff rows a prior run may have created from
+        // unsplit multi-agent values ("AJ/Adam") or bare first names ("Matt")
+        // that duplicate a full-name row.
+        {
+          const staffFull = await sheetGet(token, "'Staff'!A:A");
+          const sRows = (staffFull.values || []);
+          const junkIdx = [];
+          sRows.forEach((r, i) => {
+            if (i === 0) return;
+            const n = String(r[0] || '').trim();
+            if (!n) return;
+            const isSlash = n.includes('/');
+            const isBareDupe = !n.includes(' ') && sRows.some((r2, j) => j > 0 && j !== i
+              && String(r2[0] || '').trim().toLowerCase().startsWith(n.toLowerCase() + ' '));
+            if (isSlash || isBareDupe) junkIdx.push(i);
+          });
+          if (junkIdx.length) {
+            const gid = await getSheetGid(token, 'Staff');
+            await sheetReq(junkIdx.sort((a, b) => b - a).map(i => ({
+              deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: i, endIndex: i + 1 } } })));
+            // Re-read the directory after the purge.
+            const again = await sheetGet(token, "'Staff'!A:A");
+            staffNames.length = 0;
+            (again.values || []).slice(1).forEach(r => { const n = String(r[0] || '').trim(); if (n) staffNames.push(n); });
+            Object.keys(firstMap).forEach(k => delete firstMap[k]);
+            for (const n of staffNames) { const f = n.split(' ')[0].toLowerCase(); firstMap[f] = f in firstMap ? null : n; }
+          }
+        }
+
+        // Pass 0: cells can hold multiple agents ("A, B" or "A/B"). Scan every
+        // agent cell, resolve each part, and add genuinely unknown agents to
+        // the Staff directory (name-only rows) so the directory is the
+        // complete source of truth before we point dropdowns at it.
         const tabData = {};
         const missingStaff = new Set();
         for (const t of targets) {
@@ -579,7 +608,7 @@ module.exports = async (req, res) => {
           if (colIdx < 0) continue;
           rows.forEach((r, i) => {
             if (i === 0) return;
-            for (const part of String(r[colIdx] || '').split(',').map(x => x.trim()).filter(Boolean)) {
+            for (const part of String(r[colIdx] || '').split(/[,/]+/).map(x => x.trim()).filter(Boolean)) {
               if (!staffNames.includes(part) && !resolveName(part)) missingStaff.add(part);
             }
           });
@@ -621,7 +650,7 @@ module.exports = async (req, res) => {
             if (i === 0) return;
             const v = String(r[colIdx] || '').trim();
             if (!v) return;
-            const parts = v.split(',').map(x => x.trim()).filter(Boolean);
+            const parts = v.split(/[,/]+/).map(x => x.trim()).filter(Boolean);
             const fixed = parts.map(p => staffNames.includes(p) ? p : (resolveName(p) || p));
             parts.forEach((p, j) => { if (!staffNames.includes(fixed[j])) unmatched.add(p); });
             const joined = fixed.join(', ');
