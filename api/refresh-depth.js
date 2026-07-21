@@ -266,6 +266,7 @@ module.exports = async (req, res) => {
     const appNameCol = appIdx('name'), espnIdCol = appIdx('espnId'), url247Col = appIdx('profileUrl247');
     const appByKey = {};
     appRows.forEach((r, i) => { if (i > 0 && appNameCol >= 0) { const k = nameKey(r[appNameCol]); if (k) appByKey[k] = { row: i + 1, cells: r }; } });
+    let appRowTotal = appRows.length; // last occupied AppData row (1-based, incl. header)
 
     const nflPlayers = parseRows(nfl);
     const colPlayers = parseRows(col);
@@ -433,8 +434,19 @@ module.exports = async (req, res) => {
         const hits = cands.filter(c => { const ck = schoolKey(c.school); return sk && ck && (sk.includes(ck) || ck.includes(sk)); });
         const uniq = [...new Set(hits.map(h => h.url).filter(Boolean))];
         if (uniq.length === 1) {
-          const rec = appByKey[nameKey(p['Name'])];
-          if (rec && url247Col >= 0) {
+          let rec = appByKey[nameKey(p['Name'])];
+          if (!rec && appNameCol >= 0 && url247Col >= 0 && !dryRun) {
+            // No AppData row yet (new athlete, or the sheet name was corrected
+            // after the row was created) — append one with just name + link.
+            const newRow = appHeaders.map((_, j) => j === appNameCol ? p['Name'] : (j === url247Col ? uniq[0] : ''));
+            await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('AppData!A:AZ')}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+              method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ values: [newRow] }),
+            });
+            appRowTotal += 1;
+            rec = appByKey[nameKey(p['Name'])] = { row: appRowTotal, cells: newRow };
+            disc.found++;
+          } else if (rec && url247Col >= 0) {
             if (!dryRun) await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(url247Col)}${rec.row}`, values: [[uniq[0]]] }]);
             rec.cells[url247Col] = uniq[0]; // photo pass below picks it up this same run
             disc.found++;
@@ -476,16 +488,24 @@ module.exports = async (req, res) => {
         const cls = parseInt(String(p[hsHeaders[classCol]] || '').replace(/\D/g, ''), 10);
         const now = new Date().getUTCFullYear();
         const years = cls ? [cls] : [now, now + 1, now + 2, now + 3];
+        // The name filter is a contains-match, so "Anthony Lopez Jr." won't hit
+        // 247's "Anthony Lopez", and sheet typos hit nothing. Fall back to a
+        // suffix-stripped name, then to the name baked into the saved URL's slug
+        // — the URL comparison keeps every variant exact.
+        const stripSuffix = s => String(s || '').replace(/[,.]/g, ' ').replace(/\s+(jr|sr|ii|iii|iv|v)\s*$/i, '').replace(/\s+/g, ' ').trim();
+        const slugM = url.match(/\/player\/([a-z0-9-]+?)(?:-\d+)?\/?$/i);
+        const queries = [...new Set([p['Name'], stripSuffix(p['Name']), slugM ? slugM[1].replace(/-/g, ' ') : ''].filter(Boolean))];
         let hit = null, hitYear = 0;
-        for (const y of years) {
-          try {
-            const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(p['Name'])}`, true);
-            for (const r of JSON.parse(body) || []) {
-              const pl = r.Player || {};
-              if (urlKey(pl.Url) === urlKey(url)) { hit = pl; hitYear = r.Year || y; break; }
-            }
-          } catch (e) { enrich.errors.push(`${p['Name']} (${y}): ${e.message}`); }
-          if (hit) break;
+        outer: for (const q of queries) {
+          for (const y of years) {
+            try {
+              const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(q)}`, true);
+              for (const r of JSON.parse(body) || []) {
+                const pl = r.Player || {};
+                if (urlKey(pl.Url) === urlKey(url)) { hit = pl; hitYear = r.Year || y; break outer; }
+              }
+            } catch (e) { enrich.errors.push(`${p['Name']} (${y}): ${e.message}`); }
+          }
         }
         if (!hit) { enrich.errors.push(`${p['Name']}: no 247 row matched saved link`); return; }
         const ups = [];
