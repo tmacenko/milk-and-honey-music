@@ -2012,6 +2012,30 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster }) {
     };
   }, [athletes]);
 
+  // Depth chart drill-down (opened from the Starters card): NFL + College
+  // athletes grouped by rank, with everyone unranked at the bottom.
+  const [depthOpen, setDepthOpen] = useState(false);
+  const [depthLevel, setDepthLevel] = useState('All');
+  const depth = useMemo(() => {
+    const byName = (p, q) => p.name.localeCompare(q.name);
+    const pool = athletes.filter(a => a.level === 'NFL' || a.level === 'College');
+    const g = { starters: [], second: [], deeper: [], none: [] };
+    for (const a of pool) {
+      if (a.depthRank === 1) g.starters.push(a);
+      else if (a.depthRank === 2) g.second.push(a);
+      else if (a.depthRank >= 3) g.deeper.push(a);
+      else g.none.push(a);
+    }
+    Object.values(g).forEach(l => l.sort(byName));
+    return g;
+  }, [athletes]);
+  useEffect(() => {
+    if (!depthOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [depthOpen]);
+
   const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 7 };
   const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
@@ -2056,7 +2080,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster }) {
           <div style={statLabel}>Recently signed</div>
           <div style={{ ...statSub, color: s.signed.length ? G.green : G.textSecondary }}>Last 30 days</div>
         </div>
-        <div style={card}>
+        <div style={{ ...card, cursor: "pointer" }} onClick={() => setDepthOpen(true)}>
           <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.starters}</div>
           <div style={statLabel}>Starters</div>
           <div style={statSub}>{s.nflStarters} NFL · {s.collegeStarters} College</div>
@@ -2085,6 +2109,52 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster }) {
             )}
         </div>
       </div>
+
+      {depthOpen && (() => {
+        const lvlOf = (list) => depthLevel === 'All' ? list : list.filter(a => a.level === depthLevel);
+        const section = (label, list, accent) => {
+          const shown = lvlOf(list);
+          if (!shown.length) return null;
+          return (
+            <div key={label} style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: accent ? G.green : G.textTertiary, marginBottom: 6 }}>{label} · {shown.length}</div>
+              {shown.map((a, i) => (
+                <div key={a.id || i} onClick={() => { setDepthOpen(false); onOpenAthlete(a); }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: i < shown.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer" }}>
+                  <div style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {a.name} <span style={{ color: G.textTertiary, fontSize: 12 }}>· {a.nflTeam || a.college}</span>
+                  </div>
+                  {a.depthPos && <span style={{ fontSize: 11, fontWeight: 700, color: accent ? G.green : G.textSecondary, background: accent ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${accent ? G.greenBorder : G.surfaceBorder}`, borderRadius: 7, padding: "2px 8px", flexShrink: 0 }}>{a.depthPos}</span>}
+                </div>
+              ))}
+            </div>
+          );
+        };
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setDepthOpen(false)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 520, maxHeight: "84vh", display: "flex", flexDirection: "column", animation: "modalIn .18s ease" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 18px 12px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+                <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em", flex: 1 }}>Depth chart</div>
+                <div style={{ display: "flex", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, overflow: "hidden" }}>
+                  {['All', 'NFL', 'College'].map((l, i) => (
+                    <button key={l} onClick={() => setDepthLevel(l)}
+                      style={{ padding: "6px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", background: depthLevel === l ? G.greenSubtle : "transparent", color: depthLevel === l ? G.green : G.textSecondary, fontWeight: depthLevel === l ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff }}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setDepthOpen(false)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+              </div>
+              <div style={{ overflowY: "auto", padding: "14px 18px 18px" }}>
+                {section('Starters', depth.starters, true)}
+                {section('2nd string', depth.second)}
+                {section('3rd string & below', depth.deeper)}
+                {section('Not on a depth chart', depth.none)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
