@@ -266,7 +266,7 @@ module.exports = async (req, res) => {
     const sample = names.slice(0, 3).map(n => ({ name: handles[n].name, ig: results[n].ig, x: results[n].tw, tiktok: results[n].tk }));
 
     return res.json({
-      success: true, dryRun, athletesProcessed: names.length, tasksRun: run.done,
+      success: true, dryRun, proxyActive: !!proxyDispatcher, athletesProcessed: names.length, tasksRun: run.done,
       timedOut: run.timedOut, cellsWritten: dryRun ? 0 : updates.length,
       platforms: stats, guestTokenObtained: !!guestToken, sample,
     });

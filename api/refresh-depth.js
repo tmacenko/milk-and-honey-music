@@ -412,7 +412,7 @@ module.exports = async (req, res) => {
     }
 
     return res.json({
-      success: true, dryRun, task, timedOut,
+      success: true, dryRun, task, timedOut, proxyActive: !!proxyDispatcher,
       teamsFetched: Object.keys(byUrl).length,
       matched: matches.length, unmatchedCount: unmatched.length,
       cellsWritten,
