@@ -403,6 +403,7 @@ module.exports = async (req, res) => {
       // school; anything else stays manual and is flagged in the job report.
       const disc = hs247.discovery;
       const schoolKey = s => String(s || '').toLowerCase()
+        .replace(/\bsaint\b/g, 'st').replace(/\bmount\b/g, 'mt').replace(/\bfort\b/g, 'ft')
         .replace(/\b(high school|hs|senior|academy|prep|preparatory|school)\b/g, '')
         .replace(/[^a-z]/g, '');
       const needUrl = hsPlayers.filter(p => {
@@ -416,7 +417,7 @@ module.exports = async (req, res) => {
         discLookups++;
         const cls = parseInt(String(p['ClassOf'] || '').replace(/\D/g, ''), 10);
         const now = new Date().getUTCFullYear();
-        const years = cls ? [cls] : [now + 1, now + 2, now + 3, now + 4];
+        const years = cls ? [cls] : [now, now + 1, now + 2, now + 3];
         const cands = [];
         for (const y of years) {
           try {

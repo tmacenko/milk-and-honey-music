@@ -606,7 +606,7 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
 // ── Athlete edit form (sports) ────────────────────────────────────────────────
 // Identity fields write to the athlete's level tab; enrichment fields write to
 // AppData (matched by name server-side). Mirrors the music ClientForm UX.
-function AthleteForm({ initial, onSave, onCancel }) {
+function AthleteForm({ initial, onSave, onCancel, staffNames }) {
   const [form, setForm] = useState({ ...initial });
   const [saving, setSaving] = useState(false);
   const [photoHint, setPhotoHint] = useState(false);
@@ -687,6 +687,37 @@ function AthleteForm({ initial, onSave, onCancel }) {
                   })}
                 </div>
               </Field>
+            </div>
+            <Field label="Lead Agent">
+              <select value={form.agentAssigned || ''} onChange={e => set('agentAssigned', e.target.value)} style={{ ...inputBase, cursor: "pointer" }}>
+                <option value="">—</option>
+                {form.agentAssigned && !(staffNames || []).includes(form.agentAssigned) && <option value={form.agentAssigned}>{form.agentAssigned}</option>}
+                {(staffNames || []).map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </Field>
+            <Field label="Birthday"><Input value={form.birthday} onChange={e => set('birthday', e.target.value)} placeholder="6/14/2007" /></Field>
+            <Field label="ESPN ID">
+              <Input value={form.espnId} onChange={e => set('espnId', e.target.value.replace(/\D/g, ''))} placeholder="Auto-found nightly — fill to pin" />
+            </Field>
+            {form.level === 'High School' ? (
+              <Field label="Class Of"><Input value={form.classOf} onChange={e => set('classOf', e.target.value)} placeholder="2027" /></Field>
+            ) : <div />}
+            {form.level === 'High School' && (
+              <div style={{ gridColumn: "1/-1" }}>
+                <Field label="Commitment"><Input value={form.committedTo} onChange={e => set('committedTo', e.target.value)} placeholder="School they've committed to (blank if uncommitted)" /></Field>
+              </div>
+            )}
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Sizes">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px 12px" }}>
+                  {[['shirtSize', 'Shirt'], ['hoodieSize', 'Hoodie'], ['shortsSize', 'Shorts'], ['sweatpantsSize', 'Pants'], ['shoeSize', 'Shoes'], ['glovesSize', 'Gloves']].map(([k, lab]) => (
+                    <input key={k} type="text" value={form[k] || ''} onChange={e => set(k, e.target.value)} placeholder={lab} style={inputBase} />
+                  ))}
+                </div>
+              </Field>
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Gaming System"><Input value={form.gamingSystem} onChange={e => set('gamingSystem', e.target.value)} placeholder="PS5, Xbox..." /></Field>
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
@@ -2591,6 +2622,8 @@ function App() {
   // Sports domain: music lives at "/" + "/{slug}", sports at "/sports" + "/sports/{slug}".
   const [athletes, setAthletes] = useState([]);
   const [athletesLoaded, setAthletesLoaded] = useState(false);
+  // Staff directory (names only) from /api/athletes — feeds the Lead Agent dropdown.
+  const [sportsStaff, setSportsStaff] = useState([]);
   const [sportsLevel, setSportsLevel] = useState('All');
   // Depth chart filter (employee-only control): All / Starters / Backups / Not on chart.
   const [depthFilter, setDepthFilter] = useState('All');
@@ -2710,7 +2743,7 @@ function App() {
     if (!gateUnlocked || domain !== 'sports' || athletesLoaded) return;
     fetch('/api/athletes')
       .then(r => r.json())
-      .then(d => { setAthletes(d.athletes || []); setAthletesLoaded(true); })
+      .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); setAthletesLoaded(true); })
       .catch(() => setAthletesLoaded(true));
   }, [gateUnlocked, domain, athletesLoaded]);
 
@@ -3418,7 +3451,7 @@ function App() {
       {editing && <ClientForm initial={editing} onSave={saveClient} onCancel={() => setEditing(null)} staff={staff} clients={clients} />}
 
       {/* Athlete edit modal (sports) */}
-      {editingAthlete && <AthleteForm initial={editingAthlete} onSave={saveAthlete} onCancel={() => setEditingAthlete(null)} />}
+      {editingAthlete && <AthleteForm initial={editingAthlete} staffNames={sportsStaff} onSave={saveAthlete} onCancel={() => setEditingAthlete(null)} />}
 
       {/* Chat — temporarily disabled (component kept; re-enable by uncommenting) */}
       {/* {!loading && <FloatingChat clients={clients} isMobile={isMobile} />} */}

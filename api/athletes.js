@@ -293,6 +293,15 @@ async function saveAthlete(token, body) {
     'Team': a.level === 'NFL' ? a.nflTeam : undefined,
     'School': a.level !== 'NFL' ? a.college : undefined,
     'Instagram': a.instagram, 'Twitter': a.twitter, 'TikTok': a.tiktok, 'Tiktok': a.tiktok,
+    'Agent': a.agentAssigned, 'Lead Agent': a.agentAssigned,
+    'Birthday': a.birthday,
+    'ClassOf': a.level === 'High School' ? a.classOf : undefined,
+    'Class Of': a.level === 'High School' ? a.classOf : undefined,
+    'Commitment': a.level === 'High School' ? a.committedTo : undefined,
+    'Committed': a.level === 'High School' ? a.committedTo : undefined,
+    'Shirt': a.shirtSize, 'Hoodie': a.hoodieSize, 'Shorts': a.shortsSize,
+    'Pants': a.sweatpantsSize, 'Shoes': a.shoeSize, 'Gloves': a.glovesSize,
+    'Gaming System': a.gamingSystem,
   };
   const updates = [];
   baseHeaders.forEach((h, i) => {
@@ -312,6 +321,7 @@ async function saveAthlete(token, body) {
     heroImageUrl: a.heroImageUrl,
     teamOverride: a.teamOverride,
     profileUrl247: a.profileUrl247,
+    espnId: a.espnId,
     status: a.status, tiktok: a.tiktok,
     interests: Array.isArray(a.interests) ? a.interests.join(', ') : a.interests,
     brands: Array.isArray(a.brands) ? a.brands.join(', ') : a.brands,
@@ -1047,13 +1057,15 @@ module.exports = async (req, res) => {
 
   try {
     const token = await getToken();
-    const [nfl, col, hs, app, auto] = await Promise.all([
+    const [nfl, col, hs, app, auto, staffD] = await Promise.all([
       sheetGet(token, 'NFL!A:P'),
       sheetGet(token, 'College!A:Q'),
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
       sheetGet(token, "'AutoSync'!A:L").catch(() => ({ values: [] })), // pre-migration tolerance
+      sheetGet(token, "'Staff'!A:A").catch(() => ({ values: [] })),    // names only — never the password column
     ]);
+    const staffNames = (staffD.values || []).slice(1).map(r => String(r[0] || '').trim()).filter(Boolean);
 
     const appMap = {};
     parseRows(app).forEach(r => { const k = (r['name'] || r['Name'] || '').toLowerCase().trim(); if (k) appMap[k] = r; });
@@ -1086,7 +1098,13 @@ module.exports = async (req, res) => {
       athletes = (publicColumnExists ? athletes.filter(a => a.public) : athletes).map(pickPublic);
     }
 
-    return res.json({ athletes, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists, user: authState(req).user });
+    return res.json({
+      athletes, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists,
+      user: authState(req).user,
+      // Staff directory (names only) feeds the Lead Agent dropdown in the edit
+      // form — internal, so only sent to logged-in company sessions.
+      ...(!configured || admin ? { staff: staffNames } : {}),
+    });
   } catch (err) {
     console.error('Athletes error:', err.message);
     return res.status(500).json({ error: err.message });
