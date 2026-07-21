@@ -2010,23 +2010,32 @@ const agentMatch = (agent, key) => {
 function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, user }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Agents see THEIR book everywhere: every stat and tile computes over their
+  // clients when they have any. The house login (no user) stays roster-wide.
+  const mineList = useMemo(
+    () => (user?.agentKey ? athletes.filter(a => agentMatch(a.agentAssigned, user.agentKey)) : []),
+    [athletes, user]);
+  const personal = mineList.length > 0;
+  const scoped = personal ? mineList : athletes;
+  const topClients = useMemo(
+    () => (personal ? [...mineList].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 4) : []),
+    [personal, mineList]);
   const s = useMemo(() => {
     const levels = { 'NFL': 0, 'College': 0, 'High School': 0 };
-    let ig = 0, tt = 0, x = 0, starters = 0, nflStarters = 0, collegeStarters = 0, mine = 0;
-    for (const a of athletes) {
+    let ig = 0, tt = 0, x = 0, starters = 0, nflStarters = 0, collegeStarters = 0;
+    for (const a of scoped) {
       if (levels[a.level] != null) levels[a.level]++;
       ig += countFrom(a.igFollowers); tt += countFrom(a.tiktokFollowers); x += countFrom(a.twitterFollowers);
       if (a.depthRank === 1) { starters++; if (a.level === 'NFL') nflStarters++; else if (a.level === 'College') collegeStarters++; }
-      if (user?.agentKey && agentMatch(a.agentAssigned, user.agentKey)) mine++;
     }
     const reach = ig + tt + x;
     const pct = (n) => reach ? Math.round((n / reach) * 100) : 0;
-    const signed = athletes.map(a => {
+    const signed = scoped.map(a => {
       const d = parseSheetDate(a.onboardedAt);
       return d && d.year ? { a, date: new Date(d.year, d.month - 1, d.day) } : null;
     }).filter(x2 => x2 && x2.date <= today && (today - x2.date) / 86400000 <= 30)
       .sort((p, q) => q.date - p.date);
-    const bdays = athletes.map(a => {
+    const bdays = scoped.map(a => {
       const d = parseSheetDate(a.birthday);
       if (!d) return null;
       let next = new Date(today.getFullYear(), d.month - 1, d.day);
@@ -2034,11 +2043,11 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       return { a, date: next };
     }).filter(Boolean).sort((p, q) => p.date - q.date);
     return {
-      levels, reach, starters, nflStarters, collegeStarters, mine, signed, bdays,
+      levels, reach, starters, nflStarters, collegeStarters, mine: mineList.length, signed, bdays,
       splits: { ig: pct(ig), tt: pct(tt), x: pct(x) },
       week: bdays.filter(b => (b.date - today) / 86400000 < 7),
     };
-  }, [athletes, user]);
+  }, [scoped, mineList]);
 
   const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 7 };
@@ -2070,7 +2079,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
-        {s.mine > 0 ? (
+        {personal ? (
           <div style={{ ...card, cursor: "pointer" }} onClick={onShowMine}>
             <div style={{ fontSize: 26, fontWeight: 700, color: G.green, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.mine}</div>
             <div style={statLabel}>My clients</div>
@@ -2085,7 +2094,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         )}
         <div style={card}>
           <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{bigNum(s.reach)}</div>
-          <div style={statLabel}>Combined reach</div>
+          <div style={statLabel}>{personal ? "My clients' reach" : 'Combined reach'}</div>
           <div style={statSub}>{s.reach ? `IG ${s.splits.ig}% · TikTok ${s.splits.tt}% · X ${s.splits.x}%` : 'No follower data yet'}</div>
         </div>
         <div style={card}>
@@ -2095,10 +2104,24 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         </div>
         <div style={{ ...card, cursor: "pointer" }} onClick={onShowStarters}>
           <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.starters}</div>
-          <div style={statLabel}>Starters</div>
+          <div style={statLabel}>{personal ? 'My starters' : 'Starters'}</div>
           <div style={statSub}>{s.nflStarters} NFL · {s.collegeStarters} College</div>
         </div>
       </div>
+
+      {topClients.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>My top clients</div>
+            <div style={{ fontSize: 11, color: G.textTertiary }}>By combined reach</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
+            {topClients.map((a, i) => (
+              <SportsCard key={a.id || i} athlete={a} isMobile={false} showDepth onClick={() => onOpenAthlete(a)} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 10 }}>
         <div style={card}>
@@ -3171,7 +3194,7 @@ function App() {
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser}
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => setSportsPage('roster')}
-                  onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); setMineOnly(false); setSportsPage('roster'); }}
+                  onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); setSportsPage('roster'); }}
                   onShowMine={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(true); setSportsPage('roster'); }} />
               )}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} />}
