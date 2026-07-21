@@ -280,6 +280,28 @@ const pickPublic = a => {
   return o;
 };
 
+// Deck previews: each Box share page exposes the current PDF's cover as
+// og:image, but the URL is pinned to the file VERSION — so resolve it fresh
+// (cached per warm instance) and re-uploaded decks keep a working preview.
+const DECK_LINKS = [
+  { title: 'Sports deck', desc: 'Company overview — always the latest version.', url: 'https://milkhoneyla.box.com/s/mbtbvud2p7rgjloiq49tygxn4az1zkie' },
+  { title: 'NIL deck', desc: 'NIL-specific pitch — always the latest version.', url: 'https://milkhoneyla.box.com/s/415ekwg8iukftyr28bp924zfm5wp3rox' },
+];
+let deckCache = { at: 0, decks: null };
+async function getDecks() {
+  if (deckCache.decks && Date.now() - deckCache.at < 6 * 3600 * 1000) return deckCache.decks;
+  const decks = await Promise.all(DECK_LINKS.map(async d => {
+    try {
+      const r = await fetch(d.url, { headers: { 'User-Agent': 'Mozilla/5.0' }, redirect: 'follow' });
+      const html = await r.text();
+      const m = html.match(/property="og:image" content="([^"]+)"/);
+      return { ...d, thumb: m ? m[1].replace(/&amp;/g, '&') : '' };
+    } catch { return { ...d, thumb: '' }; }
+  }));
+  deckCache = { at: Date.now(), decks };
+  return decks;
+}
+
 // ── Write support (admin-only) ────────────────────────────────────────────────
 // Base tabs own identity fields (Name/Position/Team/socials, addressed by
 // _rowIndex); AppData owns the enrichment fields (matched by athlete name, or
@@ -1064,13 +1086,14 @@ module.exports = async (req, res) => {
 
   try {
     const token = await getToken();
-    const [nfl, col, hs, app, auto, staffD] = await Promise.all([
+    const [nfl, col, hs, app, auto, staffD, decks] = await Promise.all([
       sheetGet(token, 'NFL!A:P'),
       sheetGet(token, 'College!A:Q'),
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
       sheetGet(token, "'AutoSync'!A:R").catch(() => ({ values: [] })), // pre-migration tolerance
       sheetGet(token, "'Staff'!A:A").catch(() => ({ values: [] })),    // names only — never the password column
+      getDecks().catch(() => null),
     ]);
     const staffNames = (staffD.values || []).slice(1).map(r => String(r[0] || '').trim()).filter(Boolean);
 
@@ -1109,8 +1132,9 @@ module.exports = async (req, res) => {
       athletes, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists,
       user: authState(req).user,
       // Staff directory (names only) feeds the Lead Agent dropdown in the edit
-      // form — internal, so only sent to logged-in company sessions.
-      ...(!configured || admin ? { staff: staffNames } : {}),
+      // form — internal, so only sent to logged-in company sessions. Decks
+      // (Box links + live cover thumbnails) feed the dashboard/Resources cards.
+      ...(!configured || admin ? { staff: staffNames, decks: decks || undefined } : {}),
     });
   } catch (err) {
     console.error('Athletes error:', err.message);

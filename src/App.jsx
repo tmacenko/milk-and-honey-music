@@ -2052,7 +2052,7 @@ const agentMatch = (agent, key) => {
   return !!a && !!k && (a === k || a.includes(k) || k.includes(a));
 };
 
-function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, user }) {
+function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, user, decks }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Agents see THEIR book everywhere: every stat and tile computes over their
@@ -2236,6 +2236,15 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               x2.a.id || i, i === arr.length - 1))}
         {s.incomplete.length > 8 && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>+ {s.incomplete.length - 8} more — open any profile and hit Edit to fill in the gaps.</div>}
       </div>
+
+      {(decks || []).length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Decks</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+            {decks.map(d => <DeckCard key={d.title} deck={d} />)}
+          </div>
+        </div>
+      )}
 
     </div>
   );
@@ -2573,7 +2582,7 @@ function parseNflTeams(data) {
   return teams;
 }
 
-function ResourcesPage({ isMobile }) {
+function ResourcesPage({ isMobile, decks }) {
   const nfl = useAdminTab('nflteams');
   const regs = useAdminTab('stateregs');
   const [q, setQ] = useState('');
@@ -2597,19 +2606,7 @@ function ResourcesPage({ isMobile }) {
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Resources</div>
       <div style={{ marginBottom: 10 }}>{heading('Decks')}</div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 24 }}>
-        {DECKS.map(d => (
-          <a key={d.title} href={d.url} target="_blank" rel="noopener noreferrer"
-            style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, display: "flex", alignItems: "center", gap: 12, textDecoration: "none" }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: G.greenSubtle, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: G.green }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 2v6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{d.title}</div>
-              <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{d.desc}</div>
-            </div>
-            <div style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: G.green, flexShrink: 0 }}>Open ↗</div>
-          </a>
-        ))}
+        {(decks || DECKS).map(d => <DeckCard key={d.title} deck={d} />)}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
         {heading('NFL team directory')}
@@ -2655,10 +2652,32 @@ function ResourcesPage({ isMobile }) {
 }
 
 // Live Box links — the PDFs behind them get updated, the links stay the same.
+// The API adds a live cover `thumb` for each; this is the thumbnail-less fallback.
 const DECKS = [
   { title: 'Sports deck', desc: 'Company overview — always the latest version.', url: 'https://milkhoneyla.box.com/s/mbtbvud2p7rgjloiq49tygxn4az1zkie' },
   { title: 'NIL deck', desc: 'NIL-specific pitch — always the latest version.', url: 'https://milkhoneyla.box.com/s/415ekwg8iukftyr28bp924zfm5wp3rox' },
 ];
+
+function DeckCard({ deck: d }) {
+  return (
+    <a href={d.url} target="_blank" rel="noopener noreferrer"
+      style={{ display: "block", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden", textDecoration: "none" }}>
+      {d.thumb && (
+        <div style={{ height: 150, background: "#0a0a0a", overflow: "hidden" }}>
+          <img src={d.thumb} alt={`${d.title} cover`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            onError={e => { e.currentTarget.parentElement.style.display = 'none'; }} />
+        </div>
+      )}
+      <div style={{ padding: 14, display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{d.title}</div>
+          <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{d.desc}</div>
+        </div>
+        <div style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: G.green, flexShrink: 0 }}>Open ↗</div>
+      </div>
+    </a>
+  );
+}
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
@@ -2691,6 +2710,8 @@ function App() {
   const [athletesLoaded, setAthletesLoaded] = useState(false);
   // Staff directory (names only) from /api/athletes — feeds the Lead Agent dropdown.
   const [sportsStaff, setSportsStaff] = useState([]);
+  // Decks with live Box cover thumbnails (API-resolved); DECKS is the fallback.
+  const [sportsDecks, setSportsDecks] = useState(null);
   const [sportsLevel, setSportsLevel] = useState('All');
   // Depth chart filter (employee-only control): All / Starters / Backups / Not on chart.
   const [depthFilter, setDepthFilter] = useState('All');
@@ -2810,7 +2831,7 @@ function App() {
     if (!gateUnlocked || domain !== 'sports' || athletesLoaded) return;
     fetch('/api/athletes')
       .then(r => r.json())
-      .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); setAthletesLoaded(true); })
+      .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); if (d.decks) setSportsDecks(d.decks); setAthletesLoaded(true); })
       .catch(() => setAthletesLoaded(true));
   }, [gateUnlocked, domain, athletesLoaded]);
 
@@ -3443,7 +3464,7 @@ function App() {
                 <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} />
               )}
               {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
-                <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser}
+                <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} decks={sportsDecks || DECKS}
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => goSportsPage('roster')}
                   onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); goSportsPage('roster'); }}
@@ -3451,7 +3472,7 @@ function App() {
               )}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} onPromoted={() => setAthletesLoaded(false)} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} />}
-              {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} />}
+              {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
                   {filteredAthletes.length === 0 ? (
