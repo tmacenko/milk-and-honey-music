@@ -635,6 +635,15 @@ module.exports = async (req, res) => {
   if (tabKey) {
     const { configured, admin } = authState(req);
     if (configured && !admin) return res.status(403).json({ error: 'Admin only' });
+    // Diagnostic: list the spreadsheet's tab titles.
+    if (tabKey === 'titles') {
+      try {
+        const token = await getToken();
+        const meta = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties`, {
+          headers: { Authorization: `Bearer ${token}` } })).json();
+        return res.json({ titles: (meta.sheets || []).map(s => s.properties.title) });
+      } catch (err) { return res.status(500).json({ error: err.message }); }
+    }
     const tab = ADMIN_TABS[tabKey];
     if (!tab) return res.status(400).json({ error: 'Unknown tab' });
     try {
