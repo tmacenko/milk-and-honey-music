@@ -1575,7 +1575,7 @@ function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
   );
 }
 
-function SportsDetail({ athlete: a, isMobile }) {
+function SportsDetail({ athlete: a, isMobile, hideContact }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
   const typeLine = [a.position, team].filter(Boolean).join('  ·  ');
@@ -1620,11 +1620,13 @@ function SportsDetail({ athlete: a, isMobile }) {
               {/* Name + Contact button on one line (mirrors the music detail page). */}
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                 <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.05, flex: 1, minWidth: 0 }}>{a.name}</h1>
-                <a href={`mailto:marketing@milkhoneysports.com?subject=${encodeURIComponent('Partnership inquiry — ' + a.name)}`}
-                  style={{ display: "flex", alignItems: "center", gap: 7, background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: isMobile ? "8px 10px" : "9px 14px", textDecoration: "none", flexShrink: 0, marginTop: 4 }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z" stroke={G.green} strokeWidth="2"/><path d="m22 6-10 7L2 6" stroke={G.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  {!isMobile && <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact</span>}
-                </a>
+                {!hideContact && (
+                  <a href={`mailto:marketing@milkhoneysports.com?subject=${encodeURIComponent('Partnership inquiry — ' + a.name)}`}
+                    style={{ display: "flex", alignItems: "center", gap: 7, background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: isMobile ? "8px 10px" : "9px 14px", textDecoration: "none", flexShrink: 0, marginTop: 4 }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z" stroke={G.green} strokeWidth="2"/><path d="m22 6-10 7L2 6" stroke={G.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    {!isMobile && <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact</span>}
+                  </a>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
                 <TeamLogo url={a.teamLogo} size={26} />
@@ -2101,8 +2103,18 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     const incomplete = scoped.map(a => ({ a, missing: missingOf(a) }))
       .filter(x2 => x2.missing.length)
       .sort((p, q) => q.missing.length - p.missing.length);
+    // 7-day movers, from the socials job's growth columns. Until a week of
+    // snapshots exists, growth7dPct is blank everywhere → sample mode.
+    const hasGrowthData = scoped.some(a => a.growth7dPct !== '' && a.growth7dPct != null);
+    const hot = hasGrowthData
+      ? scoped.filter(a => (a.growth7d || 0) > 0)
+        .sort((p, q) => (q.growth7d || 0) - (p.growth7d || 0)).slice(0, 5)
+        .map(a => ({ a, delta: a.growth7d, pct: a.growth7dPct }))
+      : [...scoped].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 4)
+        .map((a, i) => ({ a, delta: [12400, 8100, 4700, 2300][i] || 1500, pct: ['2.1', '1.4', '0.9', '0.6'][i] || '0.4', sample: true }));
     return {
       levels, reach, starters, nflStarters, collegeStarters, mine: mineList.length, signed, bdays, incomplete,
+      hot, hasGrowthData,
       splits: { ig: pct(ig), tt: pct(tt), x: pct(x) },
       week: bdays.filter(b => (b.date - today) / 86400000 < 7),
     };
@@ -2182,7 +2194,15 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
+        <div style={card}>
+          {tileHead('Hot this week', s.hasGrowthData ? '7-day growth' : 'Sample preview')}
+          {s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
+            : s.hot.map((x2, i, arr) => row(x2.a, x2.a.level,
+              <span style={{ color: G.green, fontWeight: 700 }}>+{bigNum(x2.delta)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>· {x2.pct}%</span></span>,
+              x2.a.id || i, i === arr.length - 1))}
+          {!s.hasGrowthData && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>Sample numbers — daily snapshots start tonight; real growth appears within a week.</div>}
+        </div>
         <div style={card}>
           {tileHead('Recently signed', 'Last 30 days')}
           {s.signed.length === 0 ? empty('No new signings in the last 30 days.')
@@ -3420,7 +3440,7 @@ function App() {
           {domain === 'sports' ? (
             <>
               {!error && athletesLoaded && view === 'detail' && selected && (
-                <SportsDetail athlete={selected} isMobile={isMobile} />
+                <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} />
               )}
               {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser}

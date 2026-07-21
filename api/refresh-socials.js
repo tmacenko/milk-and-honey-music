@@ -273,9 +273,8 @@ module.exports = async (req, res) => {
       missing.forEach((n, k) => { rowByName[n] = { i: rows.length + k }; });
     }
 
-    let names = Object.keys(handles).filter(n => rowByName[n]);
-    names.sort();
-    names = names.slice(offset, offset + limit); // offset+Infinity → to the end
+    const allNames = Object.keys(handles).filter(n => rowByName[n]).sort();
+    let names = allNames.slice(offset, offset + limit); // offset+Infinity → to the end
 
     const guestToken = only.includes('x') ? await getGuestToken() : null;
     const results = {}; // nameLower -> { ig, tw, tk }
@@ -302,13 +301,129 @@ module.exports = async (req, res) => {
     }
     if (!dryRun) await sheetBatchUpdate(token, updates);
 
+    // ── Social history + 7-day growth ────────────────────────────────────────
+    // One snapshot row per athlete per day (raw numbers) in the SocialHistory
+    // tab, then each athlete's total-follower delta vs the snapshot closest to
+    // a week ago (3–10 day window) lands in AutoSync growth7d/growth7dPct for
+    // the dashboard's "Hot this week" tile.
+    const history = { snapshots: 0, growthWritten: 0, pruned: 0, error: null };
+    try {
+      const parseCount = (s) => {
+        const t = String(s ?? '').trim().replace(/,/g, '');
+        if (!t) return null;
+        const m = t.match(/^([\d.]+)\s*([KMB])?$/i);
+        if (!m) return null;
+        const mult = { K: 1e3, M: 1e6, B: 1e9 }[(m[2] || '').toUpperCase()] || 1;
+        const n = parseFloat(m[1]) * mult;
+        return Number.isFinite(n) ? Math.round(n) : null;
+      };
+      const HIST_HEAD = ['date', 'name', 'igFollowers', 'twitterFollowers', 'tiktokFollowers'];
+      let hist = null;
+      try { hist = await sheetGet(token, "'SocialHistory'!A:E"); }
+      catch {
+        if (!dryRun) {
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'SocialHistory', hidden: true, gridProperties: { rowCount: 20000, columnCount: 5 } } } }] }),
+          });
+          await sheetAppendRows(token, "'SocialHistory'!A:E", [HIST_HEAD]);
+          hist = { values: [HIST_HEAD] };
+        }
+      }
+      // Today's number per athlete: fresh fetch if we got one, else the
+      // last-known AutoSync value — so IG kids still snapshot on non-IG days.
+      const today = new Date().toISOString().slice(0, 10);
+      const current = {};
+      for (const n of allNames) {
+        const cells = rows[rowByName[n].i] || [];
+        const r = results[n] || {};
+        current[n] = {
+          ig: r.ig != null ? r.ig : parseCount(igCol >= 0 ? cells[igCol] : null),
+          tw: r.tw != null ? r.tw : parseCount(twCol >= 0 ? cells[twCol] : null),
+          tk: r.tk != null ? r.tk : parseCount(tkCol >= 0 ? cells[tkCol] : null),
+        };
+      }
+      const histRows = (hist?.values || []).slice(1);
+      const alreadyToday = histRows.some(r => r[0] === today);
+      if (hist && !alreadyToday) {
+        const snapRows = allNames
+          .filter(n => { const c = current[n]; return c.ig != null || c.tw != null || c.tk != null; })
+          .map(n => [today, handles[n].name, current[n].ig ?? '', current[n].tw ?? '', current[n].tk ?? '']);
+        if (!dryRun && snapRows.length) await sheetAppendRows(token, "'SocialHistory'!A:E", snapRows);
+        history.snapshots = snapRows.length;
+      }
+      // Baseline lookup: per athlete, the snapshot aged 3–10 days closest to 7.
+      const baseline = {};
+      for (const r of histRows) {
+        const d = new Date(r[0]);
+        if (isNaN(d)) continue;
+        const age = (Date.now() - d.getTime()) / 86400000;
+        if (age < 3 || age > 10) continue;
+        const total = (parseCount(r[2]) || 0) + (parseCount(r[3]) || 0) + (parseCount(r[4]) || 0);
+        if (!total) continue;
+        const k = String(r[1] || '').toLowerCase().trim();
+        if (!baseline[k] || Math.abs(age - 7) < Math.abs(baseline[k].age - 7)) baseline[k] = { age, total };
+      }
+      if (Object.keys(baseline).length) {
+        // Make sure AutoSync has the growth columns (full header row, not the
+        // narrow A:F read above — never clobber the ESPN columns).
+        const fullHead = ((await sheetGet(token, "'AutoSync'!1:1")).values?.[0] || []).map(h => String(h || '').trim());
+        const needCols = ['growth7d', 'growth7dPct'].filter(h => !fullHead.some(x => x.toLowerCase() === h.toLowerCase()));
+        if (needCols.length && !dryRun) {
+          const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties(columnCount)))`, { headers: { Authorization: `Bearer ${token}` } });
+          const meta = await metaR.json();
+          const asMeta = (meta.sheets || []).find(s => (s.properties?.title || '').trim() === 'AutoSync');
+          const width = asMeta?.properties?.gridProperties?.columnCount || fullHead.length;
+          if (asMeta && fullHead.length + needCols.length > width) {
+            await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+              method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ requests: [{ appendDimension: { sheetId: asMeta.properties.sheetId, dimension: 'COLUMNS', length: fullHead.length + needCols.length - width } }] }),
+            });
+          }
+          await sheetBatchUpdate(token, [{ range: `'AutoSync'!${colLetter(fullHead.length)}1`, values: [needCols] }]);
+          fullHead.push(...needCols);
+        }
+        const g7Col = fullHead.findIndex(h => h.toLowerCase() === 'growth7d');
+        const gPctCol = fullHead.findIndex(h => h.toLowerCase() === 'growth7dpct');
+        const gUpdates = [];
+        for (const n of allNames) {
+          const past = baseline[n];
+          if (!past || g7Col < 0 || gPctCol < 0) continue;
+          const c = current[n];
+          const nowTotal = (c.ig || 0) + (c.tw || 0) + (c.tk || 0);
+          if (!nowTotal) continue;
+          const delta = nowTotal - past.total;
+          const rowNum = rowByName[n].i + 1;
+          gUpdates.push({ range: `'AutoSync'!${colLetter(g7Col)}${rowNum}`, values: [[String(delta)]] });
+          gUpdates.push({ range: `'AutoSync'!${colLetter(gPctCol)}${rowNum}`, values: [[((delta / past.total) * 100).toFixed(1)]] });
+        }
+        if (!dryRun) await sheetBatchUpdate(token, gUpdates);
+        history.growthWritten = gUpdates.length / 2;
+      }
+      // Prune snapshots older than 30 days once a meaningful backlog builds.
+      const oldCount = histRows.filter(r => { const d = new Date(r[0]); return !isNaN(d) && (Date.now() - d.getTime()) / 86400000 > 30; }).length;
+      if (oldCount > 400 && !dryRun) {
+        const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title))`, { headers: { Authorization: `Bearer ${token}` } });
+        const meta = await metaR.json();
+        const shMeta = (meta.sheets || []).find(s => (s.properties?.title || '').trim() === 'SocialHistory');
+        if (shMeta) {
+          // Append-only tab → the oldest rows sit directly under the header.
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: shMeta.properties.sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 1 + oldCount } } }] }),
+          });
+          history.pruned = oldCount;
+        }
+      }
+    } catch (e) { history.error = e.message; }
+
     // A couple of samples so we can eyeball correctness.
     const sample = names.slice(0, 3).map(n => ({ name: handles[n].name, ig: results[n].ig, x: results[n].tw, tiktok: results[n].tk }));
 
     return res.json({
       success: true, dryRun, proxyActive: !!proxyDispatcher, athletesProcessed: names.length, tasksRun: run.done,
       timedOut: run.timedOut, cellsWritten: dryRun ? 0 : updates.length,
-      platforms: stats, guestTokenObtained: !!guestToken, sample,
+      platforms: stats, guestTokenObtained: !!guestToken, sample, history,
     });
   } catch (err) {
     console.error('refresh-socials error:', err.message);

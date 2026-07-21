@@ -241,6 +241,10 @@ function mergeAthlete(row, ext, level) {
     depthRank: parseInt(ext['depthRank'], 10) || 0,
     depthPos: ext['depthPos'] || '',
     // ── internal-only (stripped for anonymous visitors) ──
+    // 7-day follower growth, computed by the daily socials job from the
+    // SocialHistory snapshots (dashboard "Hot this week" tile).
+    growth7d: parseInt(ext['growth7d'], 10) || 0,
+    growth7dPct: ext['growth7dPct'] != null ? String(ext['growth7dPct']) : '',
     agentAssigned: row['Lead Agent'] || row['Agent'] || '',
     birthday: row['Birthday'] || '',
     shirtSize: row['Shirt'] || '', hoodieSize: row['Hoodie'] || '', shortsSize: row['Shorts'] || '',
@@ -1065,7 +1069,7 @@ module.exports = async (req, res) => {
       sheetGet(token, 'College!A:Q'),
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
-      sheetGet(token, "'AutoSync'!A:L").catch(() => ({ values: [] })), // pre-migration tolerance
+      sheetGet(token, "'AutoSync'!A:R").catch(() => ({ values: [] })), // pre-migration tolerance
       sheetGet(token, "'Staff'!A:A").catch(() => ({ values: [] })),    // names only — never the password column
     ]);
     const staffNames = (staffD.values || []).slice(1).map(r => String(r[0] || '').trim()).filter(Boolean);
@@ -1081,7 +1085,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;
