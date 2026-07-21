@@ -472,6 +472,10 @@ module.exports = async (req, res) => {
       const schoolCol = hsCol('School');
       const appHCol = appIdx('height'), appWCol = appIdx('weight'), appHomeCol = appIdx('hometown');
       const urlKey = u => String(u || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/+$/, '').split('?')[0];
+      // 247 sometimes renames profile slugs (aj-lopez → aj-lopez-jr) but the
+      // trailing player number is stable — prefer it for matching.
+      const playerIdOf = u => (urlKey(u).match(/-(\d+)$/) || [])[1] || '';
+      const sameProfile = (a, b) => { const ia = playerIdOf(a), ib = playerIdOf(b); return ia && ib ? ia === ib : urlKey(a) === urlKey(b); };
       let enrichLookups = 0;
       const enrichTasks = hsPlayers.map(p => async () => {
         const rec = appByKey[nameKey(p['Name'])];
@@ -487,7 +491,11 @@ module.exports = async (req, res) => {
         enrichLookups++;
         const cls = parseInt(String(p[hsHeaders[classCol]] || '').replace(/\D/g, ''), 10);
         const now = new Date().getUTCFullYear();
-        const years = cls ? [cls] : [now, now + 1, now + 2, now + 3];
+        // Start with the sheet's class year but fall back to the rest — the two
+        // sources occasionally disagree on class, and the URL match keeps any
+        // cross-season hit exact.
+        const yearPool = [now, now + 1, now + 2, now + 3];
+        const years = cls ? [cls, ...yearPool.filter(y => y !== cls)] : yearPool;
         // The name filter is a contains-match, so "Anthony Lopez Jr." won't hit
         // 247's "Anthony Lopez", and sheet typos hit nothing. Fall back to a
         // suffix-stripped name, then to the name baked into the saved URL's slug
@@ -502,7 +510,7 @@ module.exports = async (req, res) => {
               const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(q)}`, true);
               for (const r of JSON.parse(body) || []) {
                 const pl = r.Player || {};
-                if (urlKey(pl.Url) === urlKey(url)) { hit = pl; hitYear = r.Year || y; break outer; }
+                if (sameProfile(pl.Url, url)) { hit = pl; hitYear = r.Year || y; break outer; }
               }
             } catch (e) { enrich.errors.push(`${p['Name']} (${y}): ${e.message}`); }
           }
