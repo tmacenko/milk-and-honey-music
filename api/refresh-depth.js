@@ -96,8 +96,10 @@ async function fetchText(url) {
 // (FR/SO/JR/SR/GR) are ambiguous with name suffixes, but that's harmless —
 // Jr/Sr suffixes are stripped in the final normalize anyway.
 function nameKey(raw) {
-  let s = String(raw || '').replace(/&[a-z#0-9]+;/gi, ' ');
-  s = s.replace(/\s*\d.*$/, '');                          // NFL "13/3" onward
+  let s = String(raw || '').replace(/&[a-z#0-9]+;/gi, ' ').trim();
+  // Ourlads appends acquisition/draft codes after names — "13/3", "CF23",
+  // "U/Was", "T/SF", "W/KC" — all contain a digit or slash, names never do.
+  s = s.replace(/(\s+[^\s]*[\d/][^\s]*)+\s*$/, '');
   s = s.replace(/\s+RS\s+(FR|SO|JR|SR|GR)\.?\s*$/i, '');  // college "RS FR"
   s = s.replace(/\s+(FR|SO|JR|SR|GR)\.?\s*$/i, '');       // college class year
   const parts = s.split(',');
@@ -139,8 +141,8 @@ function parseCollegeIndex(html) {
 }
 function collegeUrlFor(map, school) {
   let key = String(school || '').toLowerCase().replace(/\buniversity\b|\bcollege\b/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
-  if (COLLEGE_ALIASES[key]) key = COLLEGE_ALIASES[key];
-  if (map[key]) return map[key];
+  if (map[key]) return map[key];                 // exact Ourlads name first (e.g. "USC")
+  if (COLLEGE_ALIASES[key] && map[COLLEGE_ALIASES[key]]) return map[COLLEGE_ALIASES[key]];
   const hit = Object.keys(map).find(k => k === key || k.startsWith(key + ' ') || key.startsWith(k + ' '));
   return hit ? map[hit] : null;
 }
