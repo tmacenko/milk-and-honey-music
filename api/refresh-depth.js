@@ -100,8 +100,9 @@ function nameKey(raw) {
   // Ourlads appends acquisition/draft codes after names — "13/3", "CF23",
   // "U/Was", "T/SF", "W/KC" — all contain a digit or slash, names never do.
   s = s.replace(/(\s+[^\s]*[\d/][^\s]*)+\s*$/, '');
-  s = s.replace(/\s+RS\s+(FR|SO|JR|SR|GR)\.?\s*$/i, '');  // college "RS FR"
-  s = s.replace(/\s+(FR|SO|JR|SR|GR)\.?\s*$/i, '');       // college class year
+  // College class/status tokens, possibly stacked ("RS FR", or the "RS" left
+  // over after a transfer tag like "RS JR/TR" loses its slash part above).
+  s = s.replace(/(\s+(RS|FR|SO|JR|SR|GR|TR|HS)\.?)+\s*$/i, '');
   const parts = s.split(',');
   if (parts.length >= 2) s = `${parts.slice(1).join(' ')} ${parts[0]}`;
   return s.toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, '').replace(/[^a-z]/g, '');
