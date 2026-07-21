@@ -216,16 +216,45 @@ Do not include a footer line in documents -- the PDF template adds one automatic
       const resp = await fetch("/api/sheets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "chat", fullContext: true, system: systemPrompt, messages: history }),
+        body: JSON.stringify({ action: "chat", fullContext: true, stream: true, system: systemPrompt, messages: history }),
       });
-      const data = await resp.json();
-      if (data.export) {
-        const blob = new Blob([data.csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = data.filename; a.click();
-        setMsgs(m => [...m, { role: "assistant", text: `Exported ${data.rowCount} rows as ${data.filename}.` }]);
-      } else {
-        const raw = data.text || "No response.";
+      // Errors (and any non-streaming environment) come back as JSON.
+      if ((resp.headers.get('content-type') || '').includes('json')) {
+        const data = await resp.json();
+        setMsgs(m => [...m, { role: "assistant", text: data.error ? "Error: " + data.error : (data.text || "No response.") }]);
+        setLoading(false);
+        return;
+      }
+      // Stream the reply into the bubble as it generates.
+      setMsgs(m => [...m, { role: "assistant", text: "" }]);
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let raw = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        raw += dec.decode(value, { stream: true });
+        const shown = raw; // capture for the state updater
+        setMsgs(m => { const c = [...m]; c[c.length - 1] = { ...c[c.length - 1], text: shown }; return c; });
+      }
+      if (!raw.trim()) raw = "No response.";
+      // Post-process the finished text: CSV export or [DOC] splitting.
+      const clean = raw.replace(/```(?:json)?/gi, '').trim();
+      let handled = false;
+      if (clean.startsWith('{') && clean.includes('"export"')) {
+        try {
+          const parsed = JSON.parse(clean.slice(clean.indexOf('{'), clean.lastIndexOf('}') + 1));
+          if (parsed.export === true && Array.isArray(parsed.rows) && parsed.rows.length) {
+            const keys = Object.keys(parsed.rows[0]);
+            const csv = [keys.join(','), ...parsed.rows.map(r => keys.map(k => '"' + String(r[k] == null ? '' : r[k]).replace(/"/g, '""') + '"').join(','))].join('\n');
+            const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+            const a = document.createElement('a'); a.href = url; a.download = parsed.filename || 'export.csv'; a.click();
+            setMsgs(m => { const c = [...m]; c[c.length - 1] = { role: "assistant", text: `Exported ${parsed.rows.length} rows as ${parsed.filename || 'export.csv'}.` }; return c; });
+            handled = true;
+          }
+        } catch { /* fall through to plain text */ }
+      }
+      if (!handled) {
         const docStart = raw.indexOf("[DOC]"), docEnd = raw.indexOf("[/DOC]");
         if (docStart !== -1 && docEnd > docStart) {
           const pre = raw.slice(0, docStart).trim();
@@ -235,10 +264,9 @@ Do not include a footer line in documents -- the PDF template adds one automatic
           if (pre) msgs2.push({ role: "assistant", text: pre, msgType: "preamble" });
           if (doc) msgs2.push({ role: "assistant", text: doc, msgType: "doc" });
           if (post) msgs2.push({ role: "assistant", text: post, msgType: "closer" });
-          setMsgs(m => [...m, ...msgs2]);
-        } else {
-          setMsgs(m => [...m, { role: "assistant", text: raw }]);
+          setMsgs(m => [...m.slice(0, -1), ...msgs2]);
         }
+        // plain text: already in place from streaming
       }
     } catch(e) { setMsgs(m => [...m, { role: "assistant", text: "Error: " + e.message }]); }
     setLoading(false);

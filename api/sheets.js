@@ -634,14 +634,40 @@ module.exports = async (req, res) => {
           ];
         }
 
+        const wantStream = !!req.body.stream;
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 8000, thinking: { type: 'disabled' }, system: systemBlocks, messages }),
+          body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 8000, thinking: { type: 'disabled' }, system: systemBlocks, messages, stream: wantStream }),
         });
         if (!response.ok) {
           const err = await response.text();
           return res.status(response.status).json({ error: `Anthropic error: ${err.slice(0, 200)}` });
+        }
+        if (wantStream) {
+          // Forward Anthropic's SSE as a plain text stream — the browser appends
+          // chunks to the bubble as they arrive (export/DOC parsing happens
+          // client-side once the stream ends).
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-cache');
+          const reader = response.body.getReader();
+          const dec = new TextDecoder();
+          let buf = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+              if (!line.startsWith('data:')) continue;
+              try {
+                const ev = JSON.parse(line.slice(5).trim());
+                if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) res.write(ev.delta.text);
+              } catch { /* keepalives / non-JSON lines */ }
+            }
+          }
+          return res.end();
         }
         const data = await response.json();
         // Concatenate all text blocks — the first block isn't always text.
