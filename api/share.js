@@ -93,13 +93,28 @@ function pdfInitials(name) {
   return (name || '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 }
 
+// PDFKit can only embed JPEG/PNG; many hosts serve WebP/AVIF (even at ".jpg"
+// URLs, via content negotiation) which used to silently drop the photo.
+function pdfImageKind(buf) {
+  if (!buf || buf.length < 4) return null;
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return 'jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50) return 'png';
+  return null;
+}
 async function pdfFetchImageBuffer(url) {
   if (!url) return null;
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!r.ok) return null;
-    return Buffer.from(await r.arrayBuffer());
-  } catch { return null; }
+  const get = async (u) => {
+    try {
+      const r = await fetch(u, { signal: AbortSignal.timeout(5000), headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'image/jpeg,image/png;q=0.9,*/*;q=0.5' } });
+      if (!r.ok) return null;
+      return Buffer.from(await r.arrayBuffer());
+    } catch { return null; }
+  };
+  const buf = await get(url);
+  if (buf && pdfImageKind(buf)) return buf;
+  // Unsupported format — re-pull through the weserv proxy, which converts to JPEG.
+  const converted = await get(`https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg&w=800`);
+  return converted && pdfImageKind(converted) ? converted : null;
 }
 
 // Logo URLs in the share payload are mostly homepage URLs (e.g. https://bmi.com),
