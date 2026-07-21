@@ -330,6 +330,7 @@ const ADMIN_TABS = {
   recruiting: { title: 'Recruiting Info', writable: true },
   nflteams: { title: 'NFL Team Info', writable: false },
   stateregs: { title: 'State Registration', writable: false },
+  appdata: { title: 'AppData', writable: false },
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {
