@@ -637,14 +637,15 @@ module.exports = async (req, res) => {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 8000, system: systemBlocks, messages }),
+          body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 8000, thinking: { type: 'disabled' }, system: systemBlocks, messages }),
         });
         if (!response.ok) {
           const err = await response.text();
           return res.status(response.status).json({ error: `Anthropic error: ${err.slice(0, 200)}` });
         }
         const data = await response.json();
-        const raw = data.content?.[0]?.text || '';
+        // Concatenate all text blocks — the first block isn't always text.
+        const raw = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('') || '';
         // CSV export detection
         try {
           const clean = raw.replace(/```(?:json)?/gi, '').trim();
