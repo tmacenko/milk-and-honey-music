@@ -393,9 +393,58 @@ module.exports = async (req, res) => {
 
     // ── Module 3: 247 profile photos (High School) ───────────────────────────
     // The headshot is the last .jpg lazy-image before the profile <h1>.
-    const hs247 = { images: 0, errors: [] };
+    const hs247 = { images: 0, errors: [], discovery: { found: 0, ambiguous: [], misses: [], errors: [] } };
     if (wants('hs')) {
       const photoCol = autoIdx('photo247');
+
+      // 3a: URL auto-discovery. For HS athletes with no saved 247 link, query the
+      // season Recruits JSON (contains-match on name, ≤50 results) and accept a
+      // link only when exactly one result matches BOTH the athlete's name and
+      // school; anything else stays manual and is flagged in the job report.
+      const disc = hs247.discovery;
+      const schoolKey = s => String(s || '').toLowerCase()
+        .replace(/\b(high school|hs|senior|academy|prep|preparatory|school)\b/g, '')
+        .replace(/[^a-z]/g, '');
+      const needUrl = hsPlayers.filter(p => {
+        const rec = appByKey[nameKey(p['Name'])];
+        const url = rec && url247Col >= 0 ? String(rec.cells[url247Col] || '').trim() : '';
+        return p['Name'] && !url;
+      });
+      let discLookups = 0;
+      const discTasks = needUrl.map(p => async () => {
+        if (discLookups >= 15) return; // bounded per run; the nightly cron drains the backlog
+        discLookups++;
+        const cls = parseInt(String(p['ClassOf'] || '').replace(/\D/g, ''), 10);
+        const now = new Date().getUTCFullYear();
+        const years = cls ? [cls] : [now + 1, now + 2, now + 3, now + 4];
+        const cands = [];
+        for (const y of years) {
+          try {
+            const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(p['Name'])}`, true);
+            for (const r of JSON.parse(body) || []) {
+              const pl = r.Player || {};
+              if (nameKey(pl.FullName) !== nameKey(p['Name'])) continue;
+              cands.push({ url: String(pl.Url || ''), school: (pl.PlayerHighSchool || {}).Name || '' });
+            }
+          } catch (e) { disc.errors.push(`${p['Name']} (${y}): ${e.message}`); }
+        }
+        const sk = schoolKey(p['School']);
+        const hits = cands.filter(c => { const ck = schoolKey(c.school); return sk && ck && (sk.includes(ck) || ck.includes(sk)); });
+        const uniq = [...new Set(hits.map(h => h.url).filter(Boolean))];
+        if (uniq.length === 1) {
+          const rec = appByKey[nameKey(p['Name'])];
+          if (rec && url247Col >= 0) {
+            if (!dryRun) await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(url247Col)}${rec.row}`, values: [[uniq[0]]] }]);
+            rec.cells[url247Col] = uniq[0]; // photo pass below picks it up this same run
+            disc.found++;
+          } else disc.errors.push(`${p['Name']}: no AppData row`);
+        } else if (cands.length) {
+          disc.ambiguous.push({ name: p['Name'], school: p['School'] || '', candidates: [...new Set(cands.map(c => `${c.school || '?'} — ${c.url}`))].slice(0, 4) });
+        } else {
+          disc.misses.push(p['Name']);
+        }
+      });
+      await runTasks(discTasks, 3, deadline);
       const hsTargets = hsPlayers.map(p => {
         const rec = appByKey[nameKey(p['Name'])];
         const url = rec && url247Col >= 0 ? String(rec.cells[url247Col] || '').trim() : '';
