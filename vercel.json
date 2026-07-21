@@ -15,6 +15,7 @@
     { "source": "/share/:id",  "destination": "/api/share-og?id=:id" },
     { "source": "/roster/:id", "destination": "/api/share-og?id=:id&kind=roster" },
     { "source": "/api/:path*",   "destination": "/api/:path*" },
+    { "source": "/onboard",      "destination": "/onboard.html" },
     { "source": "/sports/:slug", "destination": "/api/page?slug=:slug&sport=1" },
     { "source": "/:slug",        "destination": "/api/page?slug=:slug" },
     { "source": "/(.*)",         "destination": "/index.html" }

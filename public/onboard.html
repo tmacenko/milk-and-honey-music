@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/favicon.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Welcome to Milk & Honey Sports</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { background: #0a0a0a; font-family: -apple-system,'SF Pro Display','Helvetica Neue',sans-serif; min-height: 100vh; color: #f0f0f0; }
+    .shell { max-width: 540px; margin: 0 auto; padding: 0 20px 80px; }
+
+    /* Header */
+    .hdr { padding: 32px 0 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .hdr-title { color: #fff; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; text-align: center; }
+    .hdr-desc { color: #888; font-size: 13px; text-align: center; line-height: 1.5; }
+
+    /* Progress */
+    .progress-wrap { margin-bottom: 32px; }
+    .progress-bar { height: 3px; background: #1e1e1e; border-radius: 99px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(to right, #3eaa78, #5BC898); border-radius: 99px; transition: width .4s cubic-bezier(.4,0,.2,1); }
+    .progress-label { font-size: 11px; color: #555; margin-top: 6px; text-align: right; }
+
+    /* Steps */
+    .step { display: none; animation: fadeUp .25s ease; }
+    .step.active { display: block; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    .step-title { font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 24px; letter-spacing: -0.025em; line-height: 1.2; }
+
+    /* Fields */
+    .field { margin-bottom: 16px; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .field-row-3 { display: grid; grid-template-columns: 1fr 1fr 80px; gap: 12px; margin-bottom: 16px; }
+    label { display: block; font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 7px; }
+    input, select {
+      width: 100%; padding: 14px 16px; background: #111; border: 1.5px solid #222;
+      border-radius: 12px; color: #f0f0f0; font-size: 16px; font-family: inherit;
+      outline: none; transition: border-color .2s; -webkit-appearance: none; appearance: none;
+    }
+    input::placeholder { color: #444; }
+    input:focus, select:focus { border-color: #5BC898; background: #141414; }
+    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23555' d='M5 6L0 0h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; padding-right: 40px; color: #888; }
+    select.selected { color: #f0f0f0; }
+    select option { background: #111; color: #f0f0f0; }
+
+    /* Level selector */
+    .level-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .level-btn { padding: 16px 8px; background: #111; border: 1.5px solid #222; border-radius: 12px; color: #666; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; transition: all .2s; }
+    .level-btn:active { transform: scale(0.97); }
+    .level-btn.active { background: rgba(91,200,152,0.1); border-color: #5BC898; color: #5BC898; }
+
+    /* Social fields */
+    .social-field { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .social-icon { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .social-field input { margin: 0; flex: 1; }
+
+    /* Tag input */
+    .tag-wrap { background: #111; border: 1.5px solid #222; border-radius: 12px; padding: 10px 14px; min-height: 54px; display: flex; flex-wrap: wrap; gap: 7px; align-items: flex-start; cursor: text; transition: border-color .2s; }
+    .tag-wrap:focus-within { border-color: #5BC898; background: #141414; }
+    .tag { background: rgba(91,200,152,0.12); color: #5BC898; border: 1px solid rgba(91,200,152,0.3); border-radius: 20px; padding: 5px 12px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .tag-x { cursor: pointer; opacity: 0.6; font-size: 15px; line-height: 1; }
+    .tag-input { background: transparent; border: none; outline: none; color: #f0f0f0; font-size: 15px; font-family: inherit; min-width: 100px; flex: 1; padding: 3px 0; }
+    .tag-input::placeholder { color: #444; }
+    .tag-hint { font-size: 11px; color: #555; margin-top: 6px; }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 10px; margin-top: 32px; }
+    .btn-back { flex: 0 0 auto; padding: 15px 20px; background: transparent; border: 1.5px solid #222; border-radius: 12px; color: #666; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; transition: border-color .2s; }
+    .btn-back:hover { border-color: #444; }
+    .btn-next { flex: 1; padding: 15px; background: #5BC898; border: none; border-radius: 12px; color: #0a0a0a; font-size: 16px; font-weight: 800; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .1s; }
+    .btn-next:disabled { opacity: 0.3; cursor: not-allowed; }
+    .btn-next:not(:disabled):active { opacity: 0.85; transform: scale(0.99); }
+
+    /* Success */
+    .success { display: none; text-align: center; padding: 48px 0; }
+    .success.active { display: block; }
+    .success-icon { width: 80px; height: 80px; background: rgba(91,200,152,0.1); border: 2px solid rgba(91,200,152,0.25); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 auto 28px; }
+    .success-name { color: #fff; font-size: 30px; font-weight: 800; letter-spacing: -0.025em; margin-bottom: 10px; }
+    .success-msg { color: #888; font-size: 15px; line-height: 1.6; max-width: 300px; margin: 0 auto; }
+    .success-tagline { color: #2a2a2a; font-size: 11px; margin-top: 36px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+
+    /* Review card */
+    .review-row { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 0; border-bottom: 1px solid #1a1a1a; gap: 16px; }
+    .review-row:last-child { border-bottom: none; }
+    .review-key { font-size: 12px; color: #555; font-weight: 600; flex-shrink: 0; }
+    .review-val { font-size: 13px; color: #f0f0f0; text-align: right; }
+  </style>
+  <meta property="og:image" content="/share-image.jpg" />
+  <meta property="og:image:width" content="1822" />
+  <meta property="og:image:height" content="921" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="/share-image.jpg" />
+</head>
+<body>
+<div class="shell">
+
+  <div class="hdr">
+    <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk &amp; Honey Sports" style="height:48px;object-fit:contain;" />
+    <div class="hdr-title">Welcome to the team.</div>
+    <div class="hdr-desc">Fill this out so we can take care of you the right way.</div>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:11%"></div></div>
+    <div class="progress-label" id="progress-label">Step 1 of 9</div>
+  </div>
+
+  <!-- Step 1: Name -->
+  <div class="step active" id="step-1">
+    <div class="step-title">What's your name?</div>
+    <div class="field-row">
+      <div>
+        <label>First Name</label>
+        <input type="text" id="firstName" placeholder="First" autocomplete="given-name" autocapitalize="words" />
+      </div>
+      <div>
+        <label>Last Name</label>
+        <input type="text" id="lastName" placeholder="Last" autocomplete="family-name" autocapitalize="words" />
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-next" onclick="nextStep(1)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Level (auto-advance) -->
+  <div class="step" id="step-2">
+    <div class="step-title">What level do you play?</div>
+    <div class="level-row">
+      <div class="level-btn" data-level="High School" onclick="selectLevel(this)">High School</div>
+      <div class="level-btn" data-level="College" onclick="selectLevel(this)">College</div>
+      <div class="level-btn" data-level="NFL" onclick="selectLevel(this)">NFL</div>
+    </div>
+    <div class="btn-row" style="margin-top:24px;">
+      <button class="btn-back" onclick="goBack(2)">← Back</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Football info -->
+  <div class="step" id="step-3">
+    <div class="step-title">Your football info.</div>
+    <div class="field-row">
+      <div>
+        <label>Position</label>
+        <input type="text" id="position" placeholder="WR, QB, CB…" autocapitalize="characters" />
+      </div>
+      <div>
+        <label>Jersey #</label>
+        <input type="number" id="jerseyNumber" placeholder="##" min="0" max="99" />
+      </div>
+    </div>
+    <div class="field">
+      <label id="school-label">School / University</label>
+      <input type="text" id="schoolOrTeam" placeholder="School or Team" autocapitalize="words" />
+    </div>
+    <div class="field" id="classof-field">
+      <label>Class of</label>
+      <input type="text" id="classOf" placeholder="e.g. 2027" maxlength="4" inputmode="numeric" />
+    </div>
+    <div class="btn-row">
+      <button class="btn-back" onclick="goBack(3)">← Back</button>
+      <button class="btn-next" onclick="nextStep(3)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 4: Personal -->
+  <div class="step" id="step-4">
+    <div class="step-title">A little about you.</div>
+    <div class="field">
+      <label>Birthday</label>
+      <input type="text" id="birthday" placeholder="MM/DD/YYYY" inputmode="numeric" maxlength="10" />
+    </div>
+    <div class="field">
+      <label>Hometown</label>
+      <input type="text" id="hometown" placeholder="City, State" autocomplete="address-level2" autocapitalize="words" />
+    </div>
+    <div class="field">
+      <label>Street Address</label>
+      <input type="text" id="addrStreet" placeholder="123 Main St" autocomplete="address-line1" autocapitalize="words" />
+    </div>
+    <div class="field-row">
+      <div>
+        <label>City</label>
+        <input type="text" id="addrCity" placeholder="City" autocomplete="address-level2" autocapitalize="words" />
+      </div>
+      <div>
+        <label>State</label>
+        <input type="text" id="addrState" placeholder="State" autocomplete="address-level1" autocapitalize="characters" maxlength="2" />
+      </div>
+    </div>
+    <div class="field">
+      <label>ZIP Code</label>
+      <input type="text" id="addrZip" placeholder="ZIP" inputmode="numeric" maxlength="10" autocomplete="postal-code" />
+    </div>
+    <div class="btn-row">
+      <button class="btn-back" onclick="goBack(4)">← Back</button>
+      <button class="btn-next" onclick="nextStep(4)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 5: Socials -->
+  <div class="step" id="step-5">
+    <div class="step-title">Your socials.</div>
+    <div class="social-field">
+      <div class="social-icon" style="background:rgba(225,48,108,0.12);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5.5" stroke="#e1306c" stroke-width="2"/><circle cx="12" cy="12" r="4.5" stroke="#e1306c" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="#e1306c"/></svg>
+      </div>
+      <input type="text" id="instagram" placeholder="Instagram handle" autocorrect="off" autocapitalize="none" />
+    </div>
+    <div class="social-field">
+      <div class="social-icon" style="background:rgba(29,161,242,0.12);">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="#1da1f2"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+      </div>
+      <input type="text" id="twitter" placeholder="X handle" autocorrect="off" autocapitalize="none" />
+    </div>
+    <div class="social-field">
+      <div class="social-icon" style="background:rgba(255,255,255,0.06);">
+        <svg width="17" height="17" viewBox="0 0 24 24"><path fill="#fff" d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.73a8.17 8.17 0 004.78 1.52V6.79a4.85 4.85 0 01-1.01-.1z"/></svg>
+      </div>
+      <input type="text" id="tiktok" placeholder="TikTok handle" autocorrect="off" autocapitalize="none" />
+    </div>
+    <div class="btn-row">
+      <button class="btn-back" onclick="goBack(5)">← Back</button>
+      <button class="btn-next" onclick="nextStep(5)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 6: Sizes -->
+  <div class="step" id="step-6">
+    <div class="step-title">Apparel sizes.</div>
+    <div class="field-row">
+      <div>
+        <label>Shirt</label>
+        <select id="shirt" onchange="defaultSizes(this.value)"><option value="">Select</option><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>2XL</option><option>3XL</option></select>
+      </div>
+      <div>
+        <label>Hoodie</label>
+        <select id="hoodie"><option value="">Select</option><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>2XL</option><option>3XL</option></select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div>
+        <label>Shorts</label>
+        <select id="shorts"><option value="">Select</option><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>2XL</option><option>3XL</option></select>
+      </div>
+      <div>
+        <label>Pants / Sweats</label>
+        <select id="pants"><option value="">Select</option><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>2XL</option><option>3XL</option></select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div>
+        <label>Glove Size</label>
+        <select id="gloves"><option value="">Select</option><option>S/M</option><option>M/L</option><option>L/XL</option><option>XL/2XL</option></select>
+      </div>
+      <div>
+        <label>Shoe Size (US)</label>
+        <input type="number" id="shoes" placeholder="e.g. 11" min="5" max="20" step="0.5" inputmode="decimal" />
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-back" onclick="goBack(6)">← Back</button>
+      <button class="btn-next" onclick="nextStep(6)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 7: Gaming -->
+  <div class="step" id="step-7">
+    <div class="step-title">Gaming.</div>
+    <div class="field">
+      <label>Console</label>
+      <select id="gamingSystem">
+        <option value="">Skip</option>
+        <option>PlayStation 5</option>
+        <option>Xbox Series X</option>
+        <option>Nintendo Switch</option>
+        <option>PC</option>
+        <option>PlayStation 4</option>
+        <option>Xbox One</option>
+        <option>Multiple</option>
+        <option>None</option>
+      </select>
+    </div>
+    <div class="btn-row">
+      <button class="btn-back" onclick="goBack(7)">← Back</button>
+      <button class="btn-next" onclick="nextStep(7)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 8: Interests -->
+  <div class="step" id="step-8">
+    <div class="step-title">Outside the game.</div>
+    <div class="field">
+      <label>Favorite Music Artists</label>
+      <div class="tag-wrap" id="music-wrap" onclick="document.getElementById('music-input').focus()">
+        <input class="tag-input" id="music-input" placeholder="Type and press Enter…" />
+      </div>
+      <div class="tag-hint">Artists you listen to or vibe with</div>
+    </div>
+    <div class="field">
+      <label>Interests & Hobbies</label>
+      <div class="tag-wrap" id="interests-wrap" onclick="document.getElementById('interests-input').focus()">
+        <input class="tag-input" id="interests-input" placeholder="Type and press Enter…" />
+      </div>
+      <div class="tag-hint">Fashion, Cars, Food, Gaming, Travel, Art…</div>
+    </div>
+    <div class="field">
+      <label>Brands You Want to Work With</label>
+      <div class="tag-wrap" id="brands-wrap" onclick="document.getElementById('brands-input').focus()">
+        <input class="tag-input" id="brands-input" placeholder="Type and press Enter…" />
+      </div>
+      <div class="tag-hint">Nike, Beats, Gatorade, Snapchat…</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-back" onclick="goBack(8)">← Back</button>
+      <button class="btn-next" onclick="nextStep(8)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 9: Review & Submit -->
+  <div class="step" id="step-9">
+    <div class="step-title">All set.</div>
+    <div id="review-card" style="background:#111;border-radius:14px;padding:18px 20px;margin-bottom:24px;border:1px solid #1e1e1e;"></div>
+    <div id="submit-err" style="color:#e55;font-size:13px;margin-bottom:12px;display:none;text-align:center;"></div>
+    <div class="btn-row">
+      <button class="btn-back" onclick="goBack(9)">← Back</button>
+      <button class="btn-next" id="submit-btn" onclick="submitForm()">Submit ✓</button>
+    </div>
+  </div>
+
+  <!-- Success -->
+  <div class="success" id="success-screen">
+    <div class="success-icon">
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+        <path d="M8 18.5L14.5 25L28 11" stroke="#5BC898" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="success-name" id="success-name">Thanks.</div>
+    <div class="success-msg" id="success-msg">Your profile has been updated.</div>
+    <div class="success-tagline">Milk & Honey Sports Management</div>
+  </div>
+
+</div>
+<script>
+const TOTAL_STEPS = 9;
+let currentStep = 1;
+let selectedLevel = '';
+const tags = { interests: [], brands: [], music: [] };
+
+// ── Level selector ─────────────────────────────────────────────────────────
+function selectLevel(btn) {
+  document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedLevel = btn.dataset.level;
+  updateLevelFields();
+  setTimeout(() => showStep(3), 300);
+}
+
+function updateLevelFields() {
+  const lbl = document.getElementById('school-label');
+  const classofField = document.getElementById('classof-field');
+  if (selectedLevel === 'NFL') {
+    lbl.textContent = 'NFL Team';
+    document.getElementById('schoolOrTeam').placeholder = 'NFL Team';
+    classofField.style.display = 'none';
+  } else if (selectedLevel === 'High School') {
+    lbl.textContent = 'High School';
+    document.getElementById('schoolOrTeam').placeholder = 'High School Name';
+    classofField.style.display = 'block';
+  } else {
+    lbl.textContent = 'School / University';
+    document.getElementById('schoolOrTeam').placeholder = 'College or University';
+    classofField.style.display = 'block';
+  }
+}
+
+// ── Size defaulting ────────────────────────────────────────────────────────
+function defaultSizes(val) {
+  if (!val) return;
+  ['hoodie','shorts','pants'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el.value) {
+      el.value = val;
+      el.classList.add('selected');
+    }
+  });
+}
+
+// ── Birthday auto-format MM/DD/YYYY ───────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const bday = document.getElementById('birthday');
+  bday.addEventListener('input', (e) => {
+    let v = e.target.value.replace(/\D/g, '');
+    if (v.length >= 3) v = v.slice(0,2) + '/' + v.slice(2);
+    if (v.length >= 6) v = v.slice(0,5) + '/' + v.slice(5);
+    e.target.value = v.slice(0,10);
+  });
+
+  // Auto-capitalize state to uppercase as typed
+  const stateEl = document.getElementById('addrState');
+  stateEl.addEventListener('input', () => {
+    stateEl.value = stateEl.value.toUpperCase();
+  });
+
+  // Mark selects as selected when changed
+  document.querySelectorAll('select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      sel.classList.toggle('selected', !!sel.value);
+    });
+  });
+});
+
+// ── Progress ───────────────────────────────────────────────────────────────
+function updateProgress(step) {
+  const pct = Math.round((step / TOTAL_STEPS) * 100);
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-label').textContent = `Step ${step} of ${TOTAL_STEPS}`;
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+function showStep(n) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('step-' + n);
+  if (el) {
+    el.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  updateProgress(n);
+  currentStep = n;
+}
+
+function nextStep(from) {
+  if (from === 1) {
+    const first = document.getElementById('firstName').value.trim();
+    const last = document.getElementById('lastName').value.trim();
+    if (!first || !last) {
+      const empty = !first ? 'firstName' : 'lastName';
+      document.getElementById(empty).focus();
+      document.getElementById(empty).style.borderColor = '#e55';
+      setTimeout(() => document.getElementById(empty).style.borderColor = '#222', 2000);
+      return;
+    }
+    showStep(2);
+    return;
+  }
+  if (from === 9) return submitForm();
+  if (from === 8) buildReview();
+  showStep(from + 1);
+}
+
+function goBack(from) {
+  showStep(from - 1);
+}
+
+// ── Tag inputs ─────────────────────────────────────────────────────────────
+function setupTagInput(inputId, wrapId, key) {
+  const input = document.getElementById(inputId);
+  input.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ',') && input.value.trim()) {
+      e.preventDefault();
+      addTag(key, input.value.trim().replace(/,/g, ''), wrapId, inputId);
+      input.value = '';
+    } else if (e.key === 'Backspace' && !input.value && tags[key].length) {
+      removeTag(key, tags[key].length - 1, wrapId, inputId);
+    }
+  });
+  input.addEventListener('blur', () => {
+    if (input.value.trim()) {
+      addTag(key, input.value.trim().replace(/,/g, ''), wrapId, inputId);
+      input.value = '';
+    }
+  });
+}
+
+function addTag(key, val, wrapId, inputId) {
+  if (!val || tags[key].includes(val)) return;
+  tags[key].push(val);
+  renderTags(key, wrapId, inputId);
+}
+
+function removeTag(key, idx, wrapId, inputId) {
+  tags[key].splice(idx, 1);
+  renderTags(key, wrapId, inputId);
+}
+
+function renderTags(key, wrapId, inputId) {
+  const wrap = document.getElementById(wrapId);
+  const input = document.getElementById(inputId);
+  Array.from(wrap.children).forEach(c => { if (!c.classList.contains('tag-input')) c.remove(); });
+  tags[key].forEach((t, i) => {
+    const tag = document.createElement('div');
+    tag.className = 'tag';
+    tag.innerHTML = `${t}<span class="tag-x" onclick="removeTag('${key}',${i},'${wrapId}','${inputId}')">×</span>`;
+    wrap.insertBefore(tag, input);
+  });
+}
+
+// ── Build combined address string ──────────────────────────────────────────
+function buildAddress() {
+  const street = document.getElementById('addrStreet').value.trim();
+  const city   = document.getElementById('addrCity').value.trim();
+  const state  = document.getElementById('addrState').value.trim();
+  const zip    = document.getElementById('addrZip').value.trim();
+  // Build "123 Main St, Cincinnati, OH 45202" — omit blanks gracefully
+  const line2 = [city, state].filter(Boolean).join(', ');
+  const parts = [street, line2, zip].filter(Boolean);
+  return parts.join(', ');
+}
+
+// ── Review ─────────────────────────────────────────────────────────────────
+function buildReview() {
+  const d = getData();
+  const rows = [
+    ['Name', d.name],
+    ['Level', d.level],
+    ['Position', d.position],
+    ['School / Team', d.schoolOrTeam],
+    ['Birthday', d.birthday],
+    ['Hometown', d.hometown],
+    ['Address', d.address],
+    ['Instagram', d.instagram ? '@' + d.instagram : ''],
+    ['X', d.twitter ? '@' + d.twitter : ''],
+    ['TikTok', d.tiktok ? '@' + d.tiktok : ''],
+    ['Shirt', d.shirt],
+    ['Shoes', d.shoes],
+    ['Gaming', d.gamingSystem],
+    ['Music', d.musicArtists.length ? d.musicArtists.join(', ') : ''],
+    ['Interests', d.interests.length ? d.interests.join(', ') : ''],
+    ['Brands', d.brands.length ? d.brands.join(', ') : ''],
+  ].filter(r => r[1]);
+
+  document.getElementById('review-card').innerHTML = rows.map(([k, v]) =>
+    `<div class="review-row"><span class="review-key">${k}</span><span class="review-val">${v}</span></div>`
+  ).join('');
+}
+
+// ── Collect data ───────────────────────────────────────────────────────────
+function getData() {
+  const first = document.getElementById('firstName').value.trim();
+  const last = document.getElementById('lastName').value.trim();
+  const bdayRaw = document.getElementById('birthday').value.trim();
+  let birthday = bdayRaw;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(bdayRaw)) {
+    const [m, d, y] = bdayRaw.split('/');
+    birthday = `${y}-${m}-${d}`;
+  }
+  return {
+    name: [first, last].filter(Boolean).join(' '),
+    firstName: first,
+    lastName: last,
+    level: selectedLevel || 'College',
+    position: document.getElementById('position').value.trim(),
+    jerseyNumber: document.getElementById('jerseyNumber').value.trim(),
+    schoolOrTeam: document.getElementById('schoolOrTeam').value.trim(),
+    classOf: document.getElementById('classOf').value.trim(),
+    birthday,
+    hometown: document.getElementById('hometown').value.trim(),
+    address: buildAddress(),
+    instagram: document.getElementById('instagram').value.trim().replace(/^@/, ''),
+    twitter: document.getElementById('twitter').value.trim().replace(/^@/, ''),
+    tiktok: document.getElementById('tiktok').value.trim().replace(/^@/, ''),
+    shirt: document.getElementById('shirt').value,
+    hoodie: document.getElementById('hoodie').value,
+    shorts: document.getElementById('shorts').value,
+    pants: document.getElementById('pants').value,
+    shoes: document.getElementById('shoes').value.trim(),
+    gloves: document.getElementById('gloves').value,
+    gamingSystem: document.getElementById('gamingSystem').value,
+    musicArtists: [...tags.music],
+    interests: [...tags.interests],
+    brands: [...tags.brands],
+  };
+}
+
+// ── Submit ─────────────────────────────────────────────────────────────────
+async function submitForm() {
+  const btn = document.getElementById('submit-btn');
+  const errEl = document.getElementById('submit-err');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  errEl.style.display = 'none';
+
+  try {
+    const payload = getData();
+    payload.recruit = new URLSearchParams(location.search).has('recruit');
+    const resp = await fetch('https://www.milkandhoneyfamily.com/api/onboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) throw new Error(data.error || 'Something went wrong');
+
+    try {
+      const firstName = document.getElementById('firstName').value.trim() || 'Athlete';
+      document.getElementById('success-name').textContent = `Thanks, ${firstName}.`;
+      document.getElementById('success-msg').textContent = 'Your profile has been updated.';
+    } catch(e) {}
+
+    document.querySelector('.progress-wrap').style.display = 'none';
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    document.getElementById('success-screen').classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Submit ✓';
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+setupTagInput('music-input', 'music-wrap', 'music');
+setupTagInput('interests-input', 'interests-wrap', 'interests');
+setupTagInput('brands-input', 'brands-wrap', 'brands');
+updateLevelFields();
+updateProgress(1);
+</script>
+</body>
+</html>
