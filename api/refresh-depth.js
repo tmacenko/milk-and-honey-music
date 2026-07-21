@@ -393,7 +393,7 @@ module.exports = async (req, res) => {
 
     // ── Module 3: 247 profile photos (High School) ───────────────────────────
     // The headshot is the last .jpg lazy-image before the profile <h1>.
-    const hs247 = { images: 0, errors: [], discovery: { found: 0, ambiguous: [], misses: [], errors: [] } };
+    const hs247 = { images: 0, errors: [], discovery: { found: 0, ambiguous: [], misses: [], errors: [] }, enrich: { updated: 0, cells: 0, errors: [] } };
     if (wants('hs')) {
       const photoCol = autoIdx('photo247');
 
@@ -446,6 +446,65 @@ module.exports = async (req, res) => {
         }
       });
       await runTasks(discTasks, 3, deadline);
+
+      // 3b: profile enrichment. Any HS athlete with a 247 link gets blank-only
+      // backfill from the same season Recruits JSON: height/weight/hometown into
+      // AppData, ClassOf/School into the Highschool tab. Candidates are matched
+      // by their exact saved profile URL, and onboarding/manual data always
+      // wins — only empty cells are written.
+      const enrich = hs247.enrich;
+      const STATE_ABBR = { alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY', 'district of columbia': 'DC' };
+      const hsHeaders = (hs.values?.[0] || []).map(h => String(h || '').trim());
+      const hsCol = n => hsHeaders.findIndex(h => h.toLowerCase() === n.toLowerCase());
+      const classCol = hsCol('ClassOf') >= 0 ? hsCol('ClassOf') : hsCol('Class Of');
+      const schoolCol = hsCol('School');
+      const appHCol = appIdx('height'), appWCol = appIdx('weight'), appHomeCol = appIdx('hometown');
+      const urlKey = u => String(u || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/+$/, '').split('?')[0];
+      let enrichLookups = 0;
+      const enrichTasks = hsPlayers.map(p => async () => {
+        const rec = appByKey[nameKey(p['Name'])];
+        const url = rec && url247Col >= 0 ? String(rec.cells[url247Col] || '').trim() : '';
+        if (!url || !/247sports\.com/.test(url)) return;
+        const needH = appHCol >= 0 && !String(rec.cells[appHCol] || '').trim();
+        const needW = appWCol >= 0 && !String(rec.cells[appWCol] || '').trim();
+        const needHome = appHomeCol >= 0 && !String(rec.cells[appHomeCol] || '').trim();
+        const needClass = classCol >= 0 && !String(p[hsHeaders[classCol]] || '').trim();
+        const needSchool = schoolCol >= 0 && !String(p['School'] || '').trim();
+        if (!(needH || needW || needHome || needClass || needSchool)) return;
+        if (enrichLookups >= 20) return;
+        enrichLookups++;
+        const cls = parseInt(String(p[hsHeaders[classCol]] || '').replace(/\D/g, ''), 10);
+        const now = new Date().getUTCFullYear();
+        const years = cls ? [cls] : [now, now + 1, now + 2, now + 3];
+        let hit = null, hitYear = 0;
+        for (const y of years) {
+          try {
+            const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(p['Name'])}`, true);
+            for (const r of JSON.parse(body) || []) {
+              const pl = r.Player || {};
+              if (urlKey(pl.Url) === urlKey(url)) { hit = pl; hitYear = r.Year || y; break; }
+            }
+          } catch (e) { enrich.errors.push(`${p['Name']} (${y}): ${e.message}`); }
+          if (hit) break;
+        }
+        if (!hit) { enrich.errors.push(`${p['Name']}: no 247 row matched saved link`); return; }
+        const ups = [];
+        const hm = String(hit.Height || '').match(/^(\d+)-(\d+(?:\.\d+)?)$/);
+        if (needH && hm) ups.push({ range: `AppData!${colLetter(appHCol)}${rec.row}`, values: [[`${hm[1]}'${Math.round(parseFloat(hm[2]))}"`]] });
+        if (needW && hit.Weight) ups.push({ range: `AppData!${colLetter(appWCol)}${rec.row}`, values: [[String(Math.round(hit.Weight))]] });
+        const town = hit.Hometown || {};
+        if (needHome && town.City) {
+          const st = STATE_ABBR[String(town.State || '').toLowerCase()] || town.State || '';
+          ups.push({ range: `AppData!${colLetter(appHomeCol)}${rec.row}`, values: [[st ? `${town.City}, ${st}` : town.City]] });
+        }
+        if (needClass && hitYear) ups.push({ range: `Highschool!${colLetter(classCol)}${p._rowIndex}`, values: [[String(hitYear)]] });
+        if (needSchool && (hit.PlayerHighSchool || {}).Name) ups.push({ range: `Highschool!${colLetter(schoolCol)}${p._rowIndex}`, values: [[hit.PlayerHighSchool.Name]] });
+        if (ups.length) {
+          if (!dryRun) await sheetBatchUpdate(token, ups);
+          enrich.updated++; enrich.cells += ups.length;
+        }
+      });
+      await runTasks(enrichTasks, 3, deadline);
       const hsTargets = hsPlayers.map(p => {
         const rec = appByKey[nameKey(p['Name'])];
         const url = rec && url247Col >= 0 ? String(rec.cells[url247Col] || '').trim() : '';
