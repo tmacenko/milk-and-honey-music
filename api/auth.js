@@ -53,15 +53,18 @@ async function findUser(pw) {
     if (rows.length < 2) return null;
     const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
     const col = (name) => headers.findIndex(h => h === name);
-    const nameC = col('name'), passC = col('password'), roleC = col('role'), keyC = col('agent key');
+    const nameC = col('name'), passC = col('password'), roleC = col('role');
     if (nameC < 0 || passC < 0) return null;
     for (const row of rows.slice(1)) {
       const rowPw = String(row[passC] || '').trim();
       if (rowPw && safeEqual(pw, rowPw)) {
+        const name = String(row[nameC] || '').trim();
         return {
-          name: String(row[nameC] || '').trim(),
+          name,
           userRole: String(roleC >= 0 ? row[roleC] || '' : '').trim().toLowerCase() || 'agent',
-          agentKey: String(keyC >= 0 ? row[keyC] || '' : '').trim(),
+          // "My clients" matching keys off the canonical staff name — agent
+          // cells hold the same names, so no separate key is needed.
+          agentKey: name,
         };
       }
     }

@@ -487,8 +487,8 @@ module.exports = async (req, res) => {
         const nameC = sc('name'), passC = sc('password');
         if (nameC < 0 || passC < 0) throw new Error('Staff tab needs name + Password columns');
         if (Array.isArray(req.body.seedRow)) {
-          const [nm, pw, role, key] = req.body.seedRow.map(v => String(v ?? ''));
-          const vals = { password: pw, role, 'agent key': key };
+          const [nm, pw, role] = req.body.seedRow.map(v => String(v ?? ''));
+          const vals = { password: pw, role };
           await sheetAppend(token, "'Staff'!A:J", sHead.map((h, i) => {
             if (i === nameC) return nm;
             const v = vals[h.toLowerCase()];
@@ -512,6 +512,21 @@ module.exports = async (req, res) => {
         return res.json({ success: true });
       }
 
+      // Remove the Agent Key column from Staff (matching now uses names).
+      if ((req.body || {}).action === 'drop-agent-key') {
+        const head = await sheetGet(token, "'Staff'!1:1");
+        const idx = (head.values?.[0] || []).findIndex(h => String(h || '').trim().toLowerCase() === 'agent key');
+        if (idx < 0) return res.json({ success: true, dropped: false });
+        const gid = await getSheetGid(token, 'Staff');
+        const rr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid, dimension: 'COLUMNS', startIndex: idx, endIndex: idx + 1 } } }] }),
+        });
+        const dd = await rr.json();
+        if (dd.error) throw new Error(dd.error.message);
+        return res.json({ success: true, dropped: true });
+      }
+
       // Reconcile the Staff tab to a provided canonical list of
       // { name, role } entries: canonical spellings win, roles are set,
       // missing people appended, rows not on the list deleted, and empty
@@ -523,8 +538,8 @@ module.exports = async (req, res) => {
         const rows = staffD.values || [];
         const heads = (rows[0] || []).map(h => String(h || '').trim());
         const hc = n => heads.findIndex(h => h.toLowerCase() === n.toLowerCase());
-        const nameC = hc('name'), roleC = hc('role'), keyC = hc('agent key');
-        if (nameC < 0 || roleC < 0 || keyC < 0) throw new Error('Staff needs name/Role/Agent Key columns');
+        const nameC = hc('name'), roleC = hc('role');
+        if (nameC < 0 || roleC < 0) throw new Error('Staff needs name/Role columns');
         const NICK = { mike: 'michael', michael: 'mike', dave: 'david', dan: 'daniel', matt: 'matthew', greg: 'gregory', rob: 'robert', will: 'william', tom: 'thomas', sam: 'sammy', sammy: 'sam' };
         const matches = (a, b) => {
           const la = a.toLowerCase(), lb = b.toLowerCase();
@@ -547,7 +562,6 @@ module.exports = async (req, res) => {
             const r = rows[rowNum - 1];
             if (String(r[nameC]).trim() !== w.name) ups.push({ range: `'Staff'!${colLetter(nameC)}${rowNum}`, values: [[w.name]] });
             if (String(r[roleC] || '').trim().toLowerCase() !== w.role) ups.push({ range: `'Staff'!${colLetter(roleC)}${rowNum}`, values: [[w.role]] });
-            if (!String(r[keyC] || '').trim()) ups.push({ range: `'Staff'!${colLetter(keyC)}${rowNum}`, values: [[w.name.split(' ')[0]]] });
           } else {
             missing.push(w);
           }
@@ -557,7 +571,6 @@ module.exports = async (req, res) => {
           await sheetAppend(token, "'Staff'!A:J", heads.map((h, i) => {
             if (i === nameC) return w.name;
             if (i === roleC) return w.role;
-            if (i === keyC) return w.name.split(' ')[0];
             return '';
           }));
         }
