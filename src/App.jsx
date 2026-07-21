@@ -170,6 +170,40 @@ function Sec({ title, children }) {
 }
 
 // ── Chat component ────────────────────────────────────────────────────────────
+// Minimal markdown renderer for chat bubbles — headings, bold, bullet and
+// numbered lists, paragraph spacing. React elements only (no innerHTML).
+function chatInline(text) {
+  return String(text).split(/(\*\*[^*]+\*\*)/g).map((p, i) =>
+    p.startsWith('**') && p.endsWith('**') && p.length > 4
+      ? <strong key={i} style={{ fontWeight: 700 }}>{p.slice(2, -2)}</strong> : p);
+}
+function ChatText({ text }) {
+  const lines = String(text || '').split('\n');
+  const blocks = [];
+  let list = null;
+  const flush = () => { if (list) { blocks.push(list); list = null; } };
+  lines.forEach((ln) => {
+    const bullet = ln.match(/^\s*[-•*]\s+(.*)/);
+    const num = ln.match(/^\s*\d+[.)]\s+(.*)/);
+    const head = ln.match(/^\s*(#{1,4})\s+(.*)/);
+    if (bullet) { if (!list || list.ordered) { flush(); list = { ordered: false, items: [] }; } list.items.push(bullet[1]); return; }
+    if (num) { if (!list || !list.ordered) { flush(); list = { ordered: true, items: [] }; } list.items.push(num[1]); return; }
+    flush();
+    if (head) blocks.push({ head: head[1].length, text: head[2] });
+    else blocks.push({ p: ln });
+  });
+  flush();
+  return <div>{blocks.map((b, i) => {
+    if (b.items) {
+      const Tag = b.ordered ? 'ol' : 'ul';
+      return <Tag key={i} style={{ margin: '4px 0 8px', paddingLeft: 18 }}>{b.items.map((it, j) => <li key={j} style={{ marginBottom: 3 }}>{chatInline(it)}</li>)}</Tag>;
+    }
+    if (b.head) return <div key={i} style={{ fontWeight: 800, fontSize: b.head <= 2 ? 14 : 13, margin: '10px 0 4px' }}>{chatInline(b.text)}</div>;
+    if (!String(b.p).trim()) return <div key={i} style={{ height: 6 }} />;
+    return <div key={i} style={{ marginBottom: 2 }}>{chatInline(b.p)}</div>;
+  })}</div>;
+}
+
 function FloatingChat({ isMobile }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -308,7 +342,7 @@ Do not include a footer line in documents -- the PDF template adds one automatic
           {msgs.map((m, i) => (
             <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
               <div style={{ maxWidth: "88%", padding: "9px 13px", borderRadius: m.role === "user" ? "14px 14px 3px 14px" : "14px 14px 14px 3px", background: m.role === "user" ? G.green : G.surfaceRaised, color: m.role === "user" ? "#0a0a0a" : G.text, fontSize: 13, lineHeight: 1.55 }}>
-                {m.text}
+                {m.role === "assistant" ? <ChatText text={m.text} /> : m.text}
                 {m.msgType === "doc" && (
                   <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
                     <button onClick={() => setChatPdfMsg(m)} style={{ background: "none", border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: G.textTertiary, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 5 }}
