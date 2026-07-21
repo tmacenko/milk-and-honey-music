@@ -564,12 +564,39 @@ module.exports = async (req, res) => {
           }
           return null;
         };
+        // Pass 0: cells can hold multiple agents ("A, B"). Scan every agent
+        // cell, resolve each comma-separated part, and add genuinely unknown
+        // agents to the Staff directory (name-only rows) so the directory is
+        // the complete source of truth before we point dropdowns at it.
+        const tabData = {};
+        const missingStaff = new Set();
+        for (const t of targets) {
+          const data = await sheetGet(token, t.range);
+          tabData[t.tab] = data;
+          const rows = data.values || [];
+          const heads = (rows[0] || []).map(h => String(h || '').trim());
+          const colIdx = heads.findIndex(h => /^(lead\s+)?agent$/i.test(h));
+          if (colIdx < 0) continue;
+          rows.forEach((r, i) => {
+            if (i === 0) return;
+            for (const part of String(r[colIdx] || '').split(',').map(x => x.trim()).filter(Boolean)) {
+              if (!staffNames.includes(part) && !resolveName(part)) missingStaff.add(part);
+            }
+          });
+        }
+        for (const nm of missingStaff) {
+          await sheetAppend(token, "'Staff'!A:J", [nm]);
+          staffNames.push(nm);
+          const f = nm.split(' ')[0].toLowerCase();
+          firstMap[f] = f in firstMap ? null : nm;
+        }
+
         const normalized = {};
         const unmatched = new Set();
         let dropdownsWired = 0;
         for (const t of targets) {
           const sheetTables = (tmeta.sheets || []).find(s => s.properties.title === t.tab)?.tables || [];
-          const data = await sheetGet(token, t.range);
+          const data = tabData[t.tab];
           const rows = data.values || [];
           const heads = (rows[0] || []).map(h => String(h || '').trim());
           const colIdx = heads.findIndex(h => /^(lead\s+)?agent$/i.test(h));
@@ -587,19 +614,22 @@ module.exports = async (req, res) => {
             } }]);
             dropdownsWired++;
           }
-          // 2) Normalize existing cell values to canonical directory names.
+          // 2) Normalize existing values to canonical directory names —
+          //    part by part, preserving multi-agent lists.
           const ups = [];
           rows.forEach((r, i) => {
             if (i === 0) return;
             const v = String(r[colIdx] || '').trim();
-            if (!v || staffNames.includes(v)) return;
-            const full = resolveName(v);
-            if (full) ups.push({ range: `'${t.tab}'!${colLetter(colIdx)}${i + 1}`, values: [[full]] });
-            else unmatched.add(v);
+            if (!v) return;
+            const parts = v.split(',').map(x => x.trim()).filter(Boolean);
+            const fixed = parts.map(p => staffNames.includes(p) ? p : (resolveName(p) || p));
+            parts.forEach((p, j) => { if (!staffNames.includes(fixed[j])) unmatched.add(p); });
+            const joined = fixed.join(', ');
+            if (joined !== v) ups.push({ range: `'${t.tab}'!${colLetter(colIdx)}${i + 1}`, values: [[joined]] });
           });
           if (ups.length) { await sheetBatchUpdate(token, ups); normalized[t.tab] = ups.length; }
         }
-        return res.json({ success: true, dropdownsWired, staffCount: staffNames.length, normalized, unmatched: [...unmatched].slice(0, 20) });
+        return res.json({ success: true, dropdownsWired, staffCount: staffNames.length, staffAdded: [...missingStaff], normalized, unmatched: [...unmatched].slice(0, 20) });
       }
 
       // Final tidy pass (2026-07 cleanup, Tyler-approved): merge Users into
