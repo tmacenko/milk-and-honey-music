@@ -53,8 +53,18 @@ async function sheetGet(token, range) {
   return r.json();
 }
 
+// Direct public-URL read (simple op) — LIST is a capped "advanced" op. Prefix
+// fallback only for legacy random-suffixed blobs. Keep in sync with sheets.js.
+const BLOB_PUBLIC = (() => {
+  const m = String(process.env.BLOB_READ_WRITE_TOKEN || '').match(/^vercel_blob_rw_([A-Za-z0-9]+)_/);
+  return m ? `https://${m[1]}.public.blob.vercel-storage.com` : null;
+})();
 async function loadBlob(pathname) {
   try {
+    if (BLOB_PUBLIC) {
+      const d0 = await fetch(`${BLOB_PUBLIC}/${pathname}`);
+      if (d0.ok) return await d0.json();
+    }
     const params = new URLSearchParams({ prefix: pathname, limit: '1' });
     const r = await fetch(`${BLOB_API}?${params}`, { headers: { authorization: `Bearer ${BLOB_TOKEN}`, 'x-api-version': '7' } });
     if (!r.ok) return {};

@@ -23,8 +23,18 @@ function isCrawler(ua) {
   return BOT_AGENTS.some(b => low.includes(b));
 }
 
+// Direct public-URL read first (simple op); LIST-by-prefix only for legacy
+// blobs with a random suffix. Keep in sync with share.js / sheets.js.
+const BLOB_PUBLIC = (() => {
+  const m = String(process.env.BLOB_READ_WRITE_TOKEN || '').match(/^vercel_blob_rw_([A-Za-z0-9]+)_/);
+  return m ? `https://${m[1]}.public.blob.vercel-storage.com` : null;
+})();
 async function fetchShareData(id) {
   try {
+    if (BLOB_PUBLIC) {
+      const d0 = await fetch(`${BLOB_PUBLIC}/share-${id}.json`);
+      if (d0.ok) return d0.json();
+    }
     const params = new URLSearchParams({ prefix: `share-${id}`, limit: '1' });
     const r = await fetch(`${BLOB_API}?${params}`, {
       headers: { authorization: `Bearer ${TOKEN}`, 'x-api-version': '7' },

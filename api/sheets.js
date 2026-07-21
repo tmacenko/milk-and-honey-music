@@ -22,9 +22,21 @@ const MEDIA_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
 // Spotify with more requests while already rate-limited.
 let spotifyBlockedUntil = 0;
 
+// Blobs are saved suffix-less, so their public URL is deterministic — read it
+// directly (a "simple" op). LIST is an "advanced" op capped at 2k/month on the
+// free tier; burning 2-3 per site load is what got the store paused.
+const BLOB_PUBLIC = (() => {
+  const m = String(process.env.BLOB_READ_WRITE_TOKEN || '').match(/^vercel_blob_rw_([A-Za-z0-9]+)_/);
+  return m ? `https://${m[1]}.public.blob.vercel-storage.com` : null;
+})();
 async function loadBlobCache(path) {
   if (!BLOB_TOKEN) return {};
   try {
+    if (BLOB_PUBLIC) {
+      const d = await fetch(`${BLOB_PUBLIC}/${path}`);
+      if (d.ok) return await d.json();
+    }
+    // Fallback for any legacy blob that got a random suffix: find by prefix.
     const params = new URLSearchParams({ prefix: path, limit: '1' });
     const r = await fetch(`${BLOB_API}?${params}`, {
       headers: { authorization: `Bearer ${BLOB_TOKEN}`, 'x-api-version': '7' },

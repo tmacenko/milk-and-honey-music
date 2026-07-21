@@ -8,6 +8,12 @@ const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const APP_URL = 'https://www.milkandhoneyfamily.com';
 const slugOf = name => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 const BLOB_API = 'https://blob.vercel-storage.com';
+// Public store host for direct (simple-op) reads — LIST is a capped "advanced"
+// op. Derived from the token: vercel_blob_rw_{storeId}_{secret}.
+const BLOB_PUBLIC = (() => {
+  const m = String(process.env.BLOB_READ_WRITE_TOKEN || '').match(/^vercel_blob_rw_([A-Za-z0-9]+)_/);
+  return m ? `https://${m[1]}.public.blob.vercel-storage.com` : null;
+})();
 
 // ── Roster PDF generation (merged here, not a standalone file, to stay
 // under Vercel Hobby's 12-serverless-function-per-deployment cap) ──────────
@@ -779,7 +785,9 @@ module.exports = async function handler(req, res) {
 
       const uploadResp = await fetch(`${BLOB_API}/${filename}`, {
         method: 'PUT',
-        headers: { 'authorization': `Bearer ${TOKEN}`, 'x-api-version': '7', 'content-type': 'application/json' },
+        // Suffix-less name → the GET path can read the public URL directly
+        // (simple op) instead of LIST (capped "advanced" op).
+        headers: { 'authorization': `Bearer ${TOKEN}`, 'x-api-version': '7', 'content-type': 'application/json', 'x-add-random-suffix': '0' },
         body: payload,
       });
 
@@ -802,18 +810,23 @@ module.exports = async function handler(req, res) {
       const { id } = req.query;
       if (!id) return res.status(400).json({ error: 'Missing id' });
 
-      const listParams = new URLSearchParams({ prefix: `share-${id}`, limit: '1' });
-      const listResp = await fetch(`${BLOB_API}?${listParams}`, {
-        headers: { 'authorization': `Bearer ${TOKEN}`, 'x-api-version': '7' },
-      });
-      if (!listResp.ok) return res.status(404).json({ error: 'Share not found' });
+      // New shares live at a deterministic public URL (simple op). Fall back to
+      // LIST by prefix only for legacy links whose blobs carry a random suffix.
+      let dataResp = BLOB_PUBLIC ? await fetch(`${BLOB_PUBLIC}/share-${id}.json`).catch(() => null) : null;
+      if (!dataResp || !dataResp.ok) {
+        const listParams = new URLSearchParams({ prefix: `share-${id}`, limit: '1' });
+        const listResp = await fetch(`${BLOB_API}?${listParams}`, {
+          headers: { 'authorization': `Bearer ${TOKEN}`, 'x-api-version': '7' },
+        });
+        if (!listResp.ok) return res.status(404).json({ error: 'Share not found' });
 
-      const listData = await listResp.json();
-      const blob = listData.blobs?.[0];
-      if (!blob) return res.status(404).json({ error: 'Share not found or expired' });
+        const listData = await listResp.json();
+        const blob = listData.blobs?.[0];
+        if (!blob) return res.status(404).json({ error: 'Share not found or expired' });
 
-      const dataResp = await fetch(blob.url);
-      if (!dataResp.ok) return res.status(404).json({ error: 'Share content unavailable' });
+        dataResp = await fetch(blob.url);
+        if (!dataResp.ok) return res.status(404).json({ error: 'Share content unavailable' });
+      }
 
       let data;
       try { data = await dataResp.json(); }
