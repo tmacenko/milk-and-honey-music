@@ -364,6 +364,7 @@ const ADMIN_TABS = {
   stateregs: { title: 'State Registration', writable: false },
   appdata: { title: 'AppData', writable: false },
   stafflegacy: { title: 'Staff', writable: false },
+  readme: { title: 'README', writable: true },
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {
