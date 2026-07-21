@@ -2103,7 +2103,7 @@ function useAdminTab(key) {
   return { data, err, loading, reload: load };
 }
 
-function SheetTable({ headers, rows, onRowClick, emptyMsg }) {
+function SheetTable({ headers, rows, onRowClick, emptyMsg, renderCell }) {
   if (!rows.length) return <div style={{ padding: "28px 16px", color: G.textTertiary, fontSize: 13, textAlign: "center" }}>{emptyMsg || 'Nothing here yet.'}</div>;
   return (
     <div className="mh-hscroll" style={{ overflowX: "auto" }}>
@@ -2120,7 +2120,7 @@ function SheetTable({ headers, rows, onRowClick, emptyMsg }) {
               onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
               onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
               {r.cells.map((c, j) => (
-                <td key={j} style={{ padding: "10px 14px", fontSize: 13, color: j === 0 ? G.text : G.textSecondary, fontWeight: j === 0 ? 600 : 400, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{c}</td>
+                <td key={j} style={{ padding: "10px 14px", fontSize: 13, color: j === 0 ? G.text : G.textSecondary, fontWeight: j === 0 ? 600 : 400, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{renderCell ? renderCell(c, headers[j]) : c}</td>
               ))}
             </tr>
           ))}
@@ -2255,25 +2255,85 @@ function MarketingPage({ isMobile }) {
   );
 }
 
+// NFL Team Info is block-shaped in the sheet: a team-name row, a Training
+// Facility row (address in col B), a Name/Title/Email header, then contacts.
+function parseNflTeams(data) {
+  if (!data) return [];
+  const seq = [data.headers, ...data.rows.map(r => r.cells)];
+  const teams = [];
+  let cur = null;
+  for (const c of seq) {
+    const a = (c[0] || '').trim(), b = (c[1] || '').trim(), e = (c[2] || '').trim();
+    if (!a) continue;
+    if (/^training facility$/i.test(a)) { if (cur) cur.address = b; continue; }
+    if (/^name$/i.test(a) && /^title$/i.test(b)) continue;
+    if (!b && !e) { cur = { team: a, address: '', contacts: [] }; teams.push(cur); continue; }
+    if (cur) cur.contacts.push({ name: a, title: b, email: e });
+  }
+  return teams;
+}
+
 function ResourcesPage({ isMobile }) {
   const nfl = useAdminTab('nflteams');
   const regs = useAdminTab('stateregs');
   const [q, setQ] = useState('');
-  const nflRows = (nfl.data?.rows || []).filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())));
+  const [openTeam, setOpenTeam] = useState(null);
+  const teams = useMemo(() => parseNflTeams(nfl.data), [nfl.data]);
+  const qq = q.toLowerCase();
+  const matches = teams.filter(t => !qq || t.team.toLowerCase().includes(qq) || t.contacts.some(c => c.name.toLowerCase().includes(qq)));
   const shell = (node) => <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>{node}</div>;
   const stateOf = (t) => t.loading ? <div style={{ padding: 32, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
     : t.err ? <div style={{ padding: 32, textAlign: "center", color: G.red, fontSize: 13 }}>{t.err}</div> : null;
   const heading = (txt) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{txt}</div>;
+  // State-registration cells: live links + colored statuses.
+  const regCell = (c) => {
+    if (/^https?:\/\//i.test(c)) return <a href={c} target="_blank" rel="noreferrer" style={{ color: G.green, fontWeight: 600, textDecoration: "none" }}>Open ↗</a>;
+    if (/^active$/i.test(c)) return <span style={{ color: G.green, fontWeight: 600 }}>{c}</span>;
+    if (/^(pending|in process)$/i.test(c)) return <span style={{ color: G.yellow, fontWeight: 600 }}>{c}</span>;
+    return c;
+  };
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Resources</div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
         {heading('NFL team directory')}
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search teams..." style={{ ...inputBase, width: isMobile ? 150 : 200 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search teams or contacts..." style={{ ...inputBase, width: isMobile ? 170 : 220 }} />
       </div>
-      {shell(stateOf(nfl) || <SheetTable headers={nfl.data?.headers || []} rows={nflRows} emptyMsg={q ? 'No teams match.' : 'Nothing here yet.'} />)}
+      {shell(stateOf(nfl) || (matches.length === 0
+        ? <div style={{ padding: "28px 16px", color: G.textTertiary, fontSize: 13, textAlign: "center" }}>No teams match.</div>
+        : matches.map((t, ti) => {
+          const open = qq ? true : openTeam === t.team;
+          return (
+            <div key={t.team} style={{ borderBottom: ti < matches.length - 1 ? `1px solid ${G.surfaceBorder}` : "none" }}>
+              <button onClick={() => setOpenTeam(open ? null : t.team)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", background: "transparent", border: "none", cursor: "pointer", fontFamily: ff, textAlign: "left" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: G.text, flex: 1 }}>{t.team}</span>
+                <span style={{ fontSize: 11, color: G.textTertiary }}>{t.contacts.length} contact{t.contacts.length === 1 ? '' : 's'}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s", color: G.textTertiary }}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              {open && (
+                <div style={{ padding: "0 16px 14px" }}>
+                  {t.address && <div style={{ fontSize: 12, color: G.textSecondary, marginBottom: 10 }}><span style={{ color: G.textTertiary }}>Training facility · </span>{t.address}</div>}
+                  <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+                    <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                      <tbody>
+                        {t.contacts.map((c, i) => (
+                          <tr key={i}>
+                            <td style={{ padding: "6px 14px 6px 0", fontSize: 13, color: G.text, fontWeight: 600, whiteSpace: "nowrap" }}>{c.name}</td>
+                            <td style={{ padding: "6px 14px 6px 0", fontSize: 12, color: G.textSecondary, whiteSpace: "nowrap" }}>{c.title}</td>
+                            <td style={{ padding: "6px 0", fontSize: 12, whiteSpace: "nowrap" }}>{c.email ? <a href={`mailto:${c.email}`} style={{ color: G.green, textDecoration: "none" }}>{c.email}</a> : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })))}
       <div style={{ margin: "24px 0 10px" }}>{heading('State registrations')}</div>
-      {shell(stateOf(regs) || <SheetTable headers={regs.data?.headers || []} rows={regs.data?.rows || []} emptyMsg="Nothing here yet." />)}
+      {shell(stateOf(regs) || <SheetTable headers={regs.data?.headers || []} rows={regs.data?.rows || []} emptyMsg="Nothing here yet." renderCell={regCell} />)}
       <div style={{ margin: "24px 0 10px" }}>{heading('Decks & one-sheets')}</div>
       <div style={{ background: G.surface, border: `1px dashed ${G.surfaceBorderLight}`, borderRadius: 14, padding: 22, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Coming soon — a home for pitch decks and one-sheets.</div>
     </div>
