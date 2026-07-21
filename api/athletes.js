@@ -512,6 +512,65 @@ module.exports = async (req, res) => {
         return res.json({ success: true });
       }
 
+      // Wire the sheet's agent dropdowns (Lead Agent on roster tabs, Agent on
+      // Recruiting Info) to pull from the Staff directory's Name column —
+      // music-sheet style. Also normalizes existing short values ("Jake") to
+      // full directory names ("Jake Presser") when the first name matches
+      // exactly one staff member.
+      if ((req.body || {}).action === 'wire-agent-dropdowns') {
+        const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title))`, {
+          headers: { Authorization: `Bearer ${token}` } });
+        const meta = await metaR.json();
+        const gidOf = t => (meta.sheets || []).find(s => s.properties.title === t)?.properties.sheetId;
+        const sheetReq = async (requests) => {
+          if (!requests.length) return;
+          const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests }),
+          });
+          const d = await r.json();
+          if (d.error) throw new Error(d.error.message);
+        };
+        const staffD = await sheetGet(token, "'Staff'!A:A");
+        const staffNames = (staffD.values || []).slice(1).map(r => String(r[0] || '').trim()).filter(Boolean);
+        const firstMap = {};
+        for (const n of staffNames) {
+          const f = n.split(' ')[0].toLowerCase();
+          firstMap[f] = f in firstMap ? null : n; // null = ambiguous first name
+        }
+        const targets = [
+          { tab: 'NFL', range: 'NFL!A:P' }, { tab: 'College', range: 'College!A:Q' },
+          { tab: 'Highschool', range: 'Highschool!A:S' }, { tab: 'Recruiting Info', range: "'Recruiting Info'!A:AZ" },
+        ];
+        const requests = [];
+        const normalized = {};
+        const unmatched = new Set();
+        for (const t of targets) {
+          const data = await sheetGet(token, t.range);
+          const rows = data.values || [];
+          const heads = (rows[0] || []).map(h => String(h || '').trim());
+          const colIdx = heads.findIndex(h => /^(lead\s+)?agent$/i.test(h));
+          const gid = gidOf(t.tab);
+          if (colIdx < 0 || gid === undefined) continue;
+          requests.push({ setDataValidation: {
+            range: { sheetId: gid, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: colIdx, endColumnIndex: colIdx + 1 },
+            rule: { condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: '=Staff!$A$2:$A$200' }] }, showCustomUi: true, strict: false },
+          } });
+          const ups = [];
+          rows.forEach((r, i) => {
+            if (i === 0) return;
+            const v = String(r[colIdx] || '').trim();
+            if (!v || staffNames.some(n => n.toLowerCase() === v.toLowerCase())) return;
+            const full = firstMap[v.toLowerCase()];
+            if (full) ups.push({ range: `'${t.tab}'!${colLetter(colIdx)}${i + 1}`, values: [[full]] });
+            else unmatched.add(v);
+          });
+          if (ups.length) { await sheetBatchUpdate(token, ups); normalized[t.tab] = ups.length; }
+        }
+        await sheetReq(requests);
+        return res.json({ success: true, dropdownsWired: requests.length, normalized, unmatched: [...unmatched].slice(0, 20) });
+      }
+
       // Final tidy pass (2026-07 cleanup, Tyler-approved): merge Users into
       // Staff, then order/hide/color every tab so humans see only the 8 they
       // work in. Hidden tabs stay fully API-accessible.
