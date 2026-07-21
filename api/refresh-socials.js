@@ -99,18 +99,37 @@ if (process.env.PROXY_URL) {
   try { const u = require('undici'); proxyDispatcher = new u.ProxyAgent(process.env.PROXY_URL); proxyFetch = u.fetch; } catch { /* undici missing */ }
 }
 async function fetchIG(username) {
-  // Exact count via IG's web-profile API. Datacenter IPs get 429'd; a proxy
-  // (PROXY_URL) makes this succeed.
+  // Path 1: the old web_profile_info API (deprecated by IG mid-2026 — kept in
+  // case it revives). Path 2: the public profile page via the residential
+  // proxy; the og:description meta carries "7.7M Followers, ...".
+  const useProxy = proxyDispatcher && proxyFetch;
+  const doFetch = useProxy ? proxyFetch : fetch;
   try {
-    const useProxy = proxyDispatcher && proxyFetch;
-    const r = await (useProxy ? proxyFetch : fetch)(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, {
+    const r = await doFetch(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, {
       headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9', 'Origin': 'https://www.instagram.com', 'Referer': 'https://www.instagram.com/', 'Sec-Fetch-Dest': 'empty', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Site': 'same-site' },
       dispatcher: useProxy ? proxyDispatcher : undefined,
     });
+    if (r.ok) {
+      const j = await r.json();
+      const n = j?.data?.user?.edge_followed_by?.count;
+      if (Number.isFinite(n)) return n;
+    }
+  } catch { /* fall through to HTML */ }
+  try {
+    const r = await doFetch(`https://www.instagram.com/${encodeURIComponent(username)}/`, {
+      headers: { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none', 'Upgrade-Insecure-Requests': '1' },
+      dispatcher: useProxy ? proxyDispatcher : undefined, redirect: 'follow',
+    });
     if (!r.ok) return null;
-    const j = await r.json();
-    const n = j?.data?.user?.edge_followed_by?.count;
-    return Number.isFinite(n) ? n : null;
+    const html = await r.text();
+    const m = html.match(/"edge_followed_by":\{"count":(\d+)/) || html.match(/content="([\d.,]+[KMB]?)\s+Followers/i);
+    if (!m) return null;
+    if (/^\d+$/.test(m[1])) return parseInt(m[1], 10);
+    const am = m[1].match(/^([\d.,]+)\s*([KMB])?$/i);
+    if (!am) return null;
+    const n = parseFloat(am[1].replace(/,/g, ''));
+    const mult = { K: 1e3, M: 1e6, B: 1e9 }[(am[2] || '').toUpperCase()] || 1;
+    return Number.isFinite(n) ? Math.round(n * mult) : null;
   } catch { return null; }
 }
 async function fetchTikTok(username) {
@@ -183,17 +202,19 @@ module.exports = async (req, res) => {
   // One-off IG diagnostics: ?debugIG=<handle> fetches that profile through
   // the proxy and returns the raw status + a body snippet (no sheet writes).
   if (q.debugIG) {
+    const value = await fetchIG(q.debugIG);
+    let metaSnippet = null;
     try {
       const useProxy = proxyDispatcher && proxyFetch;
-      const r = await (useProxy ? proxyFetch : fetch)(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(q.debugIG)}`, {
-        headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9', 'Origin': 'https://www.instagram.com', 'Referer': 'https://www.instagram.com/', 'Sec-Fetch-Dest': 'empty', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Site': 'same-site' },
-        dispatcher: useProxy ? proxyDispatcher : undefined,
+      const r = await (useProxy ? proxyFetch : fetch)(`https://www.instagram.com/${encodeURIComponent(q.debugIG)}/`, {
+        headers: { 'User-Agent': UA, 'Accept': 'text/html', 'Accept-Language': 'en-US,en;q=0.9', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none', 'Upgrade-Insecure-Requests': '1' },
+        dispatcher: useProxy ? proxyDispatcher : undefined, redirect: 'follow',
       });
-      const body = await r.text();
-      return res.json({ debugIG: q.debugIG, proxied: !!useProxy, status: r.status, bodyStart: body.slice(0, 400) });
-    } catch (e) {
-      return res.json({ debugIG: q.debugIG, error: e.message, cause: e.cause ? (e.cause.code || e.cause.message) : null });
-    }
+      const html = await r.text();
+      const m = html.match(/<meta[^>]*(?:og:description|description)[^>]*>/i);
+      metaSnippet = { status: r.status, len: html.length, meta: m ? m[0].slice(0, 250) : null };
+    } catch (e) { metaSnippet = { error: e.message }; }
+    return res.json({ debugIG: q.debugIG, proxied: !!(proxyDispatcher && proxyFetch), resolvedCount: value, metaSnippet });
   }
 
   const only = q.platforms ? String(q.platforms).split(',').map(s => s.trim()) : ['tiktok', 'x', ...(igDay ? ['ig'] : [])];
