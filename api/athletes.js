@@ -538,37 +538,68 @@ module.exports = async (req, res) => {
           const f = n.split(' ')[0].toLowerCase();
           firstMap[f] = f in firstMap ? null : n; // null = ambiguous first name
         }
+        // These tabs use Google Sheets Tables (typed columns) — dropdown
+        // options live on the table column itself, so we update them via
+        // updateTable rather than classic data validation.
+        const tmeta = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(title),tables)`, {
+          headers: { Authorization: `Bearer ${token}` } })).json();
         const targets = [
           { tab: 'NFL', range: 'NFL!A:P' }, { tab: 'College', range: 'College!A:Q' },
           { tab: 'Highschool', range: 'Highschool!A:S' }, { tab: 'Recruiting Info', range: "'Recruiting Info'!A:AZ" },
         ];
-        const requests = [];
+        // Match a stray value ("Sammy", "Mike Simon") to one staff member:
+        // exact, unique first name, or same last name + first initial.
+        const resolveName = (v) => {
+          const lv = v.toLowerCase();
+          const exact = staffNames.find(n => n.toLowerCase() === lv);
+          if (exact) return exact;
+          if (firstMap[lv]) return firstMap[lv];
+          const parts = lv.split(/\s+/);
+          if (parts.length >= 2) {
+            const hits = staffNames.filter(n => {
+              const np = n.toLowerCase().split(/\s+/);
+              return np[np.length - 1] === parts[parts.length - 1] && np[0][0] === parts[0][0];
+            });
+            if (hits.length === 1) return hits[0];
+          }
+          return null;
+        };
         const normalized = {};
         const unmatched = new Set();
+        let dropdownsWired = 0;
         for (const t of targets) {
+          const sheetTables = (tmeta.sheets || []).find(s => s.properties.title === t.tab)?.tables || [];
           const data = await sheetGet(token, t.range);
           const rows = data.values || [];
           const heads = (rows[0] || []).map(h => String(h || '').trim());
           const colIdx = heads.findIndex(h => /^(lead\s+)?agent$/i.test(h));
-          const gid = gidOf(t.tab);
-          if (colIdx < 0 || gid === undefined) continue;
-          requests.push({ setDataValidation: {
-            range: { sheetId: gid, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: colIdx, endColumnIndex: colIdx + 1 },
-            rule: { condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: '=Staff!$A$2:$A$200' }] }, showCustomUi: true, strict: false },
-          } });
+          if (colIdx < 0) continue;
+          // 1) Point the table column's dropdown at the Staff directory names.
+          const table = sheetTables.find(x => (x.columnProperties || []).some(c => /agent/i.test(String(c.columnName || '').trim())));
+          if (table) {
+            const colProp = (table.columnProperties || []).find(c => /agent/i.test(String(c.columnName || '').trim()));
+            await sheetReq([{ updateTable: {
+              table: { tableId: table.tableId, columnProperties: [{
+                columnIndex: colProp.columnIndex, columnName: colProp.columnName, columnType: 'DROPDOWN',
+                dataValidationRule: { condition: { type: 'ONE_OF_LIST', values: staffNames.map(n => ({ userEnteredValue: n })) } },
+              }] },
+              fields: 'columnProperties',
+            } }]);
+            dropdownsWired++;
+          }
+          // 2) Normalize existing cell values to canonical directory names.
           const ups = [];
           rows.forEach((r, i) => {
             if (i === 0) return;
             const v = String(r[colIdx] || '').trim();
-            if (!v || staffNames.some(n => n.toLowerCase() === v.toLowerCase())) return;
-            const full = firstMap[v.toLowerCase()];
+            if (!v || staffNames.includes(v)) return;
+            const full = resolveName(v);
             if (full) ups.push({ range: `'${t.tab}'!${colLetter(colIdx)}${i + 1}`, values: [[full]] });
             else unmatched.add(v);
           });
           if (ups.length) { await sheetBatchUpdate(token, ups); normalized[t.tab] = ups.length; }
         }
-        await sheetReq(requests);
-        return res.json({ success: true, dropdownsWired: requests.length, normalized, unmatched: [...unmatched].slice(0, 20) });
+        return res.json({ success: true, dropdownsWired, staffCount: staffNames.length, normalized, unmatched: [...unmatched].slice(0, 20) });
       }
 
       // Final tidy pass (2026-07 cleanup, Tyler-approved): merge Users into
