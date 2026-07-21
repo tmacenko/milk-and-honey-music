@@ -706,22 +706,11 @@ module.exports = async (req, res) => {
           const heads = (rows[0] || []).map(h => String(h || '').trim());
           const colIdx = heads.findIndex(h => /^(lead\s+)?agent$/i.test(h));
           if (colIdx < 0) continue;
-          // 1) Point the table column's dropdown at the Staff directory names.
-          const table = sheetTables.find(x => (x.columnProperties || []).some(c => /agent/i.test(String(c.columnName || '').trim())));
-          if (table) {
-            const colProp = (table.columnProperties || []).find(c => /agent/i.test(String(c.columnName || '').trim()));
-            await sheetReq([{ updateTable: {
-              table: { tableId: table.tableId, columnProperties: [{
-                columnIndex: colProp.columnIndex, columnName: colProp.columnName, columnType: 'DROPDOWN',
-                dataValidationRule: { condition: { type: 'ONE_OF_LIST', values: staffNames.map(n => ({ userEnteredValue: n })) } },
-              }] },
-              fields: 'columnProperties',
-            } }]);
-            dropdownsWired++;
-          }
-          // 2) Normalize existing values to canonical directory names —
-          //    part by part, preserving multi-agent lists.
+          // 1) Normalize existing values to canonical directory names —
+          //    part by part, preserving multi-agent lists — and collect the
+          //    distinct multi-agent combinations in this column.
           const ups = [];
+          const combos = new Set();
           rows.forEach((r, i) => {
             if (i === 0) return;
             const v = String(r[colIdx] || '').trim();
@@ -730,8 +719,26 @@ module.exports = async (req, res) => {
             const fixed = parts.map(p => staffNames.includes(p) ? p : (resolveName(p) || p));
             parts.forEach((p, j) => { if (!staffNames.includes(fixed[j])) unmatched.add(p); });
             const joined = fixed.join(', ');
+            if (parts.length > 1 && fixed.every(f => staffNames.includes(f))) combos.add(joined);
             if (joined !== v) ups.push({ range: `'${t.tab}'!${colLetter(colIdx)}${i + 1}`, values: [[joined]] });
           });
+          // 2) Point the table column's dropdown at the Staff directory names,
+          //    plus this column's existing multi-agent combos — the Sheets API
+          //    can't enable "allow multiple selections" on typed columns, so
+          //    combos must be options themselves to render as valid chips.
+          const table = sheetTables.find(x => (x.columnProperties || []).some(c => /agent/i.test(String(c.columnName || '').trim())));
+          if (table) {
+            const colProp = (table.columnProperties || []).find(c => /agent/i.test(String(c.columnName || '').trim()));
+            const options = [...staffNames, ...[...combos].sort()];
+            await sheetReq([{ updateTable: {
+              table: { tableId: table.tableId, columnProperties: [{
+                columnIndex: colProp.columnIndex, columnName: colProp.columnName, columnType: 'DROPDOWN',
+                dataValidationRule: { condition: { type: 'ONE_OF_LIST', values: options.map(n => ({ userEnteredValue: n })) } },
+              }] },
+              fields: 'columnProperties',
+            } }]);
+            dropdownsWired++;
+          }
           if (ups.length) { await sheetBatchUpdate(token, ups); normalized[t.tab] = ups.length; }
         }
         return res.json({ success: true, dropdownsWired, staffCount: staffNames.length, staffAdded: [...missingStaff], normalized, unmatched: [...unmatched].slice(0, 20) });
