@@ -1942,6 +1942,148 @@ function Landing({ onEnter }) {
   );
 }
 
+// ── Sports employee dashboard ─────────────────────────────────────────────────
+// Admin-only landing page for the Sports side: headline numbers plus recent
+// signings and this week's birthdays, computed from the roster the app already
+// loads. Public/b2b sessions never render this (and their API responses never
+// include the internal fields it reads).
+const countFrom = (s) => {
+  const t = String(s == null ? '' : s).trim().replace(/,/g, '');
+  const m = t.match(/^([\d.]+)\s*([KMB])?$/i);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
+  if (isNaN(n)) return 0;
+  return Math.round(n * ({ K: 1e3, M: 1e6, B: 1e9 }[(m[2] || '').toUpperCase()] || 1));
+};
+const bigNum = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`
+  : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : String(n);
+// Tolerant sheet-date parser: "6/15/2001", "2001-06-15", "June 15, 2001", or a
+// year-less "6/15" (birthdays) -> { month, day, year|null }.
+const parseSheetDate = (s) => {
+  const t = String(s || '').trim();
+  if (!t) return null;
+  const ymd = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (ymd) return { year: +ymd[1], month: +ymd[2], day: +ymd[3] };
+  const mdy = t.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
+  if (mdy) {
+    let year = mdy[3] ? parseInt(mdy[3], 10) : null;
+    if (year != null && year < 100) year += year > 30 ? 1900 : 2000;
+    return { month: +mdy[1], day: +mdy[2], year };
+  }
+  const d = new Date(t);
+  return isNaN(d) ? null : { month: d.getMonth() + 1, day: d.getDate(), year: d.getFullYear() };
+};
+const shortDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster }) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const s = useMemo(() => {
+    const levels = { 'NFL': 0, 'College': 0, 'High School': 0 };
+    let ig = 0, tt = 0, x = 0, freeAgents = 0;
+    for (const a of athletes) {
+      if (levels[a.level] != null) levels[a.level]++;
+      ig += countFrom(a.igFollowers); tt += countFrom(a.tiktokFollowers); x += countFrom(a.twitterFollowers);
+      if (a.status === 'Free Agent') freeAgents++;
+    }
+    const reach = ig + tt + x;
+    const pct = (n) => reach ? Math.round((n / reach) * 100) : 0;
+    const signed = athletes.map(a => {
+      const d = parseSheetDate(a.onboardedAt);
+      return d && d.year ? { a, date: new Date(d.year, d.month - 1, d.day) } : null;
+    }).filter(x2 => x2 && x2.date <= today && (today - x2.date) / 86400000 <= 30)
+      .sort((p, q) => q.date - p.date);
+    const bdays = athletes.map(a => {
+      const d = parseSheetDate(a.birthday);
+      if (!d) return null;
+      let next = new Date(today.getFullYear(), d.month - 1, d.day);
+      if (next < today) next = new Date(today.getFullYear() + 1, d.month - 1, d.day);
+      return { a, date: next };
+    }).filter(Boolean).sort((p, q) => p.date - q.date);
+    return {
+      levels, reach, freeAgents, signed, bdays,
+      splits: { ig: pct(ig), tt: pct(tt), x: pct(x) },
+      week: bdays.filter(b => (b.date - today) / 86400000 < 7),
+    };
+  }, [athletes]);
+
+  const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 7 };
+  const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
+  const tileHead = (label, range) => (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
+      <div style={{ fontSize: 11, color: G.textTertiary }}>{range}</div>
+    </div>
+  );
+  const row = (a, sub, right, key, last) => (
+    <div key={key} onClick={() => onOpenAthlete(a)}
+      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+      <div style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {a.name} <span style={{ color: G.textTertiary, fontSize: 12 }}>· {sub}</span>
+      </div>
+      <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{right}</div>
+    </div>
+  );
+  const empty = (msg) => <div style={{ fontSize: 13, color: G.textTertiary, padding: "14px 0 6px" }}>{msg}</div>;
+  const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
+
+  return (
+    <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ fontSize: isMobile ? 21 : 25, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{greeting}</div>
+      <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>
+        {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · {athletes.length} athletes on roster
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
+        <div style={{ ...card, cursor: "pointer" }} onClick={onGoRoster}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{athletes.length}</div>
+          <div style={statLabel}>Total athletes</div>
+          <div style={statSub}>{s.levels['NFL']} NFL · {s.levels['College']} College · {s.levels['High School']} HS</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{bigNum(s.reach)}</div>
+          <div style={statLabel}>Combined reach</div>
+          <div style={statSub}>{s.reach ? `IG ${s.splits.ig}% · TikTok ${s.splits.tt}% · X ${s.splits.x}%` : 'No follower data yet'}</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.signed.length}</div>
+          <div style={statLabel}>Recently signed</div>
+          <div style={{ ...statSub, color: s.signed.length ? G.green : G.textSecondary }}>Last 30 days</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.freeAgents}</div>
+          <div style={statLabel}>Free agents</div>
+          <div style={statSub}>On the open market</div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 10 }}>
+        <div style={card}>
+          {tileHead('Recently signed', 'Last 30 days')}
+          {s.signed.length === 0 ? empty('No new signings in the last 30 days.')
+            : s.signed.slice(0, 6).map((x2, i, arr) =>
+              row(x2.a, [x2.a.level, x2.a.position].filter(Boolean).join(' · '), shortDate(x2.date), x2.a.id || i, i === arr.length - 1))}
+        </div>
+        <div style={card}>
+          {tileHead('Birthdays', 'This week')}
+          {s.week.length > 0
+            ? s.week.map((b, i, arr) =>
+              row(b.a, b.a.level, b.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), b.a.id || i, i === arr.length - 1))
+            : s.bdays.length === 0 ? empty('No birthdays on file yet.')
+            : (
+              <>
+                {empty('No birthdays this week.')}
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, margin: "6px 0 2px" }}>Next up</div>
+                {s.bdays.slice(0, 2).map((b, i, arr) => row(b.a, b.a.level, shortDate(b.date), b.a.id || i, i === arr.length - 1))}
+              </>
+            )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
   const [clients, setClients] = useState([]);
@@ -1981,6 +2123,9 @@ function App() {
   };
   const [view, setViewState] = useState(() => (parseUrl().slug || window.location.search.includes('client=')) ? 'detail' : 'roster');
   const [selected, setSelected] = useState(null);
+  // Sports employee home: 'dashboard' (default) or 'roster'. Rendering gates on
+  // isAdmin, so public/b2b sessions always get the roster regardless.
+  const [sportsPage, setSportsPage] = useState('dashboard');
 
   const setView = (v, item) => {
     if (v === 'detail' && item) {
@@ -2448,6 +2593,19 @@ function App() {
       ))}
     </div>
   );
+  // Employee-only Dashboard/Roster switch (sports side). dashActive means the
+  // dashboard is what the main content area should show right now.
+  const dashActive = domain === 'sports' && isAdmin && sportsPage === 'dashboard' && view !== 'detail';
+  const dashToggle = (domain === 'sports' && isAdmin) ? (
+    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+      {[['dashboard', 'Dashboard'], ['roster', 'Roster']].map(([v, label], i) => (
+        <button key={v} onClick={() => setSportsPage(v)}
+          style={{ padding: "8px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", background: sportsPage === v ? G.greenSubtle : "transparent", color: sportsPage === v ? G.green : G.textSecondary, fontWeight: sportsPage === v ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null;
   // Sports level filter (All / NFL / College / High School).
   const sportsLevels = ['All', 'NFL', 'College', 'High School'];
   const sportsLevelBar = (
@@ -2539,12 +2697,17 @@ function App() {
               <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
                 <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
                 <div style={{ flex: 1 }} />
-                {exportControl(true)}
+                {!dashActive && exportControl(true)}
                 {authBtnMobile}
               </div>
               {/* Row 2: domain + view + sort + layout + search — one line (scrolls if tight) */}
               <div style={{ padding: "0 16px 12px" }}>
-                {mobileSearchOpen ? (
+                {dashActive ? (
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    {domainToggle}
+                    {dashToggle}
+                  </div>
+                ) : mobileSearchOpen ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
                     <input ref={searchRef} autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : "Search clients..."}
@@ -2554,6 +2717,12 @@ function App() {
                 ) : (
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                     {domainToggle}
+                    {domain === 'sports' && isAdmin && (
+                      <button onClick={() => setSportsPage('dashboard')} title="Dashboard"
+                        style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 9px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </button>
+                    )}
                     {viewFilter}
                     <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} compact />
                     {viewToggle}
@@ -2574,6 +2743,7 @@ function App() {
             <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
             <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
             {domainToggle}
+            {view !== 'detail' && dashToggle}
             {view === 'detail' ? (
               <>
                 <div style={{ flex: 1 }} />
@@ -2584,6 +2754,11 @@ function App() {
                 {authBtn}
                 {isAdmin && selected && <button onClick={() => domain === 'sports' ? setEditingAthlete(selected) : setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
+              </>
+            ) : dashActive ? (
+              <>
+                <div style={{ flex: 1 }} />
+                {authBtn}
               </>
             ) : (
               <>
@@ -2622,7 +2797,12 @@ function App() {
               {!error && athletesLoaded && view === 'detail' && selected && (
                 <SportsDetail athlete={selected} isMobile={isMobile} />
               )}
-              {!error && athletesLoaded && view === 'roster' && (
+              {!error && athletesLoaded && view === 'roster' && dashActive && (
+                <SportsDashboard athletes={athletes} isMobile={isMobile}
+                  onOpenAthlete={(a) => setView('detail', a)}
+                  onGoRoster={() => setSportsPage('roster')} />
+              )}
+              {!error && athletesLoaded && view === 'roster' && !dashActive && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
                   {filteredAthletes.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
