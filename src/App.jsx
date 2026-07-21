@@ -1565,6 +1565,11 @@ function SportsDetail({ athlete: a, isMobile }) {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
                 <TeamLogo url={a.teamLogo} size={26} />
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: "#fff", fontWeight: 500 }}>{typeLine}</span>}
+                {a.depthRank > 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: a.depthRank === 1 ? G.green : G.textSecondary, background: a.depthRank === 1 ? G.greenSubtle : "rgba(255,255,255,0.07)", border: `1px solid ${a.depthRank === 1 ? G.greenBorder : "rgba(255,255,255,0.18)"}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
+                    {a.depthRank === 1 ? 'Starter' : a.depthRank === 2 ? '2nd string' : a.depthRank === 3 ? '3rd string' : `${a.depthRank}th string`}{a.depthPos ? ` · ${a.depthPos}` : ''}
+                  </span>
+                )}
               </div>
               {socialBtns.length > 0 && (
                 <div style={{ display: "flex", gap: isMobile ? 16 : 24, marginTop: 13, alignItems: "center", flexWrap: "wrap" }}>

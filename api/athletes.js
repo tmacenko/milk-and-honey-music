@@ -219,6 +219,9 @@ function mergeAthlete(row, ext, level) {
     photoUrlOverride: ext['photoUrl'] || '',
     heroImageUrl: ext['heroImageUrl'] || '',
     profileUrl247: ext['profileUrl247'] || '',
+    // Ourlads depth chart (synced daily by api/refresh-depth.js).
+    depthRank: parseInt(ext['depthRank'], 10) || 0,
+    depthPos: ext['depthPos'] || '',
     // ── internal-only (stripped for anonymous visitors) ──
     agentAssigned: row['Lead Agent'] || row['Agent'] || '',
     birthday: row['Birthday'] || '',
@@ -245,6 +248,7 @@ const PUBLIC_FIELDS = new Set([
   'instagram', 'twitter', 'tiktok', 'igFollowers', 'twitterFollowers', 'tiktokFollowers', 'igEngagement',
   'bio', 'hometown', 'height', 'weight', 'jerseyNumber', 'classOf', 'committedTo', 'yearInSchool',
   'draftYear', 'draftRound', 'draftPick', 'espnId', 'espnSport', 'teamLogo', 'photoUrl', 'heroImageUrl', 'profileUrl247',
+  'depthRank', 'depthPos',
   // Brand-facing marketing content (the "beyond ESPN" value):
   'brands', 'interests',
 ]);
