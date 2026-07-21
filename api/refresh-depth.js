@@ -85,8 +85,23 @@ const COLLEGE_ALIASES = {
   'ucf': 'central florida', 'miami': 'miami fl', 'uconn': 'connecticut',
 };
 
-async function fetchText(url) {
-  const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml' }, redirect: 'follow' });
+// Residential proxy (optional, PROXY_URL) — 247sports blocks datacenter IPs
+// with 406s, same as Instagram; Ourlads and ESPN don't need it.
+let proxyDispatcher = null;
+if (process.env.PROXY_URL) {
+  try { const { ProxyAgent } = require('undici'); proxyDispatcher = new ProxyAgent(process.env.PROXY_URL); } catch { /* undici unavailable */ }
+}
+const BROWSER_HEADERS = {
+  'User-Agent': UA,
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none',
+  'Upgrade-Insecure-Requests': '1',
+};
+async function fetchText(url, viaProxy = false) {
+  const opts = { headers: BROWSER_HEADERS, redirect: 'follow' };
+  if (viaProxy && proxyDispatcher) opts.dispatcher = proxyDispatcher;
+  const r = await fetch(url, opts);
   if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
   return r.text();
 }
@@ -380,7 +395,7 @@ module.exports = async (req, res) => {
       const hsUpdates = [];
       const hsTasks = hsTargets.map(t => async () => {
         try {
-          const html = await fetchText(t.url);
+          const html = await fetchText(t.url, true); // 247 needs the residential proxy
           const h1 = html.search(/<h1[^>]*>/i);
           const head = h1 > 0 ? html.slice(0, h1) : html;
           const imgs = [...head.matchAll(/data-src="(https:\/\/s3media\.247sports\.com\/Uploads\/Assets\/[^"]+?\.jpe?g)[^"]*"/gi)];
