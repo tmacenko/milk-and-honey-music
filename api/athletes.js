@@ -781,6 +781,15 @@ module.exports = async (req, res) => {
   if (tabKey) {
     const { configured, admin } = authState(req);
     if (configured && !admin) return res.status(403).json({ error: 'Admin only' });
+    // Diagnostic: dump table (typed-column) metadata for the roster tabs.
+    if (tabKey === 'tables') {
+      try {
+        const token = await getToken();
+        const meta = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(title),tables)`, {
+          headers: { Authorization: `Bearer ${token}` } })).json();
+        return res.json({ sheets: (meta.sheets || []).map(s => ({ title: s.properties.title, tables: s.tables || [] })) });
+      } catch (err) { return res.status(500).json({ error: err.message }); }
+    }
     // Diagnostic: list the spreadsheet's tabs (order + visibility).
     if (tabKey === 'titles') {
       try {
