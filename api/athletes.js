@@ -54,6 +54,15 @@ async function sheetBatchUpdate(token, data) {
   const d = await r.json();
   if (d.error) throw new Error(`Sheets write error: ${d.error.code} ${d.error.message}`);
 }
+async function sheetAppend2(token, range, rows) {
+  if (!rows.length) return;
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: rows }),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(`Sheets append error: ${d.error.code} ${d.error.message}`);
+}
 async function sheetAppend(token, range, row) {
   const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -295,7 +304,6 @@ async function saveAthlete(token, body) {
     // Only the manual override goes in the sheet — never the derived ESPN URL.
     photoUrl: a.photoUrlOverride !== undefined ? a.photoUrlOverride : a.photoUrl,
     heroImageUrl: a.heroImageUrl,
-    igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
     status: a.status, tiktok: a.tiktok,
     interests: Array.isArray(a.interests) ? a.interests.join(', ') : a.interests,
     brands: Array.isArray(a.brands) ? a.brands.join(', ') : a.brands,
@@ -320,6 +328,30 @@ async function saveAthlete(token, body) {
     await sheetBatchUpdate(token, updates);
     const newRow = appHeaders.map(h => { const v = getExt(h); return v === undefined ? '' : String(v ?? ''); });
     if (appHeaders.length) await sheetAppend(token, 'AppData!A:AZ', newRow);
+  }
+
+  // 3) Follower counts are robot-owned (AutoSync tab) but stay hand-editable
+  //    from the form — upsert them there by name.
+  const fol = { igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers };
+  if (Object.values(fol).some(v => v !== undefined)) {
+    try {
+      const autoD = await sheetGet(token, "'AutoSync'!A:F");
+      const aRows = autoD.values || [];
+      const aHead = (aRows[0] || []).map(h => String(h || '').trim());
+      const anIdx = aHead.findIndex(h => h.toLowerCase() === 'name');
+      if (anIdx >= 0) {
+        let autoRow = 0;
+        aRows.forEach((r, i) => { if (i > 0 && !autoRow && String(r[anIdx] || '').toLowerCase().trim() === originalName.toLowerCase()) autoRow = i + 1; });
+        if (autoRow) {
+          const ups = [];
+          aHead.forEach((h, i) => { if (fol[h] !== undefined) ups.push({ range: `'AutoSync'!${colLetter(i)}${autoRow}`, values: [[String(fol[h] ?? '')]] }); });
+          if (a.name && a.name !== originalName) ups.push({ range: `'AutoSync'!${colLetter(anIdx)}${autoRow}`, values: [[a.name]] });
+          await sheetBatchUpdate(token, ups);
+        } else {
+          await sheetAppend(token, "'AutoSync'!A:F", aHead.map((h, i) => i === anIdx ? a.name : (fol[h] !== undefined ? String(fol[h] ?? '') : '')));
+        }
+      }
+    } catch { /* AutoSync not created yet (pre-migration) — skip */ }
   }
 }
 
@@ -448,23 +480,23 @@ module.exports = async (req, res) => {
       if ((req.body || {}).action === 'setup-users') {
         const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
           method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'Users' } } }] }),
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'Staff' } } }] }),
         });
         const d = await r.json();
         if (d.error && !/already exists/i.test(d.error.message || '')) throw new Error(d.error.message);
-        const head = await sheetGet(token, "'Users'!1:1");
+        const head = await sheetGet(token, "'Staff'!1:1");
         if (!(head.values && head.values[0] && head.values[0].some(c => String(c).trim()))) {
-          await sheetBatchUpdate(token, [{ range: "'Users'!A1", values: [['Name', 'Password', 'Role', 'Agent Key']] }]);
+          await sheetBatchUpdate(token, [{ range: "'Staff'!A1", values: [['Name', 'Password', 'Role', 'Agent Key', 'Title', 'Email']] }]);
         }
         // Bootstrap helpers (admin-gated): seed or remove a user row.
         if (Array.isArray(req.body.seedRow)) {
-          await sheetAppend(token, "'Users'!A:D", req.body.seedRow.slice(0, 4).map(v => String(v ?? '')));
+          await sheetAppend(token, "'Staff'!A:F", req.body.seedRow.slice(0, 6).map(v => String(v ?? '')));
         }
         if (req.body.removeName) {
-          const all = await sheetGet(token, "'Users'!A:D");
+          const all = await sheetGet(token, "'Staff'!A:F");
           const idx = (all.values || []).findIndex((r, i) => i > 0 && String(r[0] || '').trim().toLowerCase() === String(req.body.removeName).trim().toLowerCase());
           if (idx > 0) {
-            const gid = await getSheetGid(token, 'Users');
+            const gid = await getSheetGid(token, 'Staff');
             const rr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
               method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } } }] }),
@@ -479,6 +511,115 @@ module.exports = async (req, res) => {
       if (String((req.body || {}).action || '').startsWith('tab-')) {
         await handleTabAction(token, req.body || {});
         return res.json({ success: true });
+      }
+
+      // One-time sheet restructure (2026-07 cleanup), additive only:
+      // AutoSync tab seeded from AppData, Users renamed to Staff (+ new
+      // columns), README tab documenting ownership. Idempotent.
+      if ((req.body || {}).action === 'migrate-structure') {
+        const out = {};
+        const meta = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties`, {
+          headers: { Authorization: `Bearer ${token}` } })).json();
+        const titles = (meta.sheets || []).map(s => s.properties.title);
+        const gidOf = t => (meta.sheets || []).find(s => s.properties.title === t)?.properties.sheetId;
+        const sheetReq = async (requests) => {
+          const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests }),
+          });
+          const d = await r.json();
+          if (d.error) throw new Error(d.error.message);
+          return d;
+        };
+        // 1) AutoSync: create + seed from AppData (only when empty).
+        if (!titles.includes('AutoSync')) await sheetReq([{ addSheet: { properties: { title: 'AutoSync' } } }]);
+        const AUTO_HEADERS = ['name', 'igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos'];
+        const autoNow = await sheetGet(token, "'AutoSync'!A:F");
+        if (!(autoNow.values || []).length) {
+          await sheetBatchUpdate(token, [{ range: "'AutoSync'!A1", values: [AUTO_HEADERS] }]);
+          const app = await sheetGet(token, 'AppData!A:AZ');
+          const rows = app.values || [];
+          const heads = (rows[0] || []).map(h => String(h || '').trim().toLowerCase());
+          const gi = n => heads.indexOf(n.toLowerCase());
+          const cols = AUTO_HEADERS.map(h => gi(h));
+          const seed = rows.slice(1)
+            .filter(r => String(r[cols[0]] || '').trim())
+            .map(r => AUTO_HEADERS.map((_, j) => String(cols[j] >= 0 ? (r[cols[j]] ?? '') : '')));
+          for (let i = 0; i < seed.length; i += 200) await sheetAppend2(token, "'AutoSync'!A:F", seed.slice(i, i + 200));
+          out.autoSeeded = seed.length;
+        }
+        // 2) Users -> Staff rename + Title/Email columns.
+        if (titles.includes('Users') && !titles.includes('Staff')) {
+          await sheetReq([{ updateSheetProperties: { properties: { sheetId: gidOf('Users'), title: 'Staff' }, fields: 'title' } }]);
+          out.renamedUsersToStaff = true;
+        }
+        try {
+          const st = await sheetGet(token, "'Staff'!1:1");
+          const h = (st.values?.[0] || []).map(x => String(x || '').trim().toLowerCase());
+          if (!h.includes('title')) await sheetBatchUpdate(token, [{ range: `'Staff'!${colLetter(h.length)}1`, values: [['Title', 'Email']] }]);
+        } catch { /* Staff missing entirely — setup-users can create it later */ }
+        // 3) README.
+        if (!titles.includes('README')) {
+          await sheetReq([{ addSheet: { properties: { title: 'README' } } }]);
+          await sheetBatchUpdate(token, [{ range: "'README'!A1", values: [
+            ['Tab', 'Who writes it', 'What it holds'],
+            ['NFL / College / Highschool', 'Staff + onboarding form', 'Identity per level: name, position, team/school, socials, sizes, birthday, Lead Agent'],
+            ['AppData', 'Staff (app edit form) + onboarding form', 'Enrichment: bio, photos, Public flag, status, interests, brands, targets, hometown, measurables, onboardedAt'],
+            ['AutoSync', 'Robots only (daily crons)', 'IG/TikTok/X follower counts + Ourlads depthRank/depthPos — do not edit by hand'],
+            ['Onboarding', 'Onboarding form (audit log)', 'Every submission, signed + recruit, timestamped — never edited'],
+            ['Staff', 'Admins', 'Team logins: Name, Password, Role, Agent Key, Title, Email'],
+            ['Recruiting Info', 'Staff (app Recruiting page)', 'Active recruiting board'],
+            ['NFL Team Info', 'Staff (by hand)', 'Team facility addresses + front-office contacts (app Resources page)'],
+            ['State Registration', 'Staff (by hand)', 'Agent registration status by state (app Resources page)'],
+            ['Prospects', 'Legacy', 'Kept per Tyler — not read by the app'],
+          ] }]);
+          out.readme = true;
+        }
+        return res.json({ success: true, ...out });
+      }
+
+      // Destructive follow-up, run only after migrate-structure is verified:
+      // deletes AppData rows for people on no roster tab, then the moved/dead
+      // AppData columns.
+      if ((req.body || {}).action === 'cleanup-structure') {
+        const [nfl2, col2, hs2, app2] = await Promise.all([
+          sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'),
+          sheetGet(token, 'Highschool!A:S'), sheetGet(token, 'AppData!A:AZ'),
+        ]);
+        const rosterNames = new Set([...parseRows(nfl2), ...parseRows(col2), ...parseRows(hs2)]
+          .map(r => String(r['Name'] || '').toLowerCase().trim()).filter(Boolean));
+        const rows = app2.values || [];
+        const heads = (rows[0] || []).map(h => String(h || '').trim());
+        const nameIdx = heads.findIndex(h => h.toLowerCase() === 'name');
+        const gid = await getSheetGid(token, 'AppData');
+        const sheetReq = async (requests) => {
+          const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests }),
+          });
+          const d = await r.json();
+          if (d.error) throw new Error(d.error.message);
+        };
+        // Orphan rows (descending indexes so deletes don't shift each other).
+        const orphanIdx = [];
+        const orphanNames = [];
+        rows.forEach((r, i) => {
+          if (i === 0) return;
+          const n = String(r[nameIdx] || '').toLowerCase().trim();
+          if (n && !rosterNames.has(n)) { orphanIdx.push(i); orphanNames.push(r[nameIdx]); }
+        });
+        if (orphanIdx.length) {
+          await sheetReq(orphanIdx.sort((a, b) => b - a).map(i => ({
+            deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: i, endIndex: i + 1 } } })));
+        }
+        // Moved + dead columns.
+        const DROP = ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'igEngagement', 'notes', 'email', 'phone'];
+        const dropIdx = heads.map((h, i) => DROP.some(d => d.toLowerCase() === h.toLowerCase()) ? i : -1).filter(i => i >= 0);
+        if (dropIdx.length) {
+          await sheetReq(dropIdx.sort((a, b) => b - a).map(i => ({
+            deleteDimension: { range: { sheetId: gid, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 } } })));
+        }
+        return res.json({ success: true, orphansDeleted: orphanNames, columnsDropped: dropIdx.length });
       }
 
       await saveAthlete(token, req.body || {});
@@ -508,16 +649,30 @@ module.exports = async (req, res) => {
 
   try {
     const token = await getToken();
-    const [nfl, col, hs, app] = await Promise.all([
+    const [nfl, col, hs, app, auto] = await Promise.all([
       sheetGet(token, 'NFL!A:P'),
       sheetGet(token, 'College!A:Q'),
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
+      sheetGet(token, "'AutoSync'!A:F").catch(() => ({ values: [] })), // pre-migration tolerance
     ]);
 
     const appMap = {};
     parseRows(app).forEach(r => { const k = (r['name'] || r['Name'] || '').toLowerCase().trim(); if (k) appMap[k] = r; });
-    const lookup = name => appMap[(name || '').toLowerCase().trim()] || {};
+    // AutoSync (robot-owned followers + depth) overlays AppData values.
+    const autoMap = {};
+    parseRows(auto).forEach(r => { const k = (r['name'] || r['Name'] || '').toLowerCase().trim(); if (k) autoMap[k] = r; });
+    const lookup = name => {
+      const k = (name || '').toLowerCase().trim();
+      const base = appMap[k] || {};
+      const a = autoMap[k];
+      if (!a) return base;
+      const merged = { ...base };
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos']) {
+        if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
+      }
+      return merged;
+    };
 
     let athletes = [
       ...parseRows(nfl).map(r => mergeAthlete(r, lookup(r['Name']), 'NFL')),

@@ -179,46 +179,32 @@ module.exports = async (req, res) => {
 
   try {
     const token = await getToken();
-    const [nfl, col, app] = await Promise.all([
-      sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'), sheetGet(token, 'AppData!A:AZ'),
+    const [nfl, col, auto] = await Promise.all([
+      sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'), sheetGet(token, "'AutoSync'!A:F"),
     ]);
 
-    // Ensure AppData has depthRank/depthPos columns (auto-add headers once,
-    // expanding the sheet's column grid when the tab is at its current width).
-    const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties(columnCount)))`, {
-      headers: { Authorization: `Bearer ${token}` } });
-    const meta = await metaR.json();
-    const appMeta = (meta.sheets || []).find(s => (s.properties?.title || '').trim().toLowerCase() === 'appdata');
-    if (!appMeta) throw new Error('AppData tab not found');
-    let appGridCols = appMeta.properties?.gridProperties?.columnCount || 0;
-    const appGid = appMeta.properties.sheetId;
-    const appRows = app.values || [];
-    let appHeaders = (appRows[0] || []).map(h => String(h || '').trim());
-    const ensureCol = async (name) => {
-      let idx = appHeaders.findIndex(h => h.toLowerCase() === name.toLowerCase());
-      if (idx >= 0) return idx;
-      idx = appHeaders.length;
-      if (!dryRun) {
-        if (idx >= appGridCols) {
-          const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
-            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requests: [{ appendDimension: { sheetId: appGid, dimension: 'COLUMNS', length: idx - appGridCols + 1 } }] }),
-          });
-          const d = await r.json();
-          if (d.error) throw new Error(`Sheets grid expand error: ${d.error.code} ${d.error.message}`);
-          appGridCols = idx + 1;
-        }
-        await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(idx)}1`, values: [[name]] }]);
-      }
-      appHeaders = [...appHeaders, name];
-      return idx;
-    };
-    const rankCol = await ensureCol('depthRank');
-    const posCol = await ensureCol('depthPos');
-    const nameCol = appHeaders.findIndex(h => h.toLowerCase() === 'name');
-    if (nameCol < 0) throw new Error('AppData needs a name column');
+    // Write target is the AutoSync tab (robot-owned; created by the sheet
+    // migration). Athletes without a row get one appended below.
+    const autoRows = auto.values || [];
+    const autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
+    const autoIdx = n => autoHeaders.findIndex(h => h.toLowerCase() === n.toLowerCase());
+    const nameCol = autoIdx('name'), rankCol = autoIdx('depthRank'), posCol = autoIdx('depthPos');
+    if (nameCol < 0 || rankCol < 0 || posCol < 0) throw new Error('AutoSync needs name/depthRank/depthPos columns');
     const appRowByKey = {};
-    appRows.forEach((r, i) => { if (i > 0) { const k = nameKey(r[nameCol]); if (k) appRowByKey[k] = i + 1; } });
+    autoRows.forEach((r, i) => { if (i > 0) { const k = nameKey(r[nameCol]); if (k) appRowByKey[k] = i + 1; } });
+    let autoRowCount = autoRows.length;
+    const ensureAutoRow = async (name) => {
+      const k = nameKey(name);
+      if (appRowByKey[k]) return appRowByKey[k];
+      if (dryRun) return 0;
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'AutoSync'!A:F")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [autoHeaders.map((_, j) => j === nameCol ? name : '')] }),
+      });
+      autoRowCount += 1;
+      appRowByKey[k] = autoRowCount;
+      return autoRowCount;
+    };
 
     // Group athletes by team page to fetch.
     const nflPlayers = parseRows(nfl);
@@ -263,15 +249,15 @@ module.exports = async (req, res) => {
     });
     const timedOut = await runTasks(tasks, 6, deadline);
 
-    // Write back to AppData (matched athletes only — never blanks).
+    // Write back to AutoSync (matched athletes only — never blanks).
     let cellsWritten = 0;
     if (!dryRun) {
       const updates = [];
       for (const m of matches) {
-        const rowNum = appRowByKey[nameKey(m.name)];
+        const rowNum = await ensureAutoRow(m.name);
         if (!rowNum) continue;
-        updates.push({ range: `AppData!${colLetter(rankCol)}${rowNum}`, values: [[String(m.rank)]] });
-        updates.push({ range: `AppData!${colLetter(posCol)}${rowNum}`, values: [[m.pos]] });
+        updates.push({ range: `'AutoSync'!${colLetter(rankCol)}${rowNum}`, values: [[String(m.rank)]] });
+        updates.push({ range: `'AutoSync'!${colLetter(posCol)}${rowNum}`, values: [[m.pos]] });
       }
       // Batch in chunks to stay under request-size limits.
       for (let i = 0; i < updates.length; i += 100) await sheetBatchUpdate(token, updates.slice(i, i + 100));

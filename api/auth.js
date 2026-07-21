@@ -39,10 +39,16 @@ async function findUser(pw) {
   if (!sheetId || !process.env.GOOGLE_SERVICE_ACCOUNT_KEY) return null;
   try {
     const token = await getSheetsToken();
-    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent("'Users'!A:D")}`, {
-      headers: { Authorization: `Bearer ${token}` } });
-    const data = await r.json();
-    if (data.error) return null; // tab missing / unreadable -> only master login works
+    // Staff tab (renamed from Users during the 2026-07 sheet cleanup); fall
+    // back to the old name so logins survive either state.
+    let data = null;
+    for (const tab of ['Staff', 'Users']) {
+      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(`'${tab}'!A:F`)}`, {
+        headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      if (!d.error && (d.values || []).length) { data = d; break; }
+    }
+    if (!data) return null; // tab missing / unreadable -> only master login works
     const rows = data.values || [];
     if (rows.length < 2) return null;
     const headers = rows[0].map(h => String(h || '').trim().toLowerCase());

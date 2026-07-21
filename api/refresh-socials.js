@@ -64,6 +64,15 @@ async function sheetBatchUpdate(token, data) {
   const d = await r.json();
   if (d.error) throw new Error(`Sheets write: ${d.error.message}`);
 }
+async function sheetAppendRows(token, range, rows) {
+  if (!rows.length) return;
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: rows }),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(`Sheets append: ${d.error.message}`);
+}
 function colLetter(n) { let s = ''; n += 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
 function parseRows(data) {
   const rows = data?.values || [];
@@ -170,9 +179,10 @@ module.exports = async (req, res) => {
 
   try {
     const token = await getToken('https://www.googleapis.com/auth/spreadsheets');
-    const [nfl, col, hs, app] = await Promise.all([
+    const [nfl, col, hs, app, auto] = await Promise.all([
       sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'),
       sheetGet(token, 'Highschool!A:S'), sheetGet(token, 'AppData!A:AZ'),
+      sheetGet(token, "'AutoSync'!A:F"),
     ]);
 
     // Handles come from the base roster tabs (+ AppData tiktok fallback).
@@ -185,23 +195,39 @@ module.exports = async (req, res) => {
       };
     });
 
-    // AppData row map + follower column indexes.
-    const rows = app.values || [];
+    // TikTok handle fallback still lives in AppData.
+    const appRows = app.values || [];
+    const appHeaders = (appRows[0] || []).map(h => String(h || '').trim());
+    const appNameCol = appHeaders.findIndex(h => h.toLowerCase() === 'name');
+    const tkHandleCol = appHeaders.findIndex(h => h.toLowerCase() === 'tiktok');
+    if (appNameCol >= 0 && tkHandleCol >= 0) {
+      appRows.forEach((r, i) => {
+        if (i === 0) return;
+        const n = String(r[appNameCol] || '').toLowerCase().trim();
+        const h = handle(r[tkHandleCol]);
+        if (n && h && handles[n] && !handles[n].tk) handles[n].tk = h;
+      });
+    }
+
+    // Write target is the AutoSync tab (robot-owned). Missing athletes get a
+    // row appended so every roster name always has a write target.
+    const rows = auto.values || [];
     const headers = (rows[0] || []).map(h => String(h || '').trim());
     const idx = n => headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
     const nameCol = idx('name'), igCol = idx('igFollowers'), twCol = idx('twitterFollowers'), tkCol = idx('tiktokFollowers');
-    if (nameCol < 0) return res.status(400).json({ error: 'AppData has no Name column' });
+    if (nameCol < 0) return res.status(400).json({ error: 'AutoSync has no name column' });
     const rowByName = {};
-    const tkHandleCol = idx('tiktok'); // AppData's own tiktok handle column (fallback)
     rows.forEach((r, i) => {
       if (i === 0) return;
       const n = String(r[nameCol] || '').toLowerCase().trim();
-      if (!n) return;
-      rowByName[n] = { i };
-      if (tkHandleCol >= 0) { const h = handle(r[tkHandleCol]); if (h && handles[n] && !handles[n].tk) handles[n].tk = h; }
+      if (n) rowByName[n] = { i };
     });
+    const missing = Object.keys(handles).filter(n => !rowByName[n]).sort();
+    if (missing.length && !dryRun) {
+      await sheetAppendRows(token, "'AutoSync'!A:F", missing.map(n => headers.map((_, j) => j === nameCol ? handles[n].name : '')));
+      missing.forEach((n, k) => { rowByName[n] = { i: rows.length + k }; });
+    }
 
-    // Only refresh athletes that have both a handle and an AppData row to write to.
     let names = Object.keys(handles).filter(n => rowByName[n]);
     names.sort();
     names = names.slice(offset, offset + limit); // offset+Infinity → to the end
@@ -220,14 +246,14 @@ module.exports = async (req, res) => {
 
     const run = await runTasks(tasks, 6, deadline);
 
-    // Write successful numbers back to AppData (never blank on failure).
+    // Write successful numbers back to AutoSync (never blank on failure).
     const updates = [];
     for (const n of names) {
       const r = results[n], row = rowByName[n];
       if (!r || !row) continue;
-      if (r.ig != null && igCol >= 0) updates.push({ range: `AppData!${colLetter(igCol)}${row.i + 1}`, values: [[formatNum(r.ig)]] });
-      if (r.tw != null && twCol >= 0) updates.push({ range: `AppData!${colLetter(twCol)}${row.i + 1}`, values: [[formatNum(r.tw)]] });
-      if (r.tk != null && tkCol >= 0) updates.push({ range: `AppData!${colLetter(tkCol)}${row.i + 1}`, values: [[formatNum(r.tk)]] });
+      if (r.ig != null && igCol >= 0) updates.push({ range: `'AutoSync'!${colLetter(igCol)}${row.i + 1}`, values: [[formatNum(r.ig)]] });
+      if (r.tw != null && twCol >= 0) updates.push({ range: `'AutoSync'!${colLetter(twCol)}${row.i + 1}`, values: [[formatNum(r.tw)]] });
+      if (r.tk != null && tkCol >= 0) updates.push({ range: `'AutoSync'!${colLetter(tkCol)}${row.i + 1}`, values: [[formatNum(r.tk)]] });
     }
     if (!dryRun) await sheetBatchUpdate(token, updates);
 
