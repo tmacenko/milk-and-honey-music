@@ -512,6 +512,77 @@ module.exports = async (req, res) => {
         return res.json({ success: true });
       }
 
+      // Reconcile the Staff tab to a provided canonical list of
+      // { name, role } entries: canonical spellings win, roles are set,
+      // missing people appended, rows not on the list deleted, and empty
+      // Agent Keys default to first names. Directory columns (title/location/
+      // photo) and existing passwords are preserved for kept rows.
+      if ((req.body || {}).action === 'sync-staff' && Array.isArray(req.body.staff)) {
+        const want = req.body.staff.map(x => ({ name: String(x.name || '').trim(), role: String(x.role || 'agent').trim().toLowerCase() })).filter(x => x.name);
+        const staffD = await sheetGet(token, "'Staff'!A:J");
+        const rows = staffD.values || [];
+        const heads = (rows[0] || []).map(h => String(h || '').trim());
+        const hc = n => heads.findIndex(h => h.toLowerCase() === n.toLowerCase());
+        const nameC = hc('name'), roleC = hc('role'), keyC = hc('agent key');
+        if (nameC < 0 || roleC < 0 || keyC < 0) throw new Error('Staff needs name/Role/Agent Key columns');
+        const NICK = { mike: 'michael', michael: 'mike', dave: 'david', dan: 'daniel', matt: 'matthew', greg: 'gregory', rob: 'robert', will: 'william', tom: 'thomas', sam: 'sammy', sammy: 'sam' };
+        const matches = (a, b) => {
+          const la = a.toLowerCase(), lb = b.toLowerCase();
+          if (la === lb) return true;
+          const pa = la.split(/\s+/), pb = lb.split(/\s+/);
+          if (pa.length < 2 || pb.length < 2) return false;
+          if (pa[pa.length - 1] !== pb[pb.length - 1]) return false;   // last name
+          return pa[0] === pb[0] || NICK[pa[0]] === pb[0] || NICK[pb[0]] === pa[0] || pa[0][0] === pb[0][0];
+        };
+        const ups = [];
+        const usedRows = new Set();
+        const missing = [];
+        for (const w of want) {
+          let rowNum = 0;
+          rows.forEach((r, i) => {
+            if (i === 0 || rowNum || usedRows.has(i)) return;
+            if (String(r[nameC] || '').trim() && matches(String(r[nameC]).trim(), w.name)) { rowNum = i + 1; usedRows.add(i); }
+          });
+          if (rowNum) {
+            const r = rows[rowNum - 1];
+            if (String(r[nameC]).trim() !== w.name) ups.push({ range: `'Staff'!${colLetter(nameC)}${rowNum}`, values: [[w.name]] });
+            if (String(r[roleC] || '').trim().toLowerCase() !== w.role) ups.push({ range: `'Staff'!${colLetter(roleC)}${rowNum}`, values: [[w.role]] });
+            if (!String(r[keyC] || '').trim()) ups.push({ range: `'Staff'!${colLetter(keyC)}${rowNum}`, values: [[w.name.split(' ')[0]]] });
+          } else {
+            missing.push(w);
+          }
+        }
+        await sheetBatchUpdate(token, ups);
+        for (const w of missing) {
+          await sheetAppend(token, "'Staff'!A:J", heads.map((h, i) => {
+            if (i === nameC) return w.name;
+            if (i === roleC) return w.role;
+            if (i === keyC) return w.name.split(' ')[0];
+            return '';
+          }));
+        }
+        // Delete rows not on the list (descending so indexes hold).
+        const removeIdx = [];
+        const removedNames = [];
+        rows.forEach((r, i) => {
+          if (i === 0 || usedRows.has(i)) return;
+          const n = String(r[nameC] || '').trim();
+          if (n) { removeIdx.push(i); removedNames.push(n); }
+        });
+        if (removeIdx.length) {
+          const gid = await getSheetGid(token, 'Staff');
+          const reqs = removeIdx.sort((a, b) => b - a).map(i => ({
+            deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: i, endIndex: i + 1 } } }));
+          const rr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: reqs }),
+          });
+          const dd = await rr.json();
+          if (dd.error) throw new Error(dd.error.message);
+        }
+        return res.json({ success: true, updated: ups.length, added: missing.map(m => m.name), removed: removedNames });
+      }
+
       // Wire the sheet's agent dropdowns (Lead Agent on roster tabs, Agent on
       // Recruiting Info) to pull from the Staff directory's Name column —
       // music-sheet style. Also normalizes existing short values ("Jake") to
