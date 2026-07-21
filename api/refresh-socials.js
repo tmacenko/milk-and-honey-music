@@ -172,7 +172,12 @@ module.exports = async (req, res) => {
 
   const q = req.query || {};
   const dryRun = q.dryRun === '1' || q.dryRun === 'true';
-  const only = q.platforms ? String(q.platforms).split(',').map(s => s.trim()) : ['ig', 'tiktok', 'x'];
+  // Default platform set (the daily cron passes no ?platforms=): X and TikTok
+  // run daily; Instagram only Mondays and Thursdays to keep proxy bandwidth
+  // low — follower counts don't move enough day-to-day to need more. Explicit
+  // ?platforms=ig still runs it any day (manual refreshes).
+  const igDay = [1, 4].includes(new Date().getUTCDay());
+  const only = q.platforms ? String(q.platforms).split(',').map(s => s.trim()) : ['tiktok', 'x', ...(igDay ? ['ig'] : [])];
   const limit = q.limit ? parseInt(q.limit, 10) : Infinity;
   const offset = q.offset ? parseInt(q.offset, 10) : 0;
   const deadline = Date.now() + 52000; // stay under the 60s function cap
