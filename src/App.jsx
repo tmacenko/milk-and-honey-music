@@ -170,7 +170,7 @@ function Sec({ title, children }) {
 }
 
 // ── Chat component ────────────────────────────────────────────────────────────
-function FloatingChat({ clients, isMobile }) {
+function FloatingChat({ isMobile }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (isMobile) {
@@ -178,7 +178,7 @@ function FloatingChat({ clients, isMobile }) {
     }
     return () => { document.body.style.overflow = ''; };
   }, [open, isMobile]);
-  const [msgs, setMsgs] = useState([{ role: "assistant", text: "Hey — ask me anything about your music clients. I can help with brand matching, finding collaboration patterns, drafting outreach, or answering questions about the roster." }]);
+  const [msgs, setMsgs] = useState([{ role: "assistant", text: "Hey — ask me anything across Milk & Honey: music clients, sports athletes (teams, depth charts, socials, growth), the recruiting board, NFL team contacts, or state registrations. I can also draft pitches and outreach." }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [chatPdfMsg, setChatPdfMsg] = useState(null);
@@ -193,9 +193,11 @@ function FloatingChat({ clients, isMobile }) {
     setMsgs(m => [...m, { role: "user", text }]);
     setLoading(true);
     try {
-      const systemPrompt = `You are a strategic internal assistant for Milk & Honey Music, representing songwriters, producers, and artists.
+      const systemPrompt = `You are the internal assistant for Milk & Honey, a talent agency with two sides: Music (songwriters, producers, artists) and Sports (NFL, College, and High School football athletes).
 
-You have access to the full client roster provided at the start of this conversation. Use it to answer questions about clients, find patterns, suggest collaborations, match clients to brands or sync opportunities, and draft outreach.
+The full internal dataset is provided in your context: both rosters, staff, the recruiting board, NFL front-office contacts, and state NIL/agent registrations. Sports data notes: depth "1" means starter (from Ourlads); teams/heights/weights sync daily from ESPN; follower counts refresh from IG/X/TikTok, and growth7d is the 7-day follower change.
+
+Use the data to answer questions, find patterns, suggest brand/collab matches, and draft outreach. Never invent people, credits, or numbers not in the data — if something isn't in the data, say so.
 
 OUTPUT FORMAT:
 1. CONVERSATIONAL: plain answers, analysis, recommendations.
@@ -203,25 +205,10 @@ OUTPUT FORMAT:
 3. CSV EXPORT: ONLY when explicitly asked. Respond with ONLY: {"export":true,"filename":"name.csv","rows":[{"Col":"val"}]}
 
 Today: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
-Never invent clients or credits not in the data. Do not include a footer line in documents -- the PDF template adds one automatically.`;
-
-      const rosterContext = `MUSIC CLIENTS (${clients.length} total):
-${JSON.stringify(clients.map(c => ({
-  name: c.name, types: c.types, contact: c.contact,
-  city: c.city, state: c.state, country: c.country,
-  pro: c.pro, publisher: c.publisher, label: c.label,
-  credits: c.credits, bio: c.bio ? c.bio.slice(0, 200) : null,
-  instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
-  spotifyMonthly: c.spotifyMonthly,
-  spotifyFollowers: c.spotifyFollowers,
-  spotifyPopularity: c.spotifyPopularity,
-  spotifyGenres: c.spotifyGenres,
-})))}`;
+Do not include a footer line in documents -- the PDF template adds one automatically.`;
 
       const priorMsgs = msgs.filter((m, i) => i > 0 && m.text);
       const history = [
-        { role: "user", content: rosterContext },
-        { role: "assistant", content: "Got it — I have the full client roster. What do you need?" },
         ...priorMsgs.map(m => ({ role: m.role, content: m.text })),
         { role: "user", content: text },
       ];
@@ -229,7 +216,7 @@ ${JSON.stringify(clients.map(c => ({
       const resp = await fetch("/api/sheets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "chat", system: systemPrompt, messages: history }),
+        body: JSON.stringify({ action: "chat", fullContext: true, system: systemPrompt, messages: history }),
       });
       const data = await resp.json();
       if (data.export) {
@@ -3542,8 +3529,8 @@ function App() {
       {/* Athlete edit modal (sports) */}
       {editingAthlete && <AthleteForm initial={editingAthlete} staffNames={sportsStaff} onSave={saveAthlete} onCancel={() => setEditingAthlete(null)} />}
 
-      {/* Chat — temporarily disabled (component kept; re-enable by uncommenting) */}
-      {/* {!loading && <FloatingChat clients={clients} isMobile={isMobile} />} */}
+      {/* Internal AI chat — company sessions only (context spans both rosters + all tabs). */}
+      {!loading && isAdmin && authKnown && <FloatingChat isMobile={isMobile} />}
     </div>
   );
 }

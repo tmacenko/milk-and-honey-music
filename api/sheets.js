@@ -576,16 +576,68 @@ module.exports = async (req, res) => {
       const { configured, admin } = authState(req);
       if (configured && !admin) return res.status(401).json({ error: 'Not authorized' });
 
-      // Chat proxy
+      // Chat proxy. The data context is assembled SERVER-side (fullContext mode)
+      // by re-fetching our own APIs with the caller's cookie, so the model sees
+      // everything the logged-in team sees: both rosters with all synced fields,
+      // recruiting board, NFL directory, state registrations. The context block
+      // is prompt-cached, so follow-up messages in a conversation cost ~10%.
       if (req.body?.action === 'chat') {
         const apiKey = process.env.ANTHROPIC_API_KEY;
         if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
         const { messages, system } = req.body;
         if (!messages?.length) return res.status(400).json({ error: 'Missing messages' });
+
+        let systemBlocks = system || '';
+        if (req.body.fullContext) {
+          const base = 'https://www.milkandhoneyfamily.com';
+          const hdrs = { cookie: req.headers.cookie || '' };
+          const grab = (path) => fetch(`${base}${path}`, { headers: hdrs }).then(r => r.json()).catch(() => null);
+          const [music, sports, rec, nflDir, regs] = await Promise.all([
+            grab('/api/sheets'), grab('/api/athletes'),
+            grab('/api/athletes?tab=recruiting'), grab('/api/athletes?tab=nflteams'), grab('/api/athletes?tab=stateregs'),
+          ]);
+          const musicRows = (music?.clients || []).map(c => ({
+            name: c.name, types: c.types, contact: c.contact, city: c.city, state: c.state, country: c.country,
+            pro: c.pro, publisher: c.publisher, label: c.label, credits: c.credits,
+            bio: c.bio ? String(c.bio).slice(0, 200) : undefined,
+            instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
+            spotifyMonthly: c.spotifyMonthly, spotifyFollowers: c.spotifyFollowers, spotifyGenres: c.spotifyGenres,
+          }));
+          const sportsRows = (sports?.athletes || []).map(a => ({
+            name: a.name, level: a.level, position: a.position, team: a.nflTeam || a.college || '',
+            status: a.status, leadAgent: a.agentAssigned, birthday: a.birthday, hometown: a.hometown,
+            height: a.height, weight: a.weight, jersey: a.jerseyNumber,
+            classOf: a.classOf || undefined, committedTo: a.committedTo || undefined,
+            depth: a.depthRank ? `${a.depthRank}${a.depthPos ? ' ' + a.depthPos : ''}` : undefined,
+            igFollowers: a.igFollowers, xFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
+            growth7d: a.growth7d || undefined, growth7dPct: a.growth7dPct || undefined,
+            brands: a.brands?.length ? a.brands : undefined, interests: a.interests?.length ? a.interests : undefined,
+            musicArtists: a.musicArtists?.length ? a.musicArtists : undefined,
+            gamingSystem: a.gamingSystem || undefined, contract: a.nilContract || undefined,
+            sizes: [a.shirtSize && `shirt ${a.shirtSize}`, a.shoeSize && `shoes ${a.shoeSize}`].filter(Boolean).join(', ') || undefined,
+            onboardedAt: a.onboardedAt || undefined, notes: a.notes ? String(a.notes).slice(0, 200) : undefined,
+            bio: a.bio ? String(a.bio).slice(0, 200) : undefined,
+          }));
+          const tabTxt = (t, label) => t?.headers ? `${label} (columns: ${t.headers.join(' | ')}):\n${(t.rows || []).map(r => r.join(' | ')).join('\n')}` : `${label}: unavailable`;
+          const dataContext = [
+            `=== MILK & HONEY INTERNAL DATA — assembled ${new Date().toISOString().slice(0, 10)} ===`,
+            `MUSIC CLIENTS (${musicRows.length}):\n${JSON.stringify(musicRows)}`,
+            `SPORTS ATHLETES (${sportsRows.length}) — team/height/weight sync daily from ESPN, depth from Ourlads ("1" = starter), follower counts from IG/X/TikTok (growth7d = 7-day follower change), HS photos/data from 247Sports:\n${JSON.stringify(sportsRows)}`,
+            `SPORTS STAFF (Lead Agent options): ${JSON.stringify(sports?.staff || [])}`,
+            tabTxt(rec, 'RECRUITING BOARD (unsigned kids we are actively recruiting)'),
+            tabTxt(nflDir, 'NFL TEAM DIRECTORY (front-office contacts)'),
+            tabTxt(regs, 'STATE NIL/AGENT REGISTRATIONS'),
+          ].join('\n\n');
+          systemBlocks = [
+            { type: 'text', text: String(system || '') },
+            { type: 'text', text: dataContext, cache_control: { type: 'ephemeral' } },
+          ];
+        }
+
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8000, system: system || '', messages }),
+          body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 8000, system: systemBlocks, messages }),
         });
         if (!response.ok) {
           const err = await response.text();
