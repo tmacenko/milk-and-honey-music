@@ -182,14 +182,33 @@ module.exports = async (req, res) => {
       sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'), sheetGet(token, 'AppData!A:AZ'),
     ]);
 
-    // Ensure AppData has depthRank/depthPos columns (auto-add headers once).
+    // Ensure AppData has depthRank/depthPos columns (auto-add headers once,
+    // expanding the sheet's column grid when the tab is at its current width).
+    const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties(columnCount)))`, {
+      headers: { Authorization: `Bearer ${token}` } });
+    const meta = await metaR.json();
+    const appMeta = (meta.sheets || []).find(s => (s.properties?.title || '').trim().toLowerCase() === 'appdata');
+    if (!appMeta) throw new Error('AppData tab not found');
+    let appGridCols = appMeta.properties?.gridProperties?.columnCount || 0;
+    const appGid = appMeta.properties.sheetId;
     const appRows = app.values || [];
     let appHeaders = (appRows[0] || []).map(h => String(h || '').trim());
     const ensureCol = async (name) => {
       let idx = appHeaders.findIndex(h => h.toLowerCase() === name.toLowerCase());
       if (idx >= 0) return idx;
       idx = appHeaders.length;
-      if (!dryRun) await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(idx)}1`, values: [[name]] }]);
+      if (!dryRun) {
+        if (idx >= appGridCols) {
+          const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ appendDimension: { sheetId: appGid, dimension: 'COLUMNS', length: idx - appGridCols + 1 } }] }),
+          });
+          const d = await r.json();
+          if (d.error) throw new Error(`Sheets grid expand error: ${d.error.code} ${d.error.message}`);
+          appGridCols = idx + 1;
+        }
+        await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(idx)}1`, values: [[name]] }]);
+      }
       appHeaders = [...appHeaders, name];
       return idx;
     };
