@@ -2615,7 +2615,15 @@ function App() {
   // Sports employee section: 'home' (default) / 'roster' / 'recruiting' /
   // 'marketing' / 'resources'. Rendering gates on isAdmin, so public/b2b
   // sessions always get the roster regardless.
-  const [sportsPage, setSportsPage] = useState('home');
+  const [sportsPage, setSportsPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
+  // History-aware page switch so the browser back/forward buttons walk the
+  // sidebar sections instead of leaving the site. URL carries ?page= so a
+  // refresh lands back on the same section.
+  const goSportsPage = (key) => {
+    if (key === sportsPage) return;
+    window.history.pushState({ view: 'roster', domain: 'sports', sportsPage: key }, '', key === 'home' ? '/sports' : `/sports?page=${key}`);
+    setSportsPage(key);
+  };
 
   const setView = (v, item) => {
     if (v === 'detail' && item) {
@@ -2684,6 +2692,7 @@ function App() {
     const onPop = (e) => {
       const { domain: d, slug } = parseUrl();
       setDomainState(d);
+      setSportsPage(e.state?.sportsPage || new URLSearchParams(window.location.search).get('page') || 'home');
       const list = d === 'sports' ? athletes : clients;
       if (list.length && slug) {
         const it = resolveItem(list, slug);
@@ -3106,7 +3115,7 @@ function App() {
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
   ];
   const [onboardLinksOpen, setOnboardLinksOpen] = useState(false);
-  const navClick = (it) => { if (it.modal) setOnboardLinksOpen(true); else setSportsPage(it.key); };
+  const navClick = (it) => { if (it.modal) setOnboardLinksOpen(true); else goSportsPage(it.key); };
   const navActive = domain === 'sports' && isAdmin && view !== 'detail';
   // Roster search/filter/export controls only make sense on the roster itself
   // (and always for music / public sessions). Sports waits for the auth answer
@@ -3253,7 +3262,7 @@ function App() {
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                     {domainToggle}
                     {domain === 'sports' && isAdmin && (
-                      <button onClick={() => setSportsPage('home')} title="Home"
+                      <button onClick={() => goSportsPage('home')} title="Home"
                         style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 9px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
@@ -3336,9 +3345,9 @@ function App() {
               {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser}
                   onOpenAthlete={(a) => setView('detail', a)}
-                  onGoRoster={() => setSportsPage('roster')}
-                  onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); setSportsPage('roster'); }}
-                  onShowMine={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(true); setSportsPage('roster'); }} />
+                  onGoRoster={() => goSportsPage('roster')}
+                  onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); goSportsPage('roster'); }}
+                  onShowMine={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(true); goSportsPage('roster'); }} />
               )}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} onPromoted={() => setAthletesLoaded(false)} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} />}
