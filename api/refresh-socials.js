@@ -180,6 +180,22 @@ module.exports = async (req, res) => {
   // low — follower counts don't move enough day-to-day to need more. Explicit
   // ?platforms=ig still runs it any day (manual refreshes).
   const igDay = [1, 4].includes(new Date().getUTCDay());
+  // One-off IG diagnostics: ?debugIG=<handle> fetches that profile through
+  // the proxy and returns the raw status + a body snippet (no sheet writes).
+  if (q.debugIG) {
+    try {
+      const useProxy = proxyDispatcher && proxyFetch;
+      const r = await (useProxy ? proxyFetch : fetch)(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(q.debugIG)}`, {
+        headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
+        dispatcher: useProxy ? proxyDispatcher : undefined,
+      });
+      const body = await r.text();
+      return res.json({ debugIG: q.debugIG, proxied: !!useProxy, status: r.status, bodyStart: body.slice(0, 400) });
+    } catch (e) {
+      return res.json({ debugIG: q.debugIG, error: e.message, cause: e.cause ? (e.cause.code || e.cause.message) : null });
+    }
+  }
+
   const only = q.platforms ? String(q.platforms).split(',').map(s => s.trim()) : ['tiktok', 'x', ...(igDay ? ['ig'] : [])];
   const limit = q.limit ? parseInt(q.limit, 10) : Infinity;
   const offset = q.offset ? parseInt(q.offset, 10) : 0;
