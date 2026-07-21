@@ -618,7 +618,7 @@ module.exports = async (req, res) => {
             onboardedAt: a.onboardedAt || undefined, notes: a.notes ? String(a.notes).slice(0, 200) : undefined,
             bio: a.bio ? String(a.bio).slice(0, 200) : undefined,
           }));
-          const tabTxt = (t, label) => t?.headers ? `${label} (columns: ${t.headers.join(' | ')}):\n${(t.rows || []).map(r => r.join(' | ')).join('\n')}` : `${label}: unavailable`;
+          const tabTxt = (t, label) => t?.headers ? `${label} (columns: ${t.headers.join(' | ')}):\n${(t.rows || []).map(r => (r.cells || []).join(' | ')).join('\n')}` : `${label}: unavailable`;
           const dataContext = [
             `=== MILK & HONEY INTERNAL DATA — assembled ${new Date().toISOString().slice(0, 10)} ===`,
             `MUSIC CLIENTS (${musicRows.length}):\n${JSON.stringify(musicRows)}`,
