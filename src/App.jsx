@@ -2086,8 +2086,23 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       if (next < today) next = new Date(today.getFullYear() + 1, d.month - 1, d.day);
       return { a, date: next };
     }).filter(Boolean).sort((p, q) => p.date - q.date);
+    // Profiles missing the info we care most about — the nudge to go edit.
+    const missingOf = (a) => {
+      const m = [];
+      if (!a.photoUrl) m.push('Photo');
+      if (!a.birthday) m.push('Birthday');
+      if (!a.agentAssigned) m.push('Agent');
+      if (!a.instagram && !a.twitter && !a.tiktok) m.push('Socials');
+      if (!a.height || !a.weight) m.push('Ht/Wt');
+      if (!(a.shirtSize || a.hoodieSize || a.shoeSize)) m.push('Sizes');
+      if (a.level === 'High School' && !a.profileUrl247) m.push('247 link');
+      return m;
+    };
+    const incomplete = scoped.map(a => ({ a, missing: missingOf(a) }))
+      .filter(x2 => x2.missing.length)
+      .sort((p, q) => q.missing.length - p.missing.length);
     return {
-      levels, reach, starters, nflStarters, collegeStarters, mine: mineList.length, signed, bdays,
+      levels, reach, starters, nflStarters, collegeStarters, mine: mineList.length, signed, bdays, incomplete,
       splits: { ig: pct(ig), tt: pct(tt), x: pct(x) },
       week: bdays.filter(b => (b.date - today) / 86400000 < 7),
     };
@@ -2119,7 +2134,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ fontSize: isMobile ? 21 : 25, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{greeting}</div>
       <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>
-        {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · {athletes.length} athletes on roster
+        {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
@@ -2188,6 +2203,18 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               </>
             )}
         </div>
+      </div>
+
+      <div style={{ ...card, marginTop: 10 }}>
+        {tileHead('Incomplete profiles', s.incomplete.length ? `${s.incomplete.length} of ${scoped.length} need info` : 'All set')}
+        {s.incomplete.length === 0 ? empty('Every profile has the essentials ✓')
+          : s.incomplete.slice(0, 8).map((x2, i, arr) => row(
+              x2.a, [x2.a.level, x2.a.position].filter(Boolean).join(' · '),
+              <span style={{ color: G.yellow, fontWeight: 600 }}>
+                Missing {x2.missing.slice(0, 3).join(' · ')}{x2.missing.length > 3 ? ` +${x2.missing.length - 3}` : ''}
+              </span>,
+              x2.a.id || i, i === arr.length - 1))}
+        {s.incomplete.length > 8 && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>+ {s.incomplete.length - 8} more — open any profile and hit Edit to fill in the gaps.</div>}
       </div>
 
     </div>
@@ -2548,6 +2575,22 @@ function ResourcesPage({ isMobile }) {
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Resources</div>
+      <div style={{ marginBottom: 10 }}>{heading('Decks')}</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 24 }}>
+        {DECKS.map(d => (
+          <a key={d.title} href={d.url} target="_blank" rel="noopener noreferrer"
+            style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, display: "flex", alignItems: "center", gap: 12, textDecoration: "none" }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: G.greenSubtle, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: G.green }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 2v6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{d.title}</div>
+              <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{d.desc}</div>
+            </div>
+            <div style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: G.green, flexShrink: 0 }}>Open ↗</div>
+          </a>
+        ))}
+      </div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
         {heading('NFL team directory')}
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search teams or contacts..." style={{ ...inputBase, width: isMobile ? 170 : 220 }} />
@@ -2587,11 +2630,15 @@ function ResourcesPage({ isMobile }) {
         })))}
       <div style={{ margin: "24px 0 10px" }}>{heading('State registrations')}</div>
       {shell(stateOf(regs) || <SheetTable headers={regs.data?.headers || []} rows={regs.data?.rows || []} emptyMsg="Nothing here yet." renderCell={regCell} />)}
-      <div style={{ margin: "24px 0 10px" }}>{heading('Decks & one-sheets')}</div>
-      <div style={{ background: G.surface, border: `1px dashed ${G.surfaceBorderLight}`, borderRadius: 14, padding: 22, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Coming soon — a home for pitch decks and one-sheets.</div>
     </div>
   );
 }
+
+// Live Box links — the PDFs behind them get updated, the links stay the same.
+const DECKS = [
+  { title: 'Sports deck', desc: 'Company overview — always the latest version.', url: 'https://milkhoneyla.box.com/s/mbtbvud2p7rgjloiq49tygxn4az1zkie' },
+  { title: 'NIL deck', desc: 'NIL-specific pitch — always the latest version.', url: 'https://milkhoneyla.box.com/s/415ekwg8iukftyr28bp924zfm5wp3rox' },
+];
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
