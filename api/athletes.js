@@ -548,12 +548,15 @@ module.exports = async (req, res) => {
           { tab: 'Highschool', range: 'Highschool!A:S' }, { tab: 'Recruiting Info', range: "'Recruiting Info'!A:AZ" },
         ];
         // Match a stray value ("Sammy", "Mike Simon") to one staff member:
-        // exact, unique first name, or same last name + first initial.
+        // exact, unique first name (nicknames included), or same last name +
+        // first initial.
+        const NICKNAMES = { mike: 'michael', michael: 'mike', dave: 'david', dan: 'daniel', danny: 'daniel', matt: 'matthew', greg: 'gregory', rob: 'robert', bob: 'robert', will: 'william', bill: 'william', tom: 'thomas', tony: 'anthony', jim: 'james', joe: 'joseph', sam: 'sammy', sammy: 'sam' };
         const resolveName = (v) => {
           const lv = v.toLowerCase();
           const exact = staffNames.find(n => n.toLowerCase() === lv);
           if (exact) return exact;
           if (firstMap[lv]) return firstMap[lv];
+          if (NICKNAMES[lv] && firstMap[NICKNAMES[lv]]) return firstMap[NICKNAMES[lv]];
           const parts = lv.split(/\s+/);
           if (parts.length >= 2) {
             const hits = staffNames.filter(n => {
@@ -576,8 +579,10 @@ module.exports = async (req, res) => {
             const n = String(r[0] || '').trim();
             if (!n) return;
             const isSlash = n.includes('/');
+            const nickOf = { mike: 'michael', dave: 'david', dan: 'daniel', matt: 'matthew', greg: 'gregory', rob: 'robert', will: 'william', tom: 'thomas', sam: 'sammy' };
+            const firsts = [n.toLowerCase(), nickOf[n.toLowerCase()]].filter(Boolean);
             const isBareDupe = !n.includes(' ') && sRows.some((r2, j) => j > 0 && j !== i
-              && String(r2[0] || '').trim().toLowerCase().startsWith(n.toLowerCase() + ' '));
+              && firsts.some(f => String(r2[0] || '').trim().toLowerCase().startsWith(f + ' ')));
             if (isSlash || isBareDupe) junkIdx.push(i);
           });
           if (junkIdx.length) {
