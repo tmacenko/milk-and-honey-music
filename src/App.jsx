@@ -2084,6 +2084,202 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster }) {
   );
 }
 
+// ── Admin section pages (Recruiting / Marketing / Resources) ──────────────────
+// These render raw sheet tabs served by /api/athletes?tab=… so the UI always
+// matches whatever columns the sheet actually has.
+function useAdminTab(key) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(() => {
+    setLoading(true);
+    fetch(`/api/athletes?tab=${key}`)
+      .then(r => r.json())
+      .then(d => { if (d.error) throw new Error(d.error); setData(d); setErr(null); })
+      .catch(e => setErr(e.message))
+      .finally(() => setLoading(false));
+  }, [key]);
+  useEffect(() => { load(); }, [load]);
+  return { data, err, loading, reload: load };
+}
+
+function SheetTable({ headers, rows, onRowClick, emptyMsg }) {
+  if (!rows.length) return <div style={{ padding: "28px 16px", color: G.textTertiary, fontSize: 13, textAlign: "center" }}>{emptyMsg || 'Nothing here yet.'}</div>;
+  return (
+    <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <thead><tr>
+          {headers.map((h, i) => (
+            <th key={i} style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r._row} onClick={onRowClick ? () => onRowClick(r) : undefined}
+              style={{ cursor: onRowClick ? "pointer" : "default" }}
+              onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+              {r.cells.map((c, j) => (
+                <td key={j} style={{ padding: "10px 14px", fontSize: 13, color: j === 0 ? G.text : G.textSecondary, fontWeight: j === 0 ? 600 : 400, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{c}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Edit/add modal for a sheet-tab row: one field per column, notes get a textarea.
+function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title }) {
+  const [vals, setVals] = useState(() => {
+    const o = {};
+    headers.forEach((h, i) => { o[h] = initial ? (initial.cells[i] || '') : ''; });
+    return o;
+  });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  const save = async () => {
+    setBusy(true);
+    try { await onSave(vals); } catch (e) { alert(e.message || 'Save failed'); } finally { setBusy(false); }
+  };
+  const del = async () => {
+    if (!window.confirm("Remove this row from the sheet? This can't be undone.")) return;
+    setBusy(true);
+    try { await onDelete(); } catch (e) { alert(e.message || 'Remove failed'); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "86vh", overflowY: "auto", padding: 20, animation: "modalIn .18s ease" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>{title}</div>
+          <button onClick={onCancel} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {headers.map(h => {
+            const isNote = /note|comment/i.test(h);
+            return (
+              <div key={h} style={{ gridColumn: isNote ? "1 / -1" : "auto" }}>
+                <label style={labelStyle}>{h}</label>
+                {isNote
+                  ? <textarea value={vals[h]} onChange={e => setVals(v => ({ ...v, [h]: e.target.value }))} rows={3} style={{ ...inputBase, resize: "vertical" }} />
+                  : <input value={vals[h]} onChange={e => setVals(v => ({ ...v, [h]: e.target.value }))} style={inputBase} />}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+          {initial && onDelete && (
+            <button onClick={del} disabled={busy} style={{ background: "transparent", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "11px 14px", color: G.red, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Remove</button>
+          )}
+          <button onClick={onCancel} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>Cancel</button>
+          <button onClick={save} disabled={busy} style={{ flex: 2, background: busy ? G.surfaceRaised : G.green, border: "none", borderRadius: 12, padding: "11px", color: busy ? G.textTertiary : "#0a0a0a", fontWeight: 700, fontSize: 14, cursor: busy ? "wait" : "pointer", fontFamily: ff }}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecruitingBoard({ isMobile }) {
+  const { data, err, loading, reload } = useAdminTab('recruiting');
+  const [editing, setEditing] = useState(null);
+  const [q, setQ] = useState('');
+  const post = async (body) => {
+    const r = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || 'Save failed');
+  };
+  const headers = data?.headers || [];
+  const rows = (data?.rows || []).filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())));
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Recruiting</div>
+          <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 3 }}>{data ? `${data.rows.length} recruits · synced with the sheet` : ' '}</div>
+        </div>
+        <div style={{ flex: 1 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search recruits..." style={{ ...inputBase, width: isMobile ? 140 : 200 }} />
+        <button onClick={() => setEditing('new')} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
+      </div>
+      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+        {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
+          : err ? <div style={{ padding: 40, textAlign: "center", color: G.red, fontSize: 13 }}>{err}</div>
+          : <SheetTable headers={headers} rows={rows} onRowClick={setEditing} emptyMsg={q ? 'No recruits match.' : 'No recruits yet — add the first one.'} />}
+      </div>
+      {editing && (
+        <TabRowForm headers={headers} initial={editing === 'new' ? null : editing}
+          title={editing === 'new' ? 'Add recruit' : (editing.cells[0] || 'Edit recruit')}
+          onCancel={() => setEditing(null)}
+          onSave={async (vals) => {
+            await post(editing === 'new'
+              ? { action: 'tab-append', tab: 'recruiting', values: vals }
+              : { action: 'tab-update', tab: 'recruiting', row: editing._row, values: vals });
+            setEditing(null); reload();
+          }}
+          onDelete={editing === 'new' ? null : async () => {
+            await post({ action: 'tab-delete', tab: 'recruiting', row: editing._row });
+            setEditing(null); reload();
+          }} />
+      )}
+    </div>
+  );
+}
+
+function MarketingPage({ isMobile }) {
+  const items = [
+    ['Outreach tracker', 'Log every pitch — who reached out, to which company, and what they said. No more double-pitching the same brand.'],
+    ['Athlete indicators', 'Automatic flags like "no outreach in 30+ days" so nothing slips through the cracks.'],
+    ['Pitch engine', 'Pick an athlete, get a drafted pitch and suggested companies based on their school, interests, and audience.'],
+  ];
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Marketing</div>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 7, padding: "3px 8px" }}>Coming soon</span>
+      </div>
+      <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4, marginBottom: 18 }}>What's planned for this space:</div>
+      <div style={{ display: "grid", gap: 10 }}>
+        {items.map(([t, d]) => (
+          <div key={t} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{t}</div>
+            <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4, lineHeight: 1.5 }}>{d}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ResourcesPage({ isMobile }) {
+  const nfl = useAdminTab('nflteams');
+  const regs = useAdminTab('stateregs');
+  const [q, setQ] = useState('');
+  const nflRows = (nfl.data?.rows || []).filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())));
+  const shell = (node) => <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>{node}</div>;
+  const stateOf = (t) => t.loading ? <div style={{ padding: 32, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
+    : t.err ? <div style={{ padding: 32, textAlign: "center", color: G.red, fontSize: 13 }}>{t.err}</div> : null;
+  const heading = (txt) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{txt}</div>;
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Resources</div>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+        {heading('NFL team directory')}
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search teams..." style={{ ...inputBase, width: isMobile ? 150 : 200 }} />
+      </div>
+      {shell(stateOf(nfl) || <SheetTable headers={nfl.data?.headers || []} rows={nflRows} emptyMsg={q ? 'No teams match.' : 'Nothing here yet.'} />)}
+      <div style={{ margin: "24px 0 10px" }}>{heading('State registrations')}</div>
+      {shell(stateOf(regs) || <SheetTable headers={regs.data?.headers || []} rows={regs.data?.rows || []} emptyMsg="Nothing here yet." />)}
+      <div style={{ margin: "24px 0 10px" }}>{heading('Decks & one-sheets')}</div>
+      <div style={{ background: G.surface, border: `1px dashed ${G.surfaceBorderLight}`, borderRadius: 14, padding: 22, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Coming soon — a home for pitch decks and one-sheets.</div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
   const [clients, setClients] = useState([]);
@@ -2123,9 +2319,10 @@ function App() {
   };
   const [view, setViewState] = useState(() => (parseUrl().slug || window.location.search.includes('client=')) ? 'detail' : 'roster');
   const [selected, setSelected] = useState(null);
-  // Sports employee home: 'dashboard' (default) or 'roster'. Rendering gates on
-  // isAdmin, so public/b2b sessions always get the roster regardless.
-  const [sportsPage, setSportsPage] = useState('dashboard');
+  // Sports employee section: 'home' (default) / 'roster' / 'recruiting' /
+  // 'marketing' / 'resources'. Rendering gates on isAdmin, so public/b2b
+  // sessions always get the roster regardless.
+  const [sportsPage, setSportsPage] = useState('home');
 
   const setView = (v, item) => {
     if (v === 'detail' && item) {
@@ -2593,19 +2790,47 @@ function App() {
       ))}
     </div>
   );
-  // Employee-only Dashboard/Roster switch (sports side). dashActive means the
-  // dashboard is what the main content area should show right now.
-  const dashActive = domain === 'sports' && isAdmin && sportsPage === 'dashboard' && view !== 'detail';
-  const dashToggle = (domain === 'sports' && isAdmin) ? (
-    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-      {[['dashboard', 'Dashboard'], ['roster', 'Roster']].map(([v, label], i) => (
-        <button key={v} onClick={() => setSportsPage(v)}
-          style={{ padding: "8px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", background: sportsPage === v ? G.greenSubtle : "transparent", color: sportsPage === v ? G.green : G.textSecondary, fontWeight: sportsPage === v ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
-          {label}
-        </button>
-      ))}
+  // Employee nav (sports side): left sidebar on desktop, pill strip on mobile.
+  // Per-division config so Music can get its own menu later.
+  const NAV_SPORTS = [
+    { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
+    { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
+    { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
+    { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z', soon: true },
+    { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
+  ];
+  const navActive = domain === 'sports' && isAdmin && view !== 'detail';
+  // Roster search/filter/export controls only make sense on the roster itself
+  // (and always for music / public sessions).
+  const rosterControlsOn = !navActive || sportsPage === 'roster';
+  const sidebar = (navActive && !isMobile) ? (
+    <div style={{ width: 176, flexShrink: 0, borderRight: `1px solid ${G.surfaceBorder}`, padding: "18px 10px", position: "sticky", top: 62, alignSelf: "flex-start", maxHeight: "calc(100vh - 62px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+      {NAV_SPORTS.map(it => {
+        const on = sportsPage === it.key;
+        return (
+          <button key={it.key} onClick={() => setSportsPage(it.key)}
+            style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: on ? G.greenSubtle : "transparent", border: "none", borderRadius: 9, color: on ? G.green : G.textSecondary, fontWeight: on ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={it.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <span style={{ flex: 1 }}>{it.label}</span>
+            {it.soon && <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: G.textTertiary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 6, padding: "2px 5px" }}>Soon</span>}
+          </button>
+        );
+      })}
     </div>
   ) : null;
+  const mobileNavStrip = (
+    <div className="mh-hscroll" style={{ display: "flex", gap: 4, alignItems: "center", overflowX: "auto" }}>
+      {domainToggle}
+      <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+        {NAV_SPORTS.map((it, i) => (
+          <button key={it.key} onClick={() => setSportsPage(it.key)}
+            style={{ padding: "8px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", background: sportsPage === it.key ? G.greenSubtle : "transparent", color: sportsPage === it.key ? G.green : G.textSecondary, fontWeight: sportsPage === it.key ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+            {it.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
   // Sports level filter (All / NFL / College / High School).
   const sportsLevels = ['All', 'NFL', 'College', 'High School'];
   const sportsLevelBar = (
@@ -2697,17 +2922,12 @@ function App() {
               <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
                 <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
                 <div style={{ flex: 1 }} />
-                {!dashActive && exportControl(true)}
+                {rosterControlsOn && exportControl(true)}
                 {authBtnMobile}
               </div>
               {/* Row 2: domain + view + sort + layout + search — one line (scrolls if tight) */}
               <div style={{ padding: "0 16px 12px" }}>
-                {dashActive ? (
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    {domainToggle}
-                    {dashToggle}
-                  </div>
-                ) : mobileSearchOpen ? (
+                {!rosterControlsOn ? mobileNavStrip : mobileSearchOpen ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
                     <input ref={searchRef} autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : "Search clients..."}
@@ -2718,7 +2938,7 @@ function App() {
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                     {domainToggle}
                     {domain === 'sports' && isAdmin && (
-                      <button onClick={() => setSportsPage('dashboard')} title="Dashboard"
+                      <button onClick={() => setSportsPage('home')} title="Home"
                         style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 9px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
@@ -2743,7 +2963,6 @@ function App() {
             <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
             <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
             {domainToggle}
-            {view !== 'detail' && dashToggle}
             {view === 'detail' ? (
               <>
                 <div style={{ flex: 1 }} />
@@ -2755,7 +2974,7 @@ function App() {
                 {isAdmin && selected && <button onClick={() => domain === 'sports' ? setEditingAthlete(selected) : setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
               </>
-            ) : dashActive ? (
+            ) : !rosterControlsOn ? (
               <>
                 <div style={{ flex: 1 }} />
                 {authBtn}
@@ -2776,8 +2995,10 @@ function App() {
           </div>
         )}
 
-        {/* Content */}
-        <div style={{ flex: 1, overflow: "visible" }}>
+        {/* Content (sidebar + page) */}
+        <div style={{ flex: 1, display: "flex", minWidth: 0, alignItems: "stretch" }}>
+        {sidebar}
+        <div style={{ flex: 1, overflow: "visible", minWidth: 0 }}>
           {(domain === 'sports' ? !athletesLoaded : loading) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: 14 }}>
               <span style={{ fontSize: 24, animation: "spin 1s linear infinite", display: "inline-block", color: G.textTertiary }}>⟳</span>
@@ -2797,12 +3018,15 @@ function App() {
               {!error && athletesLoaded && view === 'detail' && selected && (
                 <SportsDetail athlete={selected} isMobile={isMobile} />
               )}
-              {!error && athletesLoaded && view === 'roster' && dashActive && (
+              {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
                 <SportsDashboard athletes={athletes} isMobile={isMobile}
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => setSportsPage('roster')} />
               )}
-              {!error && athletesLoaded && view === 'roster' && !dashActive && (
+              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} />}
+              {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} />}
+              {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} />}
+              {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
                   {filteredAthletes.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
@@ -2852,6 +3076,7 @@ function App() {
               )}
             </>
           )}
+        </div>
         </div>
       </div>
 

@@ -319,6 +319,69 @@ async function saveAthlete(token, body) {
   }
 }
 
+// ── Generic admin tabs (Recruiting Info / NFL Team Info / State Registration) ─
+// Served raw (headers + rows) so the UI adapts to whatever columns the sheet
+// has. Admin-only in both directions; writes are limited to Recruiting Info.
+const ADMIN_TABS = {
+  recruiting: { title: 'Recruiting Info', writable: true },
+  nflteams: { title: 'NFL Team Info', writable: false },
+  stateregs: { title: 'State Registration', writable: false },
+};
+const tabRange = title => `'${title}'!A:AZ`;
+async function getSheetGid(token, title) {
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties`, {
+    headers: { Authorization: `Bearer ${token}` } });
+  const d = await r.json();
+  if (d.error) throw new Error(`Sheets meta error: ${d.error.code} ${d.error.message}`);
+  const hit = (d.sheets || []).find(s => (s.properties?.title || '').trim().toLowerCase() === title.toLowerCase());
+  if (!hit) throw new Error(`Tab "${title}" not found`);
+  return hit.properties.sheetId;
+}
+async function readAdminTab(token, tab) {
+  const data = await sheetGet(token, tabRange(tab.title));
+  const values = data.values || [];
+  const headers = (values[0] || []).map(h => String(h || '').trim());
+  const rows = values.slice(1)
+    .map((r, i) => ({ _row: i + 2, cells: headers.map((_, j) => String(r[j] ?? '').trim()) }))
+    .filter(r => r.cells.some(c => c));
+  return { headers, rows };
+}
+async function handleTabAction(token, body) {
+  const tab = ADMIN_TABS[body.tab];
+  if (!tab) throw new Error('Unknown tab');
+  if (!tab.writable) throw new Error('This tab is read-only');
+  const headers = ((await sheetGet(token, `'${tab.title}'!1:1`)).values?.[0] || []).map(h => String(h || '').trim());
+  const vals = body.values || {};
+  const valFor = h => {
+    const k = Object.keys(vals).find(x => x.trim().toLowerCase() === h.toLowerCase());
+    return k === undefined ? undefined : vals[k];
+  };
+  if (body.action === 'tab-update') {
+    const row = parseInt(body.row, 10);
+    if (!row || row < 2) throw new Error('Bad row');
+    const updates = [];
+    headers.forEach((h, i) => {
+      const v = valFor(h);
+      if (v !== undefined) updates.push({ range: `'${tab.title}'!${colLetter(i)}${row}`, values: [[String(v ?? '')]] });
+    });
+    await sheetBatchUpdate(token, updates);
+  } else if (body.action === 'tab-append') {
+    await sheetAppend(token, tabRange(tab.title), headers.map(h => { const v = valFor(h); return v === undefined ? '' : String(v ?? ''); }));
+  } else if (body.action === 'tab-delete') {
+    const row = parseInt(body.row, 10);
+    if (!row || row < 2) throw new Error('Bad row');
+    const gid = await getSheetGid(token, tab.title);
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: row - 1, endIndex: row } } }] }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(`Sheets delete error: ${d.error.code} ${d.error.message}`);
+  } else {
+    throw new Error('Unknown tab action');
+  }
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -372,10 +435,32 @@ module.exports = async (req, res) => {
         return res.json({ success: true, flagged: updates.length, appended: missing.length, rosterCount: rosterNames.size });
       }
 
+      if (String((req.body || {}).action || '').startsWith('tab-')) {
+        await handleTabAction(token, req.body || {});
+        return res.json({ success: true });
+      }
+
       await saveAthlete(token, req.body || {});
       return res.json({ success: true });
     } catch (err) {
       console.error('Athlete save error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // Admin tab reads (?tab=recruiting|nflteams|stateregs) — never for public sessions.
+  const tabKey = (req.query || {}).tab;
+  if (tabKey) {
+    const { configured, admin } = authState(req);
+    if (configured && !admin) return res.status(403).json({ error: 'Admin only' });
+    const tab = ADMIN_TABS[tabKey];
+    if (!tab) return res.status(400).json({ error: 'Unknown tab' });
+    try {
+      const token = await getToken();
+      const out = await readAdminTab(token, tab);
+      return res.json({ ...out, writable: tab.writable });
+    } catch (err) {
+      console.error('Tab read error:', err.message);
       return res.status(500).json({ error: err.message });
     }
   }
