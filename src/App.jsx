@@ -664,6 +664,12 @@ function AthleteForm({ initial, onSave, onCancel }) {
               <Input value={isNFL ? (form.nflTeam || '') : (form.college || '')} onChange={e => set(isNFL ? 'nflTeam' : 'college', e.target.value)} placeholder={isNFL ? 'Kansas City Chiefs' : 'Michigan'} />
             </Field>
             <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Team override (trades / transfers)">
+                <Input value={form.teamOverride || ''} onChange={e => set('teamOverride', e.target.value)}
+                  placeholder="Leave blank to follow ESPN — fill while ESPN lags a trade or transfer" />
+              </Field>
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
               <Field label="Status">
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {statusOptions.map(s => {

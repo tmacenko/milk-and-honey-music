@@ -182,13 +182,16 @@ function teamLogoFor(level, nflTeam, college, override) {
 
 function mergeAthlete(row, ext, level) {
   const isNFL = level === 'NFL';
-  const team = isNFL ? (row['Team'] || '') : (row['School'] || '');
+  const sheetTeam = isNFL ? (row['Team'] || '') : (row['School'] || '');
+  // Effective team: manual override (trade/transfer grace period) beats the
+  // daily ESPN sync, which beats the sheet value.
+  const team = String(ext['teamOverride'] || '').trim() || String(ext['espnTeam'] || '').trim() || sheetTeam;
   const status = ext['status'] ? ext['status'] : (isNFL ? deriveStatus(team) : 'Active');
   const tabTiktok = handle(row['TikTok'] || row['Tiktok'] || '');
   const nflTeam = isNFL ? team : '';
   const college = isNFL ? (ext['college'] || '') : team;
-  // ESPN-derived images (manual sheet values win): all NFL/College players have them.
-  const photoUrl = ext['photoUrl'] || espnHeadshot(ext['espnId'], ext['espnSport'] || (isNFL ? 'nfl' : 'college'));
+  // Photos: manual override > ESPN headshot (NFL/College) > 247 headshot (HS).
+  const photoUrl = ext['photoUrl'] || espnHeadshot(ext['espnId'], ext['espnSport'] || (isNFL ? 'nfl' : 'college')) || ext['photo247'] || '';
   const teamLogo = teamLogoFor(level, nflTeam, college, ext['teamLogo']);
   return {
     _rowIndex: row._rowIndex,
@@ -210,9 +213,9 @@ function mergeAthlete(row, ext, level) {
     igEngagement: ext['igEngagement'] || '',
     bio: ext['bio'] || '',
     hometown: ext['hometown'] || '',
-    height: ext['height'] || '',
-    weight: ext['weight'] || '',
-    jerseyNumber: ext['jerseyNumber'] || '',
+    height: ext['height'] || ext['espnHeight'] || '',
+    weight: ext['weight'] || ext['espnWeight'] || '',
+    jerseyNumber: ext['jerseyNumber'] || ext['espnJersey'] || '',
     classOf: level === 'High School' ? (row['ClassOf'] || row['Class Of'] || '') : '',
     committedTo: (level === 'High School' ? (row['Committed'] || row['Commitment'] || '') : '') || ext['committedTo'] || '',
     yearInSchool: ext['yearInSchool'] || '',
@@ -228,6 +231,9 @@ function mergeAthlete(row, ext, level) {
     photoUrlOverride: ext['photoUrl'] || '',
     heroImageUrl: ext['heroImageUrl'] || '',
     profileUrl247: ext['profileUrl247'] || '',
+    // Manual team override (trade/transfer grace period) — raw value for the
+    // edit form; blank means "follow ESPN / the sheet".
+    teamOverride: ext['teamOverride'] || '',
     // Ourlads depth chart (synced daily by api/refresh-depth.js).
     depthRank: parseInt(ext['depthRank'], 10) || 0,
     depthPos: ext['depthPos'] || '',
@@ -304,6 +310,7 @@ async function saveAthlete(token, body) {
     // Only the manual override goes in the sheet — never the derived ESPN URL.
     photoUrl: a.photoUrlOverride !== undefined ? a.photoUrlOverride : a.photoUrl,
     heroImageUrl: a.heroImageUrl,
+    teamOverride: a.teamOverride,
     status: a.status, tiktok: a.tiktok,
     interests: Array.isArray(a.interests) ? a.interests.join(', ') : a.interests,
     brands: Array.isArray(a.brands) ? a.brands.join(', ') : a.brands,
@@ -1014,7 +1021,7 @@ module.exports = async (req, res) => {
       sheetGet(token, 'College!A:Q'),
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
-      sheetGet(token, "'AutoSync'!A:F").catch(() => ({ values: [] })), // pre-migration tolerance
+      sheetGet(token, "'AutoSync'!A:L").catch(() => ({ values: [] })), // pre-migration tolerance
     ]);
 
     const appMap = {};
@@ -1028,7 +1035,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;

@@ -175,18 +175,29 @@ module.exports = async (req, res) => {
   if (!SHEET_ID) return res.status(500).json({ error: 'SPORTS_SHEET_ID not set' });
   if (!authorized(req)) return res.status(403).json({ error: 'Not authorized' });
   const dryRun = ['1', 'true'].includes(String((req.query || {}).dryRun || ''));
+  // task=depth|espn|hs|all — the daily cron runs all three modules in order.
+  const task = String((req.query || {}).task || 'all');
+  const wants = (t) => task === 'all' || task === t;
   const deadline = Date.now() + 52000;
 
   try {
     const token = await getToken();
-    const [nfl, col, auto] = await Promise.all([
-      sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'), sheetGet(token, "'AutoSync'!A:F"),
+    const [nfl, col, hs, app, auto] = await Promise.all([
+      sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'), sheetGet(token, 'Highschool!A:S'),
+      sheetGet(token, 'AppData!A:AZ'), sheetGet(token, "'AutoSync'!A:L"),
     ]);
 
     // Write target is the AutoSync tab (robot-owned; created by the sheet
-    // migration). Athletes without a row get one appended below.
+    // migration). Athletes without a row get one appended below. New columns
+    // for the ESPN/247 sync are appended to its header row on first run.
     const autoRows = auto.values || [];
-    const autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
+    let autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
+    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247'];
+    const missingAuto = AUTO_EXTRA.filter(h => !autoHeaders.some(x => x.toLowerCase() === h.toLowerCase()));
+    if (missingAuto.length && !dryRun) {
+      await sheetBatchUpdate(token, [{ range: `'AutoSync'!${colLetter(autoHeaders.length)}1`, values: [missingAuto] }]);
+      autoHeaders = [...autoHeaders, ...missingAuto];
+    }
     const autoIdx = n => autoHeaders.findIndex(h => h.toLowerCase() === n.toLowerCase());
     const nameCol = autoIdx('name'), rankCol = autoIdx('depthRank'), posCol = autoIdx('depthPos');
     if (nameCol < 0 || rankCol < 0 || posCol < 0) throw new Error('AutoSync needs name/depthRank/depthPos columns');
@@ -197,7 +208,7 @@ module.exports = async (req, res) => {
       const k = nameKey(name);
       if (appRowByKey[k]) return appRowByKey[k];
       if (dryRun) return 0;
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'AutoSync'!A:F")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'AutoSync'!A:L")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ values: [autoHeaders.map((_, j) => j === nameCol ? name : '')] }),
       });
@@ -206,11 +217,45 @@ module.exports = async (req, res) => {
       return autoRowCount;
     };
 
-    // Group athletes by team page to fetch.
+    // AppData lookups (espnId store, 247 profile links) + ensure the
+    // teamOverride column exists for the trade-grace-period override.
+    const appRows = app.values || [];
+    let appHeaders = (appRows[0] || []).map(h => String(h || '').trim());
+    if (!appHeaders.some(h => h.toLowerCase() === 'teamoverride') && !dryRun) {
+      const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties(columnCount)))`, {
+        headers: { Authorization: `Bearer ${token}` } });
+      const meta = await metaR.json();
+      const appMeta = (meta.sheets || []).find(s => (s.properties?.title || '').trim().toLowerCase() === 'appdata');
+      if (appMeta) {
+        const width = appMeta.properties?.gridProperties?.columnCount || appHeaders.length;
+        if (appHeaders.length >= width) {
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ appendDimension: { sheetId: appMeta.properties.sheetId, dimension: 'COLUMNS', length: appHeaders.length - width + 1 } }] }),
+          });
+        }
+        await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(appHeaders.length)}1`, values: [['teamOverride']] }]);
+        appHeaders = [...appHeaders, 'teamOverride'];
+      }
+    }
+    const appIdx = n => appHeaders.findIndex(h => h.toLowerCase() === n.toLowerCase());
+    const appNameCol = appIdx('name'), espnIdCol = appIdx('espnId'), url247Col = appIdx('profileUrl247');
+    const appByKey = {};
+    appRows.forEach((r, i) => { if (i > 0 && appNameCol >= 0) { const k = nameKey(r[appNameCol]); if (k) appByKey[k] = { row: i + 1, cells: r }; } });
+
     const nflPlayers = parseRows(nfl);
     const colPlayers = parseRows(col);
+    const hsPlayers = parseRows(hs);
+
+    // ── Module 1: Ourlads depth charts ────────────────────────────────────────
     const byUrl = {}; // url -> [{ name, key }]
     const unresolvedTeams = new Set();
+    const matches = [];   // { name, rank, pos }
+    const unmatched = [];
+    const fetchErrors = [];
+    let timedOut = false;
+    let cellsWritten = 0;
+    if (wants('depth')) {
     for (const p of nflPlayers) {
       const team = String(p['Team'] || '').toLowerCase().trim();
       const code = NFL_CODES[team];
@@ -232,9 +277,6 @@ module.exports = async (req, res) => {
     }
 
     // Fetch each depth chart and collect matches.
-    const matches = [];   // { name, rank, pos }
-    const unmatched = [];
-    const fetchErrors = [];
     const tasks = Object.entries(byUrl).map(([url, players]) => async () => {
       try {
         const chart = parseDepthChart(await fetchText(url));
@@ -247,10 +289,9 @@ module.exports = async (req, res) => {
         fetchErrors.push(`${url}: ${e.message}`);
       }
     });
-    const timedOut = await runTasks(tasks, 6, deadline);
+    timedOut = await runTasks(tasks, 6, deadline);
 
     // Write back to AutoSync (matched athletes only — never blanks).
-    let cellsWritten = 0;
     if (!dryRun) {
       const updates = [];
       for (const m of matches) {
@@ -263,9 +304,100 @@ module.exports = async (req, res) => {
       for (let i = 0; i < updates.length; i += 100) await sheetBatchUpdate(token, updates.slice(i, i + 100));
       cellsWritten = updates.length;
     }
+    } // end depth module
+
+    // ── Module 2: ESPN details (NFL + College) ───────────────────────────────
+    // Pulls current team / height / weight / jersey into AutoSync for anyone
+    // with an espnId, and discovers missing espnIds by name search (written to
+    // AppData's espnId column). Manual values in AppData always win at display
+    // time, and AppData's teamOverride beats the synced team entirely.
+    const espn = { updated: 0, idsFound: 0, errors: [] };
+    if (wants('espn')) {
+      const espnTeamCol = autoIdx('espnTeam'), espnHCol = autoIdx('espnHeight'),
+        espnWCol = autoIdx('espnWeight'), espnJCol = autoIdx('espnJersey');
+      const targets = [
+        ...nflPlayers.map(p => ({ name: p['Name'], league: 'nfl' })),
+        ...colPlayers.map(p => ({ name: p['Name'], league: 'college-football' })),
+      ].filter(t => t.name);
+      // Discover missing espnIds (bounded per run to stay in budget).
+      const espnUpdates = [];
+      let lookups = 0;
+      const espnTasks = targets.map(t => async () => {
+        const rec = appByKey[nameKey(t.name)];
+        let id = rec && espnIdCol >= 0 ? String(rec.cells[espnIdCol] || '').trim() : '';
+        if (!id && rec && lookups < 40) {
+          lookups++;
+          try {
+            const sr = await (await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(t.name)}&limit=10`, { headers: { 'User-Agent': UA } })).json();
+            const wantLeague = t.league === 'nfl' ? 'NFL' : 'NCAAF';
+            for (const g of sr.results || []) {
+              if (g.type !== 'player') continue;
+              for (const it of g.contents || []) {
+                if (String(it.description || '').toUpperCase() !== wantLeague) continue;
+                if (nameKey(it.displayName) !== nameKey(t.name)) continue;
+                const m = String(it.uid || '').match(/a:(\d+)/) || String((it.link || {}).web || '').match(/\/id\/(\d+)/);
+                if (m) { id = m[1]; break; }
+              }
+              if (id) break;
+            }
+          } catch (e) { espn.errors.push(`search ${t.name}: ${e.message}`); }
+          if (id && !dryRun && espnIdCol >= 0) {
+            await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(espnIdCol)}${rec.row}`, values: [[id]] }]);
+            espn.idsFound++;
+          }
+        }
+        if (!id) return;
+        try {
+          const d = await (await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/${t.league}/athletes/${id}`, { headers: { 'User-Agent': UA } })).json();
+          const a = d.athlete || d;
+          if (!a || !a.displayName) return;
+          const teamObj = a.team || {};
+          const teamVal = t.league === 'nfl' ? (teamObj.displayName || '') : (teamObj.location || '');
+          const height = String(a.displayHeight || '').replace(/\s+/g, '');
+          const weight = String(a.displayWeight || '').replace(/\s*lbs.*$/i, '');
+          const jersey = String(a.jersey || '');
+          const rowNum = await ensureAutoRow(t.name);
+          if (!rowNum) return;
+          const put = (colI, v) => { if (colI >= 0 && String(v).trim()) espnUpdates.push({ range: `'AutoSync'!${colLetter(colI)}${rowNum}`, values: [[String(v)]] }); };
+          put(espnTeamCol, teamVal); put(espnHCol, height); put(espnWCol, weight); put(espnJCol, jersey);
+          espn.updated++;
+        } catch (e) { espn.errors.push(`${t.name}: ${e.message}`); }
+      });
+      await runTasks(espnTasks, 8, deadline);
+      if (!dryRun) for (let i = 0; i < espnUpdates.length; i += 100) await sheetBatchUpdate(token, espnUpdates.slice(i, i + 100));
+    }
+
+    // ── Module 3: 247 profile photos (High School) ───────────────────────────
+    // The headshot is the last .jpg lazy-image before the profile <h1>.
+    const hs247 = { images: 0, errors: [] };
+    if (wants('hs')) {
+      const photoCol = autoIdx('photo247');
+      const hsTargets = hsPlayers.map(p => {
+        const rec = appByKey[nameKey(p['Name'])];
+        const url = rec && url247Col >= 0 ? String(rec.cells[url247Col] || '').trim() : '';
+        return url && /247sports\.com/.test(url) ? { name: p['Name'], url } : null;
+      }).filter(Boolean);
+      const hsUpdates = [];
+      const hsTasks = hsTargets.map(t => async () => {
+        try {
+          const html = await fetchText(t.url);
+          const h1 = html.search(/<h1[^>]*>/i);
+          const head = h1 > 0 ? html.slice(0, h1) : html;
+          const imgs = [...head.matchAll(/data-src="(https:\/\/s3media\.247sports\.com\/Uploads\/Assets\/[^"]+?\.jpe?g)[^"]*"/gi)];
+          if (!imgs.length) return;
+          const url = imgs[imgs.length - 1][1].replace(/&amp;/g, '&') + '?width=400';
+          const rowNum = await ensureAutoRow(t.name);
+          if (!rowNum || photoCol < 0) return;
+          hsUpdates.push({ range: `'AutoSync'!${colLetter(photoCol)}${rowNum}`, values: [[url]] });
+          hs247.images++;
+        } catch (e) { hs247.errors.push(`${t.name}: ${e.message}`); }
+      });
+      await runTasks(hsTasks, 5, deadline);
+      if (!dryRun) await sheetBatchUpdate(token, hsUpdates);
+    }
 
     return res.json({
-      success: true, dryRun, timedOut,
+      success: true, dryRun, task, timedOut,
       teamsFetched: Object.keys(byUrl).length,
       matched: matches.length, unmatchedCount: unmatched.length,
       cellsWritten,
@@ -273,6 +405,8 @@ module.exports = async (req, res) => {
       unresolvedTeams: [...unresolvedTeams].slice(0, 20),
       fetchErrors: fetchErrors.slice(0, 10),
       sample: matches.slice(0, 12),
+      espn: { updated: espn.updated, idsFound: espn.idsFound, errors: espn.errors.slice(0, 10) },
+      hs247,
     });
   } catch (err) {
     console.error('Depth refresh error:', err.message);
