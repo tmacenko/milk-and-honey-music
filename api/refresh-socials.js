@@ -104,7 +104,7 @@ async function fetchIG(username) {
   try {
     const useProxy = proxyDispatcher && proxyFetch;
     const r = await (useProxy ? proxyFetch : fetch)(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, {
-      headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
+      headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9', 'Origin': 'https://www.instagram.com', 'Referer': 'https://www.instagram.com/', 'Sec-Fetch-Dest': 'empty', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Site': 'same-site' },
       dispatcher: useProxy ? proxyDispatcher : undefined,
     });
     if (!r.ok) return null;
@@ -186,7 +186,7 @@ module.exports = async (req, res) => {
     try {
       const useProxy = proxyDispatcher && proxyFetch;
       const r = await (useProxy ? proxyFetch : fetch)(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(q.debugIG)}`, {
-        headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
+        headers: { 'x-ig-app-id': '936619743392459', 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9', 'Origin': 'https://www.instagram.com', 'Referer': 'https://www.instagram.com/', 'Sec-Fetch-Dest': 'empty', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Site': 'same-site' },
         dispatcher: useProxy ? proxyDispatcher : undefined,
       });
       const body = await r.text();
