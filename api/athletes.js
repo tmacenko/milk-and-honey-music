@@ -340,9 +340,12 @@ async function getSheetGid(token, title) {
 async function readAdminTab(token, tab) {
   const data = await sheetGet(token, tabRange(tab.title));
   const values = data.values || [];
-  const headers = (values[0] || []).map(h => String(h || '').trim());
+  // Row 1 isn't always a real header row (e.g. NFL Team Info is block-shaped),
+  // so size every row to the widest row in the tab, not to row 1.
+  const width = values.reduce((m, r) => Math.max(m, r.length), 0);
+  const headers = Array.from({ length: width }, (_, j) => String((values[0] || [])[j] ?? '').trim());
   const rows = values.slice(1)
-    .map((r, i) => ({ _row: i + 2, cells: headers.map((_, j) => String(r[j] ?? '').trim()) }))
+    .map((r, i) => ({ _row: i + 2, cells: Array.from({ length: width }, (_, j) => String(r[j] ?? '').trim()) }))
     .filter(r => r.cells.some(c => c));
   return { headers, rows };
 }
