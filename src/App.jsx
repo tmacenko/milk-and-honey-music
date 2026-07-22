@@ -1628,21 +1628,25 @@ function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
 function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
-  const typeLine = [a.position, team].filter(Boolean).join('  ·  ');
+  const typeLine = [
+    a.position,
+    a.jerseyNumber && `#${a.jerseyNumber}`,
+    team,
+    a.height,
+    a.weight && (/^\d+(\.\d+)?$/.test(String(a.weight).trim()) ? `${a.weight} lbs` : a.weight),
+  ].filter(Boolean).join('  ·  ');
   const espnUrl = a.espnId ? `https://www.espn.com/${a.espnSport === 'college' ? 'college-football' : 'nfl'}/player/_/id/${a.espnId}` : '';
   const socialBtns = [
     a.instagram && { icon: <IgIcon size={isMobile ? 20 : 22} />, url: `https://instagram.com/${a.instagram}`, count: a.igFollowers },
     a.twitter && { icon: <TwIcon size={isMobile ? 18 : 20} />, url: `https://x.com/${a.twitter}`, count: a.twitterFollowers },
     a.tiktok && { icon: <TkIcon size={isMobile ? 18 : 20} />, url: `https://tiktok.com/@${a.tiktok}`, count: a.tiktokFollowers },
   ].filter(Boolean);
-  const info = [
-    a.height && { label: 'Height', value: a.height },
-    a.weight && { label: 'Weight', value: a.weight },
-    a.jerseyNumber && { label: 'Jersey', value: `#${a.jerseyNumber}` },
-    a.hometown && { label: 'Hometown', value: a.hometown },
-    a.classOf && { label: 'Class of', value: a.classOf },
-    a.committedTo && { label: 'Committed', value: a.committedTo },
-    (a.draftYear || a.draftRound || a.draftPick) && { label: 'Draft', value: [a.draftYear, a.draftRound && `R${a.draftRound}`, a.draftPick && `P${a.draftPick}`].filter(Boolean).join(' ') },
+  // Facts that read as prose beneath the bio (physicals live on the hero line).
+  const meta = [
+    a.hometown && ['Hometown', a.hometown],
+    a.classOf && ['Class of', a.classOf],
+    a.committedTo && ['Committed', a.committedTo],
+    (a.draftYear || a.draftRound || a.draftPick) && ['Draft', [a.draftYear, a.draftRound && `R${a.draftRound}`, a.draftPick && `P${a.draftPick}`].filter(Boolean).join(' ')],
   ].filter(Boolean);
   const banner = a.heroImageUrl;
   const bannerH = isMobile ? 200 : 340;
@@ -1707,6 +1711,13 @@ function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
               {isMobile && a.bio.length > BIO_LIMIT && <button onClick={() => setBioExp(v => !v)} style={{ background: "none", border: "none", color: G.green, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0 0", fontFamily: ff }}>{bioExp ? 'View less' : 'View more'}</button>}
             </div>
           )}
+          {meta.length > 0 && (
+            <div style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, marginTop: a.bio ? -8 : 0 }}>
+              {meta.map(([label, value], i) => (
+                <div key={i}><span style={{ color: G.textTertiary }}>{label} · </span>{value}</div>
+              ))}
+            </div>
+          )}
           {a.brands?.length > 0 && (
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Brands worked with</div>
@@ -1721,16 +1732,6 @@ function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {a.interests.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
               </div>
-            </div>
-          )}
-          {info.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${isMobile ? 2 : 4}, 1fr)`, gap: 10 }}>
-              {info.map((s, i) => (
-                <div key={i} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{s.label}</div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: G.text, marginTop: 3 }}>{s.value}</div>
-                </div>
-              ))}
             </div>
           )}
           {showTrend && <TrendChart name={a.name} isMobile={isMobile} />}
