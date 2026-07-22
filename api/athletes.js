@@ -245,6 +245,7 @@ function mergeAthlete(row, ext, level) {
     // SocialHistory snapshots (dashboard "Hot this week" tile).
     growth7d: parseInt(ext['growth7d'], 10) || 0,
     growth7dPct: ext['growth7dPct'] != null ? String(ext['growth7dPct']) : '',
+    growthDays: parseInt(ext['growthDays'], 10) || 0,
     agentAssigned: row['Lead Agent'] || row['Agent'] || '',
     birthday: row['Birthday'] || '',
     shirtSize: row['Shirt'] || '', hoodieSize: row['Hoodie'] || '', shortsSize: row['Shorts'] || '',
@@ -1108,7 +1109,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;

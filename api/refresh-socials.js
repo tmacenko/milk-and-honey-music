@@ -352,13 +352,16 @@ module.exports = async (req, res) => {
         if (!dryRun && snapRows.length) await sheetAppendRows(token, "'SocialHistory'!A:E", snapRows);
         history.snapshots = snapRows.length;
       }
-      // Baseline lookup: per athlete, the snapshot aged 3–10 days closest to 7.
+      // Baseline lookup: per athlete, the snapshot closest to 7 days old.
+      // Accepts down to ~1 day so the tile goes live as soon as history exists;
+      // the window naturally stretches to a true 7 days as snapshots accumulate
+      // (growthDays records the actual span for honest labeling).
       const baseline = {};
       for (const r of histRows) {
         const d = new Date(r[0]);
         if (isNaN(d)) continue;
         const age = (Date.now() - d.getTime()) / 86400000;
-        if (age < 3 || age > 10) continue;
+        if (age < 0.9 || age > 10) continue;
         const total = (parseCount(r[2]) || 0) + (parseCount(r[3]) || 0) + (parseCount(r[4]) || 0);
         if (!total) continue;
         const k = String(r[1] || '').toLowerCase().trim();
@@ -368,7 +371,7 @@ module.exports = async (req, res) => {
         // Make sure AutoSync has the growth columns (full header row, not the
         // narrow A:F read above — never clobber the ESPN columns).
         const fullHead = ((await sheetGet(token, "'AutoSync'!1:1")).values?.[0] || []).map(h => String(h || '').trim());
-        const needCols = ['growth7d', 'growth7dPct'].filter(h => !fullHead.some(x => x.toLowerCase() === h.toLowerCase()));
+        const needCols = ['growth7d', 'growth7dPct', 'growthDays'].filter(h => !fullHead.some(x => x.toLowerCase() === h.toLowerCase()));
         if (needCols.length && !dryRun) {
           const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties(columnCount)))`, { headers: { Authorization: `Bearer ${token}` } });
           const meta = await metaR.json();
@@ -385,6 +388,7 @@ module.exports = async (req, res) => {
         }
         const g7Col = fullHead.findIndex(h => h.toLowerCase() === 'growth7d');
         const gPctCol = fullHead.findIndex(h => h.toLowerCase() === 'growth7dpct');
+        const gDaysCol = fullHead.findIndex(h => h.toLowerCase() === 'growthdays');
         const gUpdates = [];
         for (const n of allNames) {
           const past = baseline[n];
@@ -396,9 +400,10 @@ module.exports = async (req, res) => {
           const rowNum = rowByName[n].i + 1;
           gUpdates.push({ range: `'AutoSync'!${colLetter(g7Col)}${rowNum}`, values: [[String(delta)]] });
           gUpdates.push({ range: `'AutoSync'!${colLetter(gPctCol)}${rowNum}`, values: [[((delta / past.total) * 100).toFixed(1)]] });
+          if (gDaysCol >= 0) gUpdates.push({ range: `'AutoSync'!${colLetter(gDaysCol)}${rowNum}`, values: [[String(Math.round(past.age))]] });
         }
         if (!dryRun) await sheetBatchUpdate(token, gUpdates);
-        history.growthWritten = gUpdates.length / 2;
+        history.growthWritten = gUpdates.length;
       }
       // Prune snapshots older than 30 days once a meaningful backlog builds.
       const oldCount = histRows.filter(r => { const d = new Date(r[0]); return !isNaN(d) && (Date.now() - d.getTime()) / 86400000 > 30; }).length;

@@ -2246,7 +2246,9 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
         <div style={card}>
-          {tileHead('Hot this week', s.hasGrowthData ? '7-day growth' : 'Sample preview')}
+          {tileHead('Hot this week', s.hasGrowthData
+            ? (() => { const d = Math.max(0, ...s.hot.map(x2 => x2.a.growthDays || 0)); return d >= 7 ? '7-day growth' : d > 0 ? `${d}-day growth (window builds to 7)` : 'Follower growth'; })()
+            : 'Sample preview')}
           {s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
             : s.hot.map((x2, i, arr) => row(x2.a, x2.a.level,
               <span style={{ color: G.green, fontWeight: 700 }}>+{bigNum(x2.delta)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>· {x2.pct}%</span></span>,
