@@ -414,6 +414,8 @@ const ADMIN_TABS = {
   stafflegacy: { title: 'Staff', writable: false },
   readme: { title: 'README', writable: true },
   onboarding: { title: 'Onboarding', writable: false },
+  socialhistory: { title: 'SocialHistory', writable: false }, // robot snapshots — growth board + sparklines
+  stathistory: { title: 'StatHistory', writable: false },     // robot snapshots — depth/rank trend tracking
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {

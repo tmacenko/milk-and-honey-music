@@ -1625,7 +1625,7 @@ function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
   );
 }
 
-function SportsDetail({ athlete: a, isMobile, hideContact }) {
+function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
   const typeLine = [a.position, team].filter(Boolean).join('  ·  ');
@@ -1687,6 +1687,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact }) {
                   </span>
                 )}
               </div>
+              {showTrend && <TrendSpark name={a.name} />}
               {socialBtns.length > 0 && (
                 <div style={{ display: "flex", gap: isMobile ? 16 : 24, marginTop: 13, alignItems: "center", flexWrap: "wrap" }}>
                   {socialBtns.map((b, i) => (
@@ -2102,7 +2103,123 @@ const agentMatch = (agent, key) => {
   return !!a && !!k && (a === k || a.includes(k) || k.includes(a));
 };
 
+// ── Growth board ──────────────────────────────────────────────────────────────
+// Full-roster follower-growth view behind the dashboard's "Hot this week" tile.
+// Totals come from the synced growth columns; the per-platform split is computed
+// from the raw SocialHistory snapshots.
+function GrowthBoard({ athletes, onClose, onOpenAthlete, isMobile }) {
+  const hist = useAdminTab('socialhistory');
+  const [sortBy, setSortBy] = useState('delta');
+  const [level, setLevel] = useState('All');
+  const platDelta = useMemo(() => {
+    const byName = {};
+    (hist.data?.rows || []).forEach(r => {
+      const [d, n, ig, x, tk] = r.cells || [];
+      const k = String(n || '').toLowerCase().trim();
+      const dt = new Date(d);
+      if (!k || isNaN(dt)) return;
+      (byName[k] = byName[k] || []).push({ dt, ig: +String(ig).replace(/,/g, '') || 0, x: +String(x).replace(/,/g, '') || 0, tk: +String(tk).replace(/,/g, '') || 0 });
+    });
+    const out = {};
+    for (const [k, arr] of Object.entries(byName)) {
+      arr.sort((a, b) => a.dt - b.dt);
+      const last = arr[arr.length - 1];
+      const target = last.dt.getTime() - 7 * 86400000;
+      let base = arr[0];
+      for (const r of arr) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
+      if (base !== last) out[k] = { ig: last.ig - base.ig, x: last.x - base.x, tk: last.tk - base.tk };
+    }
+    return out;
+  }, [hist.data]);
+  const list = useMemo(() => {
+    let l = athletes.filter(a => a.growth7dPct !== '' && a.growth7dPct != null);
+    if (level !== 'All') l = l.filter(a => a.level === level);
+    return [...l].sort((a, b) => sortBy === 'pct'
+      ? (parseFloat(b.growth7dPct) || 0) - (parseFloat(a.growth7dPct) || 0)
+      : (b.growth7d || 0) - (a.growth7d || 0));
+  }, [athletes, level, sortBy]);
+  const chip = (on, label, cb) => (
+    <button key={label} onClick={cb} style={{ padding: "6px 12px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
+  );
+  const fmtD = (n) => (n > 0 ? '+' : '') + bigNum(Math.abs(n) < 1000 ? n : n);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 10 : 24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 18, width: "100%", maxWidth: 640, maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${G.surfaceBorder}`, flexShrink: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>Growth board</div>
+            <button onClick={onClose} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {chip(sortBy === 'delta', 'By followers gained', () => setSortBy('delta'))}
+            {chip(sortBy === 'pct', 'By % growth', () => setSortBy('pct'))}
+            <div style={{ width: 10 }} />
+            {['All', 'NFL', 'College', 'High School'].map(lv => chip(level === lv, lv, () => setLevel(lv)))}
+          </div>
+        </div>
+        <div style={{ overflowY: "auto", padding: "6px 20px 16px" }}>
+          {list.length === 0 && <div style={{ padding: "28px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No growth data yet — check back after tonight's refresh.</div>}
+          {list.map((a, i) => {
+            const pd = platDelta[a.name.toLowerCase().trim()];
+            const neg = (a.growth7d || 0) < 0;
+            return (
+              <div key={a.id || i} onClick={() => { onOpenAthlete(a); onClose(); }}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+                <div style={{ width: 22, fontSize: 12, fontWeight: 700, color: G.textTertiary, flexShrink: 0 }}>{i + 1}</div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {a.name} <span style={{ color: G.textTertiary, fontWeight: 500, fontSize: 12 }}>· {[a.level, a.position].filter(Boolean).join(' · ')}</span>
+                  </div>
+                  {pd && (
+                    <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 2 }}>
+                      {[['IG', pd.ig], ['X', pd.x], ['TT', pd.tk]].filter(([, v]) => v).map(([l2, v]) => `${l2} ${v > 0 ? '+' : ''}${bigNum(v)}`).join(' · ') || 'No platform movement'}
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: neg ? G.red : G.green }}>{neg ? '' : '+'}{bigNum(a.growth7d || 0)}</div>
+                  <div style={{ fontSize: 11, color: G.textTertiary }}>{a.growth7dPct}%</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Small follower-trend line for the athlete detail page (company view only) —
+// drawn from the daily SocialHistory snapshots.
+function TrendSpark({ name }) {
+  const hist = useAdminTab('socialhistory');
+  const pts = useMemo(() => {
+    return (hist.data?.rows || [])
+      .filter(r => String(r.cells?.[1] || '').toLowerCase().trim() === String(name).toLowerCase().trim())
+      .map(r => ({ d: new Date(r.cells[0]), t: (+String(r.cells[2]).replace(/,/g, '') || 0) + (+String(r.cells[3]).replace(/,/g, '') || 0) + (+String(r.cells[4]).replace(/,/g, '') || 0) }))
+      .filter(p => !isNaN(p.d) && p.t > 0)
+      .sort((a, b) => a.d - b.d);
+  }, [hist.data, name]);
+  if (pts.length < 2) return null;
+  const w = 150, h = 34;
+  const min = Math.min(...pts.map(p => p.t)), max = Math.max(...pts.map(p => p.t));
+  const span = max - min || 1;
+  const xy = pts.map((p, i) => `${(i / (pts.length - 1)) * w},${h - 3 - ((p.t - min) / span) * (h - 6)}`).join(' ');
+  const delta = pts[pts.length - 1].t - pts[0].t;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+      <svg width={w} height={h} style={{ display: "block" }}>
+        <polyline points={xy} fill="none" stroke={G.green} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)" }}>
+        <span style={{ fontWeight: 700, color: delta < 0 ? G.red : G.green }}>{delta >= 0 ? '+' : ''}{bigNum(delta)}</span> followers since {pts[0].d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+      </div>
+    </div>
+  );
+}
+
 function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, user, decks }) {
+  const [growthOpen, setGrowthOpen] = useState(false);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Agents see THEIR book everywhere: every stat and tile computes over their
@@ -2254,6 +2371,11 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               <span style={{ color: G.green, fontWeight: 700 }}>+{bigNum(x2.delta)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>· {x2.pct}%</span></span>,
               x2.a.id || i, i === arr.length - 1))}
           {!s.hasGrowthData && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>Sample numbers — daily snapshots start tonight; real growth appears within a week.</div>}
+          {s.hasGrowthData && (
+            <button onClick={() => setGrowthOpen(true)} style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+              View full growth board →
+            </button>
+          )}
         </div>
         <div style={card}>
           {tileHead('Recently signed', 'Last 30 days')}
@@ -2288,6 +2410,8 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               x2.a.id || i, i === arr.length - 1))}
         {s.incomplete.length > 8 && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>+ {s.incomplete.length - 8} more — open any profile and hit Edit to fill in the gaps.</div>}
       </div>
+
+      {growthOpen && <GrowthBoard athletes={scoped} isMobile={isMobile} onClose={() => setGrowthOpen(false)} onOpenAthlete={onOpenAthlete} />}
 
       {(decks || []).length > 0 && (
         <div style={{ marginTop: 18 }}>
@@ -3513,7 +3637,7 @@ function App() {
           {domain === 'sports' ? (
             <>
               {!error && athletesLoaded && view === 'detail' && selected && (
-                <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} />
+                <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} showTrend={isAdmin} />
               )}
               {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} decks={sportsDecks || DECKS}

@@ -399,7 +399,10 @@ module.exports = async (req, res) => {
 
     // ── Module 3: 247 profile photos (High School) ───────────────────────────
     // The headshot is the last .jpg lazy-image before the profile <h1>.
-    const hs247 = { images: 0, errors: [], discovery: { found: 0, ambiguous: [], misses: [], errors: [] }, enrich: { updated: 0, cells: 0, errors: [] } };
+    const hs247 = { images: 0, errors: [], discovery: { found: 0, ambiguous: [], misses: [], errors: [] }, enrich: { updated: 0, cells: 0, errors: [] }, rank: { captured: 0, errors: [] } };
+    // Daily 247 rating/rank per linked HS kid — merged with depth ranks into
+    // the StatHistory snapshot at the end of the run.
+    const rankTrend = {};
     if (wants('hs')) {
       const photoCol = autoIdx('photo247');
 
@@ -481,6 +484,40 @@ module.exports = async (req, res) => {
       // trailing player number is stable — prefer it for matching.
       const playerIdOf = u => (urlKey(u).match(/-(\d+)$/) || [])[1] || '';
       const sameProfile = (a, b) => { const ia = playerIdOf(a), ib = playerIdOf(b); return ia && ib ? ia === ib : urlKey(a) === urlKey(b); };
+      // Record a kid's current 247 rating/ranks for the StatHistory snapshot —
+      // rank-riser tracking needs history from the day we start collecting it.
+      const recordRank = (name, pl) => {
+        rankTrend[nameKey(name)] = {
+          name, rating247: pl.Rating ?? '', stars247: pl.StarRating ?? '',
+          natRank247: pl.NationalRank ?? '', posRank247: pl.PositionRank ?? '', stateRank247: pl.StateRank ?? '',
+        };
+      };
+      // Find an athlete's row in the season Recruits JSON by their saved URL.
+      // Starts with the sheet's class year but falls back to the rest (the two
+      // sources occasionally disagree); the name filter is a contains-match, so
+      // suffixed names and sheet typos fall back to the URL-slug-derived name —
+      // the URL comparison keeps every variant exact.
+      const findRecruit = async (p, url, errSink) => {
+        const cls = parseInt(String(p[hsHeaders[classCol]] || '').replace(/\D/g, ''), 10);
+        const now = new Date().getUTCFullYear();
+        const yearPool = [now, now + 1, now + 2, now + 3];
+        const years = cls ? [cls, ...yearPool.filter(y => y !== cls)] : yearPool;
+        const stripSuffix = s => String(s || '').replace(/[,.]/g, ' ').replace(/\s+(jr|sr|ii|iii|iv|v)\s*$/i, '').replace(/\s+/g, ' ').trim();
+        const slugM = url.match(/\/player\/([a-z0-9-]+?)(?:-\d+)?\/?$/i);
+        const queries = [...new Set([p['Name'], stripSuffix(p['Name']), slugM ? slugM[1].replace(/-/g, ' ') : ''].filter(Boolean))];
+        for (const q of queries) {
+          for (const y of years) {
+            try {
+              const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(q)}`, true);
+              for (const r of JSON.parse(body) || []) {
+                const pl = r.Player || {};
+                if (sameProfile(pl.Url, url)) return { hit: pl, hitYear: r.Year || y };
+              }
+            } catch (e) { errSink.push(`${p['Name']} (${y}): ${e.message}`); }
+          }
+        }
+        return null;
+      };
       let enrichLookups = 0;
       const enrichTasks = hsPlayers.map(p => async () => {
         const rec = appByKey[nameKey(p['Name'])];
@@ -494,33 +531,10 @@ module.exports = async (req, res) => {
         if (!(needH || needW || needHome || needClass || needSchool)) return;
         if (enrichLookups >= 20) return;
         enrichLookups++;
-        const cls = parseInt(String(p[hsHeaders[classCol]] || '').replace(/\D/g, ''), 10);
-        const now = new Date().getUTCFullYear();
-        // Start with the sheet's class year but fall back to the rest — the two
-        // sources occasionally disagree on class, and the URL match keeps any
-        // cross-season hit exact.
-        const yearPool = [now, now + 1, now + 2, now + 3];
-        const years = cls ? [cls, ...yearPool.filter(y => y !== cls)] : yearPool;
-        // The name filter is a contains-match, so "Anthony Lopez Jr." won't hit
-        // 247's "Anthony Lopez", and sheet typos hit nothing. Fall back to a
-        // suffix-stripped name, then to the name baked into the saved URL's slug
-        // — the URL comparison keeps every variant exact.
-        const stripSuffix = s => String(s || '').replace(/[,.]/g, ' ').replace(/\s+(jr|sr|ii|iii|iv|v)\s*$/i, '').replace(/\s+/g, ' ').trim();
-        const slugM = url.match(/\/player\/([a-z0-9-]+?)(?:-\d+)?\/?$/i);
-        const queries = [...new Set([p['Name'], stripSuffix(p['Name']), slugM ? slugM[1].replace(/-/g, ' ') : ''].filter(Boolean))];
-        let hit = null, hitYear = 0;
-        outer: for (const q of queries) {
-          for (const y of years) {
-            try {
-              const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(q)}`, true);
-              for (const r of JSON.parse(body) || []) {
-                const pl = r.Player || {};
-                if (sameProfile(pl.Url, url)) { hit = pl; hitYear = r.Year || y; break outer; }
-              }
-            } catch (e) { enrich.errors.push(`${p['Name']} (${y}): ${e.message}`); }
-          }
-        }
-        if (!hit) { enrich.errors.push(`${p['Name']}: no 247 row matched saved link`); return; }
+        const found = await findRecruit(p, url, enrich.errors);
+        if (!found) { enrich.errors.push(`${p['Name']}: no 247 row matched saved link`); return; }
+        const { hit, hitYear } = found;
+        recordRank(p['Name'], hit);
         const ups = [];
         const hm = String(hit.Height || '').match(/^(\d+)-(\d+(?:\.\d+)?)$/);
         if (needH && hm) ups.push({ range: `AppData!${colLetter(appHCol)}${rec.row}`, values: [[`${hm[1]}'${Math.round(parseFloat(hm[2]))}"`]] });
@@ -538,6 +552,23 @@ module.exports = async (req, res) => {
         }
       });
       await runTasks(enrichTasks, 3, deadline);
+
+      // 3c: rank snapshot for the remaining linked HS kids — enrichment only
+      // fetched the ones with blank profile fields; the risers history wants
+      // everyone's current rating/rank daily.
+      let rankLookups = 0;
+      const rankTasks = hsPlayers.map(p => async () => {
+        const rec = appByKey[nameKey(p['Name'])];
+        const url = rec && url247Col >= 0 ? String(rec.cells[url247Col] || '').trim() : '';
+        if (!url || !/247sports\.com/.test(url)) return;
+        if (rankTrend[nameKey(p['Name'])]) return; // covered via enrichment
+        if (rankLookups >= 30) return;
+        rankLookups++;
+        const found = await findRecruit(p, url, hs247.rank.errors);
+        if (found) recordRank(p['Name'], found.hit);
+      });
+      await runTasks(rankTasks, 3, deadline);
+      hs247.rank.captured = Object.keys(rankTrend).length;
       const hsTargets = hsPlayers.map(p => {
         const rec = appByKey[nameKey(p['Name'])];
         const url = rec && url247Col >= 0 ? String(rec.cells[url247Col] || '').trim() : '';
@@ -562,8 +593,60 @@ module.exports = async (req, res) => {
       if (!dryRun) await sheetBatchUpdate(token, hsUpdates);
     }
 
+    // ── StatHistory: one row per athlete per day with depth rank (NFL/College,
+    // from Ourlads) and 247 rating/ranks (HS). Hidden robot tab — feeds the
+    // depth-riser / rank-riser features with real history from day one.
+    const statHistory = { rows: 0, skippedToday: false, pruned: 0, error: null };
+    try {
+      const trend = {};
+      for (const m of matches) { trend[nameKey(m.name)] = { name: m.name, depthRank: m.rank, depthPos: m.pos }; }
+      for (const [k, v] of Object.entries(rankTrend)) trend[k] = { ...(trend[k] || {}), ...v };
+      const entries = Object.values(trend);
+      if (entries.length && !dryRun) {
+        const HEAD = ['date', 'name', 'depthRank', 'depthPos', 'rating247', 'stars247', 'natRank247', 'posRank247', 'stateRank247'];
+        const appendRows = (range, rows2) => fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: rows2 }),
+        });
+        let histD = null;
+        try { histD = await sheetGet(token, "'StatHistory'!A:A"); }
+        catch {
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'StatHistory', hidden: true, gridProperties: { rowCount: 20000, columnCount: 9 } } } }] }),
+          });
+          await appendRows("'StatHistory'!A:I", [HEAD]);
+          histD = { values: [['date']] };
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        const dates = (histD.values || []).slice(1).map(r => String(r[0] || ''));
+        if (dates.includes(today)) {
+          statHistory.skippedToday = true;
+        } else {
+          await appendRows("'StatHistory'!A:I", entries.map(v =>
+            [today, v.name, v.depthRank ?? '', v.depthPos ?? '', v.rating247 ?? '', v.stars247 ?? '', v.natRank247 ?? '', v.posRank247 ?? '', v.stateRank247 ?? '']));
+          statHistory.rows = entries.length;
+        }
+        // Prune >60-day-old rows once a real backlog builds (append-only tab —
+        // oldest rows sit directly under the header).
+        const oldCount = dates.filter(d => { const t = new Date(d); return !isNaN(t) && (Date.now() - t.getTime()) / 86400000 > 60; }).length;
+        if (oldCount > 600) {
+          const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title))`, { headers: { Authorization: `Bearer ${token}` } });
+          const meta = await metaR.json();
+          const shMeta = (meta.sheets || []).find(s => (s.properties?.title || '').trim() === 'StatHistory');
+          if (shMeta) {
+            await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+              method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: shMeta.properties.sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 1 + oldCount } } }] }),
+            });
+            statHistory.pruned = oldCount;
+          }
+        }
+      }
+    } catch (e) { statHistory.error = e.message; }
+
     return res.json({
-      success: true, dryRun, task, timedOut, proxyActive: !!proxyDispatcher,
+      success: true, dryRun, task, timedOut, proxyActive: !!proxyDispatcher, statHistory,
       teamsFetched: Object.keys(byUrl).length,
       matched: matches.length, unmatchedCount: unmatched.length,
       cellsWritten,
