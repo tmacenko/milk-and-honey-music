@@ -1628,21 +1628,17 @@ function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
 function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
-  const typeLine = [
-    a.position,
-    a.jerseyNumber && `#${a.jerseyNumber}`,
-    team,
-    a.height,
-    a.weight && (/^\d+(\.\d+)?$/.test(String(a.weight).trim()) ? `${a.weight} lbs` : a.weight),
-  ].filter(Boolean).join('  ·  ');
+  const typeLine = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join('  ·  ');
   const espnUrl = a.espnId ? `https://www.espn.com/${a.espnSport === 'college' ? 'college-football' : 'nfl'}/player/_/id/${a.espnId}` : '';
   const socialBtns = [
     a.instagram && { icon: <IgIcon size={isMobile ? 20 : 22} />, url: `https://instagram.com/${a.instagram}`, count: a.igFollowers },
     a.twitter && { icon: <TwIcon size={isMobile ? 18 : 20} />, url: `https://x.com/${a.twitter}`, count: a.twitterFollowers },
     a.tiktok && { icon: <TkIcon size={isMobile ? 18 : 20} />, url: `https://tiktok.com/@${a.tiktok}`, count: a.tiktokFollowers },
   ].filter(Boolean);
-  // Facts that read as prose beneath the bio (physicals live on the hero line).
+  // Facts that read as prose beneath the bio.
   const meta = [
+    a.height && ['Height', a.height],
+    a.weight && ['Weight', /^\d+(\.\d+)?$/.test(String(a.weight).trim()) ? `${a.weight} lbs` : a.weight],
     a.hometown && ['Hometown', a.hometown],
     a.classOf && ['Class of', a.classOf],
     a.committedTo && ['Committed', a.committedTo],
