@@ -212,9 +212,16 @@ module.exports = async (req, res) => {
         const base = 'https://www.milkandhoneyfamily.com';
         const key = encodeURIComponent(process.env.CRON_SECRET || '');
         const nm = encodeURIComponent(String(sub.name).trim());
+        // Auth: mint a short-lived admin session cookie (AUTH_SECRET) so the
+        // internal calls pass authorized() even when CRON_SECRET isn't set.
+        const { sign, COOKIE } = require('../lib/auth');
+        const tok = process.env.AUTH_SECRET
+          ? sign({ role: 'admin', name: 'onboard-bot', exp: Math.floor(Date.now() / 1000) + 300 }, process.env.AUTH_SECRET)
+          : '';
+        const hdrs = tok ? { headers: { cookie: `${COOKIE}=${tok}` } } : {};
         const jobs = Promise.allSettled([
-          fetch(`${base}/api/refresh-depth?task=all&name=${nm}&key=${key}`),
-          fetch(`${base}/api/refresh-socials?name=${nm}&platforms=ig,x,tiktok&key=${key}`),
+          fetch(`${base}/api/refresh-depth?task=all&name=${nm}&key=${key}`, hdrs),
+          fetch(`${base}/api/refresh-socials?name=${nm}&platforms=ig,x,tiktok&key=${key}`, hdrs),
         ]);
         // ?debugEnrich=1: wait for the jobs and report their statuses (testing).
         if (['1', 'true'].includes(String((req.query || {}).debugEnrich || ''))) {
