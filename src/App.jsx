@@ -2107,6 +2107,13 @@ const agentMatch = (agent, key) => {
 // Full-roster follower-growth view behind the dashboard's "Hot this week" tile.
 // Totals come from the synced growth columns; the per-platform split is computed
 // from the raw SocialHistory snapshots.
+// Snapshot dates are date-only strings — parse as LOCAL days so US timezones
+// don't show them a day early.
+const parseSnapDay = (s) => {
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
+};
+
 function GrowthBoard({ athletes, onClose, onOpenAthlete, isMobile }) {
   const hist = useAdminTab('socialhistory');
   const [sortBy, setSortBy] = useState('delta');
@@ -2116,7 +2123,7 @@ function GrowthBoard({ athletes, onClose, onOpenAthlete, isMobile }) {
     (hist.data?.rows || []).forEach(r => {
       const [d, n, ig, x, tk] = r.cells || [];
       const k = String(n || '').toLowerCase().trim();
-      const dt = new Date(d);
+      const dt = parseSnapDay(d);
       if (!k || isNaN(dt)) return;
       (byName[k] = byName[k] || []).push({ dt, ig: +String(ig).replace(/,/g, '') || 0, x: +String(x).replace(/,/g, '') || 0, tk: +String(tk).replace(/,/g, '') || 0 });
     });
@@ -2196,7 +2203,7 @@ function TrendSpark({ name }) {
   const pts = useMemo(() => {
     return (hist.data?.rows || [])
       .filter(r => String(r.cells?.[1] || '').toLowerCase().trim() === String(name).toLowerCase().trim())
-      .map(r => ({ d: new Date(r.cells[0]), t: (+String(r.cells[2]).replace(/,/g, '') || 0) + (+String(r.cells[3]).replace(/,/g, '') || 0) + (+String(r.cells[4]).replace(/,/g, '') || 0) }))
+      .map(r => ({ d: parseSnapDay(r.cells[0]), t: (+String(r.cells[2]).replace(/,/g, '') || 0) + (+String(r.cells[3]).replace(/,/g, '') || 0) + (+String(r.cells[4]).replace(/,/g, '') || 0) }))
       .filter(p => !isNaN(p.d) && p.t > 0)
       .sort((a, b) => a.d - b.d);
   }, [hist.data, name]);
