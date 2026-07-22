@@ -1636,9 +1636,9 @@ function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
     a.tiktok && { icon: <TkIcon size={isMobile ? 18 : 20} />, url: `https://tiktok.com/@${a.tiktok}`, count: a.tiktokFollowers },
   ].filter(Boolean);
   // Facts that read as prose beneath the bio.
+  const weightTxt = a.weight && (/^\d+(\.\d+)?$/.test(String(a.weight).trim()) ? `${a.weight} lbs` : a.weight);
   const meta = [
-    a.height && ['Height', a.height],
-    a.weight && ['Weight', /^\d+(\.\d+)?$/.test(String(a.weight).trim()) ? `${a.weight} lbs` : a.weight],
+    (a.height || weightTxt) && ['Height/Weight', [a.height, weightTxt].filter(Boolean).join(' · ')],
     a.hometown && ['Hometown', a.hometown],
     a.classOf && ['Class of', a.classOf],
     a.committedTo && ['Committed', a.committedTo],
