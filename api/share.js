@@ -476,7 +476,20 @@ async function buildClientPdf(c, logos) {
     doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(20).text(pdfInitials(c.name), avCx - avR, avCy - 11, { width: avR * 2, align: 'center', lineBreak: false });
   }
 
-  const nameX = avCx + avR + 18, nameW = W - M - nameX;
+  // Contact Rep pill — drawn first so the name width can make room for it;
+  // sits on the name line (right-aligned), matching the share page.
+  let pillW = 0;
+  if (c.contact) {
+    const label = 'Contact Rep';
+    doc.font('Helvetica-Bold').fontSize(9.5);
+    pillW = doc.widthOfString(label) + 22;
+    const ph = 23, pxX = W - M - pillW, pyY = avCy - 23;
+    doc.roundedRect(pxX, pyY, pillW, ph, 8).lineWidth(1.2).fillAndStroke('#0c1712', PDF_GREEN);
+    doc.fillColor(PDF_GREEN).font('Helvetica-Bold').fontSize(9.5).text(label, pxX + 11, pyY + 6.5, { lineBreak: false });
+    if (c.contactEmail) doc.link(pxX, pyY, pillW, ph, `mailto:${c.contactEmail}`);
+  }
+
+  const nameX = avCx + avR + 18, nameW = W - M - nameX - (pillW ? pillW + 14 : 0);
   doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(22).text(c.name || '', nameX, avCy - 24, { width: nameW, height: 26, ellipsis: true });
 
   // Types · flag · location, on one line
@@ -507,16 +520,6 @@ async function buildClientPdf(c, logos) {
     if (s.url) doc.link(ix - 2, socY - 2, 20, 20, s.url);
     ix += 25;
   });
-
-  // Contact Rep pill (top-right)
-  if (c.contact) {
-    const label = 'Contact Rep';
-    doc.font('Helvetica-Bold').fontSize(9.5);
-    const tw = doc.widthOfString(label), pw = tw + 22, ph = 23, px = W - M - pw, py = bannerBuf ? 16 : M;
-    doc.roundedRect(px, py, pw, ph, 8).lineWidth(1.2).fillAndStroke('#0c1712', PDF_GREEN);
-    doc.fillColor(PDF_GREEN).font('Helvetica-Bold').fontSize(9.5).text(label, px + 11, py + 6.5, { lineBreak: false });
-    if (c.contactEmail) doc.link(px, py, pw, ph, `mailto:${c.contactEmail}`);
-  }
 
   let y = avCy + avR + 26;
 

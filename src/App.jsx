@@ -1687,7 +1687,6 @@ function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
                   </span>
                 )}
               </div>
-              {showTrend && <TrendSpark name={a.name} />}
               {socialBtns.length > 0 && (
                 <div style={{ display: "flex", gap: isMobile ? 16 : 24, marginTop: 13, alignItems: "center", flexWrap: "wrap" }}>
                   {socialBtns.map((b, i) => (
@@ -1734,6 +1733,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
               ))}
             </div>
           )}
+          {showTrend && <TrendChart name={a.name} isMobile={isMobile} />}
           <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
             {espnUrl && <a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>ESPN profile →</a>}
             {a.profileUrl247 && <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>}
@@ -2114,30 +2114,63 @@ const parseSnapDay = (s) => {
   return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
 };
 
-function GrowthBoard({ athletes, onClose, onOpenAthlete, isMobile }) {
+// Catmull-Rom → bezier: turns [[x,y],…] into a smooth SVG path.
+function smoothPath(pts) {
+  if (pts.length < 2) return '';
+  let d = `M ${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    d += ` C ${p1[0] + (p2[0] - p0[0]) / 6} ${p1[1] + (p2[1] - p0[1]) / 6}, ${p2[0] - (p3[0] - p1[0]) / 6} ${p2[1] - (p3[1] - p1[1]) / 6}, ${p2[0]} ${p2[1]}`;
+  }
+  return d;
+}
+
+// Parse SocialHistory rows into per-athlete daily series (sorted, totals + per-platform).
+function seriesFromHistory(rows) {
+  const byName = {};
+  (rows || []).forEach(r => {
+    const [d, n, ig, x, tk] = r.cells || [];
+    const k = String(n || '').toLowerCase().trim();
+    const dt = parseSnapDay(d);
+    if (!k || isNaN(dt)) return;
+    const igN = +String(ig).replace(/,/g, '') || 0, xN = +String(x).replace(/,/g, '') || 0, tkN = +String(tk).replace(/,/g, '') || 0;
+    (byName[k] = byName[k] || []).push({ dt, ig: igN, x: xN, tk: tkN, total: igN + xN + tkN });
+  });
+  for (const arr of Object.values(byName)) arr.sort((a, b) => a.dt - b.dt);
+  return byName;
+}
+
+// Tiny smooth line for board rows.
+function MiniTrend({ series, w = 110, h = 30 }) {
+  if (!series || series.length < 2) return <div style={{ width: w, height: h }} />;
+  const vals = series.map(p => p.total);
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+  const pts = series.map((p, i) => [(i / (series.length - 1)) * w, h - 3 - ((p.total - min) / span) * (h - 6)]);
+  return (
+    <svg width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
+      <path d={smoothPath(pts)} fill="none" stroke={G.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
+    </svg>
+  );
+}
+
+// ── Growth board (full page — lives under Marketing) ─────────────────────────
+function GrowthBoardSection({ athletes, onOpenAthlete, isMobile }) {
   const hist = useAdminTab('socialhistory');
   const [sortBy, setSortBy] = useState('delta');
   const [level, setLevel] = useState('All');
+  const seriesByName = useMemo(() => seriesFromHistory(hist.data?.rows), [hist.data]);
   const platDelta = useMemo(() => {
-    const byName = {};
-    (hist.data?.rows || []).forEach(r => {
-      const [d, n, ig, x, tk] = r.cells || [];
-      const k = String(n || '').toLowerCase().trim();
-      const dt = parseSnapDay(d);
-      if (!k || isNaN(dt)) return;
-      (byName[k] = byName[k] || []).push({ dt, ig: +String(ig).replace(/,/g, '') || 0, x: +String(x).replace(/,/g, '') || 0, tk: +String(tk).replace(/,/g, '') || 0 });
-    });
     const out = {};
-    for (const [k, arr] of Object.entries(byName)) {
-      arr.sort((a, b) => a.dt - b.dt);
+    for (const [k, arr] of Object.entries(seriesByName)) {
       const last = arr[arr.length - 1];
+      if (!last) continue;
       const target = last.dt.getTime() - 7 * 86400000;
       let base = arr[0];
       for (const r of arr) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
       if (base !== last) out[k] = { ig: last.ig - base.ig, x: last.x - base.x, tk: last.tk - base.tk };
     }
     return out;
-  }, [hist.data]);
+  }, [seriesByName]);
   const list = useMemo(() => {
     let l = athletes.filter(a => a.growth7dPct !== '' && a.growth7dPct != null);
     if (level !== 'All') l = l.filter(a => a.level === level);
@@ -2146,87 +2179,132 @@ function GrowthBoard({ athletes, onClose, onOpenAthlete, isMobile }) {
       : (b.growth7d || 0) - (a.growth7d || 0));
   }, [athletes, level, sortBy]);
   const chip = (on, label, cb) => (
-    <button key={label} onClick={cb} style={{ padding: "6px 12px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
+    <button key={label} onClick={cb} style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
   );
-  const fmtD = (n) => (n > 0 ? '+' : '') + bigNum(Math.abs(n) < 1000 ? n : n);
+  const days = Math.max(0, ...list.map(a => a.growthDays || 0));
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 10 : 24 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 18, width: "100%", maxWidth: 640, maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${G.surfaceBorder}`, flexShrink: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>Growth board</div>
-            <button onClick={onClose} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {chip(sortBy === 'delta', 'By followers gained', () => setSortBy('delta'))}
-            {chip(sortBy === 'pct', 'By % growth', () => setSortBy('pct'))}
-            <div style={{ width: 10 }} />
-            {['All', 'NFL', 'College', 'High School'].map(lv => chip(level === lv, lv, () => setLevel(lv)))}
-          </div>
+    <div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+        {chip(sortBy === 'delta', 'By followers gained', () => setSortBy('delta'))}
+        {chip(sortBy === 'pct', 'By % growth', () => setSortBy('pct'))}
+        <div style={{ width: 10 }} />
+        {['All', 'NFL', 'College', 'High School'].map(lv => chip(level === lv, lv, () => setLevel(lv)))}
+      </div>
+      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Follower growth</span>
+          <span style={{ fontSize: 11, color: G.textTertiary }}>{days >= 7 ? 'Rolling 7 days' : `${days}-day window · builds to 7`}</span>
         </div>
-        <div style={{ overflowY: "auto", padding: "6px 20px 16px" }}>
-          {list.length === 0 && <div style={{ padding: "28px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No growth data yet — check back after tonight's refresh.</div>}
-          {list.map((a, i) => {
-            const pd = platDelta[a.name.toLowerCase().trim()];
-            const neg = (a.growth7d || 0) < 0;
-            return (
-              <div key={a.id || i} onClick={() => { onOpenAthlete(a); onClose(); }}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
-                <div style={{ width: 22, fontSize: 12, fontWeight: 700, color: G.textTertiary, flexShrink: 0 }}>{i + 1}</div>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {a.name} <span style={{ color: G.textTertiary, fontWeight: 500, fontSize: 12 }}>· {[a.level, a.position].filter(Boolean).join(' · ')}</span>
-                  </div>
-                  {pd && (
-                    <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 2 }}>
-                      {[['IG', pd.ig], ['X', pd.x], ['TT', pd.tk]].filter(([, v]) => v).map(([l2, v]) => `${l2} ${v > 0 ? '+' : ''}${bigNum(v)}`).join(' · ') || 'No platform movement'}
-                    </div>
-                  )}
-                </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: neg ? G.red : G.green }}>{neg ? '' : '+'}{bigNum(a.growth7d || 0)}</div>
-                  <div style={{ fontSize: 11, color: G.textTertiary }}>{a.growth7dPct}%</div>
+        {list.length === 0 && <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No growth data yet — check back after tonight's refresh.</div>}
+        {list.map((a, i) => {
+          const key = a.name.toLowerCase().trim();
+          const pd = platDelta[key];
+          const neg = (a.growth7d || 0) < 0;
+          return (
+            <div key={a.id || i} onClick={() => onOpenAthlete(a)}
+              style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14, padding: isMobile ? "10px 14px" : "11px 18px", borderBottom: i < list.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer" }}
+              onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <div style={{ width: 20, fontSize: 12, fontWeight: 700, color: i < 3 ? G.green : G.textTertiary, flexShrink: 0 }}>{i + 1}</div>
+              <Avatar name={a.name} photoUrl={a.photoUrl} size={isMobile ? 34 : 40} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
+                <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {[a.level, a.position].filter(Boolean).join(' · ')}
+                  {pd && ([['IG', pd.ig], ['X', pd.x], ['TT', pd.tk]].filter(([, v]) => v).length > 0) &&
+                    <> · <span style={{ color: G.textSecondary }}>{[['IG', pd.ig], ['X', pd.x], ['TT', pd.tk]].filter(([, v]) => v).map(([l2, v]) => `${l2} ${v > 0 ? '+' : ''}${bigNum(v)}`).join(' · ')}</span></>}
                 </div>
               </div>
-            );
-          })}
+              {!isMobile && <MiniTrend series={seriesByName[key]} />}
+              <div style={{ textAlign: "right", flexShrink: 0, minWidth: 64 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: neg ? G.red : G.green }}>{neg ? '' : '+'}{bigNum(a.growth7d || 0)}</div>
+                <div style={{ fontSize: 11, color: G.textTertiary }}>{(a.growth7d || 0) >= 0 ? '↗' : '↘'} {a.growth7dPct}%</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Follower trend chart (athlete profile, company view only) ────────────────
+// Big smooth line with a gradient fill, range tabs, and a total + change footer.
+function TrendChart({ name, isMobile }) {
+  const hist = useAdminTab('socialhistory');
+  const [range, setRange] = useState('max');
+  const all = useMemo(() => {
+    const map = seriesFromHistory(hist.data?.rows);
+    return map[String(name).toLowerCase().trim()] || [];
+  }, [hist.data, name]);
+  if (all.length < 2) return null;
+  const lastDt = all[all.length - 1].dt.getTime();
+  const cut = range === 'week' ? 7 : range === 'month' ? 30 : Infinity;
+  let series = all.filter(p => (lastDt - p.dt.getTime()) / 86400000 <= cut);
+  if (series.length < 2) series = all.slice(-2);
+  const W = 600, H = 180, PADL = 6, PADR = 14, PADT = 12, PADB = 22;
+  const vals = series.map(p => p.total);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = (max - min) || Math.max(max * 0.02, 1);
+  const px = (i) => PADL + (i / (series.length - 1)) * (W - PADL - PADR);
+  const py = (v) => PADT + (1 - (v - min) / span) * (H - PADT - PADB);
+  const pts = series.map((p, i) => [px(i), py(p.total)]);
+  const line = smoothPath(pts);
+  const area = `${line} L ${pts[pts.length - 1][0]} ${H - PADB} L ${pts[0][0]} ${H - PADB} Z`;
+  // Up to 5 evenly spaced dashed gridlines with date labels.
+  const tickCount = Math.min(5, series.length);
+  const ticks = Array.from({ length: tickCount }, (_, i) => Math.round((i / (tickCount - 1 || 1)) * (series.length - 1)));
+  const first = series[0], last = series[series.length - 1];
+  const delta = last.total - first.total;
+  const pct = first.total ? (delta / first.total) * 100 : 0;
+  const tab = (key, label) => (
+    <button key={key} onClick={() => setRange(key)}
+      style={{ flex: 1, padding: "7px 0", border: "none", borderRadius: 9, background: range === key ? G.surfaceRaised : "transparent", color: range === key ? G.text : G.textTertiary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
+  );
+  return (
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: isMobile ? 14 : 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Follower trend</div>
+        <div style={{ display: "flex", background: G.bg, border: `1px solid ${G.surfaceBorder}`, borderRadius: 11, padding: 3, width: isMobile ? "100%" : 230 }}>
+          {tab('week', 'Week')}{tab('month', 'Month')}{tab('max', 'Max')}
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+        <defs>
+          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={G.green} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={G.green} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {ticks.map((ti, i) => (
+          <g key={i}>
+            <line x1={px(ti)} y1={PADT} x2={px(ti)} y2={H - PADB} stroke={G.surfaceBorder} strokeDasharray="3 5" strokeWidth="1" />
+            <text x={px(ti)} y={H - 6} fontSize="10" fill="#6b6b70" textAnchor={i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle'} fontFamily={ff}>
+              {series[ti].dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </text>
+          </g>
+        ))}
+        <path d={area} fill="url(#trendFill)" />
+        <path d={line} fill="none" stroke={G.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="5" fill={G.bg} stroke={G.green} strokeWidth="2.5" />
+      </svg>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: 10 }}>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 4 }}>Total followers</div>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <span style={{ fontSize: 28, fontWeight: 800, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{bigNum(last.total)}</span>
+            {delta !== 0 && <span style={{ fontSize: 13, fontWeight: 700, color: delta > 0 ? G.green : G.red }}>{delta > 0 ? '+' : ''}{bigNum(delta)}</span>}
+          </div>
+        </div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: delta >= 0 ? G.green : G.red }}>
+          {delta >= 0 ? '↗' : '↘'} {Math.abs(pct) >= 100 ? Math.round(Math.abs(pct)) : Math.abs(pct).toFixed(1)}%
         </div>
       </div>
     </div>
   );
 }
 
-// Small follower-trend line for the athlete detail page (company view only) —
-// drawn from the daily SocialHistory snapshots.
-function TrendSpark({ name }) {
-  const hist = useAdminTab('socialhistory');
-  const pts = useMemo(() => {
-    return (hist.data?.rows || [])
-      .filter(r => String(r.cells?.[1] || '').toLowerCase().trim() === String(name).toLowerCase().trim())
-      .map(r => ({ d: parseSnapDay(r.cells[0]), t: (+String(r.cells[2]).replace(/,/g, '') || 0) + (+String(r.cells[3]).replace(/,/g, '') || 0) + (+String(r.cells[4]).replace(/,/g, '') || 0) }))
-      .filter(p => !isNaN(p.d) && p.t > 0)
-      .sort((a, b) => a.d - b.d);
-  }, [hist.data, name]);
-  if (pts.length < 2) return null;
-  const w = 150, h = 34;
-  const min = Math.min(...pts.map(p => p.t)), max = Math.max(...pts.map(p => p.t));
-  const span = max - min || 1;
-  const xy = pts.map((p, i) => `${(i / (pts.length - 1)) * w},${h - 3 - ((p.t - min) / span) * (h - 6)}`).join(' ');
-  const delta = pts[pts.length - 1].t - pts[0].t;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-      <svg width={w} height={h} style={{ display: "block" }}>
-        <polyline points={xy} fill="none" stroke={G.green} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      </svg>
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)" }}>
-        <span style={{ fontWeight: 700, color: delta < 0 ? G.red : G.green }}>{delta >= 0 ? '+' : ''}{bigNum(delta)}</span> followers since {pts[0].d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-      </div>
-    </div>
-  );
-}
-
-function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, user, decks }) {
-  const [growthOpen, setGrowthOpen] = useState(false);
+function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, user, decks }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Agents see THEIR book everywhere: every stat and tile computes over their
@@ -2379,7 +2457,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               x2.a.id || i, i === arr.length - 1))}
           {!s.hasGrowthData && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>Sample numbers — daily snapshots start tonight; real growth appears within a week.</div>}
           {s.hasGrowthData && (
-            <button onClick={() => setGrowthOpen(true)} style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+            <button onClick={onGoMarketing} style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
               View full growth board →
             </button>
           )}
@@ -2417,8 +2495,6 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               x2.a.id || i, i === arr.length - 1))}
         {s.incomplete.length > 8 && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>+ {s.incomplete.length - 8} more — open any profile and hit Edit to fill in the gaps.</div>}
       </div>
-
-      {growthOpen && <GrowthBoard athletes={scoped} isMobile={isMobile} onClose={() => setGrowthOpen(false)} onOpenAthlete={onOpenAthlete} />}
 
       {(decks || []).length > 0 && (
         <div style={{ marginTop: 18 }}>
@@ -2722,22 +2798,23 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
   );
 }
 
-function MarketingPage({ isMobile }) {
+function MarketingPage({ isMobile, athletes, onOpenAthlete }) {
   const items = [
     ['Outreach tracker', 'Log every pitch — who reached out, to which company, and what they said. No more double-pitching the same brand.'],
     ['Athlete indicators', 'Automatic flags like "no outreach in 30+ days" so nothing slips through the cracks.'],
     ['Pitch engine', 'Pick an athlete, get a drafted pitch and suggested companies based on their school, interests, and audience.'],
   ];
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Marketing</div>
+    <div style={{ maxWidth: 860, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Marketing</div>
+      <GrowthBoardSection athletes={athletes} onOpenAthlete={onOpenAthlete} isMobile={isMobile} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "28px 0 12px" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>More tools on the way</span>
         <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 7, padding: "3px 8px" }}>Coming soon</span>
       </div>
-      <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4, marginBottom: 18 }}>What's planned for this space:</div>
       <div style={{ display: "grid", gap: 10 }}>
         {items.map(([t, d]) => (
-          <div key={t} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+          <div key={t} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, opacity: 0.75 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{t}</div>
             <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4, lineHeight: 1.5 }}>{d}</div>
           </div>
@@ -3414,7 +3491,7 @@ function App() {
     { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
     { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
     { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
-    { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z', soon: true },
+    { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
   ];
@@ -3651,10 +3728,11 @@ function App() {
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => goSportsPage('roster')}
                   onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); goSportsPage('roster'); }}
-                  onShowMine={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(true); goSportsPage('roster'); }} />
+                  onShowMine={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(true); goSportsPage('roster'); }}
+                  onGoMarketing={() => goSportsPage('marketing')} />
               )}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} onPromoted={() => setAthletesLoaded(false)} />}
-              {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} />}
+              {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
