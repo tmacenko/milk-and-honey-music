@@ -268,9 +268,14 @@ module.exports = async (req, res) => {
     appRows.forEach((r, i) => { if (i > 0 && appNameCol >= 0) { const k = nameKey(r[appNameCol]); if (k) appByKey[k] = { row: i + 1, cells: r }; } });
     let appRowTotal = appRows.length; // last occupied AppData row (1-based, incl. header)
 
-    const nflPlayers = parseRows(nfl);
-    const colPlayers = parseRows(col);
-    const hsPlayers = parseRows(hs);
+    // ?name= targets a single athlete (the just-onboarded flow) — enrich only
+    // them, and skip the daily history snapshots so the nightly full run's
+    // per-day dedupe isn't poisoned by a partial day.
+    const onlyName = String((req.query || {}).name || '').trim().toLowerCase();
+    const byOnly = (rows2) => onlyName ? rows2.filter(p => String(p['Name'] || '').trim().toLowerCase() === onlyName) : rows2;
+    const nflPlayers = byOnly(parseRows(nfl));
+    const colPlayers = byOnly(parseRows(col));
+    const hsPlayers = byOnly(parseRows(hs));
 
     // ── Module 1: Ourlads depth charts ────────────────────────────────────────
     const byUrl = {}; // url -> [{ name, key }]
@@ -597,7 +602,7 @@ module.exports = async (req, res) => {
     // from Ourlads) and 247 rating/ranks (HS). Hidden robot tab — feeds the
     // depth-riser / rank-riser features with real history from day one.
     const statHistory = { rows: 0, skippedToday: false, pruned: 0, error: null };
-    try {
+    try { if (!onlyName) {
       const trend = {};
       for (const m of matches) { trend[nameKey(m.name)] = { name: m.name, depthRank: m.rank, depthPos: m.pos }; }
       for (const [k, v] of Object.entries(rankTrend)) trend[k] = { ...(trend[k] || {}), ...v };
@@ -643,7 +648,7 @@ module.exports = async (req, res) => {
           }
         }
       }
-    } catch (e) { statHistory.error = e.message; }
+    } } catch (e) { statHistory.error = e.message; }
 
     return res.json({
       success: true, dryRun, task, timedOut, proxyActive: !!proxyDispatcher, statHistory,

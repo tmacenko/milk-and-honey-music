@@ -203,6 +203,26 @@ module.exports = async (req, res) => {
       }
     }
 
+    // Kick off instant enrichment for the just-signed athlete in the background
+    // (ESPN id/details, 247 discovery + photo, first follower counts) — so their
+    // profile fills in within a minute or two instead of waiting for the
+    // overnight crons. Single-athlete runs skip the history snapshots.
+    if (!dryRun) {
+      try {
+        const base = 'https://www.milkandhoneyfamily.com';
+        const key = encodeURIComponent(process.env.CRON_SECRET || '');
+        const nm = encodeURIComponent(String(sub.name).trim());
+        const jobs = Promise.allSettled([
+          fetch(`${base}/api/refresh-depth?task=all&name=${nm}&key=${key}`),
+          fetch(`${base}/api/refresh-socials?name=${nm}&platforms=ig,x,tiktok&key=${key}`),
+        ]);
+        let deferred = false;
+        try { require('@vercel/functions').waitUntil(jobs); deferred = true; } catch { /* waitUntil unavailable */ }
+        // Fallback: hold the response briefly so the jobs actually run.
+        if (!deferred) await Promise.race([jobs, new Promise(r => setTimeout(r, 20000))]);
+      } catch (e) { console.error('enrichment trigger failed:', e.message); }
+    }
+
     return res.json({ success: true, isNew: !matchRow, matchedName, dryRun, planned: dryRun ? planned : undefined });
   } catch (err) {
     console.error('Onboard error:', err.message);

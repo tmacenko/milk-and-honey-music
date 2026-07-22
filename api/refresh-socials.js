@@ -274,7 +274,9 @@ module.exports = async (req, res) => {
     }
 
     const allNames = Object.keys(handles).filter(n => rowByName[n]).sort();
-    let names = allNames.slice(offset, offset + limit); // offset+Infinity → to the end
+    // ?name= targets one athlete (the just-onboarded flow).
+    const onlyName = String(q.name || '').trim().toLowerCase();
+    let names = onlyName ? allNames.filter(n => n === onlyName) : allNames.slice(offset, offset + limit);
 
     const guestToken = only.includes('x') ? await getGuestToken() : null;
     const results = {}; // nameLower -> { ig, tw, tk }
@@ -307,7 +309,9 @@ module.exports = async (req, res) => {
     // a week ago (3–10 day window) lands in AutoSync growth7d/growth7dPct for
     // the dashboard's "Hot this week" tile.
     const history = { snapshots: 0, growthWritten: 0, pruned: 0, error: null };
-    try {
+    // Single-athlete runs skip the daily snapshot/growth pass — a partial
+    // snapshot would trip the nightly run's per-day dedupe.
+    try { if (!onlyName) {
       const parseCount = (s) => {
         const t = String(s ?? '').trim().replace(/,/g, '');
         if (!t) return null;
@@ -420,7 +424,7 @@ module.exports = async (req, res) => {
           history.pruned = oldCount;
         }
       }
-    } catch (e) { history.error = e.message; }
+    } } catch (e) { history.error = e.message; }
 
     // A couple of samples so we can eyeball correctness.
     const sample = names.slice(0, 3).map(n => ({ name: handles[n].name, ig: results[n].ig, x: results[n].tw, tiktok: results[n].tk }));
