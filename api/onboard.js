@@ -223,18 +223,6 @@ module.exports = async (req, res) => {
           fetch(`${base}/api/refresh-depth?task=all&name=${nm}&key=${key}`, hdrs),
           fetch(`${base}/api/refresh-socials?name=${nm}&platforms=ig,x,tiktok&key=${key}`, hdrs),
         ]);
-        // ?debugEnrich=1: wait for the jobs and report their statuses (testing).
-        if (['1', 'true'].includes(String((req.query || {}).debugEnrich || ''))) {
-          const settled = await jobs;
-          const out = [];
-          for (const s of settled) {
-            if (s.status !== 'fulfilled') { out.push({ error: String(s.reason) }); continue; }
-            let body = null;
-            try { body = await s.value.json(); } catch { /* non-JSON */ }
-            out.push({ status: s.value.status, body });
-          }
-          return res.json({ success: true, isNew: !matchRow, matchedName, dryRun, enrich: out });
-        }
         let deferred = false;
         try { require('@vercel/functions').waitUntil(jobs); deferred = true; } catch { /* waitUntil unavailable */ }
         // Fallback: hold the response briefly so the jobs actually run.
