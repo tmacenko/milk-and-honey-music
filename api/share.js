@@ -833,7 +833,25 @@ module.exports = async function handler(req, res) {
       catch(e) { return res.status(500).json({ error: 'Failed to parse share data' }); }
 
       if (req.query.format === 'pdf') {
-        try { return await sendRosterPdf(data, res); }
+        try {
+          // A single-person share downloads as the individual one-sheet, not a
+          // one-card roster grid. The share payload carries the same fields the
+          // one-sheet builders read; logos arrive pre-resolved as logo arrays.
+          const people = data.athletes || data.clients || [];
+          if (people.length === 1) {
+            const p = people[0];
+            const fname = String(p.name || 'share').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
+            if (['NFL', 'College', 'High School'].includes(p.level)) {
+              return sendPdf(await buildAthletePdf(p), fname, res);
+            }
+            const logos = {};
+            [...(p.proLogos || []), ...(p.pubLogos || []), ...(p.labelLogos || [])].forEach(l => {
+              if (l?.name && l?.url) logos[String(l.name).toLowerCase()] = { url: l.url };
+            });
+            return sendPdf(await buildClientPdf(p, logos), fname, res);
+          }
+          return await sendRosterPdf(data, res);
+        }
         catch (err) { console.error('Roster PDF error:', err); return res.status(500).send('Failed to generate PDF: ' + err.message); }
       }
 
