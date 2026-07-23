@@ -1714,6 +1714,61 @@ const parseReach = v => {
 };
 const athleteReach = a => parseReach(a.igFollowers) + parseReach(a.twitterFollowers) + parseReach(a.tiktokFollowers);
 
+// ── Marketability score (0–100) — internal only ──────────────────────────────
+// Absolute scales (an athlete's score never depends on teammates): Reach 25 ·
+// Momentum 25 · Role/Pedigree 25 · Program 15 · Trajectory 10.
+const BLUE_BLOODS = new Set(['georgia', 'alabama', 'ohio state', 'michigan', 'texas', 'oklahoma', 'usc', 'notre dame', 'lsu', 'florida', 'florida state', 'clemson', 'oregon', 'penn state', 'tennessee', 'auburn', 'miami', 'texas a&m']);
+const MARQUEE_NFL = new Set(['kansas city chiefs', 'dallas cowboys', 'san francisco 49ers', 'philadelphia eagles', 'green bay packers', 'pittsburgh steelers', 'new york giants', 'new york jets', 'chicago bears', 'denver broncos']);
+function computeMarketability(a, series, s247) {
+  const c01 = v => Math.max(0, Math.min(1, v));
+  const lc = s => String(s || '').toLowerCase().trim();
+  const reach = 25 * c01((Math.log10(Math.max(athleteReach(a), 1)) - 3) / 4); // 1K → 0 · 10M+ → max
+  const pct = Math.max(0, parseFloat(a.growth7dPct) || 0);
+  const momentum = 15 * c01(pct / 3) + 10 * c01((a.growth7d || 0) / 25000); // 3%/wk or +25K/wk → max
+  const fa = /free agent|retired/i.test(String(a.status || '')) || /free agent/i.test(String(a.nflTeam || ''));
+  let role;
+  if (a.level === 'High School') {
+    const stars = Math.round(parseFloat(s247?.stars) || 0);
+    role = [0, 3, 6, 12, 19, 25][Math.max(0, Math.min(5, stars))];
+  } else {
+    role = a.depthRank === 1 ? 25 : a.depthRank === 2 ? 16 : a.depthRank === 3 ? 9 : a.depthRank > 3 ? 5 : 4;
+    if (fa) role = Math.min(role, 4);
+  }
+  let program = 4;
+  if (a.level === 'NFL') program = fa ? 5 : MARQUEE_NFL.has(lc(a.nflTeam)) ? 15 : 12;
+  else if (a.level === 'College') program = BLUE_BLOODS.has(lc(a.college)) ? 15 : (a.teamLogo ? 11 : 6);
+  else program = a.committedTo ? (BLUE_BLOODS.has(lc(a.committedTo)) ? 12 : 8) : 4;
+  // Trajectory: did this week's follower gain beat last week's?
+  let trajectory = 0;
+  if (series && series.length >= 3) {
+    const at = t => { let best = series[0]; for (const p of series) if (Math.abs(p.dt - t) < Math.abs(best.dt - t)) best = p; return best; };
+    const last = series[series.length - 1];
+    const w1 = at(last.dt.getTime() - 7 * 86400000), w2 = at(last.dt.getTime() - 14 * 86400000);
+    if (w1 !== last && w2 !== w1) {
+      const cur = last.total - w1.total, prev = w1.total - w2.total;
+      if (cur > prev) trajectory = 10 * c01((cur - prev) / Math.max(prev, 500));
+    }
+  }
+  const parts = [
+    ['Reach', Math.round(reach), 25],
+    ['Momentum', Math.round(momentum), 25],
+    [a.level === 'High School' ? 'Pedigree' : 'Role', Math.round(role), 25],
+    ['Program', Math.round(program), 15],
+    ['Trajectory', Math.round(trajectory), 10],
+  ];
+  return { score: Math.min(100, Math.round(reach + momentum + role + program + trajectory)), parts };
+}
+// Latest 247 snapshot per athlete from the StatHistory tab (later rows win).
+function latest247From(rows) {
+  const out = {};
+  for (const r of rows || []) {
+    const c = r.cells || [];
+    const k = String(c[1] || '').toLowerCase().trim();
+    if (k && (c[4] || c[5] || c[6] || c[7])) out[k] = { rating: c[4], stars: c[5], nat: c[6], pos: c[7] };
+  }
+  return out;
+}
+
 // Team logo in a white rounded tile, matching the music favicon badges.
 function TeamLogo({ url, size = 38 }) {
   if (!url) return null;
@@ -2391,6 +2446,7 @@ function seriesFromHistory(rows) {
 // table with per-platform followers (change underneath), total, and growth.
 function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
   const hist = useAdminTab('socialhistory');
+  const hist247 = useAdminTab('stathistory');
   const [levels, setLevels] = useState([...ALL_LEVELS]);
   const toggleLevel = (l) => setLevels(prev => {
     const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
@@ -2415,9 +2471,14 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
     }
     return out;
   }, [seriesByName]);
+  const s247map = useMemo(() => latest247From(hist247.data?.rows), [hist247.data]);
+  const scoreOf = (a) => {
+    const k = a.name.toLowerCase().trim();
+    return computeMarketability(a, seriesByName[k], s247map[k]).score;
+  };
   const valOf = {
     ig: a => parseReach(a.igFollowers), x: a => parseReach(a.twitterFollowers), tt: a => parseReach(a.tiktokFollowers),
-    total: a => athleteReach(a), growth: a => (a.growth7d || 0),
+    total: a => athleteReach(a), growth: a => (a.growth7d || 0), score: scoreOf,
   };
   const sorted = athletes
     .filter(a => athleteReach(a) > 0 || (a.growth7d || 0) !== 0)
@@ -2475,7 +2536,7 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
           <div className="mh-hscroll" style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
-                {[['player', 'Player'], ['ig', 'Instagram'], ['x', 'X'], ['tt', 'TikTok'], ['total', 'Total'], ['growth', 'Growth']].map(([key, h]) => (
+                {[['player', 'Player'], ['ig', 'Instagram'], ['x', 'X'], ['tt', 'TikTok'], ['total', 'Total'], ['growth', 'Growth'], ['score', 'Score']].map(([key, h]) => (
                   <th key={key}
                     onClick={() => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(key === 'player' ? 'asc' : 'desc'); } }}
                     style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
@@ -2505,6 +2566,7 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
                       <td style={{ ...td, fontWeight: 700, color: growth > 0 ? G.green : growth < 0 ? G.red : G.textTertiary }}>
                         {growth === 0 ? '—' : <>{growth > 0 ? '+' : ''}{bigNum(growth)}{a.growth7dPct ? <span style={{ color: G.textTertiary, fontWeight: 500 }}> · {a.growth7dPct}%</span> : null}</>}
                       </td>
+                      <td style={{ ...td, fontWeight: 700, color: G.green }}>{scoreOf(a)}</td>
                     </tr>
                   );
                 })}
@@ -2522,9 +2584,13 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
 // (7-day window from SocialHistory), and the contract terms.
 function SocialContractModules({ athlete: a, isMobile }) {
   const hist = useAdminTab('socialhistory');
+  const hist247 = useAdminTab('stathistory');
   const key = String(a.name || '').toLowerCase().trim();
+  const series = useMemo(() => seriesFromHistory(hist.data?.rows)[key] || [], [hist.data, key]);
+  const s247 = useMemo(() => latest247From(hist247.data?.rows)[key], [hist247.data, key]);
+  const mkt = computeMarketability(a, series, s247);
   const { pd, days } = useMemo(() => {
-    const arr = seriesFromHistory(hist.data?.rows)[key] || [];
+    const arr = series;
     const last = arr[arr.length - 1];
     if (!last) return { pd: null, days: 0 };
     const target = last.dt.getTime() - 7 * 86400000;
@@ -2535,7 +2601,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
       pd: { ig: last.ig - base.ig, x: last.x - base.x, tk: last.tk - base.tk },
       days: Math.max(1, Math.round((last.dt - base.dt) / 86400000)),
     };
-  }, [hist.data, key]);
+  }, [series]);
   const money = (v) => {
     const n = parseFloat(String(v).replace(/[^0-9.]/g, ''));
     if (!n) return String(v);
@@ -2563,7 +2629,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
     </div>
   );
   return (
-    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
       <div style={mod}>
         {head('Social media', pd ? `${days}-day change` : '')}
         {rows.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No socials on file.</div>
@@ -2614,6 +2680,24 @@ function SocialContractModules({ athlete: a, isMobile }) {
               ))}
             </>
           )}
+      </div>
+      <div style={mod}>
+        {head('Marketability', '')}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{ fontSize: 30, fontWeight: 800, color: G.green, letterSpacing: "-0.02em", lineHeight: 1 }}>{mkt.score}</span>
+          <span style={{ fontSize: 12, color: G.textTertiary }}>/ 100</span>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          {mkt.parts.map(([l, v, max]) => (
+            <div key={l} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+              <span style={{ fontSize: 11, color: G.textTertiary, width: 68, flexShrink: 0 }}>{l}</span>
+              <div style={{ flex: 1, height: 4, background: G.surfaceRaised, borderRadius: 2 }}>
+                <div style={{ width: `${Math.round((v / max) * 100)}%`, height: "100%", background: G.green, borderRadius: 2, opacity: 0.85 }} />
+              </div>
+              <span style={{ fontSize: 11, color: G.textSecondary, width: 38, textAlign: "right", flexShrink: 0 }}>{v}/{max}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
