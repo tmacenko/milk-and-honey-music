@@ -736,8 +736,9 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(20px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ background: G.surfaceGlass, backdropFilter: "blur(24px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: G.shadowLg }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      {/* Solid panel — stacked backdrop blurs made scrolling this modal janky. */}
+      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: G.shadowLg }}>
         <div style={{ padding: "18px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <span style={{ fontWeight: 700, fontSize: 16, color: G.text }}>Edit Athlete</span>
           <button onClick={onCancel} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 14, fontFamily: ff }}>✕</button>
@@ -1549,6 +1550,91 @@ function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCou
             </>
           )}
           <div style={{ height: 1, background: G.surfaceBorder, margin: "6px 8px" }} />
+          {item(customCount > 0, (
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              Custom Group {customCount > 0 && <span style={{ color: G.green }}>· {customCount}</span>}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </span>
+          ), () => { onOpenCustom(); setOpen(false); })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Sports roster filter — filters within filters ────────────────────────────
+// Level, Agent, and Position (side of ball → position group), plus the depth
+// and custom-group entries. Everything defaults to All; sections nest.
+const POS_SIDES = { Offense: ['QB', 'RB', 'WR', 'TE', 'OL'], Defense: ['DL', 'LB', 'DB'], Specialists: ['ST'] };
+function SportsFilterDropdown({ compact, level, onLevel, agents, agentValue, onAgent, posSide, posGroup, onPosSide, onPosGroup, depthOptions, depthValue, onDepth, mineOn, onMine, customCount, onOpenCustom, onAll }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const ref = useRef();
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 278)) }); } setOpen(v => !v); };
+  const depthActive = !!depthValue && depthValue !== 'All';
+  const active = customCount > 0 || level !== 'All' || agentValue !== 'All' || posSide !== 'All' || depthActive || !!mineOn;
+  const label = customCount > 0 ? `Custom · ${customCount}`
+    : ([mineOn ? 'My clients' : null, level !== 'All' ? level : null, agentValue !== 'All' ? agentValue : null,
+        posSide !== 'All' ? (posGroup !== 'All' ? posGroup : posSide) : null, depthActive ? depthValue : null].filter(Boolean).join(', ') || 'All');
+  const item = (on, content, onClick, indent) => (
+    <button onClick={onClick}
+      style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: indent ? "7px 12px 7px 28px" : "9px 12px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, fontSize: indent ? 12.5 : 13, fontWeight: on ? 700 : 400, color: on ? G.green : G.text, textAlign: "left" }}
+      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+      {content}
+      {on && <span style={{ color: G.green, fontSize: 12 }}>✓</span>}
+    </button>
+  );
+  const head = (t) => <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, padding: "6px 12px 3px" }}>{t}</div>;
+  const divider = () => <div style={{ height: 1, background: G.surfaceBorder, margin: "6px 8px" }} />;
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button onClick={toggle}
+        style={{ display: "flex", alignItems: "center", gap: compact ? 5 : 7, padding: compact ? "8px 10px" : "8px 14px", background: active ? G.greenSubtle : G.surface, border: `1px solid ${active ? G.green : G.surfaceBorder}`, borderRadius: 10, fontFamily: ff, fontSize: 13, fontWeight: active ? 700 : 500, color: active ? G.green : G.textSecondary, cursor: "pointer", whiteSpace: "nowrap", maxWidth: 280, flexShrink: 0 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        {!compact && <span style={{ color: active ? G.green : G.textTertiary, fontWeight: 500, flexShrink: 0 }}>View:</span>}
+        {!compact && <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>}
+        <span style={{ fontSize: 9, opacity: 0.6, flexShrink: 0 }}>▾</span>
+      </button>
+      {open && pos && (
+        <div style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: 250, maxHeight: "72vh", overflowY: "auto", background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 500, boxShadow: G.shadowLg }}>
+          {item(!active, 'All', () => onAll())}
+          {onMine && item(customCount === 0 && !!mineOn, 'My clients', () => onMine())}
+          {divider()}
+          {head('Level')}
+          {item(customCount === 0 && level === 'All', 'All levels', () => onLevel('All'))}
+          {['NFL', 'College', 'High School'].map(l => item(customCount === 0 && level === l, l, () => onLevel(level === l ? 'All' : l)))}
+          {(agents || []).length > 0 && (
+            <>
+              {divider()}
+              {head('Agent')}
+              {item(customCount === 0 && agentValue === 'All', 'All agents', () => onAgent('All'))}
+              {agents.map(n => item(customCount === 0 && agentValue === n, n, () => onAgent(agentValue === n ? 'All' : n)))}
+            </>
+          )}
+          {divider()}
+          {head('Position')}
+          {item(customCount === 0 && posSide === 'All', 'All positions', () => onPosSide('All'))}
+          {Object.keys(POS_SIDES).map(s => (
+            <div key={s}>
+              {item(customCount === 0 && posSide === s && posGroup === 'All', s, () => onPosSide(posSide === s ? 'All' : s))}
+              {posSide === s && POS_SIDES[s].length > 1 && POS_SIDES[s].map(g =>
+                item(posGroup === g, g, () => onPosGroup(posGroup === g ? 'All' : g), true))}
+            </div>
+          ))}
+          {depthOptions && (
+            <>
+              {divider()}
+              {head('Depth chart')}
+              {depthOptions.map(o => item(customCount === 0 && depthValue === o, o, () => onDepth(o)))}
+            </>
+          )}
+          {divider()}
           {item(customCount > 0, (
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
               Custom Group {customCount > 0 && <span style={{ color: G.green }}>· {customCount}</span>}
@@ -2473,6 +2559,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       if (!a.height || !a.weight) m.push('Ht/Wt');
       if (!(a.shirtSize || a.hoodieSize || a.shoeSize)) m.push('Sizes');
       if (a.level === 'High School' && !a.profileUrl247) m.push('247 link');
+      if (a.level !== 'High School' && !(a.contractYearly || a.contractAav)) m.push('Contract $');
       return m;
     };
     const incomplete = scoped.map(a => ({ a, missing: missingOf(a) }))
@@ -3294,6 +3381,9 @@ function App() {
   const [sportsLevel, setSportsLevel] = useState('All');
   // Depth chart filter (employee-only control): All / Starters / Backups / Not on chart.
   const [depthFilter, setDepthFilter] = useState('All');
+  const [agentFilter, setAgentFilter] = useState('All');
+  const [posSide, setPosSide] = useState('All');
+  const [posGroup, setPosGroup] = useState('All');
   // "My clients" filter for individual logins (matched on Lead Agent).
   const [mineOnly, setMineOnly] = useState(false);
   const mineDefaultApplied = useRef(false);
@@ -3719,6 +3809,12 @@ function App() {
       if (depthFilter === 'Starters' && a.depthRank !== 1) return false;
       if (depthFilter === 'Backups' && !(a.depthRank >= 2)) return false;
       if (depthFilter === 'Not on chart' && (a.depthRank > 0 || a.level === 'High School')) return false;
+      if (agentFilter !== 'All' && !String(a.agentAssigned || '').toLowerCase().includes(agentFilter.toLowerCase())) return false;
+      if (posSide !== 'All') {
+        const g = contractPosGroup(a.position);
+        if (!POS_SIDES[posSide].includes(g)) return false;
+        if (posGroup !== 'All' && g !== posGroup) return false;
+      }
       if (search) return athleteSearchMatch(a, search.toLowerCase());
       return true;
     });
@@ -3732,7 +3828,7 @@ function App() {
       if (fa !== 0) return fa;
       return athleteReach(b) - athleteReach(a);
     });
-  }, [athletes, sportsLevel, depthFilter, mineOnly, currentUser, search, customGroup, clientSort]);
+  }, [athletes, sportsLevel, depthFilter, agentFilter, posSide, posGroup, mineOnly, currentUser, search, customGroup, clientSort]);
 
   // Individual logins land on "their" roster: default the My-clients filter on
   // (once per session) when the logged-in agent actually has matches.
@@ -3881,10 +3977,14 @@ function App() {
   // Consolidated View dropdown: multi-select types (music) or single-select level
   // (sports), plus a Custom Group entry — same component for both domains.
   const viewFilter = domain === 'sports' ? (
-    <ViewFilterDropdown compact={isMobile} types={['All', 'NFL', 'College', 'High School']}
-      filterTypes={sportsLevel === 'All' ? [] : [sportsLevel]}
-      onToggleType={(t) => { clearCustomGroup(); setSportsLevel(prev => prev === t ? 'All' : t); }}
-      onAll={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(false); }}
+    <SportsFilterDropdown compact={isMobile}
+      level={sportsLevel} onLevel={(l) => { clearCustomGroup(); setSportsLevel(l); }}
+      agents={isAdmin ? sportsStaff : []} agentValue={agentFilter}
+      onAgent={(n) => { clearCustomGroup(); setAgentFilter(n); }}
+      posSide={posSide} posGroup={posGroup}
+      onPosSide={(s) => { clearCustomGroup(); setPosSide(s); setPosGroup('All'); }}
+      onPosGroup={(g) => { clearCustomGroup(); setPosGroup(g); }}
+      onAll={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(false); setAgentFilter('All'); setPosSide('All'); setPosGroup('All'); }}
       depthOptions={isAdmin ? ['Starters', 'Backups', 'Not on chart'] : null}
       depthValue={depthFilter}
       onDepth={(o) => { clearCustomGroup(); setDepthFilter(prev => prev === o ? 'All' : o); }}
