@@ -3259,7 +3259,7 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
   const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Contracts</div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
         <div style={card}>
