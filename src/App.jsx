@@ -2488,7 +2488,7 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
   const [side, setSide] = useState('All');
   const [group, setGroup] = useState('All');
   const [q, setQ] = useState('');
-  const [sortCol, setSortCol] = useState('growth');
+  const [sortCol, setSortCol] = useState('score');
   const [sortDir, setSortDir] = useState('desc');
   const seriesByName = useMemo(() => seriesFromHistory(hist.data?.rows), [hist.data]);
   const platDelta = useMemo(() => {
