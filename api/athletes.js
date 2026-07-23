@@ -321,14 +321,49 @@ async function getDecks() {
 // appended if the athlete has no AppData row yet). Only columns that actually
 // exist in the sheet are written.
 const BASE_TAB = { 'NFL': 'NFL', 'College': 'College', 'High School': 'Highschool' };
+// Remove an athlete: delete their base-tab row, then best-effort janitor the
+// AppData / AutoSync satellite rows (those are keyed by name).
+async function deleteAthlete(token, body) {
+  const tab = BASE_TAB[body.level];
+  const row = parseInt(body.row, 10);
+  if (!tab || !row || row < 2) throw new Error('Bad delete request');
+  const gid = await getSheetGid(token, tab);
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: row - 1, endIndex: row } } }] }),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(`Delete error: ${d.error.code} ${d.error.message}`);
+  const nm = String(body.name || '').toLowerCase().trim();
+  if (!nm) return;
+  for (const t of ['AppData', 'AutoSync']) {
+    try {
+      const data = await sheetGet(token, `'${t}'!A:AZ`);
+      const rows = data.values || [];
+      const hdr = (rows[0] || []).map(h => String(h || '').toLowerCase().trim());
+      const nc = hdr.findIndex(h => h === 'name');
+      if (nc < 0) continue;
+      const idx = rows.findIndex((r2, i) => i > 0 && String(r2[nc] || '').toLowerCase().trim() === nm);
+      if (idx <= 0) continue;
+      const gid2 = await getSheetGid(token, t);
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid2, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } } }] }),
+      });
+    } catch { /* satellite cleanup is best-effort */ }
+  }
+}
+
 async function saveAthlete(token, body) {
   const a = body.athlete || {};
   const originalName = String(body.originalName || a.name || '').trim();
+  // No row reference → this is a brand-new athlete (append, don't update).
+  const creating = !a._rowIndex;
   // Level moves (HS → College → NFL) relocate the row between base tabs.
   const prevLevel = BASE_TAB[body.prevLevel] ? body.prevLevel : a.level;
-  const levelChanged = prevLevel !== a.level;
+  const levelChanged = !creating && prevLevel !== a.level;
   const tab = BASE_TAB[a.level];
-  if (!tab || !a._rowIndex) throw new Error('Missing level or row reference');
+  if (!tab) throw new Error('Missing level');
   if (!String(a.name || '').trim()) throw new Error('Name is required');
 
   // 1) Base tab updates (only headers that exist).
@@ -349,7 +384,9 @@ async function saveAthlete(token, body) {
     'Gaming System': a.gamingSystem,
   };
   const updates = [];
-  if (levelChanged) {
+  if (creating) {
+    await sheetAppend(token, `${tab}!A:Z`, baseHeaders.map(h => baseVals[h] === undefined ? '' : String(baseVals[h] ?? '')));
+  } else if (levelChanged) {
     // Append a fresh row to the new level's tab, then delete the old row.
     // AppData / AutoSync are keyed by name so they follow automatically.
     const newRow = baseHeaders.map(h => baseVals[h] === undefined ? '' : String(baseVals[h] ?? ''));
@@ -1062,6 +1099,11 @@ module.exports = async (req, res) => {
             deleteDimension: { range: { sheetId: gid, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 } } })));
         }
         return res.json({ success: true, orphansDeleted: orphanNames, columnsDropped: dropIdx.length });
+      }
+
+      if ((req.body || {}).action === 'delete-athlete') {
+        await deleteAthlete(token, req.body);
+        return res.json({ success: true });
       }
 
       await saveAthlete(token, req.body || {});

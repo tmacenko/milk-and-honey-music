@@ -689,10 +689,24 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
         body: JSON.stringify({ athlete: payload, originalName: initial.name, prevLevel: initial.level }),
       });
       const data = await resp.json();
-      if (data.success) onSave({ ...payload, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl }, { levelChanged });
+      if (data.success) onSave({ ...payload, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl }, { levelChanged, created: !initial._rowIndex });
       else throw new Error(data.error || 'Save failed');
     } catch (e) { alert('Save failed: ' + e.message); }
     setSaving(false);
+  };
+
+  const del = async () => {
+    if (!window.confirm(`Remove ${initial.name} from the roster? This deletes their row from the sheet.`)) return;
+    setSaving(true);
+    try {
+      const resp = await fetch('/api/athletes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-athlete', level: initial.level, row: initial._rowIndex, name: initial.name }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || 'Delete failed');
+      onSave(null, { deleted: true });
+    } catch (e) { alert('Delete failed: ' + e.message); setSaving(false); }
   };
 
   const statusOptions = ['Active', 'Free Agent', 'Rookie', 'Inactive', 'Retired'];
@@ -776,19 +790,21 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
                 )}
               </Field>
             </div>
-            <div style={{ gridColumn: "1/-1" }}>
-              <Field label="Status">
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {statusOptions.map(s => {
-                    const on = form.status === s;
-                    return <button key={s} onClick={() => set('status', s)}
-                      style={{ flex: 1, minWidth: 80, padding: "8px 0", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}`, whiteSpace: "nowrap" }}>
-                      {s}
-                    </button>;
-                  })}
-                </div>
-              </Field>
-            </div>
+            {isNFL && (
+              <div style={{ gridColumn: "1/-1" }}>
+                <Field label="Status">
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {statusOptions.map(s => {
+                      const on = form.status === s;
+                      return <button key={s} onClick={() => set('status', s)}
+                        style={{ flex: 1, minWidth: 80, padding: "8px 0", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}`, whiteSpace: "nowrap" }}>
+                        {s}
+                      </button>;
+                    })}
+                  </div>
+                </Field>
+              </div>
+            )}
             <Field label="Position"><Input value={form.position} onChange={e => set('position', e.target.value)} placeholder="QB, WR, LB..." /></Field>
             <div>
               <Field label={isNFL ? 'Team' : 'School'}>
@@ -882,9 +898,12 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
           </>)}
         </div>
         <div style={{ padding: "14px 24px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, flexShrink: 0 }}>
+          {initial._rowIndex ? (
+            <button onClick={del} disabled={saving} style={{ background: "transparent", border: `1px solid ${G.red}`, borderRadius: 12, padding: "11px 16px", color: G.red, fontWeight: 600, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", fontFamily: ff }}>Delete</button>
+          ) : null}
           <button onClick={onCancel} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>Cancel</button>
           <button onClick={save} disabled={saving} style={{ flex: 2, background: saving ? G.surfaceRaised : G.green, border: "none", borderRadius: 12, padding: "11px", color: saving ? G.textTertiary : "#0a0a0a", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", fontFamily: ff }}>
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? 'Saving...' : initial._rowIndex ? 'Save Changes' : 'Add Athlete'}
           </button>
         </div>
       </div>
@@ -2685,15 +2704,15 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 
       {topClients.length > 0 && (
         <div style={{ marginTop: 18 }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{personal ? 'My top clients' : 'Top clients'}</div>
-            <div style={{ fontSize: 11, color: G.textTertiary }}>By combined reach</div>
-          </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
             {topClients.map((a, i) => (
               <SportsCard key={a.id || i} athlete={a} isMobile={false} showDepth onClick={() => onOpenAthlete(a)} />
             ))}
           </div>
+          <button onClick={personal ? onShowMine : onGoRoster}
+            style={{ marginTop: 10, background: "none", border: "none", color: G.green, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+            {personal ? 'View my clients →' : 'View full roster →'}
+          </button>
         </div>
       )}
 
@@ -2975,6 +2994,8 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
   const [level, setLevel] = useState('All');
   const [pos, setPos] = useState('All');
   const [klass, setKlass] = useState('All');
+  const [sortCol, setSortCol] = useState('rating');
+  const [sortDir, setSortDir] = useState('desc');
   const hFind = (re) => headers.findIndex(h => re.test(h));
   const nameI = hFind(/name/i), schoolI = hFind(/school/i), levelI = hFind(/^level/i),
     posI = hFind(/position/i), rankI = hFind(/rank/i), classI = hFind(/class|year/i);
@@ -2987,7 +3008,13 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
     .filter(r => level === 'All' || cellOf(r, levelI).trim() === level)
     .filter(r => pos === 'All' || contractPosGroup(cellOf(r, posI)) === pos)
     .filter(r => klass === 'All' || cellOf(r, classI).trim() === klass)
-    .sort((a, b) => starsOf(b) - starsOf(a) || cellOf(a, nameI).localeCompare(cellOf(b, nameI)));
+    .sort((a, b) => {
+      const SORT_COLS = { player: nameI, position: posI, school: schoolI, class: classI, agent: agentCol };
+      const cmp = sortCol === 'rating'
+        ? (starsOf(a) - starsOf(b)) || cellOf(a, nameI).localeCompare(cellOf(b, nameI))
+        : cellOf(a, SORT_COLS[sortCol]).localeCompare(cellOf(b, SORT_COLS[sortCol]), undefined, { numeric: true, sensitivity: 'base' }) || cellOf(a, nameI).localeCompare(cellOf(b, nameI));
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
   const chip = (on, label, cb) => (
     <button key={label} onClick={cb} style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
   );
@@ -3022,8 +3049,8 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>By ranking</span>
-          <span style={{ fontSize: 11, color: G.textTertiary }}>Click a recruit to edit</span>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Sorted by {sortCol}</span>
+          <span style={{ fontSize: 11, color: G.textTertiary }}>Click a column to sort · click a recruit to edit</span>
         </div>
         {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
           : err ? <div style={{ padding: 40, textAlign: "center", color: G.red, fontSize: 13 }}>{err}</div>
@@ -3032,8 +3059,12 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead><tr>
-                  {['Player', 'Position', 'School', 'Class', 'Agent', 'Rating'].map(h => (
-                    <th key={h} style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{h}</th>
+                  {[['player', 'Player'], ['position', 'Position'], ['school', 'School'], ['class', 'Class'], ['agent', 'Agent'], ['rating', 'Rating']].map(([key, h]) => (
+                    <th key={key}
+                      onClick={() => { if (sortCol === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(key === 'rating' ? 'desc' : 'asc'); } }}
+                      style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
+                      {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                    </th>
                   ))}
                 </tr></thead>
                 <tbody>
@@ -3880,9 +3911,9 @@ function App() {
 
   const [editingAthlete, setEditingAthlete] = useState(null);
   const saveAthlete = (updated, opts) => {
-    if (opts && opts.levelChanged) {
-      // The row moved between sheet tabs, so cached row indexes are stale —
-      // close out and refetch the roster.
+    if (opts && (opts.levelChanged || opts.created || opts.deleted)) {
+      // Rows were added/removed/moved in the sheet, so cached row indexes are
+      // stale — close out and refetch the roster.
       setEditingAthlete(null);
       if (view === 'detail') setView('roster');
       setAthletesLoaded(false);
@@ -3946,7 +3977,13 @@ function App() {
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
   ];
   const [onboardLinksOpen, setOnboardLinksOpen] = useState(false);
-  const navClick = (it) => { if (it.modal) setOnboardLinksOpen(true); else goSportsPage(it.key); };
+  const navClick = (it) => {
+    if (it.modal) { setOnboardLinksOpen(true); return; }
+    // Clicking Roster in the nav always shows the full roster — the "my
+    // clients" scope only applies via the dashboard link.
+    if (it.key === 'roster') setMineOnly(false);
+    goSportsPage(it.key);
+  };
   const navActive = domain === 'sports' && isAdmin && view !== 'detail';
   // Roster search/filter/export controls only make sense on the roster itself
   // (and always for music / public sessions). Sports waits for the auth answer
@@ -4147,6 +4184,12 @@ function App() {
                   <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
                   {viewToggle}
                 </div>
+                {domain === 'sports' && isAdmin && (
+                  <button onClick={() => setEditingAthlete({ level: 'College', name: '', position: '', public: false, brands: [], interests: [] })}
+                    style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap", flexShrink: 0 }}>
+                    + Add
+                  </button>
+                )}
                 {exportControl()}
                 {authBtn}
               </>
