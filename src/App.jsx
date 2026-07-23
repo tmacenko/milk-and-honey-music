@@ -1742,7 +1742,7 @@ function collegeProgramPts(name, hasLogo) {
 }
 const MARQUEE_NFL = new Set(['kansas city chiefs', 'dallas cowboys', 'san francisco 49ers', 'philadelphia eagles', 'green bay packers', 'pittsburgh steelers', 'new york giants', 'new york jets', 'chicago bears', 'denver broncos']);
 // Position multiplier inside the role factor: QBs sell, specialists don't.
-const POS_FACTOR = { QB: 1, WR: 0.85, RB: 0.85, TE: 0.7, DB: 0.55, DL: 0.55, LB: 0.55, OL: 0.55, ST: 0.25 };
+const POS_FACTOR = { QB: 1, WR: 0.85, RB: 0.85, TE: 0.75, DB: 0.55, DL: 0.55, LB: 0.55, OL: 0.55, ST: 0.25 };
 function computeMarketability(a, series, s247) {
   const c01 = v => Math.max(0, Math.min(1, v));
   const lc = s => String(s || '').toLowerCase().trim();
