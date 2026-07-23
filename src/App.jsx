@@ -1719,7 +1719,26 @@ const athleteReach = a => parseReach(a.igFollowers) + parseReach(a.twitterFollow
 // athlete starts at 50; Reach +20 · Role/Pedigree +15 · Program +10 ·
 // Momentum +4 · Trajectory +2. Established stars max the first three
 // (Kelce ≈ 97) — momentum is a bonus, never a drag.
-const BLUE_BLOODS = new Set(['georgia', 'alabama', 'ohio state', 'michigan', 'texas', 'oklahoma', 'usc', 'notre dame', 'lsu', 'florida', 'florida state', 'clemson', 'oregon', 'penn state', 'tennessee', 'auburn', 'miami', 'texas a&m']);
+// College program points by conference: SEC / Big Ten / Notre Dame on top
+// (with an elite cut above the rest), then ACC / Big 12 (their elites match
+// standard SEC/B1G programs but not the Ohio States), then other FBS.
+const CONF_TIERS = [
+  // 10 — elite SEC / Big Ten brands + Notre Dame
+  [10, ['georgia', 'alabama', 'ohio state', 'michigan', 'texas', 'lsu', 'oregon', 'penn state', 'usc', 'oklahoma', 'tennessee', 'notre dame', 'florida']],
+  // 8 — rest of SEC + Big Ten, and elite ACC / Big 12 programs
+  [8, ['auburn', 'texas a&m', 'arkansas', 'kentucky', 'missouri', 'mississippi state', 'ole miss', 'south carolina', 'vanderbilt',
+    'illinois', 'indiana', 'iowa', 'maryland', 'michigan state', 'minnesota', 'nebraska', 'northwestern', 'purdue', 'rutgers', 'ucla', 'washington', 'wisconsin',
+    'clemson', 'florida state', 'miami', 'texas tech', 'colorado', 'utah', 'byu']],
+  // 6 — rest of ACC + Big 12
+  [6, ['boston college', 'california', 'cal', 'duke', 'georgia tech', 'louisville', 'nc state', 'north carolina', 'pittsburgh', 'pitt', 'smu', 'stanford', 'syracuse', 'virginia', 'virginia tech', 'wake forest',
+    'arizona', 'arizona state', 'baylor', 'cincinnati', 'houston', 'iowa state', 'kansas', 'kansas state', 'oklahoma state', 'tcu', 'ucf', 'west virginia']],
+];
+function collegeProgramPts(name, hasLogo) {
+  const k = String(name || '').toLowerCase().trim();
+  if (!k) return 3;
+  for (const [pts, list] of CONF_TIERS) if (list.includes(k)) return pts;
+  return hasLogo ? 5 : 3; // recognized G5 / other FBS · unknown or small school
+}
 const MARQUEE_NFL = new Set(['kansas city chiefs', 'dallas cowboys', 'san francisco 49ers', 'philadelphia eagles', 'green bay packers', 'pittsburgh steelers', 'new york giants', 'new york jets', 'chicago bears', 'denver broncos']);
 function computeMarketability(a, series, s247) {
   const c01 = v => Math.max(0, Math.min(1, v));
@@ -1738,8 +1757,9 @@ function computeMarketability(a, series, s247) {
   }
   let program = 2;
   if (a.level === 'NFL') program = fa ? 3 : MARQUEE_NFL.has(lc(a.nflTeam)) ? 10 : 8;
-  else if (a.level === 'College') program = BLUE_BLOODS.has(lc(a.college)) ? 10 : (a.teamLogo ? 7 : 4);
-  else program = a.committedTo ? (BLUE_BLOODS.has(lc(a.committedTo)) ? 8 : 5) : 2;
+  else if (a.level === 'College') program = collegeProgramPts(a.college, !!a.teamLogo);
+  // HS commitments inherit the college ladder at 80% (committed to Ohio State ≈ 8).
+  else program = a.committedTo ? Math.max(3, Math.round(collegeProgramPts(a.committedTo, true) * 0.8)) : 2;
   // Trajectory: did this week's follower gain beat last week's?
   let trajectory = 0;
   if (series && series.length >= 3) {
