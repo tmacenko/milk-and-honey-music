@@ -188,7 +188,10 @@ function mergeAthlete(row, ext, level) {
   // marked someone Free Agent/Retired, the synced ESPN team is stale by
   // definition (ESPN keeps the last club on the record) — skip it.
   const manualOut = /free agent|retired/i.test(String(ext['status'] || ''));
-  const team = String(ext['teamOverride'] || '').trim() || (!manualOut && String(ext['espnTeam'] || '').trim()) || sheetTeam;
+  let team = String(ext['teamOverride'] || '').trim() || (!manualOut && String(ext['espnTeam'] || '').trim()) || sheetTeam;
+  // A blank NFL team means free agent — label it so displays don't fall back
+  // to the college field (screens render `nflTeam || college`).
+  if (isNFL && !String(team || '').trim()) team = 'Free Agent';
   const status = ext['status'] ? ext['status'] : (isNFL ? deriveStatus(team) : 'Active');
   const tabTiktok = handle(row['TikTok'] || row['Tiktok'] || '');
   const nflTeam = isNFL ? team : '';
