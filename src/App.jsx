@@ -2616,15 +2616,18 @@ function OnboardLinksModal({ onClose }) {
 // ── Admin section pages (Recruiting / Marketing / Resources) ──────────────────
 // These render raw sheet tabs served by /api/athletes?tab=… so the UI always
 // matches whatever columns the sheet actually has.
+const adminTabCache = {};
 function useAdminTab(key) {
-  const [data, setData] = useState(null);
+  // Serve the last fetch instantly on remount (no loading flash when hopping
+  // between pages) and refresh quietly in the background.
+  const [data, setData] = useState(() => adminTabCache[key] || null);
   const [err, setErr] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!adminTabCache[key]);
   const load = useCallback(() => {
-    setLoading(true);
+    if (!adminTabCache[key]) setLoading(true);
     fetch(`/api/athletes?tab=${key}`)
       .then(r => r.json())
-      .then(d => { if (d.error) throw new Error(d.error); setData(d); setErr(null); })
+      .then(d => { if (d.error) throw new Error(d.error); adminTabCache[key] = d; setData(d); setErr(null); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
   }, [key]);
@@ -2797,12 +2800,9 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
     .filter(r => pos === 'All' || contractPosGroup(cellOf(r, posI)) === pos)
     .filter(r => klass === 'All' || cellOf(r, classI).trim() === klass)
     .sort((a, b) => starsOf(b) - starsOf(a) || cellOf(a, nameI).localeCompare(cellOf(b, nameI)));
-  const schoolsN = new Set(rows.map(r => cellOf(r, schoolI).trim()).filter(Boolean)).size;
   const chip = (on, label, cb) => (
     <button key={label} onClick={cb} style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
   );
-  const statCard = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
-  const statLbl = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -2819,22 +2819,6 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
         )}
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search recruits..." style={{ ...inputBase, width: isMobile ? 140 : 200 }} />
         <button onClick={() => setEditing('new')} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-        <div style={statCard}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{rows.length}</div>
-          <div style={statLbl}>Recruits</div>
-        </div>
-        <div style={statCard}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{rows.filter(r => starsOf(r) >= 4).length}</div>
-          <div style={statLbl}>4-star or better</div>
-        </div>
-        {!isMobile && (
-          <div style={statCard}>
-            <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{schoolsN}</div>
-            <div style={statLbl}>Schools</div>
-          </div>
-        )}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
         {['All', 'High School', 'College'].map(lv => chip(level === lv, lv, () => setLevel(lv)))}
