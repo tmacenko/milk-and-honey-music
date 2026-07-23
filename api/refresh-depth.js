@@ -647,7 +647,7 @@ module.exports = async (req, res) => {
       const byTeam = {};
       for (const p of nflPlayers) {
         const team = String(p['Team'] || '').trim();
-        if (!team || /free agent|retired|inactive/i.test(team)) continue;
+        if (!team || /free agent|retired|inactive|cfl|ufl|xfl/i.test(team)) continue; // Spotrac covers NFL only
         (byTeam[teamSlug(team)] = byTeam[teamSlug(team)] || []).push(p);
       }
       let cTeams = Object.keys(byTeam).sort();
