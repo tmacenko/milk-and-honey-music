@@ -2440,7 +2440,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         <div style={card}>
           <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.contractSum ? fmtMoney(s.contractSum) : '—'}</div>
           <div style={statLabel}>Total contract value</div>
-          <div style={statSub}>{s.contractSum ? `${seasonLabel} · ${s.contractDeals} deals` : 'No contract data yet'}</div>
+          <div style={statSub}>{s.contractSum ? seasonLabel : 'No contract data yet'}</div>
         </div>
         <div style={card}>
           <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{bigNum(s.reach)}</div>
@@ -2484,9 +2484,9 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
         <div style={card}>
-          {tileHead('Social growth leaders', s.hasGrowthData
-            ? (() => { const d = Math.max(0, ...s.hot.map(x2 => x2.a.growthDays || 0)); return d >= 7 ? 'This week' : d > 0 ? `${d}-day window (builds to 7)` : 'Follower growth'; })()
-            : 'Sample preview')}
+          {tileHead(s.hasGrowthData
+            ? (() => { const d = Math.max(0, ...s.hot.map(x2 => x2.a.growthDays || 0)); return d >= 7 ? 'Social growth leaders (this week)' : d > 0 ? `Social growth leaders (last ${d} days)` : 'Social growth leaders'; })()
+            : 'Social growth leaders', s.hasGrowthData ? '' : 'Sample preview')}
           {s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
             : s.hot.map((x2, i, arr) => row(x2.a, x2.a.level,
               <span style={{ color: G.green, fontWeight: 700 }}>+{bigNum(x2.delta)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>· {x2.pct}%</span></span>,
@@ -2499,7 +2499,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           )}
         </div>
         <div style={card}>
-          {tileHead('Upcoming events', 'Next 30 days')}
+          {tileHead('Upcoming events', '')}
           {s.upcoming.length === 0
             ? (s.bdays.length === 0 ? empty('No birthdays on file yet.') : empty('Nothing on the calendar in the next 30 days.'))
             : s.upcoming.slice(0, 6).map((b, i, arr) =>
@@ -2512,7 +2512,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
             : (
               <div onClick={() => setShowIncomplete(true)}
                 style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "10px 0 4px" }}>
-                Incomplete profiles: {s.incomplete.length} players →
+                Incomplete profiles: {s.incomplete.length} players
               </div>
             )}
         </div>
