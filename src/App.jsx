@@ -2954,8 +2954,6 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   };
   const [editing, setEditing] = useState(null);
   const [q, setQ] = useState('');
-  const [mine, setMine] = useState(false);
-  const mineApplied = useRef(false);
   const post = async (body) => {
     const r = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
@@ -2963,12 +2961,6 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   };
   const headers = data?.headers || [];
   const agentCol = headers.findIndex(h => /agent/i.test(h));
-  // Individual logins default to their own recruits (when they have any).
-  useEffect(() => {
-    if (mineApplied.current || !user?.agentKey || !data || agentCol < 0) return;
-    mineApplied.current = true;
-    if (data.rows.some(r => agentMatch(r.cells[agentCol], user.agentKey))) setMine(true);
-  }, [data, user, agentCol]);
   // Universal filters: exclusive level chips (HS or College — never both, the
   // class values don't mix) + the shared filter window for the rest.
   const [recLevel, setRecLevel] = useState('High School');
@@ -2985,13 +2977,17 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const starsOf = (r) => { const m = String(cellOf(r, rankI)).match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
   const classes = useMemo(() => [...new Set((data?.rows || []).filter(r => cellOf(r, levelI).trim() === recLevel).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI, levelI, recLevel]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = (data?.rows || [])
-    .filter(r => !mine || !user?.agentKey || agentCol < 0 || agentMatch(r.cells[agentCol], user.agentKey))
     .filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())))
     .filter(r => cellOf(r, levelI).trim() === recLevel)
     .filter(r => { if (side === 'All') return true; const g = contractPosGroup(cellOf(r, posI)); return POS_SIDES[side].includes(g) && (group === 'All' || g === group); })
     .filter(r => agent === 'All' || String(agentCol >= 0 ? (r.cells[agentCol] || '') : '').toLowerCase().includes(agent.toLowerCase()))
     .filter(r => klass === 'All' || cellOf(r, classI).trim() === klass)
     .sort((a, b) => {
+      // Default view floats the logged-in agent's own recruits to the top.
+      if (sortCol === 'rating' && user?.agentKey && agentCol >= 0) {
+        const m = (agentMatch(b.cells[agentCol], user.agentKey) ? 1 : 0) - (agentMatch(a.cells[agentCol], user.agentKey) ? 1 : 0);
+        if (m) return m;
+      }
       const SORT_COLS = { player: nameI, position: posI, school: schoolI, class: classI, agent: agentCol };
       const cmp = sortCol === 'rating'
         ? (starsOf(a) - starsOf(b)) || cellOf(a, nameI).localeCompare(cellOf(b, nameI))
@@ -3025,8 +3021,8 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
       ],
     },
   ].filter(Boolean);
-  const filterActive = agent !== 'All' || side !== 'All' || klass !== 'All' || mine;
-  const filterLabel = [mine ? 'My recruits' : null, agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, klass !== 'All' ? klass : null].filter(Boolean).join(', ') || 'All';
+  const filterActive = agent !== 'All' || side !== 'All' || klass !== 'All';
+  const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, klass !== 'All' ? klass : null].filter(Boolean).join(', ') || 'All';
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -3042,15 +3038,9 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
         {['High School', 'College'].map(lv => levelChipBtn(recLevel === lv, lv, () => { setRecLevel(lv); setKlass('All'); }))}
         <div style={{ width: 10 }} />
         <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
-          mineOn={mine} mineLabel="My recruits"
-          onMine={user?.agentKey && agentCol >= 0 ? () => setMine(v => !v) : null}
-          onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); setMine(false); }} />
+          onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); }} />
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Sorted by {sortCol}</span>
-          <span style={{ fontSize: 11, color: G.textTertiary }}>Click a column to sort · click a recruit to edit</span>
-        </div>
         {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
           : err ? <div style={{ padding: 40, textAlign: "center", color: G.red, fontSize: 13 }}>{err}</div>
           : rows.length === 0 ? <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{q || filterActive ? 'No recruits match these filters.' : `No ${recLevel.toLowerCase()} recruits yet — add the first one.`}</div>
@@ -3282,10 +3272,6 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
           style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>By yearly value</span>
-          <span style={{ fontSize: 11, color: G.textTertiary }}>NFL via Spotrac · college entered manually</span>
-        </div>
         {list.length === 0 && (
           <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>
             No contracts match these filters. NFL deals sync nightly from Spotrac; college numbers go in via Edit → Contract ($ / year).
@@ -3478,8 +3464,6 @@ function App() {
   const [posSide, setPosSide] = useState('All');
   const [posGroup, setPosGroup] = useState('All');
   // "My clients" filter for individual logins (matched on Lead Agent).
-  const [mineOnly, setMineOnly] = useState(false);
-  const mineDefaultApplied = useRef(false);
   const parseUrl = () => {
     const parts = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
     if (parts[0] === 'sports') return { domain: 'sports', slug: parts[1] || '' };
@@ -3897,7 +3881,6 @@ function App() {
         .sort((a, b) => customGroup.indexOf(a.name) - customGroup.indexOf(b.name));
     }
     const list = athletes.filter(a => {
-      if (mineOnly && currentUser?.agentKey && !agentMatch(a.agentAssigned, currentUser.agentKey)) return false;
       if (!sportsLevels.includes(a.level)) return false;
       if (depthFilter === 'Starters' && a.depthRank !== 1) return false;
       if (depthFilter === 'Backups' && !(a.depthRank >= 2)) return false;
@@ -3921,15 +3904,7 @@ function App() {
       if (fa !== 0) return fa;
       return athleteReach(b) - athleteReach(a);
     });
-  }, [athletes, sportsLevels, depthFilter, agentFilter, posSide, posGroup, mineOnly, currentUser, search, customGroup, clientSort]);
-
-  // Individual logins land on "their" roster: default the My-clients filter on
-  // (once per session) when the logged-in agent actually has matches.
-  useEffect(() => {
-    if (mineDefaultApplied.current || !currentUser?.agentKey || !athletes.length) return;
-    mineDefaultApplied.current = true;
-    if (athletes.some(a => agentMatch(a.agentAssigned, currentUser.agentKey))) setMineOnly(true);
-  }, [athletes, currentUser]);
+  }, [athletes, sportsLevels, depthFilter, agentFilter, posSide, posGroup, currentUser, search, customGroup, clientSort]);
 
   const saveClient = (updatedClient) => {
     setClients(prev => {
@@ -4013,7 +3988,7 @@ function App() {
     if (it.modal) { setOnboardLinksOpen(true); return; }
     // Clicking Roster in the nav always shows the full roster — the "my
     // clients" scope only applies via the dashboard link.
-    if (it.key === 'roster') setMineOnly(false);
+    if (it.key === 'roster') setAgentFilter('All');
     goSportsPage(it.key);
   };
   const navActive = domain === 'sports' && isAdmin && view !== 'detail';
@@ -4093,14 +4068,12 @@ function App() {
       rows: ['Starters', 'Backups', 'Not on chart'].map(o => ({ on: depthFilter === o, label: o, onClick: () => { clearCustomGroup(); setDepthFilter(depthFilter === o ? 'All' : o); } })),
     },
   ].filter(Boolean);
-  const rosterFilterActive = customGroup.length > 0 || agentFilter !== 'All' || posSide !== 'All' || depthFilter !== 'All' || mineOnly;
+  const rosterFilterActive = customGroup.length > 0 || agentFilter !== 'All' || posSide !== 'All' || depthFilter !== 'All';
   const rosterFilterLabel = customGroup.length > 0 ? `Custom · ${customGroup.length}`
-    : ([mineOnly ? 'My clients' : null, agentFilter !== 'All' ? agentFilter : null, posValue !== 'All' ? posValue : null, depthFilter !== 'All' ? depthFilter : null].filter(Boolean).join(', ') || 'All');
+    : ([agentFilter !== 'All' ? agentFilter : null, posValue !== 'All' ? posValue : null, depthFilter !== 'All' ? depthFilter : null].filter(Boolean).join(', ') || 'All');
   const viewFilter = domain === 'sports' ? (
     <FilterMenu compact={isMobile} sections={rosterSections} active={rosterFilterActive} label={rosterFilterLabel}
-      onAll={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setMineOnly(false); setAgentFilter('All'); setPosSide('All'); setPosGroup('All'); }}
-      mineOn={mineOnly}
-      onMine={currentUser?.agentKey ? () => { clearCustomGroup(); setMineOnly(v => !v); } : null}
+      onAll={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setAgentFilter('All'); setPosSide('All'); setPosGroup('All'); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   ) : (
     <ViewFilterDropdown compact={isMobile} types={types} filterTypes={filterTypes}
@@ -4269,7 +4242,7 @@ function App() {
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => goSportsPage('roster')}
                   onShowStarters={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('Starters'); goSportsPage('roster'); }}
-                  onShowMine={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setMineOnly(true); goSportsPage('roster'); }}
+                  onShowMine={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setAgentFilter(currentUser?.name || 'All'); goSportsPage('roster'); }}
                   onGoMarketing={() => goSportsPage('marketing')} />
               )}
               {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
