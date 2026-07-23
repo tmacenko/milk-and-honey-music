@@ -1718,7 +1718,7 @@ const athleteReach = a => parseReach(a.igFollowers) + parseReach(a.twitterFollow
 // Absolute scales (an athlete's score never depends on teammates). Every
 // athlete starts at 50; Reach +24 · Role +15 (depth chart / 247 pedigree,
 // weighted by position — a starting LT outranks a 3rd-string QB) ·
-// Program +7 · Momentum +3 · Trajectory +2.
+// Team +7 (league-tilted: NFL ≥ top college brands) · Momentum +3 · Trajectory +2.
 // Weighting philosophy: proven audience is direct EVIDENCE of marketability,
 // so it carries the most weight; role/position/program are predictive proxies
 // that matter most for athletes whose audience hasn't arrived yet. Momentum
@@ -1764,11 +1764,12 @@ function computeMarketability(a, series, s247) {
     role = 15 * depthF * (0.55 + 0.45 * posF);
     if (fa) role = Math.min(role, 3);
   }
-  const PROG_SCALE = { 10: 7, 8: 5, 6: 4, 5: 3, 3: 2 };
+  // Team points carry a slight league tilt: any NFL team ≥ the best college
+  // brands (Georgia 6 < Cowboys 7), and HS commitments inherit at 80%.
+  const PROG_SCALE = { 10: 6, 8: 5, 6: 4, 5: 3, 3: 2 };
   let program = 2;
-  if (a.level === 'NFL') program = fa ? 2 : MARQUEE_NFL.has(lc(a.nflTeam)) ? 7 : 5;
+  if (a.level === 'NFL') program = fa ? 2 : MARQUEE_NFL.has(lc(a.nflTeam)) ? 7 : 6;
   else if (a.level === 'College') program = PROG_SCALE[collegeProgramPts(a.college, !!a.teamLogo)] || 2;
-  // HS commitments inherit the college ladder at 80% (committed to Ohio State ≈ 6).
   else program = a.committedTo ? Math.max(2, Math.round((PROG_SCALE[collegeProgramPts(a.committedTo, true)] || 2) * 0.8)) : 2;
   // Trajectory: did this week's follower gain beat last week's?
   let trajectory = 0;
@@ -1784,7 +1785,7 @@ function computeMarketability(a, series, s247) {
   const parts = [
     ['Reach', Math.round(reach), 24],
     [a.level === 'High School' ? 'Pedigree' : 'Role', Math.round(role), 15],
-    ['Program', Math.round(program), 7],
+    ['Team', Math.round(program), 7],
     ['Momentum', Math.round(momentum), 3],
     ['Trajectory', Math.round(trajectory), 2],
   ];
