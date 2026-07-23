@@ -1716,9 +1716,9 @@ const athleteReach = a => parseReach(a.igFollowers) + parseReach(a.twitterFollow
 
 // ── Marketability score (50–100) — internal only ─────────────────────────────
 // Absolute scales (an athlete's score never depends on teammates). Every
-// athlete starts at 50; Reach +20 · Role/Pedigree +15 · Program +10 ·
-// Momentum +4 · Trajectory +2. Established stars max the first three
-// (Kelce ≈ 97) — momentum is a bonus, never a drag.
+// athlete starts at 50; Reach +18 · Role/Pedigree +13 · Program +9 ·
+// Position +6 · Momentum +3 · Trajectory +2. Established stars max the
+// stable factors (Kelce ≈ 95) — momentum is a bonus, never a drag.
 // College program points by conference: SEC / Big Ten / Notre Dame on top
 // (with an elite cut above the rest), then ACC / Big 12 (their elites match
 // standard SEC/B1G programs but not the Ohio States), then other FBS.
@@ -1740,26 +1740,30 @@ function collegeProgramPts(name, hasLogo) {
   return hasLogo ? 5 : 3; // recognized G5 / other FBS · unknown or small school
 }
 const MARQUEE_NFL = new Set(['kansas city chiefs', 'dallas cowboys', 'san francisco 49ers', 'philadelphia eagles', 'green bay packers', 'pittsburgh steelers', 'new york giants', 'new york jets', 'chicago bears', 'denver broncos']);
+// Position marketability tiers: QBs sell, linemen mostly don't.
+const POS_MKT = { QB: 6, WR: 5, RB: 5, TE: 4, DB: 3, DL: 3, LB: 3, OL: 1, ST: 1 };
 function computeMarketability(a, series, s247) {
   const c01 = v => Math.max(0, Math.min(1, v));
   const lc = s => String(s || '').toLowerCase().trim();
-  const reach = 20 * c01((Math.log10(Math.max(athleteReach(a), 1)) - 3) / 4); // 1K → 0 · 10M+ → max
+  const reach = 18 * c01((Math.log10(Math.max(athleteReach(a), 1)) - 3) / 4); // 1K → 0 · 10M+ → max
   const pct = Math.max(0, parseFloat(a.growth7dPct) || 0);
-  const momentum = 2.5 * c01(pct / 3) + 1.5 * c01((a.growth7d || 0) / 25000); // 3%/wk or +25K/wk → max
+  const momentum = 2 * c01(pct / 3) + 1 * c01((a.growth7d || 0) / 25000); // 3%/wk or +25K/wk → max
   const fa = /free agent|retired/i.test(String(a.status || '')) || /free agent/i.test(String(a.nflTeam || ''));
   let role;
   if (a.level === 'High School') {
     const stars = Math.round(parseFloat(s247?.stars) || 0);
-    role = [0, 2, 4, 8, 12, 15][Math.max(0, Math.min(5, stars))];
+    role = [0, 2, 4, 7, 11, 13][Math.max(0, Math.min(5, stars))];
   } else {
-    role = a.depthRank === 1 ? 15 : a.depthRank === 2 ? 10 : a.depthRank === 3 ? 6 : a.depthRank > 3 ? 4 : 3;
+    role = a.depthRank === 1 ? 13 : a.depthRank === 2 ? 9 : a.depthRank === 3 ? 5 : a.depthRank > 3 ? 4 : 3;
     if (fa) role = Math.min(role, 3);
   }
+  const position = POS_MKT[contractPosGroup(a.position)] ?? 2;
+  const PROG_SCALE = { 10: 9, 8: 7, 6: 5, 5: 4, 3: 2 };
   let program = 2;
-  if (a.level === 'NFL') program = fa ? 3 : MARQUEE_NFL.has(lc(a.nflTeam)) ? 10 : 8;
-  else if (a.level === 'College') program = collegeProgramPts(a.college, !!a.teamLogo);
-  // HS commitments inherit the college ladder at 80% (committed to Ohio State ≈ 8).
-  else program = a.committedTo ? Math.max(3, Math.round(collegeProgramPts(a.committedTo, true) * 0.8)) : 2;
+  if (a.level === 'NFL') program = fa ? 3 : MARQUEE_NFL.has(lc(a.nflTeam)) ? 9 : 7;
+  else if (a.level === 'College') program = PROG_SCALE[collegeProgramPts(a.college, !!a.teamLogo)] || 2;
+  // HS commitments inherit the college ladder at 80% (committed to Ohio State ≈ 7).
+  else program = a.committedTo ? Math.max(2, Math.round((PROG_SCALE[collegeProgramPts(a.committedTo, true)] || 2) * 0.8)) : 2;
   // Trajectory: did this week's follower gain beat last week's?
   let trajectory = 0;
   if (series && series.length >= 3) {
@@ -1772,10 +1776,11 @@ function computeMarketability(a, series, s247) {
     }
   }
   const parts = [
-    ['Reach', Math.round(reach), 20],
-    [a.level === 'High School' ? 'Pedigree' : 'Role', Math.round(role), 15],
-    ['Program', Math.round(program), 10],
-    ['Momentum', Math.round(momentum), 4],
+    ['Reach', Math.round(reach), 18],
+    [a.level === 'High School' ? 'Pedigree' : 'Role', Math.round(role), 13],
+    ['Program', Math.round(program), 9],
+    ['Position', position, 6],
+    ['Momentum', Math.round(momentum), 3],
     ['Trajectory', Math.round(trajectory), 2],
   ];
   return { score: Math.min(100, 50 + parts.reduce((s, p) => s + p[1], 0)), parts };
