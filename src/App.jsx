@@ -2580,7 +2580,8 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       if (!a.height || !a.weight) m.push('Ht/Wt');
       if (!(a.shirtSize || a.hoodieSize || a.shoeSize)) m.push('Sizes');
       if (a.level === 'High School' && !a.profileUrl247) m.push('247 link');
-      if (a.level !== 'High School' && !(a.contractYearly || a.contractAav)) m.push('Contract $');
+      const noDeal = /free agent|retired/i.test(String(a.status || '')) || /free agent/i.test(String(a.nflTeam || ''));
+      if (a.level !== 'High School' && !noDeal && !(a.contractYearly || a.contractAav)) m.push('Contract $');
       return m;
     };
     const incomplete = scoped.map(a => ({ a, missing: missingOf(a) }))
@@ -2961,9 +2962,12 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   };
   const headers = data?.headers || [];
   const agentCol = headers.findIndex(h => /agent/i.test(h));
-  // Universal filters: exclusive level chips (HS or College — never both, the
-  // class values don't mix) + the shared filter window for the rest.
-  const [recLevel, setRecLevel] = useState('High School');
+  // Universal filters: multi-select level chips + the shared filter window.
+  const [recLevels, setRecLevels] = useState(['High School', 'College']);
+  const toggleRecLevel = (l) => setRecLevels(prev => {
+    const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
+    return next.length ? next : ['High School', 'College'];
+  });
   const [side, setSide] = useState('All');
   const [group, setGroup] = useState('All');
   const [agent, setAgent] = useState('All');
@@ -2975,10 +2979,10 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
     posI = hFind(/position/i), rankI = hFind(/rank/i), classI = hFind(/class|year/i);
   const cellOf = (r, i) => (i >= 0 ? (r.cells[i] || '') : '');
   const starsOf = (r) => { const m = String(cellOf(r, rankI)).match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
-  const classes = useMemo(() => [...new Set((data?.rows || []).filter(r => cellOf(r, levelI).trim() === recLevel).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI, levelI, recLevel]); // eslint-disable-line react-hooks/exhaustive-deps
+  const classes = useMemo(() => [...new Set((data?.rows || []).filter(r => recLevels.includes(cellOf(r, levelI).trim())).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI, levelI, recLevels]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = (data?.rows || [])
     .filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())))
-    .filter(r => cellOf(r, levelI).trim() === recLevel)
+    .filter(r => recLevels.includes(cellOf(r, levelI).trim()))
     .filter(r => { if (side === 'All') return true; const g = contractPosGroup(cellOf(r, posI)); return POS_SIDES[side].includes(g) && (group === 'All' || g === group); })
     .filter(r => agent === 'All' || String(agentCol >= 0 ? (r.cells[agentCol] || '') : '').toLowerCase().includes(agent.toLowerCase()))
     .filter(r => klass === 'All' || cellOf(r, classI).trim() === klass)
@@ -3035,7 +3039,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
         <button onClick={() => setEditing('new')} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
-        {['High School', 'College'].map(lv => levelChipBtn(recLevel === lv, lv, () => { setRecLevel(lv); setKlass('All'); }))}
+        {['High School', 'College'].map(lv => levelChipBtn(recLevels.includes(lv), lv, () => { toggleRecLevel(lv); setKlass('All'); }))}
         <div style={{ width: 10 }} />
         <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
           onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); }} />
@@ -3043,7 +3047,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
         {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
           : err ? <div style={{ padding: 40, textAlign: "center", color: G.red, fontSize: 13 }}>{err}</div>
-          : rows.length === 0 ? <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{q || filterActive ? 'No recruits match these filters.' : `No ${recLevel.toLowerCase()} recruits yet — add the first one.`}</div>
+          : rows.length === 0 ? <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{q || filterActive ? 'No recruits match these filters.' : 'No recruits yet — add the first one.'}</div>
           : (
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
