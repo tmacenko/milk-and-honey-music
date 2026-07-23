@@ -1632,7 +1632,6 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
   const typeLine = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join('  ·  ');
-  const espnUrl = a.espnId ? `https://www.espn.com/${a.espnSport === 'college' ? 'college-football' : 'nfl'}/player/_/id/${a.espnId}` : '';
   const socialBtns = [
     a.instagram && { icon: <IgIcon size={isMobile ? 20 : 22} />, url: `https://instagram.com/${a.instagram}`, count: a.igFollowers },
     a.twitter && { icon: <TwIcon size={isMobile ? 18 : 20} />, url: `https://x.com/${a.twitter}`, count: a.twitterFollowers },
@@ -1690,13 +1689,13 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
                   </span>
                 )}
               </div>
-              {/* Company view gets the socials module below instead of hero icons. */}
-              {!companyView && socialBtns.length > 0 && (
+              {/* Company view keeps the icons but the counts live in the socials module below. */}
+              {socialBtns.length > 0 && (
                 <div style={{ display: "flex", gap: isMobile ? 16 : 24, marginTop: 13, alignItems: "center", flexWrap: "wrap" }}>
                   {socialBtns.map((b, i) => (
                     <a key={i} href={b.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 7, color: "#fff", textDecoration: "none", transition: "opacity 0.15s" }} onMouseEnter={e => e.currentTarget.style.opacity = 0.65} onMouseLeave={e => e.currentTarget.style.opacity = 1}>
                       {b.icon}
-                      {b.count && <span style={{ fontSize: isMobile ? 14 : 15, fontWeight: 700, color: "#fff" }}>{b.count}</span>}
+                      {!companyView && b.count && <span style={{ fontSize: isMobile ? 14 : 15, fontWeight: 700, color: "#fff" }}>{b.count}</span>}
                     </a>
                   ))}
                 </div>
@@ -1739,10 +1738,11 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               )}
             </div>
           )}
-          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-            {espnUrl && <a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>ESPN profile →</a>}
-            {a.profileUrl247 && <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>}
-          </div>
+          {a.profileUrl247 && (
+            <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+              <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2285,7 +2285,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
         {rows.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No socials on file.</div>
           : rows.map((r, i) => (
             <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", textDecoration: "none" }}>
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", textDecoration: "none", color: "#fff" }}>
               {r.icon}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{r.platform}</div>
@@ -2301,7 +2301,9 @@ function SocialContractModules({ athlete: a, isMobile }) {
           ))}
       </div>
       <div style={mod}>
-        {head('Contract', contract && !a.contractYearly ? 'via Spotrac' : '')}
+        {head('Contract', contract && !a.contractYearly
+          ? <a href={`https://www.spotrac.com/search?q=${encodeURIComponent(a.name)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: G.green, fontWeight: 600, textDecoration: "none" }}>View Spotrac page →</a>
+          : '')}
         {!contract ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No contract on file yet.</div>
           : (
             <>
