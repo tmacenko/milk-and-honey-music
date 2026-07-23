@@ -2338,11 +2338,19 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     }
     const reach = ig + tt + x;
     const pct = (n) => reach ? Math.round((n / reach) * 100) : 0;
-    const signed = scoped.map(a => {
-      const d = parseSheetDate(a.onboardedAt);
-      return d && d.year ? { a, date: new Date(d.year, d.month - 1, d.day) } : null;
-    }).filter(x2 => x2 && x2.date <= today && (today - x2.date) / 86400000 <= 30)
-      .sort((p, q) => q.date - p.date);
+    // Contract $ under management: manual yearly ($/yr) wins, else Spotrac AAV.
+    const moneyNum = (v) => {
+      const str = String(v == null ? '' : v).trim();
+      if (!str) return 0;
+      const n = parseFloat(str.replace(/[^0-9.]/g, ''));
+      if (!isFinite(n) || n <= 0) return 0;
+      return /m/i.test(str) ? n * 1e6 : /k/i.test(str) ? n * 1e3 : n;
+    };
+    let contractSum = 0, contractDeals = 0;
+    for (const a of scoped) {
+      const yr = moneyNum(a.contractYearly) || moneyNum(a.contractAav);
+      if (yr) { contractSum += yr; contractDeals++; }
+    }
     const bdays = scoped.map(a => {
       const d = parseSheetDate(a.birthday);
       if (!d) return null;
@@ -2375,12 +2383,16 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       : [...scoped].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 4)
         .map((a, i) => ({ a, delta: [12400, 8100, 4700, 2300][i] || 1500, pct: ['2.1', '1.4', '0.9', '0.6'][i] || '0.4', sample: true }));
     return {
-      levels, reach, starters, nflStarters, collegeStarters, mine: mineList.length, signed, bdays, incomplete,
-      hot, hasGrowthData,
+      levels, reach, starters, nflStarters, collegeStarters, mine: mineList.length, bdays, incomplete,
+      hot, hasGrowthData, contractSum, contractDeals,
       splits: { ig: pct(ig), tt: pct(tt), x: pct(x) },
-      week: bdays.filter(b => (b.date - today) / 86400000 < 7),
+      upcoming: bdays.filter(b => (b.date - today) / 86400000 <= 30),
     };
   }, [scoped, mineList]);
+  const [showIncomplete, setShowIncomplete] = useState(false);
+  const fmtMoney = (n) => n >= 1e6 ? `$${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`
+    : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
+  const seasonLabel = `${now.getFullYear()}/${String((now.getFullYear() + 1) % 100).padStart(2, '0')} season`;
 
   const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 7 };
@@ -2426,20 +2438,34 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           </div>
         )}
         <div style={card}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{bigNum(s.reach)}</div>
-          <div style={statLabel}>{personal ? "My clients' reach" : 'Combined reach'}</div>
-          <div style={statSub}>{s.reach ? `IG ${s.splits.ig}% · TikTok ${s.splits.tt}% · X ${s.splits.x}%` : 'No follower data yet'}</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.contractSum ? fmtMoney(s.contractSum) : '—'}</div>
+          <div style={statLabel}>Total contract value</div>
+          <div style={statSub}>{s.contractSum ? `${seasonLabel} · ${s.contractDeals} deals` : 'No contract data yet'}</div>
         </div>
         <div style={card}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.signed.length}</div>
-          <div style={statLabel}>Recently signed</div>
-          <div style={{ ...statSub, color: s.signed.length ? G.green : G.textSecondary }}>Last 30 days</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{bigNum(s.reach)}</div>
+          <div style={statLabel}>{personal ? "My clients' social reach" : 'Combined social reach'}</div>
+          <div style={statSub}>{s.reach ? `IG ${s.splits.ig}% · TikTok ${s.splits.tt}% · X ${s.splits.x}%` : 'No follower data yet'}</div>
         </div>
-        <div style={{ ...card, cursor: "pointer" }} onClick={onShowStarters}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.starters}</div>
-          <div style={statLabel}>{personal ? 'My starters' : 'Starters'}</div>
-          <div style={statSub}>{s.nflStarters} NFL · {s.collegeStarters} College</div>
-        </div>
+        {(decks || []).length > 0 ? (
+          <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-evenly", gap: 10 }}>
+            {decks.slice(0, 2).map(d => (
+              <a key={d.title} href={d.url} target="_blank" rel="noopener noreferrer"
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textDecoration: "none", maxWidth: 78 }}>
+                <svg width="36" height="30" viewBox="0 0 36 30" aria-hidden="true">
+                  <path d="M2 6c0-1.7 1.3-3 3-3h8l3 3h15c1.7 0 3 1.3 3 3v15c0 1.7-1.3 3-3 3H5c-1.7 0-3-1.3-3-3V6z" fill={G.surfaceRaised} stroke={G.textTertiary} strokeWidth="1.5" />
+                </svg>
+                <div style={{ ...statLabel, marginTop: 0, textAlign: "center", lineHeight: 1.5 }}>{d.title}</div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div style={{ ...card, cursor: "pointer" }} onClick={onShowStarters}>
+            <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.starters}</div>
+            <div style={statLabel}>{personal ? 'My starters' : 'Starters'}</div>
+            <div style={statSub}>{s.nflStarters} NFL · {s.collegeStarters} College</div>
+          </div>
+        )}
       </div>
 
       {topClients.length > 0 && (
@@ -2458,8 +2484,8 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
         <div style={card}>
-          {tileHead('Hot this week', s.hasGrowthData
-            ? (() => { const d = Math.max(0, ...s.hot.map(x2 => x2.a.growthDays || 0)); return d >= 7 ? '7-day growth' : d > 0 ? `${d}-day growth (window builds to 7)` : 'Follower growth'; })()
+          {tileHead('Social growth leaders', s.hasGrowthData
+            ? (() => { const d = Math.max(0, ...s.hot.map(x2 => x2.a.growthDays || 0)); return d >= 7 ? 'This week' : d > 0 ? `${d}-day window (builds to 7)` : 'Follower growth'; })()
             : 'Sample preview')}
           {s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
             : s.hot.map((x2, i, arr) => row(x2.a, x2.a.level,
@@ -2473,44 +2499,44 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           )}
         </div>
         <div style={card}>
-          {tileHead('Recently signed', 'Last 30 days')}
-          {s.signed.length === 0 ? empty('No new signings in the last 30 days.')
-            : s.signed.slice(0, 6).map((x2, i, arr) =>
-              row(x2.a, [x2.a.level, x2.a.position].filter(Boolean).join(' · '), shortDate(x2.date), x2.a.id || i, i === arr.length - 1))}
+          {tileHead('Upcoming events', 'Next 30 days')}
+          {s.upcoming.length === 0
+            ? (s.bdays.length === 0 ? empty('No birthdays on file yet.') : empty('Nothing on the calendar in the next 30 days.'))
+            : s.upcoming.slice(0, 6).map((b, i, arr) =>
+              row(b.a, 'Birthday', b.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), b.a.id || i, i === arr.length - 1))}
         </div>
         <div style={card}>
-          {tileHead('Birthdays', 'This week')}
-          {s.week.length > 0
-            ? s.week.map((b, i, arr) =>
-              row(b.a, b.a.level, b.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), b.a.id || i, i === arr.length - 1))
-            : s.bdays.length === 0 ? empty('No birthdays on file yet.')
+          {tileHead('To do', '')}
+          {s.incomplete.length === 0
+            ? <div style={{ fontSize: 13, color: G.green, padding: "10px 0 4px" }}>Every profile has the essentials ✓</div>
             : (
-              <>
-                {empty('No birthdays this week.')}
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, margin: "6px 0 2px" }}>Next up</div>
-                {s.bdays.slice(0, 2).map((b, i, arr) => row(b.a, b.a.level, shortDate(b.date), b.a.id || i, i === arr.length - 1))}
-              </>
+              <div onClick={() => setShowIncomplete(true)}
+                style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "10px 0 4px" }}>
+                Incomplete profiles: {s.incomplete.length} players →
+              </div>
             )}
         </div>
       </div>
 
-      <div style={{ ...card, marginTop: 10 }}>
-        {tileHead('Incomplete profiles', s.incomplete.length ? `${s.incomplete.length} of ${scoped.length} need info` : 'All set')}
-        {s.incomplete.length === 0 ? empty('Every profile has the essentials ✓')
-          : s.incomplete.slice(0, 8).map((x2, i, arr) => row(
-              x2.a, [x2.a.level, x2.a.position].filter(Boolean).join(' · '),
-              <span style={{ color: G.yellow, fontWeight: 600 }}>
-                Missing {x2.missing.slice(0, 3).join(' · ')}{x2.missing.length > 3 ? ` +${x2.missing.length - 3}` : ''}
-              </span>,
-              x2.a.id || i, i === arr.length - 1))}
-        {s.incomplete.length > 8 && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>+ {s.incomplete.length - 8} more — open any profile and hit Edit to fill in the gaps.</div>}
-      </div>
-
-      {(decks || []).length > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Decks</div>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-            {decks.map(d => <DeckCard key={d.title} deck={d} />)}
+      {showIncomplete && (
+        <div onClick={() => setShowIncomplete(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 540, maxHeight: "80vh", overflowY: "auto", padding: 20, animation: "modalIn .18s ease" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>Incomplete profiles</div>
+              <button onClick={() => setShowIncomplete(false)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: G.textTertiary, marginBottom: 10 }}>{s.incomplete.length} of {scoped.length} need info — click a name, then Edit to fill the gaps.</div>
+            {s.incomplete.map((x2, i, arr) => (
+              <div key={x2.a.id || i} onClick={() => { setShowIncomplete(false); onOpenAthlete(x2.a); }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+                <div style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {x2.a.name} <span style={{ color: G.textTertiary, fontSize: 12 }}>· {[x2.a.level, x2.a.position].filter(Boolean).join(' · ')}</span>
+                </div>
+                <div style={{ fontSize: 12, color: G.yellow, fontWeight: 600, flexShrink: 0 }}>
+                  {x2.missing.slice(0, 3).join(' · ')}{x2.missing.length > 3 ? ` +${x2.missing.length - 3}` : ''}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
