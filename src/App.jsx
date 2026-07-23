@@ -2395,7 +2395,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const seasonLabel = `${now.getFullYear()}/${String((now.getFullYear() + 1) % 100).padStart(2, '0')} season`;
 
   const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
-  const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 7 };
+  const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
   const tileHead = (label, range) => (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
@@ -2448,14 +2448,14 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           <div style={statSub}>{s.reach ? `IG ${s.splits.ig}% · TikTok ${s.splits.tt}% · X ${s.splits.x}%` : 'No follower data yet'}</div>
         </div>
         {(decks || []).length > 0 ? (
-          <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-evenly", gap: 10 }}>
+          <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "center", gap: 34 }}>
             {decks.slice(0, 2).map(d => (
               <a key={d.title} href={d.url} target="_blank" rel="noopener noreferrer"
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textDecoration: "none", maxWidth: 78 }}>
-                <svg width="36" height="30" viewBox="0 0 36 30" aria-hidden="true">
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textDecoration: "none", width: 62 }}>
+                <svg width="38" height="31" viewBox="0 0 36 30" aria-hidden="true">
                   <path d="M2 6c0-1.7 1.3-3 3-3h8l3 3h15c1.7 0 3 1.3 3 3v15c0 1.7-1.3 3-3 3H5c-1.7 0-3-1.3-3-3V6z" fill={G.surfaceRaised} stroke={G.textTertiary} strokeWidth="1.5" />
                 </svg>
-                <div style={{ ...statLabel, marginTop: 0, textAlign: "center", lineHeight: 1.5 }}>{d.title}</div>
+                <div style={{ ...statLabel, marginTop: 0, textAlign: "center", lineHeight: 1.5 }}>{d.title.split(' ').map((w, i) => <div key={i}>{w}</div>)}</div>
               </a>
             ))}
           </div>
