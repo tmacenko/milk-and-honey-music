@@ -1581,11 +1581,12 @@ function ViewFilterDropdown({ types, filterTypes, onToggleType, onAll, customCou
   );
 }
 
-// ── Sports roster filter — filters within filters ────────────────────────────
-// Level, Agent, and Position (side of ball → position group), plus the depth
-// and custom-group entries. Everything defaults to All; sections nest.
+// ── Universal filter window (roster / contracts / recruiting) ────────────────
+// Level chips live OUTSIDE this menu on each page; the menu holds the rest as
+// accordion sections: [{ id, title, value, rows: [{ on, label, onClick }] }].
 const POS_SIDES = { Offense: ['QB', 'RB', 'WR', 'TE', 'OL'], Defense: ['DL', 'LB', 'DB'], Specialists: ['ST'] };
-function SportsFilterDropdown({ compact, level, onLevel, agents, agentValue, onAgent, posSide, posGroup, onPosSide, onPosGroup, depthOptions, depthValue, onDepth, mineOn, onMine, customCount, onOpenCustom, onAll }) {
+const ALL_LEVELS = ['NFL', 'College', 'High School'];
+function FilterMenu({ compact, sections, active, label, onAll, mineOn, onMine, mineLabel, customCount = 0, onOpenCustom }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const ref = useRef();
@@ -1595,11 +1596,6 @@ function SportsFilterDropdown({ compact, level, onLevel, agents, agentValue, onA
     return () => document.removeEventListener('mousedown', h);
   }, []);
   const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 278)) }); } setOpen(v => !v); };
-  const depthActive = !!depthValue && depthValue !== 'All';
-  const active = customCount > 0 || level !== 'All' || agentValue !== 'All' || posSide !== 'All' || depthActive || !!mineOn;
-  const label = customCount > 0 ? `Custom · ${customCount}`
-    : ([mineOn ? 'My clients' : null, level !== 'All' ? level : null, agentValue !== 'All' ? agentValue : null,
-        posSide !== 'All' ? (posGroup !== 'All' ? posGroup : posSide) : null, depthActive ? depthValue : null].filter(Boolean).join(', ') || 'All');
   const item = (on, content, onClick, indent) => (
     <button onClick={onClick}
       style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: indent ? "7px 12px 7px 28px" : "9px 12px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, fontSize: indent ? 12.5 : 13, fontWeight: on ? 700 : 400, color: on ? G.green : G.text, textAlign: "left" }}
@@ -1637,55 +1633,38 @@ function SportsFilterDropdown({ compact, level, onLevel, agents, agentValue, onA
       {open && pos && (
         <div style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: 250, maxHeight: "72vh", overflowY: "auto", background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 500, boxShadow: G.shadowLg }}>
           {item(!active, 'All', () => onAll())}
-          {onMine && item(customCount === 0 && !!mineOn, 'My clients', () => onMine())}
+          {onMine && item(customCount === 0 && !!mineOn, mineLabel || 'My clients', () => onMine())}
           {divider()}
-          {secHead('level', 'Level', level)}
-          {expanded === 'level' && (
+          {(sections || []).map(s => (
+            <div key={s.id}>
+              {secHead(s.id, s.title, s.value)}
+              {expanded === s.id && s.rows.map((r, i) => item(customCount === 0 && r.on, r.label, r.onClick, true))}
+            </div>
+          ))}
+          {onOpenCustom && (
             <>
-              {item(customCount === 0 && level === 'All', 'All levels', () => onLevel('All'), true)}
-              {['NFL', 'College', 'High School'].map(l => item(customCount === 0 && level === l, l, () => onLevel(level === l ? 'All' : l), true))}
+              {divider()}
+              {item(customCount > 0, (
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  Custom Group {customCount > 0 && <span style={{ color: G.green }}>· {customCount}</span>}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </span>
+              ), () => { onOpenCustom(); setOpen(false); })}
             </>
           )}
-          {(agents || []).length > 0 && (
-            <>
-              {secHead('agent', 'Agent', agentValue)}
-              {expanded === 'agent' && (
-                <>
-                  {item(customCount === 0 && agentValue === 'All', 'All agents', () => onAgent('All'), true)}
-                  {agents.map(n => item(customCount === 0 && agentValue === n, n, () => onAgent(agentValue === n ? 'All' : n), true))}
-                </>
-              )}
-            </>
-          )}
-          {secHead('position', 'Position', posSide === 'All' ? 'All' : (posGroup !== 'All' ? posGroup : posSide))}
-          {expanded === 'position' && (
-            <>
-              {item(customCount === 0 && posSide === 'All', 'All positions', () => onPosSide('All'), true)}
-              {Object.keys(POS_SIDES).map(s => (
-                <div key={s}>
-                  {item(customCount === 0 && posSide === s && posGroup === 'All', s, () => onPosSide(posSide === s ? 'All' : s), true)}
-                  {posSide === s && POS_SIDES[s].length > 1 && POS_SIDES[s].map(g =>
-                    item(posGroup === g, `· ${g}`, () => onPosGroup(posGroup === g ? 'All' : g), true))}
-                </div>
-              ))}
-            </>
-          )}
-          {depthOptions && (
-            <>
-              {secHead('depth', 'Depth chart', depthValue || 'All')}
-              {expanded === 'depth' && depthOptions.map(o => item(customCount === 0 && depthValue === o, o, () => onDepth(o), true))}
-            </>
-          )}
-          {divider()}
-          {item(customCount > 0, (
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              Custom Group {customCount > 0 && <span style={{ color: G.green }}>· {customCount}</span>}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </span>
-          ), () => { onOpenCustom(); setOpen(false); })}
         </div>
       )}
     </div>
+  );
+}
+
+// Shared level chips (multi-select on roster/contracts; exclusive on recruiting).
+function levelChipBtn(on, label, onClick) {
+  return (
+    <button key={label} onClick={onClick}
+      style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+      {label}
+    </button>
   );
 }
 
@@ -2923,7 +2902,7 @@ function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title }) {
   );
 }
 
-function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
+function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const { data, err, loading, reload } = useAdminTab('recruiting');
   const sub = useAdminTab('onboarding');
   const [promoting, setPromoting] = useState('');
@@ -2990,9 +2969,12 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
     mineApplied.current = true;
     if (data.rows.some(r => agentMatch(r.cells[agentCol], user.agentKey))) setMine(true);
   }, [data, user, agentCol]);
-  // Contracts-style filters: level chips, position group chips, class dropdown.
-  const [level, setLevel] = useState('All');
-  const [pos, setPos] = useState('All');
+  // Universal filters: exclusive level chips (HS or College — never both, the
+  // class values don't mix) + the shared filter window for the rest.
+  const [recLevel, setRecLevel] = useState('High School');
+  const [side, setSide] = useState('All');
+  const [group, setGroup] = useState('All');
+  const [agent, setAgent] = useState('All');
   const [klass, setKlass] = useState('All');
   const [sortCol, setSortCol] = useState('rating');
   const [sortDir, setSortDir] = useState('desc');
@@ -3001,12 +2983,13 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
     posI = hFind(/position/i), rankI = hFind(/rank/i), classI = hFind(/class|year/i);
   const cellOf = (r, i) => (i >= 0 ? (r.cells[i] || '') : '');
   const starsOf = (r) => { const m = String(cellOf(r, rankI)).match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
-  const classes = useMemo(() => [...new Set((data?.rows || []).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI]); // eslint-disable-line react-hooks/exhaustive-deps
+  const classes = useMemo(() => [...new Set((data?.rows || []).filter(r => cellOf(r, levelI).trim() === recLevel).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI, levelI, recLevel]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = (data?.rows || [])
     .filter(r => !mine || !user?.agentKey || agentCol < 0 || agentMatch(r.cells[agentCol], user.agentKey))
     .filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())))
-    .filter(r => level === 'All' || cellOf(r, levelI).trim() === level)
-    .filter(r => pos === 'All' || contractPosGroup(cellOf(r, posI)) === pos)
+    .filter(r => cellOf(r, levelI).trim() === recLevel)
+    .filter(r => { if (side === 'All') return true; const g = contractPosGroup(cellOf(r, posI)); return POS_SIDES[side].includes(g) && (group === 'All' || g === group); })
+    .filter(r => agent === 'All' || String(agentCol >= 0 ? (r.cells[agentCol] || '') : '').toLowerCase().includes(agent.toLowerCase()))
     .filter(r => klass === 'All' || cellOf(r, classI).trim() === klass)
     .sort((a, b) => {
       const SORT_COLS = { player: nameI, position: posI, school: schoolI, class: classI, agent: agentCol };
@@ -3015,9 +2998,35 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
         : cellOf(a, SORT_COLS[sortCol]).localeCompare(cellOf(b, SORT_COLS[sortCol]), undefined, { numeric: true, sensitivity: 'base' }) || cellOf(a, nameI).localeCompare(cellOf(b, nameI));
       return sortDir === 'desc' ? -cmp : cmp;
     });
-  const chip = (on, label, cb) => (
-    <button key={label} onClick={cb} style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
-  );
+  const posValue = side === 'All' ? 'All' : (group !== 'All' ? group : side);
+  const sections = [
+    (staff || []).length > 0 && {
+      id: 'agent', title: 'Agent', value: agent,
+      rows: [
+        { on: agent === 'All', label: 'All agents', onClick: () => setAgent('All') },
+        ...(staff || []).map(n => ({ on: agent === n, label: n, onClick: () => setAgent(agent === n ? 'All' : n) })),
+      ],
+    },
+    {
+      id: 'class', title: 'Class', value: klass,
+      rows: [
+        { on: klass === 'All', label: 'All classes', onClick: () => setKlass('All') },
+        ...classes.map(c => ({ on: klass === c, label: c, onClick: () => setKlass(klass === c ? 'All' : c) })),
+      ],
+    },
+    {
+      id: 'position', title: 'Position', value: posValue,
+      rows: [
+        { on: side === 'All', label: 'All positions', onClick: () => { setSide('All'); setGroup('All'); } },
+        ...Object.keys(POS_SIDES).flatMap(s => [
+          { on: side === s && group === 'All', label: s, onClick: () => { setSide(side === s ? 'All' : s); setGroup('All'); } },
+          ...(side === s && POS_SIDES[s].length > 1 ? POS_SIDES[s].map(g => ({ on: group === g, label: `· ${g}`, onClick: () => setGroup(group === g ? 'All' : g) })) : []),
+        ]),
+      ],
+    },
+  ].filter(Boolean);
+  const filterActive = agent !== 'All' || side !== 'All' || klass !== 'All' || mine;
+  const filterLabel = [mine ? 'My recruits' : null, agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, klass !== 'All' ? klass : null].filter(Boolean).join(', ') || 'All';
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -3026,26 +3035,16 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
           <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 3 }}>{data ? `${data.rows.length} recruits · synced with the sheet` : ' '}</div>
         </div>
         <div style={{ flex: 1 }} />
-        {user?.agentKey && agentCol >= 0 && (
-          <button onClick={() => setMine(v => !v)}
-            style={{ background: mine ? G.greenSubtle : G.surface, border: `1px solid ${mine ? G.green : G.surfaceBorder}`, borderRadius: 10, padding: "9px 12px", fontWeight: mine ? 700 : 500, fontSize: 13, color: mine ? G.green : G.textSecondary, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
-            My recruits
-          </button>
-        )}
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search recruits..." style={{ ...inputBase, width: isMobile ? 140 : 200 }} />
         <button onClick={() => setEditing('new')} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
       </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-        {['All', 'High School', 'College'].map(lv => chip(level === lv, lv, () => setLevel(lv)))}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        {['High School', 'College'].map(lv => levelChipBtn(recLevel === lv, lv, () => { setRecLevel(lv); setKlass('All'); }))}
         <div style={{ width: 10 }} />
-        <select value={klass} onChange={e => setKlass(e.target.value)}
-          style={{ padding: "7px 11px", border: `1px solid ${klass !== 'All' ? G.green : G.surfaceBorder}`, borderRadius: 9, background: G.surfaceRaised, color: klass !== 'All' ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: ff, cursor: "pointer" }}>
-          <option value="All">All classes</option>
-          {classes.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-      </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-        {['All', 'QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB', 'ST'].map(g => chip(pos === g, g, () => setPos(g)))}
+        <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
+          mineOn={mine} mineLabel="My recruits"
+          onMine={user?.agentKey && agentCol >= 0 ? () => setMine(v => !v) : null}
+          onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); setMine(false); }} />
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
@@ -3054,7 +3053,7 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
         </div>
         {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
           : err ? <div style={{ padding: 40, textAlign: "center", color: G.red, fontSize: 13 }}>{err}</div>
-          : rows.length === 0 ? <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{q || level !== 'All' || pos !== 'All' || klass !== 'All' ? 'No recruits match these filters.' : 'No recruits yet — add the first one.'}</div>
+          : rows.length === 0 ? <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{q || filterActive ? 'No recruits match these filters.' : `No ${recLevel.toLowerCase()} recruits yet — add the first one.`}</div>
           : (
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
@@ -3186,9 +3185,15 @@ function contractPosGroup(pos) {
   if (/^(K|P|LS|PK)/.test(p)) return 'ST';
   return '';
 }
-function ContractsPage({ isMobile, athletes, onOpenAthlete }) {
-  const [level, setLevel] = useState('All');
-  const [pos, setPos] = useState('All');
+function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
+  const [levels, setLevels] = useState(['NFL', 'College']);
+  const toggleLevel = (l) => setLevels(prev => {
+    const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
+    return next.length ? next : ['NFL', 'College'];
+  });
+  const [agent, setAgent] = useState('All');
+  const [side, setSide] = useState('All');
+  const [group, setGroup] = useState('All');
   const [team, setTeam] = useState('All');
   const [q, setQ] = useState('');
   const moneyNum = (v) => {
@@ -3208,15 +3213,44 @@ function ContractsPage({ isMobile, athletes, onOpenAthlete }) {
     .filter(Boolean)
     .sort((x, y) => y.yearly - x.yearly), [athletes]);
   const teams = useMemo(() => [...new Set(deals.map(d => d.team).filter(Boolean))].sort(), [deals]);
-  const list = deals.filter(d =>
-    (level === 'All' || d.a.level === level) &&
-    (pos === 'All' || contractPosGroup(d.a.position) === pos) &&
-    (team === 'All' || d.team === team) &&
-    (!q.trim() || athleteSearchMatch(d.a, q.trim().toLowerCase())));
+  const list = deals.filter(d => {
+    const g = contractPosGroup(d.a.position);
+    return levels.includes(d.a.level) &&
+      (agent === 'All' || String(d.a.agentAssigned || '').toLowerCase().includes(agent.toLowerCase())) &&
+      (side === 'All' || (POS_SIDES[side].includes(g) && (group === 'All' || g === group))) &&
+      (team === 'All' || d.team === team) &&
+      (!q.trim() || athleteSearchMatch(d.a, q.trim().toLowerCase()));
+  });
   const sum = list.reduce((s, d) => s + d.yearly, 0);
-  const chip = (on, label, cb) => (
-    <button key={label} onClick={cb} style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
-  );
+  const posValue = side === 'All' ? 'All' : (group !== 'All' ? group : side);
+  const sections = [
+    (staff || []).length > 0 && {
+      id: 'agent', title: 'Agent', value: agent,
+      rows: [
+        { on: agent === 'All', label: 'All agents', onClick: () => setAgent('All') },
+        ...(staff || []).map(n => ({ on: agent === n, label: n, onClick: () => setAgent(agent === n ? 'All' : n) })),
+      ],
+    },
+    {
+      id: 'position', title: 'Position', value: posValue,
+      rows: [
+        { on: side === 'All', label: 'All positions', onClick: () => { setSide('All'); setGroup('All'); } },
+        ...Object.keys(POS_SIDES).flatMap(s => [
+          { on: side === s && group === 'All', label: s, onClick: () => { setSide(side === s ? 'All' : s); setGroup('All'); } },
+          ...(side === s && POS_SIDES[s].length > 1 ? POS_SIDES[s].map(g => ({ on: group === g, label: `· ${g}`, onClick: () => setGroup(group === g ? 'All' : g) })) : []),
+        ]),
+      ],
+    },
+    {
+      id: 'team', title: 'Team', value: team,
+      rows: [
+        { on: team === 'All', label: 'All teams', onClick: () => setTeam('All') },
+        ...teams.map(t => ({ on: team === t, label: t, onClick: () => setTeam(team === t ? 'All' : t) })),
+      ],
+    },
+  ].filter(Boolean);
+  const filterActive = agent !== 'All' || side !== 'All' || team !== 'All';
+  const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, team !== 'All' ? team : null].filter(Boolean).join(', ') || 'All';
   const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   return (
@@ -3238,20 +3272,14 @@ function ContractsPage({ isMobile, athletes, onOpenAthlete }) {
           </div>
         )}
       </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-        {['All', 'NFL', 'College'].map(lv => chip(level === lv, lv, () => setLevel(lv)))}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        {['NFL', 'College'].map(lv => levelChipBtn(levels.includes(lv), lv, () => toggleLevel(lv)))}
         <div style={{ width: 10 }} />
-        <select value={team} onChange={e => setTeam(e.target.value)}
-          style={{ padding: "7px 11px", border: `1px solid ${team !== 'All' ? G.green : G.surfaceBorder}`, borderRadius: 9, background: G.surfaceRaised, color: team !== 'All' ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: ff, cursor: "pointer" }}>
-          <option value="All">All teams</option>
-          {teams.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
+          onAll={() => { setLevels(['NFL', 'College']); setAgent('All'); setSide('All'); setGroup('All'); setTeam('All'); }} />
         <div style={{ flex: 1 }} />
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search contracts..."
           style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
-      </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-        {['All', 'QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB', 'ST'].map(g => chip(pos === g, g, () => setPos(g)))}
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
@@ -3439,7 +3467,11 @@ function App() {
   const [sportsStaff, setSportsStaff] = useState([]);
   // Decks with live Box cover thumbnails (API-resolved); DECKS is the fallback.
   const [sportsDecks, setSportsDecks] = useState(null);
-  const [sportsLevel, setSportsLevel] = useState('All');
+  const [sportsLevels, setSportsLevels] = useState([...ALL_LEVELS]);
+  const toggleSportsLevel = (l) => setSportsLevels(prev => {
+    const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
+    return next.length ? next : [...ALL_LEVELS]; // never let the roster go empty
+  });
   // Depth chart filter (employee-only control): All / Starters / Backups / Not on chart.
   const [depthFilter, setDepthFilter] = useState('All');
   const [agentFilter, setAgentFilter] = useState('All');
@@ -3866,7 +3898,7 @@ function App() {
     }
     const list = athletes.filter(a => {
       if (mineOnly && currentUser?.agentKey && !agentMatch(a.agentAssigned, currentUser.agentKey)) return false;
-      if (sportsLevel !== 'All' && a.level !== sportsLevel) return false;
+      if (!sportsLevels.includes(a.level)) return false;
       if (depthFilter === 'Starters' && a.depthRank !== 1) return false;
       if (depthFilter === 'Backups' && !(a.depthRank >= 2)) return false;
       if (depthFilter === 'Not on chart' && (a.depthRank > 0 || a.level === 'High School')) return false;
@@ -3889,7 +3921,7 @@ function App() {
       if (fa !== 0) return fa;
       return athleteReach(b) - athleteReach(a);
     });
-  }, [athletes, sportsLevel, depthFilter, agentFilter, posSide, posGroup, mineOnly, currentUser, search, customGroup, clientSort]);
+  }, [athletes, sportsLevels, depthFilter, agentFilter, posSide, posGroup, mineOnly, currentUser, search, customGroup, clientSort]);
 
   // Individual logins land on "their" roster: default the My-clients filter on
   // (once per session) when the logged-in agent actually has matches.
@@ -4017,16 +4049,10 @@ function App() {
       </div>
     </div>
   );
-  // Sports level filter (All / NFL / College / High School).
-  const sportsLevels = ['All', 'NFL', 'College', 'High School'];
+  // Level chips — always visible above the roster grid, multi-select.
   const sportsLevelBar = (
-    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-      {sportsLevels.map((l, i) => (
-        <button key={l} onClick={() => setSportsLevel(l)}
-          style={{ padding: "8px 14px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", fontFamily: ff, fontSize: 12, fontWeight: sportsLevel === l ? 700 : 500, cursor: "pointer", background: sportsLevel === l ? G.greenSubtle : "transparent", color: sportsLevel === l ? G.green : G.textSecondary, whiteSpace: "nowrap" }}>
-          {l}
-        </button>
-      ))}
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: isMobile ? "12px 16px 14px" : "0 0 14px" }}>
+      {ALL_LEVELS.map(l => levelChipBtn(sportsLevels.includes(l), l, () => toggleSportsLevel(l)))}
     </div>
   );
 
@@ -4043,18 +4069,36 @@ function App() {
   );
   // Consolidated View dropdown: multi-select types (music) or single-select level
   // (sports), plus a Custom Group entry — same component for both domains.
+  const posValue = posSide === 'All' ? 'All' : (posGroup !== 'All' ? posGroup : posSide);
+  const rosterSections = domain !== 'sports' ? [] : [
+    (isAdmin && sportsStaff.length > 0) && {
+      id: 'agent', title: 'Agent', value: agentFilter,
+      rows: [
+        { on: agentFilter === 'All', label: 'All agents', onClick: () => { clearCustomGroup(); setAgentFilter('All'); } },
+        ...sportsStaff.map(n => ({ on: agentFilter === n, label: n, onClick: () => { clearCustomGroup(); setAgentFilter(agentFilter === n ? 'All' : n); } })),
+      ],
+    },
+    {
+      id: 'position', title: 'Position', value: posValue,
+      rows: [
+        { on: posSide === 'All', label: 'All positions', onClick: () => { clearCustomGroup(); setPosSide('All'); setPosGroup('All'); } },
+        ...Object.keys(POS_SIDES).flatMap(s => [
+          { on: posSide === s && posGroup === 'All', label: s, onClick: () => { clearCustomGroup(); setPosSide(posSide === s ? 'All' : s); setPosGroup('All'); } },
+          ...(posSide === s && POS_SIDES[s].length > 1 ? POS_SIDES[s].map(g => ({ on: posGroup === g, label: `· ${g}`, onClick: () => { clearCustomGroup(); setPosGroup(posGroup === g ? 'All' : g); } })) : []),
+        ]),
+      ],
+    },
+    isAdmin && {
+      id: 'depth', title: 'Depth chart', value: depthFilter,
+      rows: ['Starters', 'Backups', 'Not on chart'].map(o => ({ on: depthFilter === o, label: o, onClick: () => { clearCustomGroup(); setDepthFilter(depthFilter === o ? 'All' : o); } })),
+    },
+  ].filter(Boolean);
+  const rosterFilterActive = customGroup.length > 0 || agentFilter !== 'All' || posSide !== 'All' || depthFilter !== 'All' || mineOnly;
+  const rosterFilterLabel = customGroup.length > 0 ? `Custom · ${customGroup.length}`
+    : ([mineOnly ? 'My clients' : null, agentFilter !== 'All' ? agentFilter : null, posValue !== 'All' ? posValue : null, depthFilter !== 'All' ? depthFilter : null].filter(Boolean).join(', ') || 'All');
   const viewFilter = domain === 'sports' ? (
-    <SportsFilterDropdown compact={isMobile}
-      level={sportsLevel} onLevel={(l) => { clearCustomGroup(); setSportsLevel(l); }}
-      agents={isAdmin ? sportsStaff : []} agentValue={agentFilter}
-      onAgent={(n) => { clearCustomGroup(); setAgentFilter(n); }}
-      posSide={posSide} posGroup={posGroup}
-      onPosSide={(s) => { clearCustomGroup(); setPosSide(s); setPosGroup('All'); }}
-      onPosGroup={(g) => { clearCustomGroup(); setPosGroup(g); }}
-      onAll={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(false); setAgentFilter('All'); setPosSide('All'); setPosGroup('All'); }}
-      depthOptions={isAdmin ? ['Starters', 'Backups', 'Not on chart'] : null}
-      depthValue={depthFilter}
-      onDepth={(o) => { clearCustomGroup(); setDepthFilter(prev => prev === o ? 'All' : o); }}
+    <FilterMenu compact={isMobile} sections={rosterSections} active={rosterFilterActive} label={rosterFilterLabel}
+      onAll={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setMineOnly(false); setAgentFilter('All'); setPosSide('All'); setPosGroup('All'); }}
       mineOn={mineOnly}
       onMine={currentUser?.agentKey ? () => { clearCustomGroup(); setMineOnly(v => !v); } : null}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
@@ -4224,19 +4268,20 @@ function App() {
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} decks={sportsDecks || DECKS}
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => goSportsPage('roster')}
-                  onShowStarters={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('Starters'); goSportsPage('roster'); }}
-                  onShowMine={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(true); goSportsPage('roster'); }}
+                  onShowStarters={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('Starters'); goSportsPage('roster'); }}
+                  onShowMine={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setMineOnly(true); goSportsPage('roster'); }}
                   onGoMarketing={() => goSportsPage('marketing')} />
               )}
-              {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} onOpenAthlete={(a) => setView('detail', a)} />}
-              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} onPromoted={() => setAthletesLoaded(false)} />}
+              {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => setAthletesLoaded(false)} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
+                  {sportsLevelBar}
                   {filteredAthletes.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
-                      <div style={{ fontSize: 15 }}>{search || sportsLevel !== 'All' ? 'No athletes match your filters.' : 'No athletes to show yet.'}</div>
+                      <div style={{ fontSize: 15 }}>{search || sportsLevels.length < ALL_LEVELS.length ? 'No athletes match your filters.' : 'No athletes to show yet.'}</div>
                     </div>
                   ) : rosterView === 'detailed' ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
