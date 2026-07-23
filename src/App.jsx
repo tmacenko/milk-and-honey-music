@@ -2872,6 +2872,122 @@ function MarketingPage({ isMobile, athletes, onOpenAthlete }) {
   );
 }
 
+// ── Contracts page (company only — lives in the left nav) ────────────────────
+// Every athlete with a deal (Spotrac NFL terms or the manual college $/yr),
+// ranked by yearly value, filterable by league / position group / team.
+function contractPosGroup(pos) {
+  const p = String(pos || '').toUpperCase().trim();
+  if (/^QB/.test(p)) return 'QB';
+  if (/^(RB|FB|HB)/.test(p)) return 'RB';
+  if (/^WR/.test(p)) return 'WR';
+  if (/^TE/.test(p)) return 'TE';
+  if (/^(OT|OG|OL)/.test(p) || /^(C|G|T)$/.test(p)) return 'OL';
+  if (/^(DT|DE|DL|NT|EDGE)/.test(p)) return 'DL';
+  if (/^(LB|ILB|OLB|MLB)/.test(p)) return 'LB';
+  if (/^(CB|DB|FS|SS|S)/.test(p)) return 'DB';
+  if (/^(K|P|LS|PK)/.test(p)) return 'ST';
+  return '';
+}
+function ContractsPage({ isMobile, athletes, onOpenAthlete }) {
+  const [level, setLevel] = useState('All');
+  const [pos, setPos] = useState('All');
+  const [team, setTeam] = useState('All');
+  const moneyNum = (v) => {
+    const str = String(v == null ? '' : v).trim();
+    if (!str) return 0;
+    const n = parseFloat(str.replace(/[^0-9.]/g, ''));
+    if (!isFinite(n) || n <= 0) return 0;
+    return /m/i.test(str) ? n * 1e6 : /k/i.test(str) ? n * 1e3 : n;
+  };
+  const fmt = (n) => n >= 1e6 ? `$${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
+  const deals = useMemo(() => athletes
+    .map(a => {
+      const yearly = moneyNum(a.contractYearly) || moneyNum(a.contractAav);
+      if (!yearly) return null;
+      return { a, yearly, team: a.nflTeam || a.college || '', manual: !!moneyNum(a.contractYearly) };
+    })
+    .filter(Boolean)
+    .sort((x, y) => y.yearly - x.yearly), [athletes]);
+  const teams = useMemo(() => [...new Set(deals.map(d => d.team).filter(Boolean))].sort(), [deals]);
+  const list = deals.filter(d =>
+    (level === 'All' || d.a.level === level) &&
+    (pos === 'All' || contractPosGroup(d.a.position) === pos) &&
+    (team === 'All' || d.team === team));
+  const sum = list.reduce((s, d) => s + d.yearly, 0);
+  const chip = (on, label, cb) => (
+    <button key={label} onClick={cb} style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
+  );
+  const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Contracts</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+        <div style={card}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{sum ? `${fmt(sum)}` : '—'}</div>
+          <div style={statLabel}>Total / year</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{list.length}</div>
+          <div style={statLabel}>Deals</div>
+        </div>
+        {!isMobile && (
+          <div style={card}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{list.length ? fmt(sum / list.length) : '—'}</div>
+            <div style={statLabel}>Average / year</div>
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        {['All', 'NFL', 'College'].map(lv => chip(level === lv, lv, () => setLevel(lv)))}
+        <div style={{ width: 10 }} />
+        <select value={team} onChange={e => setTeam(e.target.value)}
+          style={{ padding: "7px 11px", border: `1px solid ${team !== 'All' ? G.green : G.surfaceBorder}`, borderRadius: 9, background: G.surfaceRaised, color: team !== 'All' ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: ff, cursor: "pointer" }}>
+          <option value="All">All teams</option>
+          {teams.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+        {['All', 'QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB', 'ST'].map(g => chip(pos === g, g, () => setPos(g)))}
+      </div>
+      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>By yearly value</span>
+          <span style={{ fontSize: 11, color: G.textTertiary }}>NFL via Spotrac · college entered manually</span>
+        </div>
+        {list.length === 0 && (
+          <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>
+            No contracts match these filters. NFL deals sync nightly from Spotrac; college numbers go in via Edit → Contract ($ / year).
+          </div>
+        )}
+        {list.map((d, i) => {
+          const a = d.a;
+          const terms = d.manual ? '' : [a.contractYears, moneyNum(a.contractTotal) && `${fmt(moneyNum(a.contractTotal))} total`, moneyNum(a.contractGuaranteed) && `${fmt(moneyNum(a.contractGuaranteed))} gtd`].filter(Boolean).join(' · ');
+          return (
+            <div key={a.id || i} onClick={() => onOpenAthlete(a)}
+              style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14, padding: isMobile ? "10px 14px" : "11px 18px", borderBottom: i < list.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer" }}
+              onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <div style={{ width: 20, fontSize: 12, fontWeight: 700, color: i < 3 ? G.green : G.textTertiary, flexShrink: 0 }}>{i + 1}</div>
+              <Avatar name={a.name} photoUrl={a.photoUrl} size={isMobile ? 34 : 40} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
+                <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {[a.position, d.team, a.level === 'College' ? 'College' : ''].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{fmt(d.yearly)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>/ yr</span></div>
+                {terms && <div style={{ fontSize: 11, color: G.textTertiary }}>{terms}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // NFL Team Info is block-shaped in the sheet: a team-name row, a Training
 // Facility row (address in col B), a Name/Title/Email header, then contacts.
 function parseNflTeams(data) {
@@ -3534,6 +3650,7 @@ function App() {
   const NAV_SPORTS = [
     { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
     { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
+    { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
     { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
     { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
@@ -3775,6 +3892,7 @@ function App() {
                   onShowMine={() => { clearCustomGroup(); setSportsLevel('All'); setDepthFilter('All'); setMineOnly(true); goSportsPage('roster'); }}
                   onGoMarketing={() => goSportsPage('marketing')} />
               )}
+              {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} onPromoted={() => setAthletesLoaded(false)} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
