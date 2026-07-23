@@ -1813,6 +1813,36 @@ function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
   );
 }
 
+// 247Sports rating chip for HS roster players (company view only) — reads the
+// latest StatHistory snapshot: stars, national rank, position rank.
+function Rank247Chip({ name, position }) {
+  const hist = useAdminTab('stathistory');
+  const info = useMemo(() => {
+    const rows = hist.data?.rows || [];
+    const k = String(name || '').toLowerCase().trim();
+    // Cols: date | name | depthRank | depthPos | rating247 | stars247 | natRank247 | posRank247 | stateRank247
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const c = rows[i].cells || [];
+      if (String(c[1] || '').toLowerCase().trim() === k && (c[5] || c[6] || c[7])) {
+        return { stars: c[5], nat: c[6], pos: c[7] };
+      }
+    }
+    return null;
+  }, [hist.data, name]);
+  if (!info) return null;
+  const bits = [
+    info.stars && `${info.stars}★`,
+    info.nat && `#${info.nat} National`,
+    info.pos && `#${info.pos} ${position || 'Position'}`,
+  ].filter(Boolean).join(' · ');
+  if (!bits) return null;
+  return (
+    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
+      {bits}
+    </span>
+  );
+}
+
 // Roster search: matches name, position, team/school, commitment, or agent.
 function athleteSearchMatch(a, q) {
   return [a.name, a.position, a.nflTeam, a.college, a.committedTo, a.agentAssigned]
@@ -1879,6 +1909,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
                     {a.depthRank === 1 ? 'Starter' : a.depthRank === 2 ? '2nd string' : a.depthRank === 3 ? '3rd string' : `${a.depthRank}th string`}{a.depthPos ? ` · ${a.depthPos}` : ''}
                   </span>
                 )}
+                {companyView && a.level === 'High School' && <Rank247Chip name={a.name} position={a.position} />}
               </div>
               {/* Company view keeps the icons but the counts live in the socials module below. */}
               {socialBtns.length > 0 && (
@@ -1909,26 +1940,30 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             </div>
           )}
           {companyView && <SocialContractModules athlete={a} isMobile={isMobile} />}
-          {(a.brands?.length > 0 || a.interests?.length > 0) && (
-            <div style={{ display: "grid", gridTemplateColumns: isMobile || !(a.brands?.length > 0 && a.interests?.length > 0) ? "1fr" : "1fr 1fr", gap: 12 }}>
-              {a.brands?.length > 0 && (
-                <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Brands worked with</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {a.brands.map((b, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{b}</span>)}
-                  </div>
+          {(() => {
+            // Up to four chip modules side by side: worked-with + interests are
+            // partner-visible; targets + music tastes are company-only intel.
+            const chipCard = (title, items) => (items?.length > 0 ? (
+              <div key={title} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>{title}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {items.map((v, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{v}</span>)}
                 </div>
-              )}
-              {a.interests?.length > 0 && (
-                <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Interests</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {a.interests.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+              </div>
+            ) : null);
+            const cards = [
+              chipCard('Brands worked with', a.brands),
+              chipCard('Interests', a.interests),
+              companyView && chipCard('Brand targets', a.brandTargets),
+              companyView && chipCard('Music artists', a.musicArtists),
+            ].filter(Boolean);
+            if (!cards.length) return null;
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${Math.min(cards.length, 4)}, 1fr)`, gap: 12 }}>
+                {cards}
+              </div>
+            );
+          })()}
           {companyView && (() => {
             const sizes = [['Shirt', a.shirtSize], ['Hoodie', a.hoodieSize], ['Shorts', a.shortsSize], ['Pants', a.sweatpantsSize], ['Shoes', a.shoeSize], ['Gloves', a.glovesSize], ['Gaming', a.gamingSystem]]
               .filter(([, v]) => String(v || '').trim());
