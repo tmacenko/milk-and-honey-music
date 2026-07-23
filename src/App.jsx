@@ -1658,6 +1658,19 @@ function FilterMenu({ compact, sections, active, label, onAll, mineOn, onMine, m
   );
 }
 
+// Session-sticky page state: pages unmount when you open an athlete, so their
+// filter/sort state lives here and survives the back button (until reload).
+const pageStateCache = {};
+function useCachedState(key, initial) {
+  const [v, setV] = useState(() => (key in pageStateCache ? pageStateCache[key] : initial));
+  const set = useCallback((nv) => setV(prev => {
+    const next = typeof nv === 'function' ? nv(prev) : nv;
+    pageStateCache[key] = next;
+    return next;
+  }), [key]);
+  return [v, set];
+}
+
 // Shared level chips (multi-select on roster/contracts; exclusive on recruiting).
 function levelChipBtn(on, label, onClick) {
   return (
@@ -2480,17 +2493,17 @@ function seriesFromHistory(rows) {
 function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
   const hist = useAdminTab('socialhistory');
   const hist247 = useAdminTab('stathistory');
-  const [levels, setLevels] = useState([...ALL_LEVELS]);
+  const [levels, setLevels] = useCachedState('growth.levels', [...ALL_LEVELS]);
   const toggleLevel = (l) => setLevels(prev => {
     const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
     return next.length ? next : [...ALL_LEVELS];
   });
-  const [agent, setAgent] = useState('All');
-  const [side, setSide] = useState('All');
-  const [group, setGroup] = useState('All');
-  const [q, setQ] = useState('');
-  const [sortCol, setSortCol] = useState('score');
-  const [sortDir, setSortDir] = useState('desc');
+  const [agent, setAgent] = useCachedState('growth.agent', 'All');
+  const [side, setSide] = useCachedState('growth.side', 'All');
+  const [group, setGroup] = useCachedState('growth.group', 'All');
+  const [q, setQ] = useCachedState('growth.q', '');
+  const [sortCol, setSortCol] = useCachedState('growth.sortCol', 'score');
+  const [sortDir, setSortDir] = useCachedState('growth.sortDir', 'desc');
   const seriesByName = useMemo(() => seriesFromHistory(hist.data?.rows), [hist.data]);
   const platDelta = useMemo(() => {
     const out = {};
@@ -3173,17 +3186,17 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const headers = data?.headers || [];
   const agentCol = headers.findIndex(h => /agent/i.test(h));
   // Universal filters: multi-select level chips + the shared filter window.
-  const [recLevels, setRecLevels] = useState(['High School', 'College']);
+  const [recLevels, setRecLevels] = useCachedState('recruiting.levels', ['High School', 'College']);
   const toggleRecLevel = (l) => setRecLevels(prev => {
     const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
     return next.length ? next : ['High School', 'College'];
   });
-  const [side, setSide] = useState('All');
-  const [group, setGroup] = useState('All');
-  const [agent, setAgent] = useState('All');
-  const [klass, setKlass] = useState('All');
-  const [sortCol, setSortCol] = useState('rating');
-  const [sortDir, setSortDir] = useState('desc');
+  const [side, setSide] = useCachedState('recruiting.side', 'All');
+  const [group, setGroup] = useCachedState('recruiting.group', 'All');
+  const [agent, setAgent] = useCachedState('recruiting.agent', 'All');
+  const [klass, setKlass] = useCachedState('recruiting.klass', 'All');
+  const [sortCol, setSortCol] = useCachedState('recruiting.sortCol', 'rating');
+  const [sortDir, setSortDir] = useCachedState('recruiting.sortDir', 'desc');
   const hFind = (re) => headers.findIndex(h => re.test(h));
   const nameI = hFind(/name/i), schoolI = hFind(/school/i), levelI = hFind(/^level/i),
     posI = hFind(/position/i), rankI = hFind(/rank/i), classI = hFind(/class|year/i);
@@ -3390,18 +3403,18 @@ function contractPosGroup(pos) {
   return '';
 }
 function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
-  const [levels, setLevels] = useState(['NFL', 'College']);
+  const [levels, setLevels] = useCachedState('contracts.levels', ['NFL', 'College']);
   const toggleLevel = (l) => setLevels(prev => {
     const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
     return next.length ? next : ['NFL', 'College'];
   });
-  const [agent, setAgent] = useState('All');
-  const [side, setSide] = useState('All');
-  const [group, setGroup] = useState('All');
-  const [team, setTeam] = useState('All');
-  const [q, setQ] = useState('');
-  const [sortCol, setSortCol] = useState('yearly');
-  const [sortDir, setSortDir] = useState('desc');
+  const [agent, setAgent] = useCachedState('contracts.agent', 'All');
+  const [side, setSide] = useCachedState('contracts.side', 'All');
+  const [group, setGroup] = useCachedState('contracts.group', 'All');
+  const [team, setTeam] = useCachedState('contracts.team', 'All');
+  const [q, setQ] = useCachedState('contracts.q', '');
+  const [sortCol, setSortCol] = useCachedState('contracts.sortCol', 'yearly');
+  const [sortDir, setSortDir] = useCachedState('contracts.sortDir', 'desc');
   const moneyNum = (v) => {
     const str = String(v == null ? '' : v).trim();
     if (!str) return 0;
@@ -3548,17 +3561,17 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
 
 // ── Gifting page (company only) — sizes + addresses for sending merch ────────
 function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
-  const [levels, setLevels] = useState([...ALL_LEVELS]);
+  const [levels, setLevels] = useCachedState('gifting.levels', [...ALL_LEVELS]);
   const toggleLevel = (l) => setLevels(prev => {
     const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
     return next.length ? next : [...ALL_LEVELS];
   });
-  const [agent, setAgent] = useState('All');
-  const [side, setSide] = useState('All');
-  const [group, setGroup] = useState('All');
-  const [q, setQ] = useState('');
-  const [sortCol, setSortCol] = useState('player');
-  const [sortDir, setSortDir] = useState('asc');
+  const [agent, setAgent] = useCachedState('gifting.agent', 'All');
+  const [side, setSide] = useCachedState('gifting.side', 'All');
+  const [group, setGroup] = useCachedState('gifting.group', 'All');
+  const [q, setQ] = useCachedState('gifting.q', '');
+  const [sortCol, setSortCol] = useCachedState('gifting.sortCol', 'player');
+  const [sortDir, setSortDir] = useCachedState('gifting.sortDir', 'asc');
   const COLS = [
     ['player', 'Player', a => a.name],
     ['shirt', 'Shirt', a => a.shirtSize || ''],
