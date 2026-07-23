@@ -1628,7 +1628,7 @@ function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
   );
 }
 
-function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
+function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
   const typeLine = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join('  ·  ');
@@ -1640,17 +1640,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
   ].filter(Boolean);
   // Facts that read as prose beneath the bio.
   const weightTxt = a.weight && (/^\d+(\.\d+)?$/.test(String(a.weight).trim()) ? `${a.weight} lbs` : a.weight);
-  // Contract line (company view only): manual yearly amount wins, else Spotrac terms.
-  const money = (v) => {
-    const n = parseFloat(String(v).replace(/[^0-9.]/g, ''));
-    if (!n) return String(v);
-    return n >= 1e6 ? `$${(n / 1e6).toFixed(n % 1e6 ? 1 : 0).replace(/\.0$/, '')}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${n}`;
-  };
-  const contractLine = a.contractYearly ? `${money(a.contractYearly)} / yr`
-    : a.contractAav ? [`${money(a.contractAav)} / yr`, a.contractYears, a.contractTotal && `${money(a.contractTotal)} total`, a.contractGuaranteed && `${money(a.contractGuaranteed)} gtd`].filter(Boolean).join(' · ')
-    : '';
   const meta = [
-    showTrend && contractLine && ['Contract', contractLine],
     (a.height || weightTxt) && ['Height/Weight', [a.height, weightTxt].filter(Boolean).join(' · ')],
     a.hometown && ['Hometown', a.hometown],
     a.classOf && ['Class of', a.classOf],
@@ -1700,7 +1690,8 @@ function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
                   </span>
                 )}
               </div>
-              {socialBtns.length > 0 && (
+              {/* Company view gets the socials module below instead of hero icons. */}
+              {!companyView && socialBtns.length > 0 && (
                 <div style={{ display: "flex", gap: isMobile ? 16 : 24, marginTop: 13, alignItems: "center", flexWrap: "wrap" }}>
                   {socialBtns.map((b, i) => (
                     <a key={i} href={b.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 7, color: "#fff", textDecoration: "none", transition: "opacity 0.15s" }} onMouseEnter={e => e.currentTarget.style.opacity = 0.65} onMouseLeave={e => e.currentTarget.style.opacity = 1}>
@@ -1727,23 +1718,27 @@ function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
               ))}
             </div>
           )}
-          {a.brands?.length > 0 && (
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Brands worked with</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {a.brands.map((b, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{b}</span>)}
-              </div>
+          {companyView && <SocialContractModules athlete={a} isMobile={isMobile} />}
+          {(a.brands?.length > 0 || a.interests?.length > 0) && (
+            <div style={{ display: "grid", gridTemplateColumns: isMobile || !(a.brands?.length > 0 && a.interests?.length > 0) ? "1fr" : "1fr 1fr", gap: 12 }}>
+              {a.brands?.length > 0 && (
+                <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Brands worked with</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {a.brands.map((b, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{b}</span>)}
+                  </div>
+                </div>
+              )}
+              {a.interests?.length > 0 && (
+                <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Interests</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {a.interests.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-          {a.interests?.length > 0 && (
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Interests</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {a.interests.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
-              </div>
-            </div>
-          )}
-          {showTrend && <TrendChart name={a.name} isMobile={isMobile} />}
           <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
             {espnUrl && <a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>ESPN profile →</a>}
             {a.profileUrl247 && <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>}
@@ -2238,77 +2233,86 @@ function GrowthBoardSection({ athletes, onOpenAthlete, isMobile }) {
   );
 }
 
-// ── Follower trend chart (athlete profile, company view only) ────────────────
-// Big smooth line with a gradient fill, range tabs, and a total + change footer.
-function TrendChart({ name, isMobile }) {
+// ── Socials + contract modules (athlete profile, company view only) ──────────
+// Side-by-side cards: per-platform follower rows with an up/down change arrow
+// (7-day window from SocialHistory), and the contract terms.
+function SocialContractModules({ athlete: a, isMobile }) {
   const hist = useAdminTab('socialhistory');
-  const [range, setRange] = useState('max');
-  const all = useMemo(() => {
-    const map = seriesFromHistory(hist.data?.rows);
-    return map[String(name).toLowerCase().trim()] || [];
-  }, [hist.data, name]);
-  if (all.length < 2) return null;
-  const lastDt = all[all.length - 1].dt.getTime();
-  const cut = range === 'week' ? 7 : range === 'month' ? 30 : Infinity;
-  let series = all.filter(p => (lastDt - p.dt.getTime()) / 86400000 <= cut);
-  if (series.length < 2) series = all.slice(-2);
-  const W = 600, H = 180, PADL = 6, PADR = 14, PADT = 12, PADB = 22;
-  const vals = series.map(p => p.total);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const span = (max - min) || Math.max(max * 0.02, 1);
-  const px = (i) => PADL + (i / (series.length - 1)) * (W - PADL - PADR);
-  const py = (v) => PADT + (1 - (v - min) / span) * (H - PADT - PADB);
-  const pts = series.map((p, i) => [px(i), py(p.total)]);
-  const line = smoothPath(pts);
-  const area = `${line} L ${pts[pts.length - 1][0]} ${H - PADB} L ${pts[0][0]} ${H - PADB} Z`;
-  // Up to 5 evenly spaced dashed gridlines with date labels.
-  const tickCount = Math.min(5, series.length);
-  const ticks = Array.from({ length: tickCount }, (_, i) => Math.round((i / (tickCount - 1 || 1)) * (series.length - 1)));
-  const first = series[0], last = series[series.length - 1];
-  const delta = last.total - first.total;
-  const pct = first.total ? (delta / first.total) * 100 : 0;
-  const tab = (key, label) => (
-    <button key={key} onClick={() => setRange(key)}
-      style={{ flex: 1, padding: "7px 0", border: "none", borderRadius: 9, background: range === key ? G.surfaceRaised : "transparent", color: range === key ? G.text : G.textTertiary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
+  const key = String(a.name || '').toLowerCase().trim();
+  const { pd, days } = useMemo(() => {
+    const arr = seriesFromHistory(hist.data?.rows)[key] || [];
+    const last = arr[arr.length - 1];
+    if (!last) return { pd: null, days: 0 };
+    const target = last.dt.getTime() - 7 * 86400000;
+    let base = arr[0];
+    for (const r of arr) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
+    if (base === last) return { pd: null, days: 0 };
+    return {
+      pd: { ig: last.ig - base.ig, x: last.x - base.x, tk: last.tk - base.tk },
+      days: Math.max(1, Math.round((last.dt - base.dt) / 86400000)),
+    };
+  }, [hist.data, key]);
+  const money = (v) => {
+    const n = parseFloat(String(v).replace(/[^0-9.]/g, ''));
+    if (!n) return String(v);
+    return n >= 1e6 ? `$${(n / 1e6).toFixed(n % 1e6 ? 1 : 0).replace(/\.0$/, '')}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${n}`;
+  };
+  const rows = [
+    a.instagram && { icon: <IgIcon size={18} />, platform: 'Instagram', user: `@${a.instagram}`, url: `https://instagram.com/${a.instagram}`, count: a.igFollowers, d: pd?.ig },
+    a.twitter && { icon: <TwIcon size={16} />, platform: 'X', user: `@${a.twitter}`, url: `https://x.com/${a.twitter}`, count: a.twitterFollowers, d: pd?.x },
+    a.tiktok && { icon: <TkIcon size={16} />, platform: 'TikTok', user: `@${a.tiktok}`, url: `https://tiktok.com/@${a.tiktok}`, count: a.tiktokFollowers, d: pd?.tk },
+  ].filter(Boolean);
+  const contract = a.contractYearly
+    ? { main: `${money(a.contractYearly)} / yr`, rows: [] }
+    : a.contractAav
+      ? { main: `${money(a.contractAav)} / yr`, rows: [
+          a.contractYears && ['Years', a.contractYears],
+          a.contractTotal && ['Total value', money(a.contractTotal)],
+          a.contractGuaranteed && ['Guaranteed', money(a.contractGuaranteed)],
+        ].filter(Boolean) }
+      : null;
+  const mod = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const head = (label, right) => (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
+      {right ? <div style={{ fontSize: 11, color: G.textTertiary }}>{right}</div> : null}
+    </div>
   );
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: isMobile ? 14 : 18 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Follower trend</div>
-        <div style={{ display: "flex", background: G.bg, border: `1px solid ${G.surfaceBorder}`, borderRadius: 11, padding: 3, width: isMobile ? "100%" : 230 }}>
-          {tab('week', 'Week')}{tab('month', 'Month')}{tab('max', 'Max')}
-        </div>
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+      <div style={mod}>
+        {head('Social media', pd ? `${days}-day change` : '')}
+        {rows.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No socials on file.</div>
+          : rows.map((r, i) => (
+            <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", textDecoration: "none" }}>
+              {r.icon}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{r.platform}</div>
+                <div style={{ fontSize: 12, color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.user}</div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{r.count || '—'}</div>
+                {r.d != null && r.d !== 0 && (
+                  <div style={{ fontSize: 12, fontWeight: 700, color: r.d > 0 ? G.green : G.red }}>{r.d > 0 ? '↑' : '↓'} {bigNum(Math.abs(r.d))}</div>
+                )}
+              </div>
+            </a>
+          ))}
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-        <defs>
-          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={G.green} stopOpacity="0.28" />
-            <stop offset="100%" stopColor={G.green} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {ticks.map((ti, i) => (
-          <g key={i}>
-            <line x1={px(ti)} y1={PADT} x2={px(ti)} y2={H - PADB} stroke={G.surfaceBorder} strokeDasharray="3 5" strokeWidth="1" />
-            <text x={px(ti)} y={H - 6} fontSize="10" fill="#6b6b70" textAnchor={i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle'} fontFamily={ff}>
-              {series[ti].dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </text>
-          </g>
-        ))}
-        <path d={area} fill="url(#trendFill)" />
-        <path d={line} fill="none" stroke={G.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="5" fill={G.bg} stroke={G.green} strokeWidth="2.5" />
-      </svg>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: 10 }}>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 4 }}>Total followers</div>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-            <span style={{ fontSize: 28, fontWeight: 800, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{bigNum(last.total)}</span>
-            {delta !== 0 && <span style={{ fontSize: 13, fontWeight: 700, color: delta > 0 ? G.green : G.red }}>{delta > 0 ? '+' : ''}{bigNum(delta)}</span>}
-          </div>
-        </div>
-        <div style={{ fontSize: 16, fontWeight: 800, color: delta >= 0 ? G.green : G.red }}>
-          {delta >= 0 ? '↗' : '↘'} {Math.abs(pct) >= 100 ? Math.round(Math.abs(pct)) : Math.abs(pct).toFixed(1)}%
-        </div>
+      <div style={mod}>
+        {head('Contract', contract && !a.contractYearly ? 'via Spotrac' : '')}
+        {!contract ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No contract on file yet.</div>
+          : (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 800, color: G.text, letterSpacing: "-0.02em" }}>{contract.main}</div>
+              {contract.rows.map(([l, v], i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: i < contract.rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", fontSize: 13, marginTop: i === 0 ? 10 : 0 }}>
+                  <span style={{ color: G.textTertiary }}>{l}</span><span style={{ color: G.text, fontWeight: 600 }}>{v}</span>
+                </div>
+              ))}
+            </>
+          )}
       </div>
     </div>
   );
@@ -3757,7 +3761,7 @@ function App() {
           {domain === 'sports' ? (
             <>
               {!error && athletesLoaded && view === 'detail' && selected && (
-                <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} showTrend={isAdmin} />
+                <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} />
               )}
               {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} decks={sportsDecks || DECKS}
