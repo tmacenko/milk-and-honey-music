@@ -1741,7 +1741,7 @@ function collegeProgramPts(name, hasLogo) {
 }
 const MARQUEE_NFL = new Set(['kansas city chiefs', 'dallas cowboys', 'san francisco 49ers', 'philadelphia eagles', 'green bay packers', 'pittsburgh steelers', 'new york giants', 'new york jets', 'chicago bears', 'denver broncos']);
 // Position marketability tiers: QBs sell, linemen mostly don't.
-const POS_MKT = { QB: 6, WR: 5, RB: 5, TE: 4, DB: 3, DL: 3, LB: 3, OL: 1, ST: 1 };
+const POS_MKT = { QB: 6, WR: 5, RB: 5, TE: 4, DB: 3, DL: 3, LB: 3, OL: 3, ST: 1 };
 function computeMarketability(a, series, s247) {
   const c01 = v => Math.max(0, Math.min(1, v));
   const lc = s => String(s || '').toLowerCase().trim();
