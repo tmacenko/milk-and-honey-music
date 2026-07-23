@@ -324,6 +324,9 @@ const BASE_TAB = { 'NFL': 'NFL', 'College': 'College', 'High School': 'Highschoo
 async function saveAthlete(token, body) {
   const a = body.athlete || {};
   const originalName = String(body.originalName || a.name || '').trim();
+  // Level moves (HS → College → NFL) relocate the row between base tabs.
+  const prevLevel = BASE_TAB[body.prevLevel] ? body.prevLevel : a.level;
+  const levelChanged = prevLevel !== a.level;
   const tab = BASE_TAB[a.level];
   if (!tab || !a._rowIndex) throw new Error('Missing level or row reference');
   if (!String(a.name || '').trim()) throw new Error('Name is required');
@@ -346,9 +349,23 @@ async function saveAthlete(token, body) {
     'Gaming System': a.gamingSystem,
   };
   const updates = [];
-  baseHeaders.forEach((h, i) => {
-    if (baseVals[h] !== undefined) updates.push({ range: `${tab}!${colLetter(i)}${a._rowIndex}`, values: [[String(baseVals[h] ?? '')]] });
-  });
+  if (levelChanged) {
+    // Append a fresh row to the new level's tab, then delete the old row.
+    // AppData / AutoSync are keyed by name so they follow automatically.
+    const newRow = baseHeaders.map(h => baseVals[h] === undefined ? '' : String(baseVals[h] ?? ''));
+    await sheetAppend(token, `${tab}!A:Z`, newRow);
+    const gid = await getSheetGid(token, BASE_TAB[prevLevel]);
+    const rDel = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: a._rowIndex - 1, endIndex: a._rowIndex } } }] }),
+    });
+    const dDel = await rDel.json();
+    if (dDel.error) throw new Error(`Level move error: ${dDel.error.code} ${dDel.error.message}`);
+  } else {
+    baseHeaders.forEach((h, i) => {
+      if (baseVals[h] !== undefined) updates.push({ range: `${tab}!${colLetter(i)}${a._rowIndex}`, values: [[String(baseVals[h] ?? '')]] });
+    });
+  }
 
   // 2) AppData updates (find row by name; append if absent).
   const app = await sheetGet(token, 'AppData!A:AZ');

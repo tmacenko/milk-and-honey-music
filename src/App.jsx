@@ -660,8 +660,15 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
   const [form, setForm] = useState({ ...initial });
   const [saving, setSaving] = useState(false);
   const [photoHint, setPhotoHint] = useState(false);
+  // Auto-pulled fields render locked; unlocking asks for confirmation because a
+  // manual value overrides the nightly sync from that point on.
+  const [unlocked, setUnlocked] = useState({});
+  const [open, setOpen] = useState({ basics: true });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const isNFL = form.level === 'NFL';
+  const isHS = form.level === 'High School';
+  const teamKey = isNFL ? 'nflTeam' : 'college';
+  const teamEdited = String(form[teamKey] || '').trim() !== String(initial[teamKey] || '').trim();
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -673,18 +680,60 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
     if (!String(form.name || '').trim()) return alert('Name is required');
     setSaving(true);
     try {
+      const payload = { ...form };
+      // Editing the team box IS the override — no separate input needed.
+      if (teamEdited) payload.teamOverride = String(form[teamKey] || '').trim();
+      const levelChanged = form.level !== initial.level;
       const resp = await fetch('/api/athletes', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ athlete: form, originalName: initial.name }),
+        body: JSON.stringify({ athlete: payload, originalName: initial.name, prevLevel: initial.level }),
       });
       const data = await resp.json();
-      if (data.success) onSave({ ...form, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl });
+      if (data.success) onSave({ ...payload, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl }, { levelChanged });
       else throw new Error(data.error || 'Save failed');
     } catch (e) { alert('Save failed: ' + e.message); }
     setSaving(false);
   };
 
   const statusOptions = ['Active', 'Free Agent', 'Rookie', 'Inactive', 'Retired'];
+  const levelOptions = ['High School', 'College', 'NFL'];
+  const unlock = (k) => {
+    if (unlocked[k]) return;
+    if (window.confirm('This field auto-populates nightly. Are you sure you want to edit it? Your manual value will override the auto sync.')) {
+      setUnlocked(u => ({ ...u, [k]: true }));
+    }
+  };
+  const lockLabel = (k, label) => (
+    <span onClick={() => unlock(k)} title={unlocked[k] ? 'Editing manually — overrides the auto sync' : 'Auto-pulled nightly — click the lock to edit'}
+      style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: unlocked[k] ? G.green : undefined }}>
+      {label}
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+        {unlocked[k]
+          ? <path d="M7 11V7a5 5 0 019.9-1M4 11h16v10H4z" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          : <path d="M7 11V7a5 5 0 0110 0v4M4 11h16v10H4z" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />}
+      </svg>
+    </span>
+  );
+  const lockInput = (k, label, formKey, placeholder, sanitize) => (
+    <Field label={lockLabel(k, label)}>
+      <div onClick={() => { if (!unlocked[k]) unlock(k); }}>
+        <input type="text" value={form[formKey] || ''} disabled={!unlocked[k]}
+          onChange={e => set(formKey, sanitize ? sanitize(e.target.value) : e.target.value)}
+          placeholder={placeholder}
+          style={{ ...inputBase, ...(unlocked[k] ? {} : { opacity: 0.55, cursor: "pointer" }) }} />
+      </div>
+    </Field>
+  );
+  const section = (id, title, children) => (
+    <div style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
+      <button onClick={() => setOpen(o => ({ ...o, [id]: !o[id] }))}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: G.surfaceRaised, border: "none", cursor: "pointer", fontFamily: ff }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: open[id] ? G.text : G.textSecondary }}>{title}</span>
+        <span style={{ color: G.textTertiary, fontSize: 11, transform: open[id] ? 'rotate(180deg)' : 'none', transition: `transform 0.15s ${G.ease}` }}>▼</span>
+      </button>
+      {open[id] && <div style={{ padding: "14px 14px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 14px" }}>{children}</div>}
+    </div>
+  );
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(20px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -694,35 +743,36 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
           <button onClick={onCancel} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 14, fontFamily: ff }}>✕</button>
         </div>
         <div style={{ overflowY: "auto", padding: "20px 24px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
-            <div style={{ gridColumn: "1/-1", marginBottom: 16 }}>
-              <div onClick={() => set('public', !form.public)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: form.public ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${form.public ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 16px", cursor: "pointer" }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: form.public ? G.green : G.text }}>Public on roster</div>
-                  <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{form.public ? 'Visible on the public site.' : 'Hidden — internal only.'}</div>
-                </div>
-                <div style={{ width: 44, height: 26, borderRadius: 20, background: form.public ? G.green : G.surfaceBorderLight, position: "relative", flexShrink: 0, transition: `background 0.15s ${G.ease}` }}>
-                  <div style={{ position: "absolute", top: 3, left: form.public ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: `left 0.15s ${G.ease}` }} />
-                </div>
+          <div style={{ marginBottom: 14 }}>
+            <div onClick={() => set('public', !form.public)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: form.public ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${form.public ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 16px", cursor: "pointer" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: form.public ? G.green : G.text }}>Public on roster</div>
+                <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{form.public ? 'Visible on the public site.' : 'Hidden — internal only.'}</div>
+              </div>
+              <div style={{ width: 44, height: 26, borderRadius: 20, background: form.public ? G.green : G.surfaceBorderLight, position: "relative", flexShrink: 0, transition: `background 0.15s ${G.ease}` }}>
+                <div style={{ position: "absolute", top: 3, left: form.public ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: `left 0.15s ${G.ease}` }} />
               </div>
             </div>
+          </div>
+
+          {section('basics', 'Basics', <>
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Name"><Input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Full name" /></Field>
             </div>
-            <Field label="Position"><Input value={form.position} onChange={e => set('position', e.target.value)} placeholder="QB, WR, LB..." /></Field>
-            <Field label={isNFL ? 'Team' : 'School'}>
-              <Input value={isNFL ? (form.nflTeam || '') : (form.college || '')} onChange={e => set(isNFL ? 'nflTeam' : 'college', e.target.value)} placeholder={isNFL ? 'Kansas City Chiefs' : 'Michigan'} />
-            </Field>
             <div style={{ gridColumn: "1/-1" }}>
-              <Field label="Team override (trades / transfers)">
-                <Input value={form.teamOverride || ''} onChange={e => set('teamOverride', e.target.value)}
-                  placeholder="Leave blank to follow ESPN — fill while ESPN lags a trade or transfer" />
-              </Field>
-            </div>
-            <div style={{ gridColumn: "1/-1" }}>
-              <Field label="247Sports profile URL">
-                <Input value={form.profileUrl247 || ''} onChange={e => set('profileUrl247', e.target.value)}
-                  placeholder="https://247sports.com/player/... — headshot auto-pulls nightly for HS" />
+              <Field label="Level">
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {levelOptions.map(lv => {
+                    const on = form.level === lv;
+                    return <button key={lv} onClick={() => set('level', lv)}
+                      style={{ flex: 1, minWidth: 90, padding: "8px 0", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}`, whiteSpace: "nowrap" }}>
+                      {lv}
+                    </button>;
+                  })}
+                </div>
+                {form.level !== initial.level && (
+                  <div style={{ fontSize: 11, color: G.yellow, marginTop: 6 }}>Saving moves them to the {form.level} roster tab.</div>
+                )}
               </Field>
             </div>
             <div style={{ gridColumn: "1/-1" }}>
@@ -738,6 +788,13 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
                 </div>
               </Field>
             </div>
+            <Field label="Position"><Input value={form.position} onChange={e => set('position', e.target.value)} placeholder="QB, WR, LB..." /></Field>
+            <div>
+              <Field label={isNFL ? 'Team' : 'School'}>
+                <Input value={form[teamKey] || ''} onChange={e => set(teamKey, e.target.value)} placeholder={isNFL ? 'Kansas City Chiefs' : 'Michigan'} />
+              </Field>
+              {teamEdited && <div style={{ fontSize: 11, color: G.yellow, marginTop: -10, marginBottom: 12 }}>Overrides the auto team sync until it catches up.</div>}
+            </div>
             <Field label="Lead Agent">
               <select value={form.agentAssigned || ''} onChange={e => set('agentAssigned', e.target.value)} style={{ ...inputBase, cursor: "pointer" }}>
                 <option value="">—</option>
@@ -746,20 +803,54 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
               </select>
             </Field>
             <Field label="Birthday"><Input value={form.birthday} onChange={e => set('birthday', e.target.value)} placeholder="6/14/2007" /></Field>
-            <Field label="ESPN ID">
-              <Input value={form.espnId} onChange={e => set('espnId', e.target.value.replace(/\D/g, ''))} placeholder="Auto-found nightly — fill to pin" />
-            </Field>
-            <Field label="Contract ($ / year)">
-              <Input value={form.contractYearly} onChange={e => set('contractYearly', e.target.value)} placeholder="450000 — NFL auto-pulls from Spotrac" />
-            </Field>
-            {form.level === 'High School' ? (
-              <Field label="Class Of"><Input value={form.classOf} onChange={e => set('classOf', e.target.value)} placeholder="2027" /></Field>
-            ) : <div />}
-            {form.level === 'High School' && (
+            {isHS && <Field label="Class Of"><Input value={form.classOf} onChange={e => set('classOf', e.target.value)} placeholder="2027" /></Field>}
+            {isHS && (
+              <Field label="Commitment"><Input value={form.committedTo} onChange={e => set('committedTo', e.target.value)} placeholder="Blank if uncommitted" /></Field>
+            )}
+          </>)}
+
+          {section('bio', 'Bio & photos', <>
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Bio"><Textarea value={form.bio} onChange={e => set('bio', e.target.value)} rows={4} /></Field>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                Profile Photo URL
+                <span onClick={() => setPhotoHint(v => !v)} title="Overrides ESPN headshot" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
+              </div>
+              <Input value={form.photoUrlOverride ?? ''} onChange={e => set('photoUrlOverride', e.target.value)} placeholder="Auto from ESPN — paste a URL to override" />
+              {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5 }}>Overrides the ESPN headshot.</div>}
+            </div>
+            <Field label="Hero Image URL"><Input value={form.heroImageUrl} onChange={e => set('heroImageUrl', e.target.value)} placeholder="https://..." /></Field>
+            <Field label="Hometown"><Input value={form.hometown} onChange={e => set('hometown', e.target.value)} placeholder="Cincinnati, OH" /></Field>
+            {lockInput('jersey', 'Jersey #', 'jerseyNumber', '12')}
+            {lockInput('height', 'Height', 'height', `6' 2"`)}
+            {lockInput('weight', 'Weight', 'weight', '215')}
+          </>)}
+
+          {section('socials', 'Social media', <>
+            <Field label="Instagram"><Input value={form.instagram} onChange={e => set('instagram', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
+            {lockInput('igFollowers', 'IG Followers', 'igFollowers', 'Auto-refreshed nightly')}
+            <Field label="Twitter / X"><Input value={form.twitter} onChange={e => set('twitter', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
+            {lockInput('twitterFollowers', 'X Followers', 'twitterFollowers', 'Auto-refreshed nightly')}
+            <Field label="TikTok"><Input value={form.tiktok} onChange={e => set('tiktok', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
+            {lockInput('tiktokFollowers', 'TikTok Followers', 'tiktokFollowers', 'Auto-refreshed nightly')}
+          </>)}
+
+          {section('contract', 'Contract', <>
+            {isNFL ? (
               <div style={{ gridColumn: "1/-1" }}>
-                <Field label="Commitment"><Input value={form.committedTo} onChange={e => set('committedTo', e.target.value)} placeholder="School they've committed to (blank if uncommitted)" /></Field>
+                {lockInput('contract', 'Contract ($ / year)', 'contractYearly', 'Auto-pulled from Spotrac')}
+                <div style={{ fontSize: 11, color: G.textTertiary, marginTop: -10, marginBottom: 12 }}>NFL terms sync nightly from Spotrac. A manual value overrides them.</div>
+              </div>
+            ) : (
+              <div style={{ gridColumn: "1/-1" }}>
+                <Field label="Contract ($ / year)"><Input value={form.contractYearly} onChange={e => set('contractYearly', e.target.value)} placeholder="450000" /></Field>
               </div>
             )}
+          </>)}
+
+          {section('sizes', 'Sizes & interests', <>
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Sizes">
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px 12px" }}>
@@ -772,35 +863,22 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Gaming System"><Input value={form.gamingSystem} onChange={e => set('gamingSystem', e.target.value)} placeholder="PS5, Xbox..." /></Field>
             </div>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                Profile Photo URL
-                <span onClick={() => setPhotoHint(v => !v)} title="Overrides ESPN headshot" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
-              </div>
-              <Input value={form.photoUrlOverride ?? ''} onChange={e => set('photoUrlOverride', e.target.value)} placeholder="Auto from ESPN — paste a URL to override" />
-              {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5 }}>Overrides the ESPN headshot.</div>}
-            </div>
-            <Field label="Hero Image URL"><Input value={form.heroImageUrl} onChange={e => set('heroImageUrl', e.target.value)} placeholder="https://..." /></Field>
-            <Field label="Hometown"><Input value={form.hometown} onChange={e => set('hometown', e.target.value)} placeholder="Cincinnati, OH" /></Field>
-            <Field label="Jersey #"><Input value={form.jerseyNumber} onChange={e => set('jerseyNumber', e.target.value)} placeholder="12" /></Field>
-            <Field label="Height"><Input value={form.height} onChange={e => set('height', e.target.value)} placeholder={`6' 2"`} /></Field>
-            <Field label="Weight"><Input value={form.weight} onChange={e => set('weight', e.target.value)} placeholder="215" /></Field>
-            <Field label="Instagram"><Input value={form.instagram} onChange={e => set('instagram', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
-            <Field label="IG Followers"><Input value={form.igFollowers} onChange={e => set('igFollowers', e.target.value)} placeholder="92.3K" /></Field>
-            <Field label="Twitter / X"><Input value={form.twitter} onChange={e => set('twitter', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
-            <Field label="X Followers"><Input value={form.twitterFollowers} onChange={e => set('twitterFollowers', e.target.value)} placeholder="41K" /></Field>
-            <Field label="TikTok"><Input value={form.tiktok} onChange={e => set('tiktok', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
-            <Field label="TikTok Followers"><Input value={form.tiktokFollowers} onChange={e => set('tiktokFollowers', e.target.value)} placeholder="120K" /></Field>
-            <div style={{ gridColumn: "1/-1" }}>
-              <Field label="Bio"><Textarea value={form.bio} onChange={e => set('bio', e.target.value)} rows={4} /></Field>
-            </div>
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Brands Worked With (comma-separated)"><Input value={(form.brands||[]).join(', ')} onChange={e => set('brands', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="Nike, Gatorade..." /></Field>
             </div>
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Interests (comma-separated)"><Input value={(form.interests||[]).join(', ')} onChange={e => set('interests', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="Gaming, Fashion, Music..." /></Field>
             </div>
-          </div>
+          </>)}
+
+          {section('autosync', 'Auto-sync', <>
+            {lockInput('espnId', 'ESPN ID', 'espnId', 'Auto-found nightly', v => v.replace(/\D/g, ''))}
+            {isHS && (
+              <div style={{ gridColumn: "1/-1" }}>
+                {lockInput('url247', '247Sports profile URL', 'profileUrl247', 'Auto-discovered nightly for HS players')}
+              </div>
+            )}
+          </>)}
         </div>
         <div style={{ padding: "14px 24px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, flexShrink: 0 }}>
           <button onClick={onCancel} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>Cancel</button>
@@ -3675,7 +3753,15 @@ function App() {
   };
 
   const [editingAthlete, setEditingAthlete] = useState(null);
-  const saveAthlete = (updated) => {
+  const saveAthlete = (updated, opts) => {
+    if (opts && opts.levelChanged) {
+      // The row moved between sheet tabs, so cached row indexes are stale —
+      // close out and refetch the roster.
+      setEditingAthlete(null);
+      if (view === 'detail') setView('roster');
+      setAthletesLoaded(false);
+      return;
+    }
     setAthletes(prev => prev.map(a => (a.level === updated.level && a._rowIndex === updated._rowIndex) ? updated : a));
     setEditingAthlete(null);
     if (view === 'detail') setSelected(updated);
