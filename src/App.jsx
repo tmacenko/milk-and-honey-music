@@ -1830,16 +1830,20 @@ function Rank247Chip({ name, position }) {
     return null;
   }, [hist.data, name]);
   if (!info) return null;
-  const bits = [
+  const chips = [
     info.stars && `${info.stars}★`,
     info.nat && `#${info.nat} National`,
     info.pos && `#${info.pos} ${position || 'Position'}`,
-  ].filter(Boolean).join(' · ');
-  if (!bits) return null;
+  ].filter(Boolean);
+  if (!chips.length) return null;
   return (
-    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
-      {bits}
-    </span>
+    <>
+      {chips.map(c => (
+        <span key={c} style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
+          {c}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -1904,7 +1908,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
                 <TeamLogo url={a.teamLogo} size={26} />
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: "#fff", fontWeight: 500 }}>{typeLine}</span>}
-                {a.depthRank > 0 && (
+                {companyView && a.depthRank > 0 && (
                   <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: a.depthRank === 1 ? G.green : G.textSecondary, background: a.depthRank === 1 ? G.greenSubtle : "rgba(255,255,255,0.07)", border: `1px solid ${a.depthRank === 1 ? G.greenBorder : "rgba(255,255,255,0.18)"}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
                     {a.depthRank === 1 ? 'Starter' : a.depthRank === 2 ? '2nd string' : a.depthRank === 3 ? '3rd string' : `${a.depthRank}th string`}{a.depthPos ? ` · ${a.depthPos}` : ''}
                   </span>
