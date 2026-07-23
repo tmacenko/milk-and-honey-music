@@ -2310,17 +2310,6 @@ const parseSnapDay = (s) => {
   return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
 };
 
-// Catmull-Rom → bezier: turns [[x,y],…] into a smooth SVG path.
-function smoothPath(pts) {
-  if (pts.length < 2) return '';
-  let d = `M ${pts[0][0]} ${pts[0][1]}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
-    d += ` C ${p1[0] + (p2[0] - p0[0]) / 6} ${p1[1] + (p2[1] - p0[1]) / 6}, ${p2[0] - (p3[0] - p1[0]) / 6} ${p2[1] - (p3[1] - p1[1]) / 6}, ${p2[0]} ${p2[1]}`;
-  }
-  return d;
-}
-
 // Parse SocialHistory rows into per-athlete daily series (sorted, totals + per-platform).
 function seriesFromHistory(rows) {
   const byName = {};
@@ -2336,24 +2325,23 @@ function seriesFromHistory(rows) {
   return byName;
 }
 
-// Tiny smooth line for board rows.
-function MiniTrend({ series, w = 110, h = 30 }) {
-  if (!series || series.length < 2) return <div style={{ width: w, height: h }} />;
-  const vals = series.map(p => p.total);
-  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
-  const pts = series.map((p, i) => [(i / (series.length - 1)) * w, h - 3 - ((p.total - min) / span) * (h - 6)]);
-  return (
-    <svg width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
-      <path d={smoothPath(pts)} fill="none" stroke={G.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
-    </svg>
-  );
-}
 
 // ── Growth board (full page — lives under Marketing) ─────────────────────────
-function GrowthBoardSection({ athletes, onOpenAthlete, isMobile }) {
+// Universal-style: level chips + filter window + search, and a sortable column
+// table with per-platform followers (change underneath), total, and growth.
+function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
   const hist = useAdminTab('socialhistory');
-  const [sortBy, setSortBy] = useState('delta');
-  const [level, setLevel] = useState('All');
+  const [levels, setLevels] = useState([...ALL_LEVELS]);
+  const toggleLevel = (l) => setLevels(prev => {
+    const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
+    return next.length ? next : [...ALL_LEVELS];
+  });
+  const [agent, setAgent] = useState('All');
+  const [side, setSide] = useState('All');
+  const [group, setGroup] = useState('All');
+  const [q, setQ] = useState('');
+  const [sortCol, setSortCol] = useState('growth');
+  const [sortDir, setSortDir] = useState('desc');
   const seriesByName = useMemo(() => seriesFromHistory(hist.data?.rows), [hist.data]);
   const platDelta = useMemo(() => {
     const out = {};
@@ -2367,58 +2355,103 @@ function GrowthBoardSection({ athletes, onOpenAthlete, isMobile }) {
     }
     return out;
   }, [seriesByName]);
-  const list = useMemo(() => {
-    let l = athletes.filter(a => a.growth7dPct !== '' && a.growth7dPct != null);
-    if (level !== 'All') l = l.filter(a => a.level === level);
-    return [...l].sort((a, b) => sortBy === 'pct'
-      ? (parseFloat(b.growth7dPct) || 0) - (parseFloat(a.growth7dPct) || 0)
-      : (b.growth7d || 0) - (a.growth7d || 0));
-  }, [athletes, level, sortBy]);
-  const chip = (on, label, cb) => (
-    <button key={label} onClick={cb} style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
+  const valOf = {
+    ig: a => parseReach(a.igFollowers), x: a => parseReach(a.twitterFollowers), tt: a => parseReach(a.tiktokFollowers),
+    total: a => athleteReach(a), growth: a => (a.growth7d || 0),
+  };
+  const sorted = athletes
+    .filter(a => athleteReach(a) > 0 || (a.growth7d || 0) !== 0)
+    .filter(a => levels.includes(a.level))
+    .filter(a => agent === 'All' || String(a.agentAssigned || '').toLowerCase().includes(agent.toLowerCase()))
+    .filter(a => { if (side === 'All') return true; const g = contractPosGroup(a.position); return POS_SIDES[side].includes(g) && (group === 'All' || g === group); })
+    .filter(a => !q.trim() || athleteSearchMatch(a, q.trim().toLowerCase()))
+    .sort((a, b) => {
+      const cmp = (valOf[sortCol] ? valOf[sortCol](a) - valOf[sortCol](b) : a.name.localeCompare(b.name)) || a.name.localeCompare(b.name);
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  const posValue = side === 'All' ? 'All' : (group !== 'All' ? group : side);
+  const sections = [
+    (staff || []).length > 0 && {
+      id: 'agent', title: 'Agent', value: agent,
+      rows: [
+        { on: agent === 'All', label: 'All agents', onClick: () => setAgent('All') },
+        ...(staff || []).map(n => ({ on: agent === n, label: n, onClick: () => setAgent(agent === n ? 'All' : n) })),
+      ],
+    },
+    {
+      id: 'position', title: 'Position', value: posValue,
+      rows: [
+        { on: side === 'All', label: 'All positions', onClick: () => { setSide('All'); setGroup('All'); } },
+        ...Object.keys(POS_SIDES).flatMap(s => [
+          { on: side === s && group === 'All', label: s, onClick: () => { setSide(side === s ? 'All' : s); setGroup('All'); } },
+          ...(side === s && POS_SIDES[s].length > 1 ? POS_SIDES[s].map(g => ({ on: group === g, label: `· ${g}`, onClick: () => setGroup(group === g ? 'All' : g) })) : []),
+        ]),
+      ],
+    },
+  ].filter(Boolean);
+  const filterActive = agent !== 'All' || side !== 'All';
+  const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null].filter(Boolean).join(', ') || 'All';
+  const platCell = (count, d, tdStyle) => (
+    <td style={tdStyle}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: count ? G.text : G.textTertiary }}>{count ? bigNum(count) : '—'}</div>
+      {d != null && d !== 0 && <div style={{ fontSize: 11.5, fontWeight: 700, color: d > 0 ? G.green : G.red, marginTop: 1 }}>{d > 0 ? '↑' : '↓'} {bigNum(Math.abs(d))}</div>}
+    </td>
   );
-  const days = Math.max(0, ...list.map(a => a.growthDays || 0));
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-        {chip(sortBy === 'delta', 'By followers gained', () => setSortBy('delta'))}
-        {chip(sortBy === 'pct', 'By % growth', () => setSortBy('pct'))}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        {ALL_LEVELS.map(l => levelChipBtn(levels.includes(l), l, () => toggleLevel(l)))}
         <div style={{ width: 10 }} />
-        {['All', 'NFL', 'College', 'High School'].map(lv => chip(level === lv, lv, () => setLevel(lv)))}
+        <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
+          onAll={() => { setLevels([...ALL_LEVELS]); setAgent('All'); setSide('All'); setGroup('All'); }} />
+        <div style={{ flex: 1 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search athletes..."
+          style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Follower growth</span>
-          <span style={{ fontSize: 11, color: G.textTertiary }}>{days >= 7 ? 'Rolling 7 days' : `${days}-day window · builds to 7`}</span>
-        </div>
-        {list.length === 0 && <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No growth data yet — check back after tonight's refresh.</div>}
-        {list.map((a, i) => {
-          const key = a.name.toLowerCase().trim();
-          const pd = platDelta[key];
-          const neg = (a.growth7d || 0) < 0;
-          return (
-            <div key={a.id || i} onClick={() => onOpenAthlete(a)}
-              style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14, padding: isMobile ? "10px 14px" : "11px 18px", borderBottom: i < list.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer" }}
-              onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
-              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-              <div style={{ width: 20, fontSize: 12, fontWeight: 700, color: i < 3 ? G.green : G.textTertiary, flexShrink: 0 }}>{i + 1}</div>
-              <Avatar name={a.name} photoUrl={a.photoUrl} size={isMobile ? 34 : 40} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
-                <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {[a.level, a.position].filter(Boolean).join(' · ')}
-                  {pd && ([['IG', pd.ig], ['X', pd.x], ['TT', pd.tk]].filter(([, v]) => v).length > 0) &&
-                    <> · <span style={{ color: G.textSecondary }}>{[['IG', pd.ig], ['X', pd.x], ['TT', pd.tk]].filter(([, v]) => v).map(([l2, v]) => `${l2} ${v > 0 ? '+' : ''}${bigNum(v)}`).join(' · ')}</span></>}
-                </div>
-              </div>
-              {!isMobile && <MiniTrend series={seriesByName[key]} />}
-              <div style={{ textAlign: "right", flexShrink: 0, minWidth: 64 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: neg ? G.red : G.green }}>{neg ? '' : '+'}{bigNum(a.growth7d || 0)}</div>
-                <div style={{ fontSize: 11, color: G.textTertiary }}>{(a.growth7d || 0) >= 0 ? '↗' : '↘'} {a.growth7dPct}%</div>
-              </div>
-            </div>
-          );
-        })}
+        {sorted.length === 0 ? (
+          <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No follower data matches these filters.</div>
+        ) : (
+          <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead><tr>
+                {[['player', 'Player'], ['ig', 'Instagram'], ['x', 'X'], ['tt', 'TikTok'], ['total', 'Total'], ['growth', 'Growth']].map(([key, h]) => (
+                  <th key={key}
+                    onClick={() => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(key === 'player' ? 'asc' : 'desc'); } }}
+                    style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
+                    {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  </th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {sorted.map((a, i) => {
+                  const pd = platDelta[a.name.toLowerCase().trim()];
+                  const growth = a.growth7d || 0;
+                  const td = { padding: "10px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+                  return (
+                    <tr key={a.id || i} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
+                      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <td style={{ ...td, color: G.text, fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Avatar name={a.name} photoUrl={a.photoUrl} size={30} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
+                        </div>
+                      </td>
+                      {platCell(parseReach(a.igFollowers), pd?.ig, td)}
+                      {platCell(parseReach(a.twitterFollowers), pd?.x, td)}
+                      {platCell(parseReach(a.tiktokFollowers), pd?.tk, td)}
+                      <td style={{ ...td, color: G.text, fontWeight: 700 }}>{bigNum(athleteReach(a))}</td>
+                      <td style={{ ...td, fontWeight: 700, color: growth > 0 ? G.green : growth < 0 ? G.red : G.textTertiary }}>
+                        {growth === 0 ? '—' : <>{growth > 0 ? '+' : ''}{bigNum(growth)}{a.growth7dPct ? <span style={{ color: G.textTertiary, fontWeight: 500 }}> · {a.growth7dPct}%</span> : null}</>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3137,16 +3170,16 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   );
 }
 
-function MarketingPage({ isMobile, athletes, onOpenAthlete }) {
+function MarketingPage({ isMobile, athletes, staff, onOpenAthlete }) {
   const items = [
     ['Outreach tracker', 'Log every pitch — who reached out, to which company, and what they said. No more double-pitching the same brand.'],
     ['Athlete indicators', 'Automatic flags like "no outreach in 30+ days" so nothing slips through the cracks.'],
     ['Pitch engine', 'Pick an athlete, get a drafted pitch and suggested companies based on their school, interests, and audience.'],
   ];
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Marketing</div>
-      <GrowthBoardSection athletes={athletes} onOpenAthlete={onOpenAthlete} isMobile={isMobile} />
+      <GrowthBoardSection athletes={athletes} staff={staff} onOpenAthlete={onOpenAthlete} isMobile={isMobile} />
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "28px 0 12px" }}>
         <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>More tools on the way</span>
         <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 7, padding: "3px 8px" }}>Coming soon</span>
@@ -4278,7 +4311,7 @@ function App() {
               )}
               {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => setAthletesLoaded(false)} />}
-              {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
