@@ -2305,6 +2305,21 @@ function SocialContractModules({ athlete: a, isMobile }) {
               </div>
             </a>
           ))}
+        {rows.length > 0 && (() => {
+          const totReach = rows.reduce((s, r) => s + countFrom(r.count), 0);
+          const totD = pd ? (pd.ig + pd.x + pd.tk) : null;
+          return (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingTop: 10, marginTop: 2, borderTop: `1px solid ${G.surfaceBorder}` }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: G.text }}>Total reach</div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{totReach ? bigNum(totReach) : '—'}</div>
+                {totD != null && totD !== 0 && (
+                  <div style={{ fontSize: 12, fontWeight: 700, color: totD > 0 ? G.green : G.red }}>{totD > 0 ? '↑' : '↓'} {bigNum(Math.abs(totD))}</div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
       <div style={mod}>
         {head('Contract', contract && !a.contractYearly
@@ -2765,9 +2780,29 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
     mineApplied.current = true;
     if (data.rows.some(r => agentMatch(r.cells[agentCol], user.agentKey))) setMine(true);
   }, [data, user, agentCol]);
+  // Contracts-style filters: level chips, position group chips, class dropdown.
+  const [level, setLevel] = useState('All');
+  const [pos, setPos] = useState('All');
+  const [klass, setKlass] = useState('All');
+  const hFind = (re) => headers.findIndex(h => re.test(h));
+  const nameI = hFind(/name/i), schoolI = hFind(/school/i), levelI = hFind(/^level/i),
+    posI = hFind(/position/i), rankI = hFind(/rank/i), classI = hFind(/class|year/i);
+  const cellOf = (r, i) => (i >= 0 ? (r.cells[i] || '') : '');
+  const starsOf = (r) => { const m = String(cellOf(r, rankI)).match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
+  const classes = useMemo(() => [...new Set((data?.rows || []).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = (data?.rows || [])
     .filter(r => !mine || !user?.agentKey || agentCol < 0 || agentMatch(r.cells[agentCol], user.agentKey))
-    .filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())));
+    .filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())))
+    .filter(r => level === 'All' || cellOf(r, levelI).trim() === level)
+    .filter(r => pos === 'All' || contractPosGroup(cellOf(r, posI)) === pos)
+    .filter(r => klass === 'All' || cellOf(r, classI).trim() === klass)
+    .sort((a, b) => starsOf(b) - starsOf(a) || cellOf(a, nameI).localeCompare(cellOf(b, nameI)));
+  const schoolsN = new Set(rows.map(r => cellOf(r, schoolI).trim()).filter(Boolean)).size;
+  const chip = (on, label, cb) => (
+    <button key={label} onClick={cb} style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
+  );
+  const statCard = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const statLbl = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -2785,10 +2820,63 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search recruits..." style={{ ...inputBase, width: isMobile ? 140 : 200 }} />
         <button onClick={() => setEditing('new')} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
       </div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+        <div style={statCard}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{rows.length}</div>
+          <div style={statLbl}>Recruits</div>
+        </div>
+        <div style={statCard}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{rows.filter(r => starsOf(r) >= 4).length}</div>
+          <div style={statLbl}>4-star or better</div>
+        </div>
+        {!isMobile && (
+          <div style={statCard}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{schoolsN}</div>
+            <div style={statLbl}>Schools</div>
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        {['All', 'High School', 'College'].map(lv => chip(level === lv, lv, () => setLevel(lv)))}
+        <div style={{ width: 10 }} />
+        <select value={klass} onChange={e => setKlass(e.target.value)}
+          style={{ padding: "7px 11px", border: `1px solid ${klass !== 'All' ? G.green : G.surfaceBorder}`, borderRadius: 9, background: G.surfaceRaised, color: klass !== 'All' ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: ff, cursor: "pointer" }}>
+          <option value="All">All classes</option>
+          {classes.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+        {['All', 'QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB', 'ST'].map(g => chip(pos === g, g, () => setPos(g)))}
+      </div>
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>By ranking</span>
+          <span style={{ fontSize: 11, color: G.textTertiary }}>Click a recruit to edit</span>
+        </div>
         {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
           : err ? <div style={{ padding: 40, textAlign: "center", color: G.red, fontSize: 13 }}>{err}</div>
-          : <SheetTable headers={headers} rows={rows} onRowClick={setEditing} emptyMsg={q ? 'No recruits match.' : 'No recruits yet — add the first one.'} />}
+          : rows.length === 0 ? <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{q || level !== 'All' || pos !== 'All' || klass !== 'All' ? 'No recruits match these filters.' : 'No recruits yet — add the first one.'}</div>
+          : rows.map((r, i) => {
+            const rank = cellOf(r, rankI);
+            return (
+              <div key={r._row} onClick={() => setEditing(r)}
+                style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14, padding: isMobile ? "10px 14px" : "11px 18px", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer" }}
+                onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <div style={{ width: 20, fontSize: 12, fontWeight: 700, color: i < 3 ? G.green : G.textTertiary, flexShrink: 0 }}>{i + 1}</div>
+                <Avatar name={cellOf(r, nameI)} size={isMobile ? 34 : 40} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cellOf(r, nameI)}</div>
+                  <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {[cellOf(r, posI), cellOf(r, schoolI), cellOf(r, classI), cellOf(r, agentCol)].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                {rank && (
+                  <div style={{ fontSize: 13, fontWeight: 700, color: starsOf(r) >= 4 ? G.green : G.textSecondary, flexShrink: 0 }}>{rank}</div>
+                )}
+              </div>
+            );
+          })}
       </div>
 
       {recruitSubs.length > 0 && (
@@ -2892,6 +2980,7 @@ function ContractsPage({ isMobile, athletes, onOpenAthlete }) {
   const [level, setLevel] = useState('All');
   const [pos, setPos] = useState('All');
   const [team, setTeam] = useState('All');
+  const [q, setQ] = useState('');
   const moneyNum = (v) => {
     const str = String(v == null ? '' : v).trim();
     if (!str) return 0;
@@ -2912,7 +3001,8 @@ function ContractsPage({ isMobile, athletes, onOpenAthlete }) {
   const list = deals.filter(d =>
     (level === 'All' || d.a.level === level) &&
     (pos === 'All' || contractPosGroup(d.a.position) === pos) &&
-    (team === 'All' || d.team === team));
+    (team === 'All' || d.team === team) &&
+    (!q.trim() || athleteSearchMatch(d.a, q.trim().toLowerCase())));
   const sum = list.reduce((s, d) => s + d.yearly, 0);
   const chip = (on, label, cb) => (
     <button key={label} onClick={cb} style={{ padding: "7px 13px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
@@ -2946,6 +3036,9 @@ function ContractsPage({ isMobile, athletes, onOpenAthlete }) {
           <option value="All">All teams</option>
           {teams.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
+        <div style={{ flex: 1 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search contracts..."
+          style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
         {['All', 'QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB', 'ST'].map(g => chip(pos === g, g, () => setPos(g)))}
