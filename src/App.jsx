@@ -1929,6 +1929,27 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               )}
             </div>
           )}
+          {companyView && (() => {
+            const sizes = [['Shirt', a.shirtSize], ['Hoodie', a.hoodieSize], ['Shorts', a.shortsSize], ['Pants', a.sweatpantsSize], ['Shoes', a.shoeSize], ['Gloves', a.glovesSize], ['Gaming', a.gamingSystem]]
+              .filter(([, v]) => String(v || '').trim());
+            return (
+              <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Apparel & gear</div>
+                {sizes.length === 0
+                  ? <div style={{ fontSize: 13, color: G.textTertiary }}>No sizes on file yet.</div>
+                  : (
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: "14px 12px" }}>
+                      {sizes.map(([l, v]) => (
+                        <div key={l}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{l}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: G.text, marginTop: 3 }}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+              </div>
+            );
+          })()}
           {a.profileUrl247 && (
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
               <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>
@@ -3369,6 +3390,119 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
   );
 }
 
+// ── Gifting page (company only) — sizes + addresses for sending merch ────────
+function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
+  const [levels, setLevels] = useState([...ALL_LEVELS]);
+  const toggleLevel = (l) => setLevels(prev => {
+    const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
+    return next.length ? next : [...ALL_LEVELS];
+  });
+  const [agent, setAgent] = useState('All');
+  const [side, setSide] = useState('All');
+  const [group, setGroup] = useState('All');
+  const [q, setQ] = useState('');
+  const [sortCol, setSortCol] = useState('player');
+  const [sortDir, setSortDir] = useState('asc');
+  const COLS = [
+    ['player', 'Player', a => a.name],
+    ['shirt', 'Shirt', a => a.shirtSize || ''],
+    ['hoodie', 'Hoodie', a => a.hoodieSize || ''],
+    ['shorts', 'Shorts', a => a.shortsSize || ''],
+    ['pants', 'Pants', a => a.sweatpantsSize || ''],
+    ['shoes', 'Shoes', a => a.shoeSize || ''],
+    ['gloves', 'Gloves', a => a.glovesSize || ''],
+    ['gaming', 'Gaming', a => a.gamingSystem || ''],
+    ['address', 'Address', a => a.address || ''],
+  ];
+  const colOf = Object.fromEntries(COLS.map(([k, , fn]) => [k, fn]));
+  const sorted = athletes
+    .filter(a => levels.includes(a.level))
+    .filter(a => agent === 'All' || String(a.agentAssigned || '').toLowerCase().includes(agent.toLowerCase()))
+    .filter(a => { if (side === 'All') return true; const g = contractPosGroup(a.position); return POS_SIDES[side].includes(g) && (group === 'All' || g === group); })
+    .filter(a => !q.trim() || athleteSearchMatch(a, q.trim().toLowerCase()))
+    .sort((a, b) => {
+      const va = String(colOf[sortCol](a) || ''), vb = String(colOf[sortCol](b) || '');
+      // Blanks always sink to the bottom regardless of direction.
+      if (!va.trim() !== !vb.trim()) return va.trim() ? -1 : 1;
+      const cmp = va.localeCompare(vb, undefined, { numeric: true, sensitivity: 'base' }) || a.name.localeCompare(b.name);
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  const posValue = side === 'All' ? 'All' : (group !== 'All' ? group : side);
+  const sections = [
+    (staff || []).length > 0 && {
+      id: 'agent', title: 'Agent', value: agent,
+      rows: [
+        { on: agent === 'All', label: 'All agents', onClick: () => setAgent('All') },
+        ...(staff || []).map(n => ({ on: agent === n, label: n, onClick: () => setAgent(agent === n ? 'All' : n) })),
+      ],
+    },
+    {
+      id: 'position', title: 'Position', value: posValue,
+      rows: [
+        { on: side === 'All', label: 'All positions', onClick: () => { setSide('All'); setGroup('All'); } },
+        ...Object.keys(POS_SIDES).flatMap(s => [
+          { on: side === s && group === 'All', label: s, onClick: () => { setSide(side === s ? 'All' : s); setGroup('All'); } },
+          ...(side === s && POS_SIDES[s].length > 1 ? POS_SIDES[s].map(g => ({ on: group === g, label: `· ${g}`, onClick: () => setGroup(group === g ? 'All' : g) })) : []),
+        ]),
+      ],
+    },
+  ].filter(Boolean);
+  const filterActive = agent !== 'All' || side !== 'All';
+  const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null].filter(Boolean).join(', ') || 'All';
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Gifting</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        {ALL_LEVELS.map(l => levelChipBtn(levels.includes(l), l, () => toggleLevel(l)))}
+        <div style={{ width: 10 }} />
+        <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
+          onAll={() => { setLevels([...ALL_LEVELS]); setAgent('All'); setSide('All'); setGroup('All'); }} />
+        <div style={{ flex: 1 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search athletes..."
+          style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
+      </div>
+      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+        {sorted.length === 0 ? (
+          <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No athletes match these filters.</div>
+        ) : (
+          <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead><tr>
+                {COLS.map(([key, h]) => (
+                  <th key={key}
+                    onClick={() => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir('asc'); } }}
+                    style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
+                    {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  </th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {sorted.map((a, i) => {
+                  const td = { padding: "10px 14px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap" };
+                  return (
+                    <tr key={a.id || i} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
+                      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <td style={{ ...td, color: G.text, fontWeight: 600, maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
+                        </div>
+                      </td>
+                      {COLS.slice(1, 8).map(([key, , fn]) => <td key={key} style={td}>{String(fn(a) || '').trim() || '—'}</td>)}
+                      <td style={{ ...td, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }} title={a.address || ''}>{String(a.address || '').trim() || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // NFL Team Info is block-shaped in the sheet: a team-name row, a Training
 // Facility row (address in col B), a Name/Title/Email header, then contacts.
 function parseNflTeams(data) {
@@ -4044,6 +4178,7 @@ function App() {
     { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
     { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
     { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
+    { key: 'gifting', label: 'Gifting', icon: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z' },
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
   ];
@@ -4312,6 +4447,7 @@ function App() {
               {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => setAthletesLoaded(false)} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && sportsPage === 'gifting' && <GiftingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
