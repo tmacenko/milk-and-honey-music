@@ -4153,15 +4153,18 @@ function App() {
     setShareDetailLoading(false);
   };
 
+  // Fixed order per the team's preference; any type in the data that isn't
+  // listed still shows (after the known ones), and "UK Client" is a
+  // location-based pseudo-type.
   const types = useMemo(() => {
+    const ORDER = ['Songwriter', 'Producer', 'Artist', 'Mixer', 'Composer', 'Remixer'];
     const all = new Set();
     clients.forEach(c => (c.types || []).forEach(t => all.add(t)));
-    const sorted = Array.from(all).sort((a, b) => {
-      if (a === 'Artist') return -1; if (b === 'Artist') return 1;
-      return a.localeCompare(b);
-    });
-    return ['All', ...sorted];
+    const extra = Array.from(all).filter(t => !ORDER.includes(t)).sort();
+    return ['All', ...ORDER, ...extra, 'UK Client'];
   }, [clients]);
+  const isUKClient = (c) => [c.country, c.country2, c.country3]
+    .some(v => ['uk', 'united kingdom', 'england', 'britain', 'scotland', 'wales'].includes(String(v || '').toLowerCase().trim()));
 
   const contacts = useMemo(() => ['All', ...Array.from(new Set(
     clients.flatMap(c => (c.contact || '').split(',').map(s => s.trim()).filter(Boolean))
@@ -4193,7 +4196,7 @@ function App() {
         .sort((a, b) => customGroup.indexOf(a.name) - customGroup.indexOf(b.name));
     }
     const list = clients.filter(c => {
-      if (filterTypes.length > 0 && !filterTypes.some(t => (c.types || []).includes(t))) return false;
+      if (filterTypes.length > 0 && !filterTypes.some(t => t === 'UK Client' ? isUKClient(c) : (c.types || []).includes(t))) return false;
       if (filterContact !== 'All' && !(c.contact || '').split(',').map(s => s.trim()).includes(filterContact)) return false;
       if (filterLabel !== 'All' && c.label !== filterLabel) return false;
       if (filterCountry !== 'All' && c.country !== filterCountry) return false;
