@@ -1590,8 +1590,22 @@ function SportsFilterDropdown({ compact, level, onLevel, agents, agentValue, onA
       {on && <span style={{ color: G.green, fontSize: 12 }}>✓</span>}
     </button>
   );
-  const head = (t) => <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, padding: "6px 12px 3px" }}>{t}</div>;
   const divider = () => <div style={{ height: 1, background: G.surfaceBorder, margin: "6px 8px" }} />;
+  // Accordion sections — collapsed by default so the menu stays short; click a
+  // section (Level / Agent / Position) to reveal its choices.
+  const [expanded, setExpanded] = useState('');
+  const secHead = (id, title, value) => (
+    <button onClick={() => setExpanded(e => e === id ? '' : id)}
+      style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 12px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, fontSize: 13, fontWeight: 600, color: G.text, textAlign: "left" }}
+      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+      {title}
+      <span style={{ display: "flex", alignItems: "center", gap: 6, color: value && value !== 'All' ? G.green : G.textTertiary, fontSize: 12, fontWeight: value && value !== 'All' ? 700 : 500, minWidth: 0 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{value || 'All'}</span>
+        <span style={{ fontSize: 9, opacity: 0.7, transform: expanded === id ? 'rotate(180deg)' : 'none', transition: `transform 0.15s ${G.ease}` }}>▾</span>
+      </span>
+    </button>
+  );
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button onClick={toggle}
@@ -1606,32 +1620,41 @@ function SportsFilterDropdown({ compact, level, onLevel, agents, agentValue, onA
           {item(!active, 'All', () => onAll())}
           {onMine && item(customCount === 0 && !!mineOn, 'My clients', () => onMine())}
           {divider()}
-          {head('Level')}
-          {item(customCount === 0 && level === 'All', 'All levels', () => onLevel('All'))}
-          {['NFL', 'College', 'High School'].map(l => item(customCount === 0 && level === l, l, () => onLevel(level === l ? 'All' : l)))}
-          {(agents || []).length > 0 && (
+          {secHead('level', 'Level', level)}
+          {expanded === 'level' && (
             <>
-              {divider()}
-              {head('Agent')}
-              {item(customCount === 0 && agentValue === 'All', 'All agents', () => onAgent('All'))}
-              {agents.map(n => item(customCount === 0 && agentValue === n, n, () => onAgent(agentValue === n ? 'All' : n)))}
+              {item(customCount === 0 && level === 'All', 'All levels', () => onLevel('All'), true)}
+              {['NFL', 'College', 'High School'].map(l => item(customCount === 0 && level === l, l, () => onLevel(level === l ? 'All' : l), true))}
             </>
           )}
-          {divider()}
-          {head('Position')}
-          {item(customCount === 0 && posSide === 'All', 'All positions', () => onPosSide('All'))}
-          {Object.keys(POS_SIDES).map(s => (
-            <div key={s}>
-              {item(customCount === 0 && posSide === s && posGroup === 'All', s, () => onPosSide(posSide === s ? 'All' : s))}
-              {posSide === s && POS_SIDES[s].length > 1 && POS_SIDES[s].map(g =>
-                item(posGroup === g, g, () => onPosGroup(posGroup === g ? 'All' : g), true))}
-            </div>
-          ))}
+          {(agents || []).length > 0 && (
+            <>
+              {secHead('agent', 'Agent', agentValue)}
+              {expanded === 'agent' && (
+                <>
+                  {item(customCount === 0 && agentValue === 'All', 'All agents', () => onAgent('All'), true)}
+                  {agents.map(n => item(customCount === 0 && agentValue === n, n, () => onAgent(agentValue === n ? 'All' : n), true))}
+                </>
+              )}
+            </>
+          )}
+          {secHead('position', 'Position', posSide === 'All' ? 'All' : (posGroup !== 'All' ? posGroup : posSide))}
+          {expanded === 'position' && (
+            <>
+              {item(customCount === 0 && posSide === 'All', 'All positions', () => onPosSide('All'), true)}
+              {Object.keys(POS_SIDES).map(s => (
+                <div key={s}>
+                  {item(customCount === 0 && posSide === s && posGroup === 'All', s, () => onPosSide(posSide === s ? 'All' : s), true)}
+                  {posSide === s && POS_SIDES[s].length > 1 && POS_SIDES[s].map(g =>
+                    item(posGroup === g, `· ${g}`, () => onPosGroup(posGroup === g ? 'All' : g), true))}
+                </div>
+              ))}
+            </>
+          )}
           {depthOptions && (
             <>
-              {divider()}
-              {head('Depth chart')}
-              {depthOptions.map(o => item(customCount === 0 && depthValue === o, o, () => onDepth(o)))}
+              {secHead('depth', 'Depth chart', depthValue || 'All')}
+              {expanded === 'depth' && depthOptions.map(o => item(customCount === 0 && depthValue === o, o, () => onDepth(o), true))}
             </>
           )}
           {divider()}
@@ -3005,27 +3028,34 @@ function RecruitingBoard({ isMobile, user, athletes, onPromoted }) {
         {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
           : err ? <div style={{ padding: 40, textAlign: "center", color: G.red, fontSize: 13 }}>{err}</div>
           : rows.length === 0 ? <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{q || level !== 'All' || pos !== 'All' || klass !== 'All' ? 'No recruits match these filters.' : 'No recruits yet — add the first one.'}</div>
-          : rows.map((r, i) => {
-            const rank = cellOf(r, rankI);
-            return (
-              <div key={r._row} onClick={() => setEditing(r)}
-                style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14, padding: isMobile ? "10px 14px" : "11px 18px", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer" }}
-                onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <div style={{ width: 20, fontSize: 12, fontWeight: 700, color: i < 3 ? G.green : G.textTertiary, flexShrink: 0 }}>{i + 1}</div>
-                <Avatar name={cellOf(r, nameI)} size={isMobile ? 34 : 40} />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cellOf(r, nameI)}</div>
-                  <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {[cellOf(r, posI), cellOf(r, schoolI), cellOf(r, classI), cellOf(r, agentCol)].filter(Boolean).join(' · ')}
-                  </div>
-                </div>
-                {rank && (
-                  <div style={{ fontSize: 13, fontWeight: 700, color: starsOf(r) >= 4 ? G.green : G.textSecondary, flexShrink: 0 }}>{rank}</div>
-                )}
-              </div>
-            );
-          })}
+          : (
+            <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr>
+                  {['Player', 'Position', 'School', 'Class', 'Agent', 'Rating'].map(h => (
+                    <th key={h} style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {rows.map((r, i) => {
+                    const td = { padding: "11px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" };
+                    return (
+                      <tr key={r._row} onClick={() => setEditing(r)} style={{ cursor: "pointer" }}
+                        onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                        <td style={{ ...td, color: G.text, fontWeight: 600 }}>{cellOf(r, nameI)}</td>
+                        <td style={td}>{cellOf(r, posI)}</td>
+                        <td style={td}>{cellOf(r, schoolI)}</td>
+                        <td style={td}>{cellOf(r, classI)}</td>
+                        <td style={td}>{cellOf(r, agentCol)}</td>
+                        <td style={{ ...td, color: starsOf(r) >= 4 ? G.green : G.textSecondary, fontWeight: 700 }}>{cellOf(r, rankI)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
       </div>
 
       {recruitSubs.length > 0 && (
