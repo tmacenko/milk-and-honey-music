@@ -1716,8 +1716,9 @@ const athleteReach = a => parseReach(a.igFollowers) + parseReach(a.twitterFollow
 
 // ── Marketability score (50–100) — internal only ─────────────────────────────
 // Absolute scales (an athlete's score never depends on teammates). Every
-// athlete starts at 50; Reach +18 · Role/Pedigree +13 · Program +9 ·
-// Position +6 · Momentum +3 · Trajectory +2. Established stars max the
+// athlete starts at 50; Reach +18 · Role +19 (depth chart / 247 pedigree,
+// weighted by position — a starting LT outranks a 3rd-string QB) ·
+// Program +9 · Momentum +3 · Trajectory +2. Established stars max the
 // stable factors (Kelce ≈ 95) — momentum is a bonus, never a drag.
 // College program points by conference: SEC / Big Ten / Notre Dame on top
 // (with an elite cut above the rest), then ACC / Big 12 (their elites match
@@ -1740,8 +1741,8 @@ function collegeProgramPts(name, hasLogo) {
   return hasLogo ? 5 : 3; // recognized G5 / other FBS · unknown or small school
 }
 const MARQUEE_NFL = new Set(['kansas city chiefs', 'dallas cowboys', 'san francisco 49ers', 'philadelphia eagles', 'green bay packers', 'pittsburgh steelers', 'new york giants', 'new york jets', 'chicago bears', 'denver broncos']);
-// Position marketability tiers: QBs sell, linemen mostly don't.
-const POS_MKT = { QB: 6, WR: 5, RB: 5, TE: 4, DB: 3, DL: 3, LB: 3, OL: 3, ST: 1 };
+// Position multiplier inside the role factor: QBs sell, specialists don't.
+const POS_FACTOR = { QB: 1, WR: 0.85, RB: 0.85, TE: 0.7, DB: 0.55, DL: 0.55, LB: 0.55, OL: 0.55, ST: 0.25 };
 function computeMarketability(a, series, s247) {
   const c01 = v => Math.max(0, Math.min(1, v));
   const lc = s => String(s || '').toLowerCase().trim();
@@ -1749,15 +1750,17 @@ function computeMarketability(a, series, s247) {
   const pct = Math.max(0, parseFloat(a.growth7dPct) || 0);
   const momentum = 2 * c01(pct / 3) + 1 * c01((a.growth7d || 0) / 25000); // 3%/wk or +25K/wk → max
   const fa = /free agent|retired/i.test(String(a.status || '')) || /free agent/i.test(String(a.nflTeam || ''));
+  const posF = POS_FACTOR[contractPosGroup(a.position)] ?? 0.5;
   let role;
   if (a.level === 'High School') {
     const stars = Math.round(parseFloat(s247?.stars) || 0);
-    role = [0, 2, 4, 7, 11, 13][Math.max(0, Math.min(5, stars))];
+    const starF = [0.1, 0.15, 0.3, 0.55, 0.85, 1][Math.max(0, Math.min(5, stars))];
+    role = 19 * starF * (0.55 + 0.45 * posF);
   } else {
-    role = a.depthRank === 1 ? 13 : a.depthRank === 2 ? 9 : a.depthRank === 3 ? 5 : a.depthRank > 3 ? 4 : 3;
-    if (fa) role = Math.min(role, 3);
+    const depthF = a.depthRank === 1 ? 1 : a.depthRank === 2 ? 0.65 : a.depthRank === 3 ? 0.4 : a.depthRank > 3 ? 0.28 : 0.22;
+    role = 19 * depthF * (0.55 + 0.45 * posF);
+    if (fa) role = Math.min(role, 4);
   }
-  const position = POS_MKT[contractPosGroup(a.position)] ?? 2;
   const PROG_SCALE = { 10: 9, 8: 7, 6: 5, 5: 4, 3: 2 };
   let program = 2;
   if (a.level === 'NFL') program = fa ? 3 : MARQUEE_NFL.has(lc(a.nflTeam)) ? 9 : 7;
@@ -1777,9 +1780,8 @@ function computeMarketability(a, series, s247) {
   }
   const parts = [
     ['Reach', Math.round(reach), 18],
-    [a.level === 'High School' ? 'Pedigree' : 'Role', Math.round(role), 13],
+    [a.level === 'High School' ? 'Pedigree' : 'Role', Math.round(role), 19],
     ['Program', Math.round(program), 9],
-    ['Position', position, 6],
     ['Momentum', Math.round(momentum), 3],
     ['Trajectory', Math.round(trajectory), 2],
   ];
