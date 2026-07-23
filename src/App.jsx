@@ -1714,30 +1714,32 @@ const parseReach = v => {
 };
 const athleteReach = a => parseReach(a.igFollowers) + parseReach(a.twitterFollowers) + parseReach(a.tiktokFollowers);
 
-// ── Marketability score (0–100) — internal only ──────────────────────────────
-// Absolute scales (an athlete's score never depends on teammates): Reach 25 ·
-// Momentum 25 · Role/Pedigree 25 · Program 15 · Trajectory 10.
+// ── Marketability score (50–100) — internal only ─────────────────────────────
+// Absolute scales (an athlete's score never depends on teammates). Every
+// athlete starts at 50; Reach +20 · Role/Pedigree +15 · Program +10 ·
+// Momentum +4 · Trajectory +2. Established stars max the first three
+// (Kelce ≈ 97) — momentum is a bonus, never a drag.
 const BLUE_BLOODS = new Set(['georgia', 'alabama', 'ohio state', 'michigan', 'texas', 'oklahoma', 'usc', 'notre dame', 'lsu', 'florida', 'florida state', 'clemson', 'oregon', 'penn state', 'tennessee', 'auburn', 'miami', 'texas a&m']);
 const MARQUEE_NFL = new Set(['kansas city chiefs', 'dallas cowboys', 'san francisco 49ers', 'philadelphia eagles', 'green bay packers', 'pittsburgh steelers', 'new york giants', 'new york jets', 'chicago bears', 'denver broncos']);
 function computeMarketability(a, series, s247) {
   const c01 = v => Math.max(0, Math.min(1, v));
   const lc = s => String(s || '').toLowerCase().trim();
-  const reach = 25 * c01((Math.log10(Math.max(athleteReach(a), 1)) - 3) / 4); // 1K → 0 · 10M+ → max
+  const reach = 20 * c01((Math.log10(Math.max(athleteReach(a), 1)) - 3) / 4); // 1K → 0 · 10M+ → max
   const pct = Math.max(0, parseFloat(a.growth7dPct) || 0);
-  const momentum = 15 * c01(pct / 3) + 10 * c01((a.growth7d || 0) / 25000); // 3%/wk or +25K/wk → max
+  const momentum = 2.5 * c01(pct / 3) + 1.5 * c01((a.growth7d || 0) / 25000); // 3%/wk or +25K/wk → max
   const fa = /free agent|retired/i.test(String(a.status || '')) || /free agent/i.test(String(a.nflTeam || ''));
   let role;
   if (a.level === 'High School') {
     const stars = Math.round(parseFloat(s247?.stars) || 0);
-    role = [0, 3, 6, 12, 19, 25][Math.max(0, Math.min(5, stars))];
+    role = [0, 2, 4, 8, 12, 15][Math.max(0, Math.min(5, stars))];
   } else {
-    role = a.depthRank === 1 ? 25 : a.depthRank === 2 ? 16 : a.depthRank === 3 ? 9 : a.depthRank > 3 ? 5 : 4;
-    if (fa) role = Math.min(role, 4);
+    role = a.depthRank === 1 ? 15 : a.depthRank === 2 ? 10 : a.depthRank === 3 ? 6 : a.depthRank > 3 ? 4 : 3;
+    if (fa) role = Math.min(role, 3);
   }
-  let program = 4;
-  if (a.level === 'NFL') program = fa ? 5 : MARQUEE_NFL.has(lc(a.nflTeam)) ? 15 : 12;
-  else if (a.level === 'College') program = BLUE_BLOODS.has(lc(a.college)) ? 15 : (a.teamLogo ? 11 : 6);
-  else program = a.committedTo ? (BLUE_BLOODS.has(lc(a.committedTo)) ? 12 : 8) : 4;
+  let program = 2;
+  if (a.level === 'NFL') program = fa ? 3 : MARQUEE_NFL.has(lc(a.nflTeam)) ? 10 : 8;
+  else if (a.level === 'College') program = BLUE_BLOODS.has(lc(a.college)) ? 10 : (a.teamLogo ? 7 : 4);
+  else program = a.committedTo ? (BLUE_BLOODS.has(lc(a.committedTo)) ? 8 : 5) : 2;
   // Trajectory: did this week's follower gain beat last week's?
   let trajectory = 0;
   if (series && series.length >= 3) {
@@ -1746,17 +1748,17 @@ function computeMarketability(a, series, s247) {
     const w1 = at(last.dt.getTime() - 7 * 86400000), w2 = at(last.dt.getTime() - 14 * 86400000);
     if (w1 !== last && w2 !== w1) {
       const cur = last.total - w1.total, prev = w1.total - w2.total;
-      if (cur > prev) trajectory = 10 * c01((cur - prev) / Math.max(prev, 500));
+      if (cur > prev) trajectory = 2 * c01((cur - prev) / Math.max(prev, 500));
     }
   }
   const parts = [
-    ['Reach', Math.round(reach), 25],
-    ['Momentum', Math.round(momentum), 25],
-    [a.level === 'High School' ? 'Pedigree' : 'Role', Math.round(role), 25],
-    ['Program', Math.round(program), 15],
-    ['Trajectory', Math.round(trajectory), 10],
+    ['Reach', Math.round(reach), 20],
+    [a.level === 'High School' ? 'Pedigree' : 'Role', Math.round(role), 15],
+    ['Program', Math.round(program), 10],
+    ['Momentum', Math.round(momentum), 4],
+    ['Trajectory', Math.round(trajectory), 2],
   ];
-  return { score: Math.min(100, Math.round(reach + momentum + role + program + trajectory)), parts };
+  return { score: Math.min(100, 50 + parts.reduce((s, p) => s + p[1], 0)), parts };
 }
 // Latest 247 snapshot per athlete from the StatHistory tab (later rows win).
 function latest247From(rows) {
