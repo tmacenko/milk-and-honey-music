@@ -3190,6 +3190,8 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
   const [group, setGroup] = useState('All');
   const [team, setTeam] = useState('All');
   const [q, setQ] = useState('');
+  const [sortCol, setSortCol] = useState('yearly');
+  const [sortDir, setSortDir] = useState('desc');
   const moneyNum = (v) => {
     const str = String(v == null ? '' : v).trim();
     if (!str) return 0;
@@ -3216,6 +3218,15 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
       (!q.trim() || athleteSearchMatch(d.a, q.trim().toLowerCase()));
   });
   const sum = list.reduce((s, d) => s + d.yearly, 0);
+  const numOf = { yearly: d => d.yearly, total: d => moneyNum(d.a.contractTotal), gtd: d => moneyNum(d.a.contractGuaranteed) };
+  const sorted = [...list].sort((x, y) => {
+    const cmp = (numOf[sortCol] ? numOf[sortCol](x) - numOf[sortCol](y)
+      : sortCol === 'position' ? String(x.a.position || '').localeCompare(String(y.a.position || ''))
+      : sortCol === 'team' ? x.team.localeCompare(y.team)
+      : sortCol === 'years' ? String(x.a.contractYears || '').localeCompare(String(y.a.contractYears || ''))
+      : x.a.name.localeCompare(y.a.name)) || x.a.name.localeCompare(y.a.name);
+    return sortDir === 'desc' ? -cmp : cmp;
+  });
   const posValue = side === 'All' ? 'All' : (group !== 'All' ? group : side);
   const sections = [
     (staff || []).length > 0 && {
@@ -3276,34 +3287,50 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
           style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
-        {list.length === 0 && (
+        {sorted.length === 0 ? (
           <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>
-            No contracts match these filters. NFL deals sync nightly from Spotrac; college numbers go in via Edit → Contract ($ / year).
+            No contracts match these filters.
+          </div>
+        ) : (
+          <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead><tr>
+                {[['player', 'Player'], ['position', 'Position'], ['team', 'Team'], ['yearly', '$ / Year'], ['years', 'Years'], ['total', 'Total'], ['gtd', 'Guaranteed']].map(([key, h]) => (
+                  <th key={key}
+                    onClick={() => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(['yearly', 'total', 'gtd'].includes(key) ? 'desc' : 'asc'); } }}
+                    style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
+                    {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  </th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {sorted.map((d, i) => {
+                  const a = d.a;
+                  const td = { padding: "10px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" };
+                  const tot = moneyNum(a.contractTotal), gtd = moneyNum(a.contractGuaranteed);
+                  return (
+                    <tr key={a.id || i} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
+                      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <td style={{ ...td, color: G.text, fontWeight: 600 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Avatar name={a.name} photoUrl={a.photoUrl} size={30} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
+                        </div>
+                      </td>
+                      <td style={td}>{a.position}</td>
+                      <td style={td}>{d.team}</td>
+                      <td style={{ ...td, color: G.text, fontWeight: 700 }}>{fmt(d.yearly)}</td>
+                      <td style={td}>{d.manual ? '—' : (a.contractYears || '—')}</td>
+                      <td style={td}>{tot ? fmt(tot) : '—'}</td>
+                      <td style={td}>{gtd ? fmt(gtd) : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-        {list.map((d, i) => {
-          const a = d.a;
-          const terms = d.manual ? '' : [a.contractYears, moneyNum(a.contractTotal) && `${fmt(moneyNum(a.contractTotal))} total`, moneyNum(a.contractGuaranteed) && `${fmt(moneyNum(a.contractGuaranteed))} gtd`].filter(Boolean).join(' · ');
-          return (
-            <div key={a.id || i} onClick={() => onOpenAthlete(a)}
-              style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14, padding: isMobile ? "10px 14px" : "11px 18px", borderBottom: i < list.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer" }}
-              onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
-              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-              <div style={{ width: 20, fontSize: 12, fontWeight: 700, color: i < 3 ? G.green : G.textTertiary, flexShrink: 0 }}>{i + 1}</div>
-              <Avatar name={a.name} photoUrl={a.photoUrl} size={isMobile ? 34 : 40} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
-                <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {[a.position, d.team, a.level === 'College' ? 'College' : ''].filter(Boolean).join(' · ')}
-                </div>
-              </div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{fmt(d.yearly)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>/ yr</span></div>
-                {terms && <div style={{ fontSize: 11, color: G.textTertiary }}>{terms}</div>}
-              </div>
-            </div>
-          );
-        })}
       </div>
     </div>
   );
