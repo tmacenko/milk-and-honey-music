@@ -246,6 +246,14 @@ function mergeAthlete(row, ext, level) {
     growth7d: parseInt(ext['growth7d'], 10) || 0,
     growth7dPct: ext['growth7dPct'] != null ? String(ext['growth7dPct']) : '',
     growthDays: parseInt(ext['growthDays'], 10) || 0,
+    // Contract: manual yearly amount (AppData contractValue — the college flow)
+    // beats the Spotrac sync; the auto fields carry full NFL terms. Internal
+    // only — none of these are in PUBLIC_FIELDS.
+    contractYearly: ext['contractValue'] || '',
+    contractTotal: ext['contractTotal'] || '',
+    contractAav: ext['contractAav'] || '',
+    contractYears: ext['contractYears'] || '',
+    contractGuaranteed: ext['contractGuaranteed'] || '',
     agentAssigned: row['Lead Agent'] || row['Agent'] || '',
     birthday: row['Birthday'] || '',
     shirtSize: row['Shirt'] || '', hoodieSize: row['Hoodie'] || '', shortsSize: row['Shorts'] || '',
@@ -352,6 +360,7 @@ async function saveAthlete(token, body) {
     teamOverride: a.teamOverride,
     profileUrl247: a.profileUrl247,
     espnId: a.espnId,
+    contractValue: a.contractYearly,
     status: a.status, tiktok: a.tiktok,
     interests: Array.isArray(a.interests) ? a.interests.join(', ') : a.interests,
     brands: Array.isArray(a.brands) ? a.brands.join(', ') : a.brands,
@@ -1094,7 +1103,7 @@ module.exports = async (req, res) => {
       sheetGet(token, 'College!A:Q'),
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
-      sheetGet(token, "'AutoSync'!A:R").catch(() => ({ values: [] })), // pre-migration tolerance
+      sheetGet(token, "'AutoSync'!A:T").catch(() => ({ values: [] })), // pre-migration tolerance
       sheetGet(token, "'Staff'!A:A").catch(() => ({ values: [] })),    // names only — never the password column
       getDecks().catch(() => null),
     ]);
@@ -1111,7 +1120,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;

@@ -172,6 +172,29 @@ function collegeUrlFor(map, school) {
   return hit ? map[hit] : null;
 }
 
+// Spotrac team contracts page → nameKey → {total, aav, gtd, years}.
+// Rows live in server-rendered tables; the active-contracts table comes first,
+// so the first row seen for a player wins.
+function parseSpotracContracts(html) {
+  const out = {};
+  for (const rm of html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+    const row = rm[1];
+    const am = row.match(/<a[^>]*(?:redirect\/player|\/player\/_\/id\/)[^>]*>([^<]+)<\/a>/);
+    if (!am) continue;
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+    // Layout: name,pos,startYear,type,ageAtSigning,startYear,endYear,yrs,value,avg,gtdAtSign,practicalGtd
+    if (cells.length < 12 || !/^\$/.test(cells[8])) continue;
+    const k = nameKey(am[1]);
+    if (out[k]) continue;
+    const gtd = cells[11] && cells[11] !== '-' ? cells[11] : (cells[10] !== '-' ? cells[10] : '');
+    out[k] = {
+      total: cells[8], aav: cells[9], gtd,
+      years: /^\d{4}$/.test(cells[5]) && /^\d{4}$/.test(cells[6]) ? `${cells[5]}–${cells[6]}` : '',
+    };
+  }
+  return out;
+}
+
 async function runTasks(tasks, concurrency, deadline) {
   let i = 0, timedOut = false;
   const workers = Array.from({ length: concurrency }, async () => {
@@ -208,7 +231,7 @@ module.exports = async (req, res) => {
     const token = await getToken();
     const [nfl, col, hs, app, auto] = await Promise.all([
       sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'), sheetGet(token, 'Highschool!A:S'),
-      sheetGet(token, 'AppData!A:AZ'), sheetGet(token, "'AutoSync'!A:L"),
+      sheetGet(token, 'AppData!A:AZ'), sheetGet(token, "'AutoSync'!A:T"),
     ]);
 
     // Write target is the AutoSync tab (robot-owned; created by the sheet
@@ -216,9 +239,20 @@ module.exports = async (req, res) => {
     // for the ESPN/247 sync are appended to its header row on first run.
     const autoRows = auto.values || [];
     let autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
-    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247'];
+    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed'];
     const missingAuto = AUTO_EXTRA.filter(h => !autoHeaders.some(x => x.toLowerCase() === h.toLowerCase()));
     if (missingAuto.length && !dryRun) {
+      // Widen the grid first if the tab is at its column limit.
+      const metaR0 = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties(columnCount)))`, { headers: { Authorization: `Bearer ${token}` } });
+      const meta0 = await metaR0.json();
+      const asMeta0 = (meta0.sheets || []).find(s => (s.properties?.title || '').trim() === 'AutoSync');
+      const width0 = asMeta0?.properties?.gridProperties?.columnCount || autoHeaders.length;
+      if (asMeta0 && autoHeaders.length + missingAuto.length > width0) {
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ appendDimension: { sheetId: asMeta0.properties.sheetId, dimension: 'COLUMNS', length: autoHeaders.length + missingAuto.length - width0 } }] }),
+        });
+      }
       await sheetBatchUpdate(token, [{ range: `'AutoSync'!${colLetter(autoHeaders.length)}1`, values: [missingAuto] }]);
       autoHeaders = [...autoHeaders, ...missingAuto];
     }
@@ -232,7 +266,7 @@ module.exports = async (req, res) => {
       const k = nameKey(name);
       if (appRowByKey[k]) return appRowByKey[k];
       if (dryRun) return 0;
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'AutoSync'!A:L")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'AutoSync'!A:T")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ values: [autoHeaders.map((_, j) => j === nameCol ? name : '')] }),
       });
@@ -245,7 +279,9 @@ module.exports = async (req, res) => {
     // teamOverride column exists for the trade-grace-period override.
     const appRows = app.values || [];
     let appHeaders = (appRows[0] || []).map(h => String(h || '').trim());
-    if (!appHeaders.some(h => h.toLowerCase() === 'teamoverride') && !dryRun) {
+    // Manual-override columns the edit form writes to — ensure they exist.
+    for (const needCol of ['teamOverride', 'contractValue']) {
+    if (!appHeaders.some(h => h.toLowerCase() === needCol.toLowerCase()) && !dryRun) {
       const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties(columnCount)))`, {
         headers: { Authorization: `Bearer ${token}` } });
       const meta = await metaR.json();
@@ -258,9 +294,10 @@ module.exports = async (req, res) => {
             body: JSON.stringify({ requests: [{ appendDimension: { sheetId: appMeta.properties.sheetId, dimension: 'COLUMNS', length: appHeaders.length - width + 1 } }] }),
           });
         }
-        await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(appHeaders.length)}1`, values: [['teamOverride']] }]);
-        appHeaders = [...appHeaders, 'teamOverride'];
+        await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(appHeaders.length)}1`, values: [[needCol]] }]);
+        appHeaders = [...appHeaders, needCol];
       }
+    }
     }
     const appIdx = n => appHeaders.findIndex(h => h.toLowerCase() === n.toLowerCase());
     const appNameCol = appIdx('name'), espnIdCol = appIdx('espnId'), url247Col = appIdx('profileUrl247');
@@ -598,6 +635,48 @@ module.exports = async (req, res) => {
       if (!dryRun) await sheetBatchUpdate(token, hsUpdates);
     }
 
+    // ── Module 4: Spotrac contracts (NFL) ────────────────────────────────────
+    // One server-rendered contracts table per team; we fetch only teams we have
+    // players on, rotating the order daily so the runtime deadline never starves
+    // the same teams. Manual AppData values win at display time.
+    const contracts = { teams: 0, matched: 0, errors: [] };
+    if (wants('contracts') || task === 'all') {
+      const cTotCol = autoIdx('contractTotal'), cAavCol = autoIdx('contractAav'),
+        cYrsCol = autoIdx('contractYears'), cGtdCol = autoIdx('contractGuaranteed');
+      const teamSlug = t => String(t).toLowerCase().replace(/[^a-z0-9 ]/g, '').trim().replace(/\s+/g, '-');
+      const byTeam = {};
+      for (const p of nflPlayers) {
+        const team = String(p['Team'] || '').trim();
+        if (!team || /free agent|retired|inactive/i.test(team)) continue;
+        (byTeam[teamSlug(team)] = byTeam[teamSlug(team)] || []).push(p);
+      }
+      let cTeams = Object.keys(byTeam).sort();
+      const rot = Math.floor(Date.now() / 86400000) % Math.max(1, cTeams.length);
+      cTeams = [...cTeams.slice(rot), ...cTeams.slice(0, rot)];
+      const cUpdates = [];
+      const cTasks = cTeams.map(sl => async () => {
+        try {
+          const url = `https://www.spotrac.com/nfl/${sl}/contracts`;
+          let html;
+          try { html = await fetchText(url); }
+          catch { html = await fetchText(url, true); } // datacenter-blocked → proxy
+          const table = parseSpotracContracts(html);
+          contracts.teams++;
+          for (const p of byTeam[sl]) {
+            const hit = table[nameKey(p['Name'])];
+            if (!hit) continue;
+            const rowNum = await ensureAutoRow(p['Name']);
+            if (!rowNum) continue;
+            const put = (ci, v) => { if (ci >= 0 && String(v ?? '').trim()) cUpdates.push({ range: `'AutoSync'!${colLetter(ci)}${rowNum}`, values: [[String(v)]] }); };
+            put(cTotCol, hit.total); put(cAavCol, hit.aav); put(cYrsCol, hit.years); put(cGtdCol, hit.gtd);
+            contracts.matched++;
+          }
+        } catch (e) { contracts.errors.push(`${sl}: ${e.message}`); }
+      });
+      await runTasks(cTasks, 3, deadline);
+      if (!dryRun) for (let i = 0; i < cUpdates.length; i += 100) await sheetBatchUpdate(token, cUpdates.slice(i, i + 100));
+    }
+
     // ── StatHistory: one row per athlete per day with depth rank (NFL/College,
     // from Ourlads) and 247 rating/ranks (HS). Hidden robot tab — feeds the
     // depth-riser / rank-riser features with real history from day one.
@@ -651,7 +730,7 @@ module.exports = async (req, res) => {
     } } catch (e) { statHistory.error = e.message; }
 
     return res.json({
-      success: true, dryRun, task, timedOut, proxyActive: !!proxyDispatcher, statHistory,
+      success: true, dryRun, task, timedOut, proxyActive: !!proxyDispatcher, statHistory, contracts,
       teamsFetched: Object.keys(byUrl).length,
       matched: matches.length, unmatchedCount: unmatched.length,
       cellsWritten,

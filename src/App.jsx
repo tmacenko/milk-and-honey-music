@@ -749,6 +749,9 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
             <Field label="ESPN ID">
               <Input value={form.espnId} onChange={e => set('espnId', e.target.value.replace(/\D/g, ''))} placeholder="Auto-found nightly — fill to pin" />
             </Field>
+            <Field label="Contract ($ / year)">
+              <Input value={form.contractYearly} onChange={e => set('contractYearly', e.target.value)} placeholder="450000 — NFL auto-pulls from Spotrac" />
+            </Field>
             {form.level === 'High School' ? (
               <Field label="Class Of"><Input value={form.classOf} onChange={e => set('classOf', e.target.value)} placeholder="2027" /></Field>
             ) : <div />}
@@ -1637,7 +1640,17 @@ function SportsDetail({ athlete: a, isMobile, hideContact, showTrend }) {
   ].filter(Boolean);
   // Facts that read as prose beneath the bio.
   const weightTxt = a.weight && (/^\d+(\.\d+)?$/.test(String(a.weight).trim()) ? `${a.weight} lbs` : a.weight);
+  // Contract line (company view only): manual yearly amount wins, else Spotrac terms.
+  const money = (v) => {
+    const n = parseFloat(String(v).replace(/[^0-9.]/g, ''));
+    if (!n) return String(v);
+    return n >= 1e6 ? `$${(n / 1e6).toFixed(n % 1e6 ? 1 : 0).replace(/\.0$/, '')}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${n}`;
+  };
+  const contractLine = a.contractYearly ? `${money(a.contractYearly)} / yr`
+    : a.contractAav ? [`${money(a.contractAav)} / yr`, a.contractYears, a.contractTotal && `${money(a.contractTotal)} total`, a.contractGuaranteed && `${money(a.contractGuaranteed)} gtd`].filter(Boolean).join(' · ')
+    : '';
   const meta = [
+    showTrend && contractLine && ['Contract', contractLine],
     (a.height || weightTxt) && ['Height/Weight', [a.height, weightTxt].filter(Boolean).join(' · ')],
     a.hometown && ['Hometown', a.hometown],
     a.classOf && ['Class of', a.classOf],
