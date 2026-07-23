@@ -257,6 +257,7 @@ function mergeAthlete(row, ext, level) {
     contractAav: ext['contractAav'] || '',
     contractYears: ext['contractYears'] || '',
     contractGuaranteed: ext['contractGuaranteed'] || '',
+    contractUrl: ext['contractUrl'] || '',
     agentAssigned: row['Lead Agent'] || row['Agent'] || '',
     birthday: row['Birthday'] || '',
     shirtSize: row['Shirt'] || '', hoodieSize: row['Hoodie'] || '', shortsSize: row['Shorts'] || '',
@@ -1106,7 +1107,7 @@ module.exports = async (req, res) => {
       sheetGet(token, 'College!A:Q'),
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
-      sheetGet(token, "'AutoSync'!A:T").catch(() => ({ values: [] })), // pre-migration tolerance
+      sheetGet(token, "'AutoSync'!A:V").catch(() => ({ values: [] })), // pre-migration tolerance
       sheetGet(token, "'Staff'!A:A").catch(() => ({ values: [] })),    // names only — never the password column
       getDecks().catch(() => null),
     ]);
@@ -1123,7 +1124,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;

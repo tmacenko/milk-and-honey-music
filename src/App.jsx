@@ -1628,6 +1628,12 @@ function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
   );
 }
 
+// Roster search: matches name, position, team/school, commitment, or agent.
+function athleteSearchMatch(a, q) {
+  return [a.name, a.position, a.nflTeam, a.college, a.committedTo, a.agentAssigned]
+    .some(v => String(v || '').toLowerCase().includes(q));
+}
+
 function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
@@ -2302,7 +2308,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
       </div>
       <div style={mod}>
         {head('Contract', contract && !a.contractYearly
-          ? <a href={`https://www.spotrac.com/search?q=${encodeURIComponent(a.name)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: G.green, fontWeight: 600, textDecoration: "none" }}>View Spotrac page →</a>
+          ? <a href={a.contractUrl || `https://www.spotrac.com/search?q=${encodeURIComponent(a.name)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: G.green, fontWeight: 600, textDecoration: "none" }}>View Spotrac page →</a>
           : '')}
         {!contract ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No contract on file yet.</div>
           : (
@@ -3433,7 +3439,7 @@ function App() {
       const q = search.toLowerCase();
       return athletes
         .filter(a => customGroup.includes(a.name))
-        .filter(a => !search || a.name.toLowerCase().includes(q))
+        .filter(a => !search || athleteSearchMatch(a, q))
         .sort((a, b) => customGroup.indexOf(a.name) - customGroup.indexOf(b.name));
     }
     const list = athletes.filter(a => {
@@ -3442,11 +3448,7 @@ function App() {
       if (depthFilter === 'Starters' && a.depthRank !== 1) return false;
       if (depthFilter === 'Backups' && !(a.depthRank >= 2)) return false;
       if (depthFilter === 'Not on chart' && (a.depthRank > 0 || a.level === 'High School')) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        return a.name.toLowerCase().includes(q) || (a.position || '').toLowerCase().includes(q) ||
-          (a.nflTeam || '').toLowerCase().includes(q) || (a.college || '').toLowerCase().includes(q);
-      }
+      if (search) return athleteSearchMatch(a, search.toLowerCase());
       return true;
     });
     if (clientSort === 'alpha') return [...list].sort((a, b) => a.name.localeCompare(b.name));

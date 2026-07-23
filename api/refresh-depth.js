@@ -179,15 +179,16 @@ function parseSpotracContracts(html) {
   const out = {};
   for (const rm of html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
     const row = rm[1];
-    const am = row.match(/<a[^>]*(?:redirect\/player|\/player\/_\/id\/)[^>]*>([^<]+)<\/a>/);
+    const am = row.match(/<a[^>]*href=["']([^"']*(?:redirect\/player|\/player\/_\/id\/)[^"']*)["'][^>]*>([^<]+)<\/a>/);
     if (!am) continue;
     const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
     // Layout: name,pos,startYear,type,ageAtSigning,startYear,endYear,yrs,value,avg,gtdAtSign,practicalGtd
     if (cells.length < 12 || !/^\$/.test(cells[8])) continue;
-    const k = nameKey(am[1]);
+    const k = nameKey(am[2]);
     if (out[k]) continue;
     const gtd = cells[11] && cells[11] !== '-' ? cells[11] : (cells[10] !== '-' ? cells[10] : '');
     out[k] = {
+      url: /^https?:/i.test(am[1]) ? am[1] : `https://www.spotrac.com${am[1].startsWith('/') ? '' : '/'}${am[1]}`,
       total: cells[8], aav: cells[9], gtd,
       years: /^\d{4}$/.test(cells[5]) && /^\d{4}$/.test(cells[6]) ? `${cells[5]}–${cells[6]}` : '',
     };
@@ -231,7 +232,7 @@ module.exports = async (req, res) => {
     const token = await getToken();
     const [nfl, col, hs, app, auto] = await Promise.all([
       sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'), sheetGet(token, 'Highschool!A:S'),
-      sheetGet(token, 'AppData!A:AZ'), sheetGet(token, "'AutoSync'!A:T"),
+      sheetGet(token, 'AppData!A:AZ'), sheetGet(token, "'AutoSync'!A:V"),
     ]);
 
     // Write target is the AutoSync tab (robot-owned; created by the sheet
@@ -239,7 +240,7 @@ module.exports = async (req, res) => {
     // for the ESPN/247 sync are appended to its header row on first run.
     const autoRows = auto.values || [];
     let autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
-    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed'];
+    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl'];
     const missingAuto = AUTO_EXTRA.filter(h => !autoHeaders.some(x => x.toLowerCase() === h.toLowerCase()));
     if (missingAuto.length && !dryRun) {
       // Widen the grid first if the tab is at its column limit.
@@ -266,7 +267,7 @@ module.exports = async (req, res) => {
       const k = nameKey(name);
       if (appRowByKey[k]) return appRowByKey[k];
       if (dryRun) return 0;
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'AutoSync'!A:T")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'AutoSync'!A:V")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ values: [autoHeaders.map((_, j) => j === nameCol ? name : '')] }),
       });
@@ -642,7 +643,7 @@ module.exports = async (req, res) => {
     const contracts = { teams: 0, matched: 0, errors: [] };
     if (wants('contracts') || task === 'all') {
       const cTotCol = autoIdx('contractTotal'), cAavCol = autoIdx('contractAav'),
-        cYrsCol = autoIdx('contractYears'), cGtdCol = autoIdx('contractGuaranteed');
+        cYrsCol = autoIdx('contractYears'), cGtdCol = autoIdx('contractGuaranteed'), cUrlCol = autoIdx('contractUrl');
       const teamSlug = t => String(t).toLowerCase().replace(/[^a-z0-9 ]/g, '').trim().replace(/\s+/g, '-');
       const byTeam = {};
       for (const p of nflPlayers) {
@@ -668,7 +669,7 @@ module.exports = async (req, res) => {
             const rowNum = await ensureAutoRow(p['Name']);
             if (!rowNum) continue;
             const put = (ci, v) => { if (ci >= 0 && String(v ?? '').trim()) cUpdates.push({ range: `'AutoSync'!${colLetter(ci)}${rowNum}`, values: [[String(v)]] }); };
-            put(cTotCol, hit.total); put(cAavCol, hit.aav); put(cYrsCol, hit.years); put(cGtdCol, hit.gtd);
+            put(cTotCol, hit.total); put(cAavCol, hit.aav); put(cYrsCol, hit.years); put(cGtdCol, hit.gtd); put(cUrlCol, hit.url);
             contracts.matched++;
           }
         } catch (e) { contracts.errors.push(`${sl}: ${e.message}`); }
