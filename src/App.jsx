@@ -2037,8 +2037,15 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               {isMobile && a.bio.length > BIO_LIMIT && <button onClick={() => setBioExp(v => !v)} style={{ background: "none", border: "none", color: G.green, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0 0", fontFamily: ff }}>{bioExp ? 'View less' : 'View more'}</button>}
             </div>
           )}
-          {meta.length > 0 && (
+          {(meta.length > 0 || a.agentAssigned) && (
             <div style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, marginTop: a.bio ? -8 : 0 }}>
+              {a.agentAssigned && (
+                <div style={{ margin: "2px 0 10px" }}>
+                  <span style={{ display: "inline-block", fontSize: 12, fontWeight: 600, color: G.text, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 11px" }}>
+                    <span style={{ color: G.textTertiary }}>Agent · </span>{a.agentAssigned}
+                  </span>
+                </div>
+              )}
               {meta.map(([label, value], i) => (
                 <div key={i}><span style={{ color: G.textTertiary }}>{label} · </span>{value}</div>
               ))}
