@@ -190,8 +190,20 @@ module.exports = async (req, res) => {
     let mlC = col('Spotify Monthly Listeners');
     if (nameC < 0 || urlC < 0) return res.status(500).json({ error: 'Name / Spotify URL columns not found' });
     if (mlC < 0) {
-      // First run: the sheet never had this column — add it after the last header.
+      // First run: the sheet never had this column — grow the grid by one
+      // column, then add the header after the last existing one.
       mlC = headers.length;
+      const meta = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json());
+      const props = (meta.sheets || []).map(s => s.properties).find(p => p && p.title === 'Clients');
+      if (!props) return res.status(500).json({ error: 'Clients tab not found' });
+      if ((props.gridProperties?.columnCount || 0) <= mlC) {
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ appendDimension: { sheetId: props.sheetId, dimension: 'COLUMNS', length: 1 } }] }),
+        });
+      }
       await sheetBatchWrite(token, [{ range: `Clients!${colLetter(mlC + 1)}1`, values: [['Spotify Monthly Listeners']] }]);
     }
 
