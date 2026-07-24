@@ -3189,10 +3189,12 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
       .filter(x => x.missing.length)
       .sort((p, q) => q.missing.length - p.missing.length);
     // Newest releases across the whole roster (Spotify sync refreshes weekly).
-    const releases = clients
+    const allReleases = clients
       .flatMap(c => (c.spotifyRecentReleases || []).map(r => ({ c, r, at: new Date(r.releaseDate || 0) })))
       .filter(x => x.r.name && !isNaN(x.at.getTime()) && x.at.getFullYear() > 1971)
-      .sort((a, b) => b.at - a.at).slice(0, 6);
+      .sort((a, b) => b.at - a.at);
+    const releases = allReleases.slice(0, 6);
+    const weekReleases = allReleases.filter(x => now - x.at <= 7 * 86400000);
     // Key clients: ranked by Spotify listeners when that column has data;
     // until then the sheet's own order leads with the marquee names.
     const top = listenerProfiles > 0
@@ -3203,9 +3205,10 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
       ...TYPE_ORDER.filter(t => typeCounts[t]),
       ...Object.keys(typeCounts).filter(t => !TYPE_ORDER.includes(t)).sort((a, b) => typeCounts[b] - typeCounts[a]),
     ].map(t => ({ t, n: typeCounts[t] }));
-    return { typeCounts, listeners, listenerProfiles, uk, collaborators: collaborators.size, incomplete, releases, top, mix };
+    return { typeCounts, listeners, listenerProfiles, uk, collaborators: collaborators.size, incomplete, releases, weekReleases, top, mix };
   }, [clients]);
   const [showIncomplete, setShowIncomplete] = useState(false);
+  const [showReleases, setShowReleases] = useState(false);
   // Manual to-dos — the same shared Todos tab the sports dashboard uses, so
   // there is one company to-do list no matter which home you're on.
   const todosTab = useAdminTab('todos');
@@ -3314,7 +3317,9 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
         <div style={card}>
-          {tileHead('Recent releases', '')}
+          {tileHead('Artist recent releases', (
+            <span onClick={() => setShowReleases(true)} style={{ color: G.green, fontWeight: 600, cursor: "pointer" }}>This week →</span>
+          ))}
           {s.releases.length === 0 ? empty('No releases synced yet.')
             : s.releases.map((x, i, arr) => row(x.c, x.r.name, relDate(x.at), `${x.c.id || x.c.name}-${i}`, i === arr.length - 1))}
         </div>
@@ -3365,6 +3370,34 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
           )}
         </div>
       </div>
+
+      {showReleases && (
+        <div onClick={() => setShowReleases(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 540, maxHeight: "80vh", overflowY: "auto", padding: 20, animation: "modalIn .18s ease" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>Artist recent releases</div>
+              <button onClick={() => setShowReleases(false)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: G.textTertiary, marginBottom: 10 }}>Released in the last 7 days</div>
+            {s.weekReleases.length === 0 && <div style={{ fontSize: 13, color: G.textTertiary, padding: "10px 0" }}>No releases this week.</div>}
+            {s.weekReleases.map((x, i, arr) => (
+              <a key={i} href={x.r.url || undefined} target="_blank" rel="noopener noreferrer"
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, textDecoration: "none" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  {x.r.artwork
+                    ? <img src={x.r.artwork} alt="" style={{ width: 34, height: 34, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                    : <div style={{ width: 34, height: 34, borderRadius: 6, background: G.surfaceRaised, flexShrink: 0 }} />}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.r.name}</div>
+                    <div style={{ fontSize: 11.5, color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: "capitalize" }}>{[x.c.name, x.r.type].filter(Boolean).join(' · ')}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{relDate(x.at)}</div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showIncomplete && (
         <div onClick={() => setShowIncomplete(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
