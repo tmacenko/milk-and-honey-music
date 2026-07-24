@@ -186,9 +186,14 @@ module.exports = async (req, res) => {
     const rows = sheet.values || [];
     const headers = (rows[0] || []).map(h => String(h || '').trim());
     const col = (name) => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
-    const nameC = col('Name'), urlC = col('Spotify URL'), mlC = col('Spotify Monthly Listeners');
+    const nameC = col('Name'), urlC = col('Spotify URL');
+    let mlC = col('Spotify Monthly Listeners');
     if (nameC < 0 || urlC < 0) return res.status(500).json({ error: 'Name / Spotify URL columns not found' });
-    if (mlC < 0) return res.status(500).json({ error: 'Spotify Monthly Listeners column not found' });
+    if (mlC < 0) {
+      // First run: the sheet never had this column — add it after the last header.
+      mlC = headers.length;
+      await sheetBatchWrite(token, [{ range: `Clients!${colLetter(mlC + 1)}1`, values: [['Spotify Monthly Listeners']] }]);
+    }
 
     // Artist-profile clients only (songwriter/producer pages have no listeners).
     const artists = [];
