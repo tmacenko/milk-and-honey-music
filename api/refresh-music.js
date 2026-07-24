@@ -114,25 +114,36 @@ async function saveBlobCache(path, cache) {
 }
 
 // ── Spotify ───────────────────────────────────────────────────────────────────
-// The public artist page embeds the exact count as "monthlyListeners":N; the
-// og:description meta ("Artist · 4.5M monthly listeners") is the fallback.
-async function fetchMonthlyListeners(artistId) {
-  const r = await fetch(`https://open.spotify.com/artist/${artistId}`, {
-    headers: { 'User-Agent': UA, 'Accept-Language': 'en' },
-    signal: AbortSignal.timeout(9000),
+// The full artist page bot-walls datacenter IPs, but the light embed page does
+// not, and it carries an anonymous web token that Spotify's own internal
+// GraphQL accepts — the same working pattern api/sheets.js uses for artist
+// header banners. queryArtistOverview's stats block has the exact count.
+const ARTIST_OVERVIEW_HASH = '4bc52527bb77a5f8bbb9afe491e9aa725698d29ab73bff58d49169ee29800167';
+async function getAnonToken(artistId) {
+  const r = await fetch(`https://open.spotify.com/embed/artist/${artistId}`, {
+    headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(9000),
   });
   if (!r.ok) return null;
-  const html = await r.text();
-  const exact = html.match(/"monthlyListeners"\s*:\s*(\d+)/);
-  if (exact) return parseInt(exact[1], 10);
-  const og = html.match(/content="[^"]*?([\d.,]+\s*[KMB]?)\s*monthly listeners/i);
-  if (og) {
-    const s = og[1].replace(/,/g, '').trim().toUpperCase();
-    const mul = s.endsWith('K') ? 1e3 : s.endsWith('M') ? 1e6 : s.endsWith('B') ? 1e9 : 1;
-    const n = parseFloat(s);
-    if (isFinite(n)) return Math.round(n * mul);
-  }
-  return null;
+  const m = (await r.text()).match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+  if (!m) return null;
+  try { return JSON.parse(m[1]).props?.pageProps?.state?.settings?.session?.accessToken || null; } catch { return null; }
+}
+async function fetchMonthlyListeners(artistId, anonToken) {
+  if (!anonToken) return null;
+  const r = await fetch('https://api-partner.spotify.com/pathfinder/v2/query', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${anonToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      operationName: 'queryArtistOverview',
+      variables: { uri: `spotify:artist:${artistId}`, locale: '', includePrerelease: true },
+      extensions: { persistedQuery: { version: 1, sha256Hash: ARTIST_OVERVIEW_HASH } },
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!r.ok) return null;
+  const j = await r.json();
+  const n = j?.data?.artistUnion?.stats?.monthlyListeners;
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 async function getSpotifyApiToken() {
   const cid = process.env.SPOTIFY_CLIENT_ID, csec = process.env.SPOTIFY_CLIENT_SECRET;
@@ -219,12 +230,14 @@ module.exports = async (req, res) => {
       else if (url) skippedNonArtist++;
     });
 
-    // 1) Monthly listeners → sheet column + history tab.
+    // 1) Monthly listeners → sheet column + history tab. One anonymous token
+    // from the embed page covers every artist's overview query.
     const writes = [], history = [], errors = [];
     const today = new Date().toISOString().slice(0, 10);
+    const anonToken = artists.length ? await getAnonToken(artists[0].artistId) : null;
     await runPool(artists, 5, async (a) => {
       try {
-        const n = await fetchMonthlyListeners(a.artistId);
+        const n = await fetchMonthlyListeners(a.artistId, anonToken);
         if (n != null && n > 0) {
           writes.push({ range: `Clients!${colLetter(mlC + 1)}${a.row}`, values: [[n]] });
           history.push([today, a.name, n]);
