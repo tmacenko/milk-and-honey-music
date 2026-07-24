@@ -3161,7 +3161,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 // tiles — built from what the music sheet actually tracks (types, reps,
 // countries, Spotify listeners/releases). Gated to Tyler's login while it's
 // broken in.
-function MusicDashboard({ clients, logos, isMobile, user, onOpenClient, onGoRoster, onFilterType }) {
+function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onFilterType }) {
   const now = new Date();
   const s = useMemo(() => {
     const typeCounts = {};
@@ -3293,7 +3293,16 @@ function MusicDashboard({ clients, logos, isMobile, user, onOpenClient, onGoRost
         <div style={{ marginTop: 18 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
             {s.top.map((c, i) => (
-              <ClientCard key={c.id || i} client={c} logos={logos} isMobile={false} onClick={() => onOpenClient(c)} />
+              <div key={c.id || i} onClick={() => onOpenClient(c)}
+                onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
+                onMouseLeave={e => { e.currentTarget.style.background = G.surface; }}
+                style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 18, padding: "18px 18px 16px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
+                <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
+                <div style={{ fontWeight: 800, fontSize: 20, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, margin: "14px 0 6px" }}>{c.name}</div>
+                <div style={{ fontSize: 13, color: G.textSecondary, fontWeight: 500 }}>
+                  {[...(c.types || [])].sort((a, b) => a === 'Artist' ? -1 : b === 'Artist' ? 1 : a.localeCompare(b)).join(' · ')}
+                </div>
+              </div>
             ))}
           </div>
           <button onClick={onGoRoster}
@@ -5074,7 +5083,7 @@ function App() {
                 <ClientDetail client={selected} logos={logos} staff={staff} isMobile={isMobile} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
               )}
               {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'home' && (
-                <MusicDashboard clients={clients} logos={logos} isMobile={isMobile} user={currentUser}
+                <MusicDashboard clients={clients} isMobile={isMobile} user={currentUser}
                   onOpenClient={(c) => setView('detail', c)}
                   onGoRoster={() => { clearCustomGroup(); setFilterTypes([]); goMusicPage('roster'); }}
                   onFilterType={(t) => { clearCustomGroup(); setFilterTypes([t]); goMusicPage('roster'); }} />
