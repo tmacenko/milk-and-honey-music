@@ -688,6 +688,33 @@ module.exports = async (req, res) => {
         return res.json({ text: raw });
       }
 
+      // Delete a client row. Guarded by a name match so a stale row index can
+      // never remove the wrong person.
+      if (req.body?.action === 'delete-client') {
+        const r = parseInt(req.body.row, 10);
+        const name = String(req.body.name || '').trim();
+        if (!r || r < 2 || !name) return res.status(400).json({ error: 'Missing row or name' });
+        const headerRes = await sheetGet(token, 'Clients!1:1');
+        const headers = (headerRes.values?.[0] || []).map(h => String(h || '').trim());
+        const nameCol = headers.findIndex(h => h.toLowerCase() === 'name');
+        if (nameCol < 0) return res.status(500).json({ error: 'No Name column in the sheet' });
+        const rowRes = await sheetGet(token, `Clients!A${r}:${colLetter(headers.length)}${r}`);
+        const current = String((rowRes.values?.[0] || [])[nameCol] || '').trim();
+        if (current.toLowerCase() !== name.toLowerCase()) {
+          return res.status(409).json({ error: `Row ${r} holds "${current}", not "${name}" — reload and try again.` });
+        }
+        const metaResp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties`, { headers: { Authorization: `Bearer ${token}` } });
+        const meta = await metaResp.json();
+        const gid = (meta.sheets || []).map(s => s.properties).find(p => p && p.title === 'Clients')?.sheetId;
+        if (gid == null) return res.status(500).json({ error: 'Clients tab not found' });
+        const del = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: r - 1, endIndex: r } } }] }),
+        });
+        if (!del.ok) return res.status(500).json({ error: 'Delete failed: ' + (await del.text()).slice(0, 200) });
+        return res.json({ success: true });
+      }
+
       // Save / create client. Rows are built against the live header row (by
       // name), so the sheet's columns can be reordered or trimmed freely.
       const { action, client: c } = req.body;

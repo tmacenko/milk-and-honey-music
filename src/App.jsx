@@ -504,6 +504,7 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
   const [form, setForm] = useState({ ...BLANK, ...initial });
   const [saving, setSaving] = useState(false);
   const [photoHint, setPhotoHint] = useState(false);
+  const [open, setOpen] = useState({ basics: true });
   // Locations: show only the ones in use (min 1); "+" reveals up to 3.
   const [locCount, setLocCount] = useState(() => {
     if (initial.city3 || initial.state3 || initial.country3) return 3;
@@ -538,60 +539,80 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
         body: JSON.stringify({ action: isNew ? 'create' : 'save', client: form }),
       });
       const data = await resp.json();
-      if (data.success) onSave({ ...form, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl });
+      if (data.success) onSave({ ...form, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl }, { created: isNew });
       else throw new Error(data.error || 'Save failed');
     } catch(e) { alert('Save failed: ' + e.message); }
     setSaving(false);
   };
 
+  const del = async () => {
+    if (!window.confirm(`Remove ${initial.name} from the roster? This deletes their row from the sheet.`)) return;
+    setSaving(true);
+    try {
+      const resp = await fetch('/api/sheets', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-client', row: initial._rowIndex, name: initial.name }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || 'Delete failed');
+      onSave(null, { deleted: true, name: initial.name });
+    } catch (e) { alert('Delete failed: ' + e.message); setSaving(false); }
+  };
+
   const typeOptions = ['Artist', 'Producer', 'Songwriter', 'Composer', 'Mixer', 'Remixer'];
+  const section = (id, title, children) => (
+    <div style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
+      <button onClick={() => setOpen(o => ({ ...o, [id]: !o[id] }))}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: G.surfaceRaised, border: "none", cursor: "pointer", fontFamily: ff }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: open[id] ? G.text : G.textSecondary }}>{title}</span>
+        <span style={{ color: G.textTertiary, fontSize: 11, transform: open[id] ? 'rotate(180deg)' : 'none', transition: `transform 0.15s ${G.ease}` }}>▼</span>
+      </button>
+      {open[id] && <div style={{ padding: "14px 14px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 14px" }}>{children}</div>}
+    </div>
+  );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(20px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ background: G.surfaceGlass, backdropFilter: "blur(24px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: G.shadowLg }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      {/* Solid panel — stacked backdrop blurs made scrolling this modal janky. */}
+      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: G.shadowLg }}>
         <div style={{ padding: "18px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <span style={{ fontWeight: 700, fontSize: 16, color: G.text }}>{isNew ? 'Add Client' : 'Edit Client'}</span>
           <button onClick={onCancel} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 14, fontFamily: ff }}>✕</button>
         </div>
         <div style={{ overflowY: "auto", padding: "20px 24px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
-            <div style={{ gridColumn: "1/-1", marginBottom: 16 }}>
-              <div onClick={() => set('public', !form.public)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: form.public ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${form.public ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 16px", cursor: "pointer" }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: form.public ? G.green : G.text }}>Public on roster</div>
-                  <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{form.public ? 'Visible on the public site.' : 'Hidden — internal only.'}</div>
-                </div>
-                <div style={{ width: 44, height: 26, borderRadius: 20, background: form.public ? G.green : G.surfaceBorderLight, position: "relative", flexShrink: 0, transition: `background 0.15s ${G.ease}` }}>
-                  <div style={{ position: "absolute", top: 3, left: form.public ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: `left 0.15s ${G.ease}` }} />
-                </div>
+          <div style={{ marginBottom: 14 }}>
+            <div onClick={() => set('public', !form.public)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: form.public ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${form.public ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: "12px 16px", cursor: "pointer" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: form.public ? G.green : G.text }}>Public on roster</div>
+                <div style={{ fontSize: 12, color: G.textSecondary, marginTop: 2 }}>{form.public ? 'Visible on the public site.' : 'Hidden — internal only.'}</div>
+              </div>
+              <div style={{ width: 44, height: 26, borderRadius: 20, background: form.public ? G.green : G.surfaceBorderLight, position: "relative", flexShrink: 0, transition: `background 0.15s ${G.ease}` }}>
+                <div style={{ position: "absolute", top: 3, left: form.public ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: `left 0.15s ${G.ease}` }} />
               </div>
             </div>
+          </div>
+
+          {section('basics', 'Basics', <>
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Name"><Input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Full name" /></Field>
             </div>
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Type">
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {typeOptions.map(t => {
                     const on = (form.types || []).includes(t);
                     return <button key={t} onClick={() => set('types', on ? form.types.filter(x => x !== t) : [...(form.types||[]), t])}
-                      style={{ flex: 1, padding: "8px 0", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}` }}>
+                      style={{ flex: 1, minWidth: 84, padding: "8px 0", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, transition: `all 0.15s ${G.ease}`, whiteSpace: "nowrap" }}>
                       {t}
                     </button>;
                   })}
                 </div>
               </Field>
             </div>
-            <Field label="Contact / MH Rep">
-              <MultiSelectCombo value={form.contact} onChange={v => set('contact', v)} options={staffNames} placeholder="Select rep(s)..." />
-            </Field>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                Profile Photo URL
-                <span onClick={() => setPhotoHint(v => !v)} title="Overrides Spotify profile image" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
-              </div>
-              <Input value={form.photoUrlOverride ?? ''} onChange={e => set('photoUrlOverride', e.target.value)} placeholder="Auto from Spotify — paste a URL to override" />
-              {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5 }}>Overrides the Spotify profile image.</div>}
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Contact / MH Rep">
+                <MultiSelectCombo value={form.contact} onChange={v => set('contact', v)} options={staffNames} placeholder="Select rep(s)..." />
+              </Field>
             </div>
             <div style={{ gridColumn: "1/-1" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -609,6 +630,9 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
                 </div>
               ))}
             </div>
+          </>)}
+
+          {section('affiliations', 'Affiliations', <>
             <Field label="PRO">
               <MultiSelectCombo value={form.pro} onChange={v => set('pro', v)} options={proOptions} placeholder="BMI, ASCAP, SESAC..." />
             </Field>
@@ -620,6 +644,26 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
                 <MultiSelectCombo value={form.label} onChange={v => set('label', v)} options={labelOptions} placeholder="Atlantic, Republic..." />
               </Field>
             </div>
+          </>)}
+
+          {section('bio', 'Bio & photo', <>
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Bio"><Textarea value={form.bio} onChange={e => set('bio', e.target.value)} rows={4} /></Field>
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                Profile Photo URL
+                <span onClick={() => setPhotoHint(v => !v)} title="Overrides Spotify profile image" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
+              </div>
+              <Input value={form.photoUrlOverride ?? ''} onChange={e => set('photoUrlOverride', e.target.value)} placeholder="Auto from Spotify — paste a URL to override" />
+              {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5, marginBottom: 12 }}>Overrides the Spotify profile image.</div>}
+            </div>
+            <div style={{ gridColumn: "1/-1", marginTop: photoHint ? 0 : 12 }}>
+              <Field label="Notes (internal)"><Textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} /></Field>
+            </div>
+          </>)}
+
+          {section('credits', 'Credits & shows', <>
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Artists / Credits (comma-separated)"><Input value={(form.credits||[]).join(', ')} onChange={e => set('credits', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="Drake, Post Malone, Billie Eilish..." /></Field>
             </div>
@@ -629,20 +673,29 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
             <div style={{ gridColumn: "1/-1" }}>
               <Field label="Key Shows (comma-separated)"><Input value={(form.keyShows||[]).join(', ')} onChange={e => set('keyShows', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="EDC, Red Rocks, Coachella..." /></Field>
             </div>
-            <div style={{ gridColumn: "1/-1" }}>
-              <Field label="Bio"><Textarea value={form.bio} onChange={e => set('bio', e.target.value)} rows={4} /></Field>
-            </div>
+          </>)}
+
+          {section('socials', 'Social media', <>
             <Field label="Instagram"><Input value={form.instagram} onChange={e => set('instagram', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
             <Field label="Twitter / X"><Input value={form.twitter} onChange={e => set('twitter', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
             <Field label="TikTok"><Input value={form.tiktok} onChange={e => set('tiktok', e.target.value.replace(/^@/,''))} placeholder="handle" /></Field>
             <Field label="YouTube URL"><Input value={form.youtube} onChange={e => set('youtube', e.target.value)} placeholder="https://youtube.com/@..." /></Field>
-            <Field label="Beatport URL"><Input value={form.beatport} onChange={e => set('beatport', e.target.value)} placeholder="https://www.beatport.com/artist/..." /></Field>
-            <Field label="Spotify URL"><Input value={form.spotifyUrl} onChange={e => set('spotifyUrl', e.target.value)} placeholder="https://open.spotify.com/artist/..." /></Field>
+          </>)}
+
+          {section('music', 'Music profiles', <>
+            <div style={{ gridColumn: "1/-1" }}>
+              <Field label="Spotify URL"><Input value={form.spotifyUrl} onChange={e => set('spotifyUrl', e.target.value)} placeholder="https://open.spotify.com/artist/..." /></Field>
+            </div>
+            <Field label="Spotify Monthly Listeners"><Input value={form.spotifyMonthly} onChange={e => set('spotifyMonthly', e.target.value)} placeholder="4.5M" /></Field>
             <Field label="Apple Music URL"><Input value={form.appleMusicUrl} onChange={e => set('appleMusicUrl', e.target.value)} placeholder="https://music.apple.com/..." /></Field>
             <Field label="SoundCloud URL"><Input value={form.soundcloudUrl} onChange={e => set('soundcloudUrl', e.target.value)} placeholder="https://soundcloud.com/..." /></Field>
-          </div>
+            <Field label="Beatport URL"><Input value={form.beatport} onChange={e => set('beatport', e.target.value)} placeholder="https://www.beatport.com/artist/..." /></Field>
+          </>)}
         </div>
         <div style={{ padding: "14px 24px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, flexShrink: 0 }}>
+          {!isNew && (
+            <button onClick={del} disabled={saving} style={{ background: "transparent", border: `1px solid ${G.red}`, borderRadius: 12, padding: "11px 16px", color: G.red, fontWeight: 600, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", fontFamily: ff }}>Delete</button>
+          )}
           <button onClick={onCancel} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>Cancel</button>
           <button onClick={save} disabled={saving} style={{ flex: 2, background: saving ? G.surfaceRaised : G.green, border: "none", borderRadius: 12, padding: "11px", color: saving ? G.textTertiary : "#0a0a0a", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", fontFamily: ff }}>
             {saving ? 'Saving...' : isNew ? 'Add Client' : 'Save Changes'}
@@ -4620,7 +4673,18 @@ function App() {
     });
   }, [athletes, sportsLevels, depthFilter, agentFilter, posSide, posGroup, currentUser, search, customGroup, clientSort]);
 
-  const saveClient = (updatedClient) => {
+  const saveClient = (updatedClient, opts) => {
+    if (opts && (opts.deleted || opts.created)) {
+      // Rows were added/removed in the sheet, so cached row indexes are
+      // stale — close out and refetch the roster.
+      setEditing(null);
+      if (opts.deleted) { setClients(prev => prev.filter(c => c.name !== opts.name)); if (view === 'detail') setView('roster'); }
+      fetch('/api/sheets')
+        .then(r => r.json())
+        .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); })
+        .catch(() => { /* next full load will catch up */ });
+      return;
+    }
     setClients(prev => {
       const idx = prev.findIndex(c => c.name === updatedClient.name);
       if (idx >= 0) { const next = [...prev]; next[idx] = updatedClient; return next; }
@@ -4927,8 +4991,10 @@ function App() {
                   <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
                   {viewToggle}
                 </div>
-                {domain === 'sports' && isAdmin && (
-                  <button onClick={() => setEditingAthlete({ level: 'College', name: '', position: '', public: false, brands: [], interests: [] })}
+                {isAdmin && (
+                  <button onClick={() => domain === 'sports'
+                    ? setEditingAthlete({ level: 'College', name: '', position: '', public: false, brands: [], interests: [] })
+                    : setEditing({})}
                     style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap", flexShrink: 0 }}>
                     + Add
                   </button>
