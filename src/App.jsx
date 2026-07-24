@@ -560,10 +560,12 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
   };
 
   const typeOptions = ['Artist', 'Producer', 'Songwriter', 'Composer', 'Mixer', 'Remixer'];
+  // No overflow:hidden here — the combo dropdowns must be able to spill past
+  // the section boundary; the header button rounds its own corners instead.
   const section = (id, title, children) => (
-    <div style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
+    <div style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, marginBottom: 10 }}>
       <button onClick={() => setOpen(o => ({ ...o, [id]: !o[id] }))}
-        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: G.surfaceRaised, border: "none", cursor: "pointer", fontFamily: ff }}>
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: G.surfaceRaised, border: "none", borderRadius: open[id] ? "11px 11px 0 0" : 11, cursor: "pointer", fontFamily: ff }}>
         <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: open[id] ? G.text : G.textSecondary }}>{title}</span>
         <span style={{ color: G.textTertiary, fontSize: 11, transform: open[id] ? 'rotate(180deg)' : 'none', transition: `transform 0.15s ${G.ease}` }}>▼</span>
       </button>

@@ -2,22 +2,64 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/sheets.js": { "maxDuration": 60 },
-    "api/share.js": { "maxDuration": 60 },
-    "api/refresh-socials.js": { "maxDuration": 60 },
-    "api/refresh-depth.js": { "maxDuration": 60 }
+    "api/sheets.js": {
+      "maxDuration": 60
+    },
+    "api/share.js": {
+      "maxDuration": 60
+    },
+    "api/refresh-socials.js": {
+      "maxDuration": 60
+    },
+    "api/refresh-depth.js": {
+      "maxDuration": 60
+    },
+    "api/refresh-music.js": {
+      "maxDuration": 60
+    }
   },
   "crons": [
-    { "path": "/api/refresh-socials", "schedule": "0 9 * * *" },
-    { "path": "/api/refresh-depth", "schedule": "0 10 * * *" }
+    {
+      "path": "/api/refresh-socials",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/refresh-depth",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/refresh-music",
+      "schedule": "0 6 * * 5"
+    }
   ],
   "rewrites": [
-    { "source": "/share/:id",  "destination": "/api/share-og?id=:id" },
-    { "source": "/roster/:id", "destination": "/api/share-og?id=:id&kind=roster" },
-    { "source": "/api/:path*",   "destination": "/api/:path*" },
-    { "source": "/onboard",      "destination": "/onboard.html" },
-    { "source": "/sports/:slug", "destination": "/api/page?slug=:slug&sport=1" },
-    { "source": "/:slug",        "destination": "/api/page?slug=:slug" },
-    { "source": "/(.*)",         "destination": "/index.html" }
+    {
+      "source": "/share/:id",
+      "destination": "/api/share-og?id=:id"
+    },
+    {
+      "source": "/roster/:id",
+      "destination": "/api/share-og?id=:id&kind=roster"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
+      "source": "/onboard",
+      "destination": "/onboard.html"
+    },
+    {
+      "source": "/sports/:slug",
+      "destination": "/api/page?slug=:slug&sport=1"
+    },
+    {
+      "source": "/:slug",
+      "destination": "/api/page?slug=:slug"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
