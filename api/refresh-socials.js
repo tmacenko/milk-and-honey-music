@@ -366,10 +366,10 @@ module.exports = async (req, res) => {
         if (isNaN(d)) continue;
         const age = (Date.now() - d.getTime()) / 86400000;
         if (age < 0.9 || age > 10) continue;
-        const total = (parseCount(r[2]) || 0) + (parseCount(r[3]) || 0) + (parseCount(r[4]) || 0);
-        if (!total) continue;
+        const ig = parseCount(r[2]) || 0, tw = parseCount(r[3]) || 0, tk = parseCount(r[4]) || 0;
+        if (!(ig + tw + tk)) continue;
         const k = String(r[1] || '').toLowerCase().trim();
-        if (!baseline[k] || Math.abs(age - 7) < Math.abs(baseline[k].age - 7)) baseline[k] = { age, total };
+        if (!baseline[k] || Math.abs(age - 7) < Math.abs(baseline[k].age - 7)) baseline[k] = { age, ig, tw, tk };
       }
       if (Object.keys(baseline).length) {
         // Make sure AutoSync has the growth columns (full header row, not the
@@ -398,12 +398,17 @@ module.exports = async (req, res) => {
           const past = baseline[n];
           if (!past || g7Col < 0 || gPctCol < 0) continue;
           const c = current[n];
-          const nowTotal = (c.ig || 0) + (c.tw || 0) + (c.tk || 0);
-          if (!nowTotal) continue;
-          const delta = nowTotal - past.total;
+          // Compare only platforms present in BOTH snapshots — a newly added
+          // handle is data onboarding, not follower growth.
+          let base = 0, now = 0;
+          if (past.ig > 0) { base += past.ig; now += c.ig || 0; }
+          if (past.tw > 0) { base += past.tw; now += c.tw || 0; }
+          if (past.tk > 0) { base += past.tk; now += c.tk || 0; }
+          if (!base || !now) continue;
+          const delta = now - base;
           const rowNum = rowByName[n].i + 1;
           gUpdates.push({ range: `'AutoSync'!${colLetter(g7Col)}${rowNum}`, values: [[String(delta)]] });
-          gUpdates.push({ range: `'AutoSync'!${colLetter(gPctCol)}${rowNum}`, values: [[((delta / past.total) * 100).toFixed(1)]] });
+          gUpdates.push({ range: `'AutoSync'!${colLetter(gPctCol)}${rowNum}`, values: [[((delta / base) * 100).toFixed(1)]] });
           if (gDaysCol >= 0) gUpdates.push({ range: `'AutoSync'!${colLetter(gDaysCol)}${rowNum}`, values: [[String(Math.round(past.age))]] });
         }
         if (!dryRun) await sheetBatchUpdate(token, gUpdates);

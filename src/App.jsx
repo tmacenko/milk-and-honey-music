@@ -786,7 +786,7 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
                   })}
                 </div>
                 {form.level !== initial.level && (
-                  <div style={{ fontSize: 11, color: G.yellow, marginTop: 6 }}>Saving moves them to the {form.level} roster tab.</div>
+                  <div style={{ fontSize: 11, color: G.red, marginTop: 6 }}>Saving moves them to the {form.level} roster tab.</div>
                 )}
               </Field>
             </div>
@@ -810,7 +810,7 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
               <Field label={isNFL ? 'Team' : 'School'}>
                 <Input value={form[teamKey] || ''} onChange={e => set(teamKey, e.target.value)} placeholder={isNFL ? 'Kansas City Chiefs' : 'Michigan'} />
               </Field>
-              {teamEdited && <div style={{ fontSize: 11, color: G.yellow, marginTop: -10, marginBottom: 12 }}>Overrides the auto team sync until it catches up.</div>}
+              {teamEdited && <div style={{ fontSize: 11, color: G.textTertiary, marginTop: -10, marginBottom: 12 }}>Overrides the auto team sync until it catches up.</div>}
             </div>
             <Field label="Lead Agent">
               <select value={form.agentAssigned || ''} onChange={e => set('agentAssigned', e.target.value)} style={{ ...inputBase, cursor: "pointer" }}>
@@ -2513,7 +2513,12 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
       const target = last.dt.getTime() - 7 * 86400000;
       let base = arr[0];
       for (const r of arr) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
-      if (base !== last) out[k] = { ig: last.ig - base.ig, x: last.x - base.x, tk: last.tk - base.tk };
+      // Only platforms present in the baseline count — new handles aren't growth.
+      if (base !== last) out[k] = {
+        ig: base.ig > 0 ? last.ig - base.ig : 0,
+        x: base.x > 0 ? last.x - base.x : 0,
+        tk: base.tk > 0 ? last.tk - base.tk : 0,
+      };
     }
     return out;
   }, [seriesByName]);
@@ -2644,7 +2649,11 @@ function SocialContractModules({ athlete: a, isMobile }) {
     for (const r of arr) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
     if (base === last) return { pd: null, days: 0 };
     return {
-      pd: { ig: last.ig - base.ig, x: last.x - base.x, tk: last.tk - base.tk },
+      pd: {
+        ig: base.ig > 0 ? last.ig - base.ig : 0,
+        x: base.x > 0 ? last.x - base.x : 0,
+        tk: base.tk > 0 ? last.tk - base.tk : 0,
+      },
       days: Math.max(1, Math.round((last.dt - base.dt) / 86400000)),
     };
   }, [series]);
@@ -2842,14 +2851,20 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       .filter(r => String(r.cells[ti] || '').trim() && !/true/i.test(String(di >= 0 ? r.cells[di] : '')))
       .map(r => ({ row: r._row, text: r.cells[ti] }));
   }, [todosTab.data]);
-  const newOnboards = useMemo(() => {
+  const [showOnboards, setShowOnboards] = useState(false);
+  const recentOnboards = useMemo(() => {
     const d = onboardTab.data;
-    if (!d) return 0;
-    const si = d.headers.indexOf('submittedAt');
-    if (si < 0) return 0;
+    if (!d) return [];
+    const hi = (n) => d.headers.indexOf(n);
+    const si = hi('submittedAt'), ni = hi('name'), ti = hi('type'), li = hi('level');
+    if (si < 0 || ni < 0) return [];
     const cutoff = Date.now() - 7 * 86400000;
-    return d.rows.filter(r => { const t = new Date(r.cells[si] || 0).getTime(); return t && t > cutoff; }).length;
+    return d.rows
+      .map(r => ({ name: String(r.cells[ni] || '').trim(), type: String((ti >= 0 && r.cells[ti]) || 'client'), level: li >= 0 ? (r.cells[li] || '') : '', at: new Date(r.cells[si] || 0) }))
+      .filter(x => x.name && !isNaN(x.at) && x.at.getTime() > cutoff)
+      .sort((a, b) => b.at - a.at);
   }, [onboardTab.data]);
+  const newOnboards = recentOnboards.length;
   const postTodos = async (body) => {
     try {
       await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -2996,8 +3011,8 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
             </div>
           )}
           {newOnboards > 0 && (
-            <div onClick={onGoRecruiting}
-              style={{ fontSize: 13, color: G.yellow, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
+            <div onClick={() => setShowOnboards(true)}
+              style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
               Check new onboarding ({newOnboards})
             </div>
           )}
@@ -3013,6 +3028,34 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           )}
         </div>
       </div>
+
+      {showOnboards && (
+        <div onClick={() => setShowOnboards(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 540, maxHeight: "80vh", overflowY: "auto", padding: 20, animation: "modalIn .18s ease" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>New onboarding</div>
+              <button onClick={() => setShowOnboards(false)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: G.textTertiary, marginBottom: 10 }}>Submitted in the last 7 days</div>
+            {recentOnboards.map((o, i, arr) => {
+              const match = athletes.find(a => a.name.toLowerCase().trim() === o.name.toLowerCase());
+              return (
+                <div key={i} onClick={() => { setShowOnboards(false); if (match) onOpenAthlete(match); else onGoRecruiting(); }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    {match ? <Avatar name={match.name} photoUrl={match.photoUrl} size={30} /> : <Avatar name={o.name} size={30} />}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.name}</div>
+                      <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[/recruit/i.test(o.type) ? 'Recruit' : 'Client', o.level || (match && match.level)].filter(Boolean).join(' · ')}</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{o.at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {showIncomplete && (
         <div onClick={() => setShowIncomplete(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -3765,7 +3808,7 @@ function ResourcesPage({ isMobile, decks }) {
   const regCell = (c) => {
     if (/^https?:\/\//i.test(c)) return <a href={c} target="_blank" rel="noreferrer" style={{ color: G.green, fontWeight: 600, textDecoration: "none" }}>Open ↗</a>;
     if (/^active$/i.test(c)) return <span style={{ color: G.green, fontWeight: 600 }}>{c}</span>;
-    if (/^(pending|in process)$/i.test(c)) return <span style={{ color: G.yellow, fontWeight: 600 }}>{c}</span>;
+    if (/^(pending|in process)$/i.test(c)) return <span style={{ color: G.textSecondary, fontWeight: 600 }}>{c}</span>;
     return c;
   };
   return (
