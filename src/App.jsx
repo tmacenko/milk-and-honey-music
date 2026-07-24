@@ -3138,9 +3138,11 @@ function MusicDashboard({ clients, logos, isMobile, user, onOpenClient, onGoRost
       .flatMap(c => (c.spotifyRecentReleases || []).map(r => ({ c, r, at: new Date(r.releaseDate || 0) })))
       .filter(x => x.r.name && !isNaN(x.at.getTime()) && x.at.getFullYear() > 1971)
       .sort((a, b) => b.at - a.at).slice(0, 6);
-    const top = [...clients]
-      .sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly))
-      .slice(0, 4).filter(c => parseListeners(c.spotifyMonthly) > 0);
+    // Key clients: ranked by Spotify listeners when that column has data;
+    // until then the sheet's own order leads with the marquee names.
+    const top = listenerProfiles > 0
+      ? [...clients].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly)).slice(0, 4)
+      : clients.slice(0, 4);
     const TYPE_ORDER = ['Songwriter', 'Producer', 'Artist', 'Mixer', 'Composer', 'Remixer'];
     const mix = [
       ...TYPE_ORDER.filter(t => typeCounts[t]),
