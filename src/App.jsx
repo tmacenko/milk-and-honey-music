@@ -2443,6 +2443,16 @@ const countFrom = (s) => {
 };
 const bigNum = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`
   : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : String(n);
+// Music-side helpers, shared by the roster filters and the music dashboard.
+const parseListeners = v => {
+  if (!v) return 0;
+  const s = String(v).trim().toUpperCase();
+  if (s.endsWith('M')) return parseFloat(s) * 1e6;
+  if (s.endsWith('K')) return parseFloat(s) * 1e3;
+  return parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
+};
+const isUKClient = (c) => [c.country, c.country2, c.country3]
+  .some(v => ['uk', 'united kingdom', 'england', 'britain', 'scotland', 'wales'].includes(String(v || '').toLowerCase().trim()));
 // Tolerant sheet-date parser: "6/15/2001", "2001-06-15", "June 15, 2001", or a
 // year-less "6/15" (birthdays) -> { month, day, year|null }.
 const parseSheetDate = (s) => {
@@ -3078,8 +3088,234 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
                 <div style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {x2.a.name} <span style={{ color: G.textTertiary, fontSize: 12 }}>· {[x2.a.level, x2.a.position].filter(Boolean).join(' · ')}</span>
                 </div>
-                <div style={{ fontSize: 12, color: G.yellow, fontWeight: 600, flexShrink: 0 }}>
+                <div style={{ fontSize: 12, color: G.red, fontWeight: 600, flexShrink: 0 }}>
                   {x2.missing.slice(0, 3).join(' · ')}{x2.missing.length > 3 ? ` +${x2.missing.length - 3}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ── Music dashboard (employee home) ───────────────────────────────────────────
+// Same layout language as the sports dashboard — stat callouts, key clients,
+// tiles — built from what the music sheet actually tracks (types, reps,
+// countries, Spotify listeners/releases). Gated to Tyler's login while it's
+// broken in.
+function MusicDashboard({ clients, logos, isMobile, user, onOpenClient, onGoRoster, onFilterType }) {
+  const now = new Date();
+  const s = useMemo(() => {
+    const typeCounts = {};
+    let listeners = 0, listenerProfiles = 0, uk = 0;
+    const collaborators = new Set();
+    for (const c of clients) {
+      (c.types || []).forEach(t => { typeCounts[t] = (typeCounts[t] || 0) + 1; });
+      const l = parseListeners(c.spotifyMonthly);
+      if (l > 0) { listeners += l; listenerProfiles++; }
+      if (isUKClient(c)) uk++;
+      (c.credits || []).forEach(cr => collaborators.add(cr.toLowerCase().trim()));
+    }
+    // Profiles missing the info we care most about — the nudge to go edit.
+    const missingOf = (c) => {
+      const m = [];
+      if (!c.photoUrl) m.push('Photo');
+      if (!(c.types || []).length) m.push('Type');
+      if (!c.contact) m.push('Rep');
+      if (!c.country) m.push('Location');
+      if (!c.spotifyUrl) m.push('Spotify link');
+      if (!c.instagram && !c.twitter && !c.tiktok) m.push('Socials');
+      return m;
+    };
+    const incomplete = clients.map(c => ({ c, missing: missingOf(c) }))
+      .filter(x => x.missing.length)
+      .sort((p, q) => q.missing.length - p.missing.length);
+    // Newest releases across the whole roster (Spotify sync refreshes weekly).
+    const releases = clients
+      .flatMap(c => (c.spotifyRecentReleases || []).map(r => ({ c, r, at: new Date(r.releaseDate || 0) })))
+      .filter(x => x.r.name && !isNaN(x.at.getTime()) && x.at.getFullYear() > 1971)
+      .sort((a, b) => b.at - a.at).slice(0, 6);
+    const top = [...clients]
+      .sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly))
+      .slice(0, 4).filter(c => parseListeners(c.spotifyMonthly) > 0);
+    const TYPE_ORDER = ['Songwriter', 'Producer', 'Artist', 'Mixer', 'Composer', 'Remixer'];
+    const mix = [
+      ...TYPE_ORDER.filter(t => typeCounts[t]),
+      ...Object.keys(typeCounts).filter(t => !TYPE_ORDER.includes(t)).sort((a, b) => typeCounts[b] - typeCounts[a]),
+    ].map(t => ({ t, n: typeCounts[t] }));
+    return { typeCounts, listeners, listenerProfiles, uk, collaborators: collaborators.size, incomplete, releases, top, mix };
+  }, [clients]);
+  const [showIncomplete, setShowIncomplete] = useState(false);
+  // Manual to-dos — the same shared Todos tab the sports dashboard uses, so
+  // there is one company to-do list no matter which home you're on.
+  const todosTab = useAdminTab('todos');
+  const [addingTodo, setAddingTodo] = useState(false);
+  const [todoText, setTodoText] = useState('');
+  const todoItems = useMemo(() => {
+    const d = todosTab.data;
+    if (!d) return [];
+    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done');
+    if (ti < 0) return [];
+    return d.rows
+      .filter(r => String(r.cells[ti] || '').trim() && !/true/i.test(String(di >= 0 ? r.cells[di] : '')))
+      .map(r => ({ row: r._row, text: r.cells[ti] }));
+  }, [todosTab.data]);
+  const postTodos = async (body) => {
+    try {
+      await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      todosTab.reload();
+    } catch { /* next reload will show the truth */ }
+  };
+  const addTodo = () => {
+    const t = todoText.trim();
+    if (!t) { setAddingTodo(false); return; }
+    setTodoText(''); setAddingTodo(false);
+    postTodos({ action: 'tab-append', tab: 'todos', values: { text: t, createdBy: (user?.name || 'Team'), createdAt: new Date().toISOString().slice(0, 10), done: '' } });
+  };
+  const completeTodo = (row) => postTodos({ action: 'tab-update', tab: 'todos', row, values: { done: 'TRUE' } });
+
+  const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
+  const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
+  const tileHead = (label, range) => (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
+      <div style={{ fontSize: 11, color: G.textTertiary }}>{range}</div>
+    </div>
+  );
+  const row = (c, sub, right, key, last) => (
+    <div key={key} onClick={() => onOpenClient(c)}
+      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+      <div style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {c.name} {sub && <span style={{ color: G.textTertiary, fontSize: 12 }}>· {sub}</span>}
+      </div>
+      <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{right}</div>
+    </div>
+  );
+  const empty = (msg) => <div style={{ fontSize: 13, color: G.textTertiary, padding: "14px 0 6px" }}>{msg}</div>;
+  const relDate = (d) => d.getFullYear() === now.getFullYear()
+    ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  const firstName = (user?.name || '').split(' ')[0];
+  const greeting = (now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening') + (firstName ? `, ${firstName}` : '');
+
+  return (
+    <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ fontSize: isMobile ? 21 : 25, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{greeting}</div>
+      <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>
+        {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
+        <div style={{ ...card, cursor: "pointer" }} onClick={onGoRoster}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{clients.length}</div>
+          <div style={statLabel}>Total clients</div>
+          <div style={statSub}>{['Songwriter', 'Producer', 'Artist'].map(t => `${s.typeCounts[t] || 0} ${t}s`).join(' · ')}</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.listeners ? bigNum(Math.round(s.listeners)) : '—'}</div>
+          <div style={statLabel}>Monthly listeners</div>
+          <div style={statSub}>{s.listeners ? `Spotify · ${s.listenerProfiles} artist profiles` : 'No listener data yet'}</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.collaborators || '—'}</div>
+          <div style={statLabel}>Artists worked with</div>
+          <div style={statSub}>Unique collaborators on file</div>
+        </div>
+        <div style={{ ...card, cursor: "pointer" }} onClick={() => onFilterType('UK Client')}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.uk}</div>
+          <div style={statLabel}>UK clients</div>
+          <div style={statSub}>Based in the United Kingdom</div>
+        </div>
+      </div>
+
+      {s.top.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
+            {s.top.map((c, i) => (
+              <ClientCard key={c.id || i} client={c} logos={logos} isMobile={false} onClick={() => onOpenClient(c)} />
+            ))}
+          </div>
+          <button onClick={onGoRoster}
+            style={{ marginTop: 10, background: "none", border: "none", color: G.green, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+            View full roster →
+          </button>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
+        <div style={card}>
+          {tileHead('Recent releases', '')}
+          {s.releases.length === 0 ? empty('No releases synced yet.')
+            : s.releases.map((x, i, arr) => row(x.c, x.r.name, relDate(x.at), `${x.c.id || x.c.name}-${i}`, i === arr.length - 1))}
+        </div>
+        <div style={card}>
+          {tileHead('Roster mix', '')}
+          {s.mix.length === 0 ? empty('No client types on file yet.')
+            : s.mix.map((m, i, arr) => (
+              <div key={m.t} onClick={() => onFilterType(m.t)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: i === arr.length - 1 && !s.uk ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+                <div style={{ fontSize: 13, color: G.text }}>{m.t}s</div>
+                <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{m.n}</div>
+              </div>
+            ))}
+          {s.uk > 0 && (
+            <div onClick={() => onFilterType('UK Client')}
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", cursor: "pointer" }}>
+              <div style={{ fontSize: 13, color: G.text }}>UK clients</div>
+              <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{s.uk}</div>
+            </div>
+          )}
+        </div>
+        <div style={card}>
+          {tileHead('To do', (
+            <button onClick={() => setAddingTodo(v => !v)} title="Add a to-do"
+              style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, width: 22, height: 22, fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", fontFamily: ff, padding: 0 }}>+</button>
+          ))}
+          {addingTodo && (
+            <input autoFocus value={todoText} onChange={e => setTodoText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addTodo(); if (e.key === 'Escape') { setAddingTodo(false); setTodoText(''); } }}
+              placeholder="Type and press Enter"
+              style={{ ...inputBase, marginBottom: 8, padding: "8px 10px", fontSize: 13 }} />
+          )}
+          {s.incomplete.length > 0 && (
+            <div onClick={() => setShowIncomplete(true)}
+              style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
+              Incomplete profiles: {s.incomplete.length} clients
+            </div>
+          )}
+          {todoItems.map(t => (
+            <div key={t.row} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
+              <button onClick={() => completeTodo(t.row)} title="Mark complete"
+                style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${G.textTertiary}`, background: "transparent", cursor: "pointer", flexShrink: 0, padding: 0 }} />
+              <span style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
+            </div>
+          ))}
+          {s.incomplete.length === 0 && todoItems.length === 0 && !addingTodo && (
+            <div style={{ fontSize: 13, color: G.green, padding: "6px 0" }}>All clear ✓</div>
+          )}
+        </div>
+      </div>
+
+      {showIncomplete && (
+        <div onClick={() => setShowIncomplete(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 540, maxHeight: "80vh", overflowY: "auto", padding: 20, animation: "modalIn .18s ease" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>Incomplete profiles</div>
+              <button onClick={() => setShowIncomplete(false)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: G.textTertiary, marginBottom: 10 }}>{s.incomplete.length} of {clients.length} need info — click a name, then Edit to fill the gaps.</div>
+            {s.incomplete.map((x, i, arr) => (
+              <div key={x.c.id || i} onClick={() => { setShowIncomplete(false); onOpenClient(x.c); }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+                <div style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {x.c.name} <span style={{ color: G.textTertiary, fontSize: 12 }}>· {(x.c.types || []).join(' · ') || 'No type'}</span>
+                </div>
+                <div style={{ fontSize: 12, color: G.red, fontWeight: 600, flexShrink: 0 }}>
+                  {x.missing.slice(0, 3).join(' · ')}{x.missing.length > 3 ? ` +${x.missing.length - 3}` : ''}
                 </div>
               </div>
             ))}
@@ -3967,6 +4203,13 @@ function App() {
     window.history.pushState({ view: 'roster', domain: 'sports', sportsPage: key }, '', key === 'home' ? '/sports' : `/sports?page=${key}`);
     setSportsPage(key);
   };
+  // Music employee section (Tyler-only while it's broken in): 'home' / 'roster'.
+  const [musicPage, setMusicPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
+  const goMusicPage = (key) => {
+    if (key === musicPage) return;
+    window.history.pushState({ view: 'roster', domain: 'music', musicPage: key }, '', key === 'home' ? '/' : `/?page=${key}`);
+    setMusicPage(key);
+  };
 
   const setView = (v, item) => {
     if (v === 'detail' && item) {
@@ -4036,6 +4279,7 @@ function App() {
       const { domain: d, slug } = parseUrl();
       setDomainState(d);
       setSportsPage(e.state?.sportsPage || new URLSearchParams(window.location.search).get('page') || 'home');
+      setMusicPage(e.state?.musicPage || new URLSearchParams(window.location.search).get('page') || 'home');
       const list = d === 'sports' ? athletes : clients;
       if (list.length && slug) {
         const it = resolveItem(list, slug);
@@ -4296,9 +4540,6 @@ function App() {
     const extra = Array.from(all).filter(t => !ORDER.includes(t)).sort();
     return ['All', ...ORDER, ...extra, 'UK Client'];
   }, [clients]);
-  const isUKClient = (c) => [c.country, c.country2, c.country3]
-    .some(v => ['uk', 'united kingdom', 'england', 'britain', 'scotland', 'wales'].includes(String(v || '').toLowerCase().trim()));
-
   const contacts = useMemo(() => ['All', ...Array.from(new Set(
     clients.flatMap(c => (c.contact || '').split(',').map(s => s.trim()).filter(Boolean))
   )).sort()], [clients]);
@@ -4310,14 +4551,6 @@ function App() {
   const countries = useMemo(() => ['All', ...Array.from(new Set(
     clients.map(c => c.country).filter(Boolean)
   )).sort()], [clients]);
-
-  const parseListeners = v => {
-    if (!v) return 0;
-    const s = String(v).trim().toUpperCase();
-    if (s.endsWith('M')) return parseFloat(s) * 1e6;
-    if (s.endsWith('K')) return parseFloat(s) * 1e3;
-    return parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
-  };
 
   const filtered = useMemo(() => {
     // A custom group overrides the type/contact/label/country filters (search still narrows).
@@ -4463,23 +4696,34 @@ function App() {
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
   ];
+  const NAV_MUSIC = [
+    { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
+    { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
+  ];
   const [onboardLinksOpen, setOnboardLinksOpen] = useState(false);
   const navClick = (it) => {
     if (it.modal) { setOnboardLinksOpen(true); return; }
+    if (domain === 'music') { goMusicPage(it.key); return; }
     // Clicking Roster in the nav always shows the full roster — the "my
     // clients" scope only applies via the dashboard link.
     if (it.key === 'roster') setAgentFilter('All');
     goSportsPage(it.key);
   };
   const navActive = domain === 'sports' && isAdmin && view !== 'detail';
+  // The music home is Tyler-only while it's broken in — everyone else lands on
+  // the roster exactly as before.
+  const isTyler = /^tyler\b/i.test(currentUser?.name || '');
+  const musicNavActive = domain === 'music' && isAdmin && isTyler && view !== 'detail';
+  const navItems = domain === 'sports' ? NAV_SPORTS : NAV_MUSIC;
+  const navPage = domain === 'sports' ? sportsPage : musicPage;
   // Roster search/filter/export controls only make sense on the roster itself
-  // (and always for music / public sessions). Sports waits for the auth answer
-  // so employees land straight on the dashboard with no roster flash.
-  const rosterControlsOn = (domain !== 'sports' || authKnown) && (!navActive || sportsPage === 'roster');
-  const sidebar = (navActive && !isMobile) ? (
+  // (and always for public sessions). Both domains wait for the auth answer so
+  // employees land straight on the dashboard with no roster flash.
+  const rosterControlsOn = authKnown && (!navActive || sportsPage === 'roster') && (!musicNavActive || musicPage === 'roster');
+  const sidebar = ((navActive || musicNavActive) && !isMobile) ? (
     <div style={{ width: 176, flexShrink: 0, borderRight: `1px solid ${G.surfaceBorder}`, padding: "18px 10px", position: "sticky", top: 62, alignSelf: "flex-start", maxHeight: "calc(100vh - 62px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-      {NAV_SPORTS.map(it => {
-        const on = sportsPage === it.key;
+      {navItems.map(it => {
+        const on = navPage === it.key;
         return (
           <button key={it.key} onClick={() => navClick(it)}
             style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: on ? G.greenSubtle : "transparent", border: "none", borderRadius: 9, color: on ? G.green : G.textSecondary, fontWeight: on ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
@@ -4495,9 +4739,9 @@ function App() {
     <div className="mh-hscroll" style={{ display: "flex", gap: 4, alignItems: "center", overflowX: "auto" }}>
       {domainToggle}
       <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-        {NAV_SPORTS.map((it, i) => (
+        {navItems.map((it, i) => (
           <button key={it.key} onClick={() => navClick(it)}
-            style={{ padding: "8px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", background: sportsPage === it.key ? G.greenSubtle : "transparent", color: sportsPage === it.key ? G.green : G.textSecondary, fontWeight: sportsPage === it.key ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+            style={{ padding: "8px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", background: navPage === it.key ? G.greenSubtle : "transparent", color: navPage === it.key ? G.green : G.textSecondary, fontWeight: navPage === it.key ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
             {it.label}
           </button>
         ))}
@@ -4620,7 +4864,7 @@ function App() {
               </div>
               {/* Row 2: domain + view + sort + layout + search — one line (scrolls if tight) */}
               <div style={{ padding: "0 16px 12px" }}>
-                {!rosterControlsOn ? (navActive ? mobileNavStrip : <div style={{ display: "flex", gap: 4, alignItems: "center" }}>{domainToggle}</div>) : mobileSearchOpen ? (
+                {!rosterControlsOn ? ((navActive || musicNavActive) ? mobileNavStrip : <div style={{ display: "flex", gap: 4, alignItems: "center" }}>{domainToggle}</div>) : mobileSearchOpen ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
                     <input ref={searchRef} autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : "Search clients..."}
@@ -4630,8 +4874,8 @@ function App() {
                 ) : (
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                     {domainToggle}
-                    {domain === 'sports' && isAdmin && (
-                      <button onClick={() => goSportsPage('home')} title="Home"
+                    {isAdmin && (domain === 'sports' || isTyler) && (
+                      <button onClick={() => domain === 'sports' ? goSportsPage('home') : goMusicPage('home')} title="Home"
                         style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 9px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
@@ -4759,7 +5003,13 @@ function App() {
               {!loading && !error && view === 'detail' && selected && (
                 <ClientDetail client={selected} logos={logos} staff={staff} isMobile={isMobile} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
               )}
-              {!loading && !error && view === 'roster' && (
+              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'home' && (
+                <MusicDashboard clients={clients} logos={logos} isMobile={isMobile} user={currentUser}
+                  onOpenClient={(c) => setView('detail', c)}
+                  onGoRoster={() => { clearCustomGroup(); setFilterTypes([]); goMusicPage('roster'); }}
+                  onFilterType={(t) => { clearCustomGroup(); setFilterTypes([t]); goMusicPage('roster'); }} />
+              )}
+              {!loading && !error && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
                   {filtered.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
