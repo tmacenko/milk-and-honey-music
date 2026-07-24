@@ -483,6 +483,7 @@ const ADMIN_TABS = {
   onboarding: { title: 'Onboarding', writable: false },
   socialhistory: { title: 'SocialHistory', writable: false }, // robot snapshots — growth board + sparklines
   stathistory: { title: 'StatHistory', writable: false },     // robot snapshots — depth/rank trend tracking
+  todos: { title: 'Todos', writable: true },                  // dashboard to-do list (auto-created on first read)
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {
@@ -1150,8 +1151,19 @@ module.exports = async (req, res) => {
     const tab = ADMIN_TABS[tabKey];
     if (!tab) return res.status(400).json({ error: 'Unknown tab' });
     try {
-      const token = await getToken();
-      const out = await readAdminTab(token, tab);
+      const token = await getToken('https://www.googleapis.com/auth/spreadsheets');
+      let out;
+      try { out = await readAdminTab(token, tab); }
+      catch (e) {
+        if (tabKey !== 'todos') throw e;
+        // First use — create the Todos tab with headers and return empty.
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'Todos', gridProperties: { rowCount: 1000, columnCount: 4 } } } }] }),
+        });
+        await sheetAppend(token, "'Todos'!A:D", ['text', 'createdBy', 'createdAt', 'done']);
+        out = { headers: ['text', 'createdBy', 'createdAt', 'done'], rows: [] };
+      }
       return res.json({ ...out, writable: tab.writable });
     } catch (err) {
       console.error('Tab read error:', err.message);

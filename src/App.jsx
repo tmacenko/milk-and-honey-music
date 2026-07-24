@@ -2749,7 +2749,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
   );
 }
 
-function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, user, decks }) {
+function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, user, decks }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Agents see THEIR book everywhere: every stat and tile computes over their
@@ -2827,6 +2827,42 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     };
   }, [scoped, mineList]);
   const [showIncomplete, setShowIncomplete] = useState(false);
+  // Manual to-dos (shared Todos sheet tab) + a standing nudge when fresh
+  // onboarding submissions arrived this week.
+  const todosTab = useAdminTab('todos');
+  const onboardTab = useAdminTab('onboarding');
+  const [addingTodo, setAddingTodo] = useState(false);
+  const [todoText, setTodoText] = useState('');
+  const todoItems = useMemo(() => {
+    const d = todosTab.data;
+    if (!d) return [];
+    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done');
+    if (ti < 0) return [];
+    return d.rows
+      .filter(r => String(r.cells[ti] || '').trim() && !/true/i.test(String(di >= 0 ? r.cells[di] : '')))
+      .map(r => ({ row: r._row, text: r.cells[ti] }));
+  }, [todosTab.data]);
+  const newOnboards = useMemo(() => {
+    const d = onboardTab.data;
+    if (!d) return 0;
+    const si = d.headers.indexOf('submittedAt');
+    if (si < 0) return 0;
+    const cutoff = Date.now() - 7 * 86400000;
+    return d.rows.filter(r => { const t = new Date(r.cells[si] || 0).getTime(); return t && t > cutoff; }).length;
+  }, [onboardTab.data]);
+  const postTodos = async (body) => {
+    try {
+      await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      todosTab.reload();
+    } catch { /* next reload will show the truth */ }
+  };
+  const addTodo = () => {
+    const t = todoText.trim();
+    if (!t) { setAddingTodo(false); return; }
+    setTodoText(''); setAddingTodo(false);
+    postTodos({ action: 'tab-append', tab: 'todos', values: { text: t, createdBy: (user?.name || 'Team'), createdAt: new Date().toISOString().slice(0, 10), done: '' } });
+  };
+  const completeTodo = (row) => postTodos({ action: 'tab-update', tab: 'todos', row, values: { done: 'TRUE' } });
   const fmtMoney = (n) => n >= 1e6 ? `$${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`
     : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
   const seasonLabel = `${now.getFullYear()}/${String((now.getFullYear() + 1) % 100).padStart(2, '0')} season`;
@@ -2943,15 +2979,38 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               row(b.a, 'Birthday', b.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), b.a.id || i, i === arr.length - 1))}
         </div>
         <div style={card}>
-          {tileHead('To do', '')}
-          {s.incomplete.length === 0
-            ? <div style={{ fontSize: 13, color: G.green, padding: "10px 0 4px" }}>Every profile has the essentials ✓</div>
-            : (
-              <div onClick={() => setShowIncomplete(true)}
-                style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "10px 0 4px" }}>
-                Incomplete profiles: {s.incomplete.length} players
-              </div>
-            )}
+          {tileHead('To do', (
+            <button onClick={() => setAddingTodo(v => !v)} title="Add a to-do"
+              style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, width: 22, height: 22, fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", fontFamily: ff, padding: 0 }}>+</button>
+          ))}
+          {addingTodo && (
+            <input autoFocus value={todoText} onChange={e => setTodoText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addTodo(); if (e.key === 'Escape') { setAddingTodo(false); setTodoText(''); } }}
+              placeholder="Type and press Enter"
+              style={{ ...inputBase, marginBottom: 8, padding: "8px 10px", fontSize: 13 }} />
+          )}
+          {s.incomplete.length > 0 && (
+            <div onClick={() => setShowIncomplete(true)}
+              style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
+              Incomplete profiles: {s.incomplete.length} players
+            </div>
+          )}
+          {newOnboards > 0 && (
+            <div onClick={onGoRecruiting}
+              style={{ fontSize: 13, color: G.yellow, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
+              Check new onboarding ({newOnboards})
+            </div>
+          )}
+          {todoItems.map(t => (
+            <div key={t.row} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
+              <button onClick={() => completeTodo(t.row)} title="Mark complete"
+                style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${G.textTertiary}`, background: "transparent", cursor: "pointer", flexShrink: 0, padding: 0 }} />
+              <span style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
+            </div>
+          ))}
+          {s.incomplete.length === 0 && newOnboards === 0 && todoItems.length === 0 && !addingTodo && (
+            <div style={{ fontSize: 13, color: G.green, padding: "6px 0" }}>All clear ✓</div>
+          )}
         </div>
       </div>
 
@@ -4614,7 +4673,8 @@ function App() {
                   onGoRoster={() => goSportsPage('roster')}
                   onShowStarters={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('Starters'); goSportsPage('roster'); }}
                   onShowMine={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setAgentFilter(currentUser?.name || 'All'); goSportsPage('roster'); }}
-                  onGoMarketing={() => goSportsPage('marketing')} />
+                  onGoMarketing={() => goSportsPage('marketing')}
+                  onGoRecruiting={() => goSportsPage('recruiting')} />
               )}
               {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => setAthletesLoaded(false)} />}
