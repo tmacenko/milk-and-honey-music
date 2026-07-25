@@ -4746,6 +4746,16 @@ function App() {
       setEditingAthlete(null);
       if (view === 'detail') setView('roster');
       setAthletesLoaded(false);
+      // A brand-new athlete gets the same one-player enrichment pass the
+      // onboarding flow runs (ESPN id, 247 link, contracts, follower counts)
+      // instead of waiting for tonight's crons; refetch again when it lands.
+      if (opts.created && updated?.name) {
+        const nm = encodeURIComponent(updated.name.trim());
+        Promise.allSettled([
+          fetch(`/api/refresh-depth?task=all&name=${nm}`),
+          fetch(`/api/refresh-socials?name=${nm}&platforms=ig,x,tiktok`),
+        ]).then(() => setAthletesLoaded(false));
+      }
       return;
     }
     setAthletes(prev => prev.map(a => (a.level === updated.level && a._rowIndex === updated._rowIndex) ? updated : a));
