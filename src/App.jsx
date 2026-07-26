@@ -1135,7 +1135,7 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
 }
 
 // ── Client detail view ────────────────────────────────────────────────────────
-function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
+function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdmin }) {
   const proLogo = lookupLogo(logos, c.pro);
   const pubLogo = lookupLogo(logos, c.publisher);
   const lblLogo = lookupLogo(logos, c.label);
@@ -1473,6 +1473,8 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile }) {
             {c.spotifyGenres.map((g, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.textSecondary, textTransform: "capitalize" }}>{g}</span>)}
           </div>
         )}
+
+        {isAdmin && <DocsModule person={c.name} kind="music" />}
 
 
         </div>
@@ -2009,6 +2011,102 @@ function athleteSearchMatch(a, q) {
     .some(v => String(v || '').toLowerCase().includes(q));
 }
 
+// ── Documents module (Box-backed) ─────────────────────────────────────────────
+// Per-person folder in the company Box (Athletes/<name> or Clients/<name>).
+// The server hands back a token scoped to just that one folder, so uploads go
+// browser → Box directly and never hit the serverless body-size ceiling.
+function DocsModule({ person, kind }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const fileRef = useRef();
+  const load = useCallback(() => {
+    fetch(`/api/box?person=${encodeURIComponent(person)}&kind=${kind}`)
+      .then(r => r.json())
+      .then(d => { if (d.error) throw new Error(d.error); setData(d); setErr(''); })
+      .catch(e => setErr(e.message));
+  }, [person, kind]);
+  useEffect(() => { setData(null); setErr(''); load(); }, [load]);
+  const uploadFiles = async (files) => {
+    if (!data || !files?.length || busy) return;
+    setBusy(true);
+    try {
+      for (const f of files) {
+        const form = new FormData();
+        form.append('attributes', JSON.stringify({ name: f.name, parent: { id: String(data.folderId) } }));
+        form.append('file', f);
+        let r = await fetch('https://upload.box.com/api/2.0/files/content', { method: 'POST', headers: { Authorization: `Bearer ${data.token}` }, body: form });
+        if (r.status === 409) {
+          // Same filename already in the folder — save as a new version instead.
+          const conflict = await r.json().catch(() => null);
+          const existingId = conflict?.context_info?.conflicts?.id;
+          if (existingId) {
+            const vf = new FormData();
+            vf.append('attributes', JSON.stringify({ name: f.name }));
+            vf.append('file', f);
+            r = await fetch(`https://upload.box.com/api/2.0/files/${existingId}/content`, { method: 'POST', headers: { Authorization: `Bearer ${data.token}` }, body: vf });
+          }
+        }
+        if (!r.ok) throw new Error(`Upload failed for ${f.name}`);
+      }
+      load();
+    } catch (e) { alert(e.message); }
+    setBusy(false);
+  };
+  const download = async (id) => {
+    try {
+      const d = await (await fetch(`/api/box?download=${encodeURIComponent(id)}`)).json();
+      if (d.url) window.open(d.url, '_blank');
+      else throw new Error(d.error || 'Download failed');
+    } catch (e) { alert(e.message); }
+  };
+  const del = async (f) => {
+    if (!window.confirm(`Delete ${f.name}? It moves to the Box trash.`)) return;
+    setBusy(true);
+    try {
+      const d = await (await fetch('/api/box', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', fileId: f.id }) })).json();
+      if (d.error) throw new Error(d.error);
+      load();
+    } catch (e) { alert(e.message); }
+    setBusy(false);
+  };
+  const fmtSize = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`;
+  return (
+    <div onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
+      onDrop={e => { e.preventDefault(); setDrag(false); uploadFiles([...e.dataTransfer.files]); }}
+      style={{ background: G.surface, border: drag ? `1px dashed ${G.green}` : `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 11 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Documents</div>
+        <button onClick={() => fileRef.current?.click()} disabled={!data || busy}
+          style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, color: data && !busy ? G.green : G.textTertiary, cursor: data && !busy ? "pointer" : "default", padding: "5px 11px", fontSize: 12, fontWeight: 600, fontFamily: ff }}>
+          {busy ? 'Working…' : '+ Upload'}
+        </button>
+        <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={e => { uploadFiles([...e.target.files]); e.target.value = ''; }} />
+      </div>
+      {err ? <div style={{ fontSize: 13, color: G.textTertiary }}>{err}</div>
+        : !data ? <div style={{ fontSize: 13, color: G.textTertiary }}>Loading…</div>
+        : data.items.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary }}>No documents yet — drop files here or hit Upload.</div>
+        : data.items.map((f, i, arr) => (
+          <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
+            <div onClick={() => download(f.id)} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+              <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 1 }}>
+                {fmtSize(f.size)}{f.modifiedAt ? ` · ${new Date(f.modifiedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
+              </div>
+            </div>
+            <button onClick={() => download(f.id)} title="Download"
+              style={{ background: "transparent", border: "none", color: G.textSecondary, cursor: "pointer", padding: 4, display: "flex" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+            <button onClick={() => del(f)} title="Delete"
+              style={{ background: "transparent", border: "none", color: G.textTertiary, cursor: "pointer", padding: 4, fontSize: 13, fontFamily: ff }}>✕</button>
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
   const [bioExp, setBioExp] = useState(false);
   const team = a.nflTeam || a.college || '';
@@ -2152,6 +2250,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               </div>
             );
           })()}
+          {companyView && <DocsModule person={a.name} kind="sports" />}
           {a.profileUrl247 && (
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
               <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>
@@ -5123,7 +5222,7 @@ function App() {
           ) : (
             <>
               {!loading && !error && view === 'detail' && selected && (
-                <ClientDetail client={selected} logos={logos} staff={staff} isMobile={isMobile} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
+                <ClientDetail client={selected} logos={logos} staff={staff} isMobile={isMobile} isAdmin={isAdmin} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
               )}
               {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'home' && (
                 <MusicDashboard clients={clients} isMobile={isMobile} user={currentUser}
