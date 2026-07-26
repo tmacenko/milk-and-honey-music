@@ -1474,7 +1474,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
           </div>
         )}
 
-        {isAdmin && <DocsModule person={c.name} kind="music" />}
+        {BOX_DOCS_ENABLED && isAdmin && <DocsModule person={c.name} kind="music" />}
 
 
         </div>
@@ -2015,6 +2015,11 @@ function athleteSearchMatch(a, q) {
 // Per-person folder in the company Box (Athletes/<name> or Clients/<name>).
 // The server hands back a token scoped to just that one folder, so uploads go
 // browser → Box directly and never hit the serverless body-size ceiling.
+//
+// OFF until Box is connected: the Custom App needs an enterprise admin to
+// authorize it and to read out the Enterprise ID (BOX_* env vars). Flip this to
+// true once those are in Vercel — the module and api/box.js are finished.
+const BOX_DOCS_ENABLED = false;
 function DocsModule({ person, kind }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
@@ -2250,7 +2255,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               </div>
             );
           })()}
-          {companyView && <DocsModule person={a.name} kind="sports" />}
+          {BOX_DOCS_ENABLED && companyView && <DocsModule person={a.name} kind="sports" />}
           {a.profileUrl247 && (
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
               <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>
