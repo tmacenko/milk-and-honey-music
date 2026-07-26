@@ -284,6 +284,13 @@ function parseClient(row, idx) {
     youtube:      g('YouTube'),
     beatport:     g('Beatport'),
     spotifyMonthly: g('Spotify Monthly Listeners'),
+    // Robot-owned follower columns (written by api/refresh-music-socials.js).
+    igFollowers:      g('igFollowers'),
+    twitterFollowers: g('twitterFollowers'),
+    tiktokFollowers:  g('tiktokFollowers'),
+    growth7d:     parseFloat(g('growth7d')) || 0,
+    growth7dPct:  g('growth7dPct'),
+    growthDays:   parseFloat(g('growthDays')) || 0,
     spotifyUrl:   g('Spotify URL'),
     appleMusicUrl: g('Apple Music URL'),
     soundcloudUrl: g('SoundCloud URL'),
@@ -344,6 +351,21 @@ module.exports = async (req, res) => {
 
   try {
     const token = await getToken();
+
+    // ── GET ?tab=socialhistory: raw follower snapshots (admin only) ──────────
+    // Same {headers, rows:[{_row, cells}]} shape as the sports tab API, so the
+    // client's seriesFromHistory / useAdminTab machinery works unchanged.
+    if (req.method === 'GET' && req.query?.tab === 'socialhistory') {
+      const { configured, admin } = authState(req);
+      if (configured && !admin) return res.status(401).json({ error: 'Not authorized' });
+      let d = null;
+      try { d = await sheetGet(token, "'SocialHistory'!A:E"); } catch { d = { values: [] }; }
+      const vals = d.values || [];
+      return res.json({
+        headers: (vals[0] || []).map(h => String(h || '').trim()),
+        rows: vals.slice(1).map((r, i) => ({ _row: i + 2, cells: r })),
+      });
+    }
 
     // ── GET: load clients + logos ────────────────────────────────────────────
     if (req.method === 'GET') {

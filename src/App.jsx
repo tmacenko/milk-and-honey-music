@@ -1135,6 +1135,73 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
 }
 
 // ── Client detail view ────────────────────────────────────────────────────────
+// ── Socials module (music client profile, company view) ──────────────────────
+// Same card as the sports profile: per-platform follower rows with an up/down
+// change arrow (7-day window from the music SocialHistory tab) + total reach.
+function MusicSocialsModule({ client: c }) {
+  const hist = useAdminTab('socialhistory', 'sheets');
+  const key = String(c.name || '').toLowerCase().trim();
+  const series = useMemo(() => seriesFromHistory(hist.data?.rows)[key] || [], [hist.data, key]);
+  const { pd, days } = useMemo(() => {
+    const arr = series;
+    const last = arr[arr.length - 1];
+    if (!last) return { pd: null, days: 0 };
+    const target = last.dt.getTime() - 7 * 86400000;
+    let base = arr[0];
+    for (const r of arr) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
+    if (base === last) return { pd: null, days: 0 };
+    return {
+      pd: {
+        ig: base.ig > 0 ? last.ig - base.ig : 0,
+        x: base.x > 0 ? last.x - base.x : 0,
+        tk: base.tk > 0 ? last.tk - base.tk : 0,
+      },
+      days: Math.max(1, Math.round((last.dt - base.dt) / 86400000)),
+    };
+  }, [series]);
+  const rows = [
+    c.instagram && { icon: <IgIcon size={18} />, platform: 'Instagram', user: `@${c.instagram}`, url: `https://instagram.com/${c.instagram}`, count: c.igFollowers, d: pd?.ig },
+    c.twitter && { icon: <TwIcon size={16} />, platform: 'X', user: `@${c.twitter}`, url: `https://x.com/${c.twitter}`, count: c.twitterFollowers, d: pd?.x },
+    c.tiktok && { icon: <TkIcon size={16} />, platform: 'TikTok', user: `@${c.tiktok}`, url: `https://tiktok.com/@${c.tiktok}`, count: c.tiktokFollowers, d: pd?.tk },
+  ].filter(Boolean);
+  if (rows.length === 0) return null;
+  const totReach = rows.reduce((s, r) => s + countFrom(r.count), 0);
+  const totD = pd ? (pd.ig + pd.x + pd.tk) : null;
+  return (
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Social media</div>
+        {pd ? <div style={{ fontSize: 11, color: G.textTertiary }}>{days}-day change</div> : null}
+      </div>
+      {rows.map((r, i) => (
+        <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
+          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", textDecoration: "none", color: "#fff" }}>
+          {r.icon}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{r.platform}</div>
+            <div style={{ fontSize: 12, color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.user}</div>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{r.count || '—'}</div>
+            {r.d != null && r.d !== 0 && (
+              <div style={{ fontSize: 12, fontWeight: 700, color: r.d > 0 ? G.green : G.red }}>{r.d > 0 ? '↑' : '↓'} {bigNum(Math.abs(r.d))}</div>
+            )}
+          </div>
+        </a>
+      ))}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingTop: 10, marginTop: 2, borderTop: `1px solid ${G.surfaceBorder}` }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: G.text }}>Total reach</div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{totReach ? bigNum(totReach) : '—'}</div>
+          {totD != null && totD !== 0 && (
+            <div style={{ fontSize: 12, fontWeight: 700, color: totD > 0 ? G.green : G.red }}>{totD > 0 ? '↑' : '↓'} {bigNum(Math.abs(totD))}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdmin }) {
   const proLogo = lookupLogo(logos, c.pro);
   const pubLogo = lookupLogo(logos, c.publisher);
@@ -1445,6 +1512,8 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
             </div>
           </div>
         )}
+        {isAdmin && <MusicSocialsModule client={c} />}
+
         {(c.spotifyMonthly || c.spotifyFollowers || c.spotifyPopularity != null) && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {c.spotifyMonthly && (
@@ -2612,6 +2681,7 @@ const parseListeners = v => {
 };
 const isUKClient = (c) => [c.country, c.country2, c.country3]
   .some(v => ['uk', 'united kingdom', 'england', 'britain', 'scotland', 'wales'].includes(String(v || '').toLowerCase().trim()));
+const clientReach = (c) => countFrom(c.igFollowers) + countFrom(c.twitterFollowers) + countFrom(c.tiktokFollowers);
 // Tolerant sheet-date parser: "6/15/2001", "2001-06-15", "June 15, 2001", or a
 // year-less "6/15" (birthdays) -> { month, day, year|null }.
 const parseSheetDate = (s) => {
@@ -3265,7 +3335,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 // tiles — built from what the music sheet actually tracks (types, reps,
 // countries, Spotify listeners/releases). Gated to Tyler's login while it's
 // broken in.
-function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onFilterType }) {
+function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onFilterType, onGoMarketing }) {
   const now = new Date();
   const s = useMemo(() => {
     const typeCounts = {};
@@ -3304,12 +3374,11 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
     const top = listenerProfiles > 0
       ? [...clients].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly)).slice(0, 4)
       : clients.slice(0, 4);
-    const TYPE_ORDER = ['Songwriter', 'Producer', 'Artist', 'Mixer', 'Composer', 'Remixer'];
-    const mix = [
-      ...TYPE_ORDER.filter(t => typeCounts[t]),
-      ...Object.keys(typeCounts).filter(t => !TYPE_ORDER.includes(t)).sort((a, b) => typeCounts[b] - typeCounts[a]),
-    ].map(t => ({ t, n: typeCounts[t] }));
-    return { typeCounts, listeners, listenerProfiles, uk, collaborators: collaborators.size, incomplete, releases, weekReleases, top, mix };
+    // 7-day movers, from the music socials job's growth columns.
+    const hasGrowthData = clients.some(c => c.growth7dPct !== '' && c.growth7dPct != null);
+    const hot = clients.filter(c => (c.growth7d || 0) > 0)
+      .sort((p, q) => (q.growth7d || 0) - (p.growth7d || 0)).slice(0, 5);
+    return { typeCounts, listeners, listenerProfiles, uk, collaborators: collaborators.size, incomplete, releases, weekReleases, top, hot, hasGrowthData };
   }, [clients]);
   const [showIncomplete, setShowIncomplete] = useState(false);
   const [showReleases, setShowReleases] = useState(false);
@@ -3421,29 +3490,26 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
         <div style={card}>
+          {tileHead(s.hasGrowthData
+            ? (() => { const d = Math.max(0, ...s.hot.map(x => x.growthDays || 0)); return d >= 7 ? 'Social growth leaders (this week)' : d > 0 ? `Social growth leaders (last ${d} days)` : 'Social growth leaders'; })()
+            : 'Social growth leaders', '')}
+          {!s.hasGrowthData ? empty('First follower snapshots land tonight.')
+            : s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
+            : s.hot.map((c, i, arr) => row(c, (c.types || [])[0] || 'Client',
+                <span style={{ color: G.green, fontWeight: 700 }}>+{bigNum(c.growth7d)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>· {c.growth7dPct}%</span></span>,
+                c.id || i, i === arr.length - 1))}
+          {s.hasGrowthData && (
+            <button onClick={onGoMarketing} style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+              View full growth board →
+            </button>
+          )}
+        </div>
+        <div style={card}>
           {tileHead('Artist recent releases', (
             <span onClick={() => setShowReleases(true)} style={{ color: G.green, fontWeight: 600, cursor: "pointer" }}>This week →</span>
           ))}
           {s.releases.length === 0 ? empty('No releases synced yet.')
             : s.releases.map((x, i, arr) => row(x.c, x.r.name, relDate(x.at), `${x.c.id || x.c.name}-${i}`, i === arr.length - 1))}
-        </div>
-        <div style={card}>
-          {tileHead('Roster mix', '')}
-          {s.mix.length === 0 ? empty('No client types on file yet.')
-            : s.mix.map((m, i, arr) => (
-              <div key={m.t} onClick={() => onFilterType(m.t)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: i === arr.length - 1 && !s.uk ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
-                <div style={{ fontSize: 13, color: G.text }}>{m.t}s</div>
-                <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{m.n}</div>
-              </div>
-            ))}
-          {s.uk > 0 && (
-            <div onClick={() => onFilterType('UK Client')}
-              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", cursor: "pointer" }}>
-              <div style={{ fontSize: 13, color: G.text }}>UK clients</div>
-              <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{s.uk}</div>
-            </div>
-          )}
         </div>
         <div style={card}>
           {tileHead('To do', (
@@ -3575,20 +3641,22 @@ function OnboardLinksModal({ onClose }) {
 // These render raw sheet tabs served by /api/athletes?tab=… so the UI always
 // matches whatever columns the sheet actually has.
 const adminTabCache = {};
-function useAdminTab(key) {
+function useAdminTab(key, api = 'athletes') {
   // Serve the last fetch instantly on remount (no loading flash when hopping
-  // between pages) and refresh quietly in the background.
-  const [data, setData] = useState(() => adminTabCache[key] || null);
+  // between pages) and refresh quietly in the background. `api` picks the
+  // endpoint: 'athletes' (sports sheet tabs) or 'sheets' (music sheet tabs).
+  const ck = `${api}:${key}`;
+  const [data, setData] = useState(() => adminTabCache[ck] || null);
   const [err, setErr] = useState(null);
-  const [loading, setLoading] = useState(!adminTabCache[key]);
+  const [loading, setLoading] = useState(!adminTabCache[ck]);
   const load = useCallback(() => {
-    if (!adminTabCache[key]) setLoading(true);
-    fetch(`/api/athletes?tab=${key}`)
+    if (!adminTabCache[ck]) setLoading(true);
+    fetch(`/api/${api}?tab=${key}`)
       .then(r => r.json())
-      .then(d => { if (d.error) throw new Error(d.error); adminTabCache[key] = d; setData(d); setErr(null); })
+      .then(d => { if (d.error) throw new Error(d.error); adminTabCache[ck] = d; setData(d); setErr(null); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
-  }, [key]);
+  }, [key, api, ck]);
   useEffect(() => { load(); }, [load]);
   return { data, err, loading, reload: load };
 }
@@ -3909,26 +3977,109 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
 }
 
 function MarketingPage({ isMobile, athletes, staff, onOpenAthlete }) {
-  const items = [
-    ['Outreach tracker', 'Log every pitch — who reached out, to which company, and what they said. No more double-pitching the same brand.'],
-    ['Athlete indicators', 'Automatic flags like "no outreach in 30+ days" so nothing slips through the cracks.'],
-    ['Pitch engine', 'Pick an athlete, get a drafted pitch and suggested companies based on their school, interests, and audience.'],
-  ];
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Marketing</div>
       <GrowthBoardSection athletes={athletes} staff={staff} onOpenAthlete={onOpenAthlete} isMobile={isMobile} />
-      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "28px 0 12px" }}>
-        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>More tools on the way</span>
-        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 7, padding: "3px 8px" }}>Coming soon</span>
+    </div>
+  );
+}
+
+// ── Music marketing page (company only — lives in the left nav) ──────────────
+// Same growth board as sports, music flavored: per-platform followers with the
+// 7-day change underneath, total reach, and growth — sortable columns.
+function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
+  const hist = useAdminTab('socialhistory', 'sheets');
+  const [q, setQ] = useCachedState('mgrowth.q', '');
+  const [sortCol, setSortCol] = useCachedState('mgrowth.sortCol', 'total');
+  const [sortDir, setSortDir] = useCachedState('mgrowth.sortDir', 'desc');
+  const seriesByName = useMemo(() => seriesFromHistory(hist.data?.rows), [hist.data]);
+  const platDelta = useMemo(() => {
+    const out = {};
+    for (const [k, arr] of Object.entries(seriesByName)) {
+      const last = arr[arr.length - 1];
+      if (!last) continue;
+      const target = last.dt.getTime() - 7 * 86400000;
+      let base = arr[0];
+      for (const r of arr) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
+      if (base !== last) out[k] = {
+        ig: base.ig > 0 ? last.ig - base.ig : 0,
+        x: base.x > 0 ? last.x - base.x : 0,
+        tk: base.tk > 0 ? last.tk - base.tk : 0,
+      };
+    }
+    return out;
+  }, [seriesByName]);
+  const valOf = {
+    ig: c => countFrom(c.igFollowers), x: c => countFrom(c.twitterFollowers), tt: c => countFrom(c.tiktokFollowers),
+    total: c => clientReach(c), growth: c => (c.growth7d || 0),
+  };
+  const ql = q.trim().toLowerCase();
+  const sorted = clients
+    .filter(c => clientReach(c) > 0 || (c.growth7d || 0) !== 0)
+    .filter(c => !ql || c.name.toLowerCase().includes(ql) || (c.types || []).join(' ').toLowerCase().includes(ql) || String(c.contact || '').toLowerCase().includes(ql))
+    .sort((a, b) => {
+      const cmp = (valOf[sortCol] ? valOf[sortCol](a) - valOf[sortCol](b) : a.name.localeCompare(b.name)) || a.name.localeCompare(b.name);
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  const platCell = (count, d, tdStyle) => (
+    <td style={tdStyle}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: count ? G.text : G.textTertiary }}>{count ? bigNum(count) : '—'}</div>
+      {d != null && d !== 0 && <div style={{ fontSize: 11.5, fontWeight: 700, color: d > 0 ? G.green : G.red, marginTop: 1 }}>{d > 0 ? '↑' : '↓'} {bigNum(Math.abs(d))}</div>}
+    </td>
+  );
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Marketing</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ flex: 1 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients..."
+          style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
-      <div style={{ display: "grid", gap: 10 }}>
-        {items.map(([t, d]) => (
-          <div key={t} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, opacity: 0.75 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{t}</div>
-            <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4, lineHeight: 1.5 }}>{d}</div>
+      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+        {sorted.length === 0 ? (
+          <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No follower data yet.</div>
+        ) : (
+          <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead><tr>
+                {[['client', 'Client'], ['ig', 'Instagram'], ['x', 'X'], ['tt', 'TikTok'], ['total', 'Total'], ['growth', 'Growth']].map(([key, h]) => (
+                  <th key={key}
+                    onClick={() => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(key === 'client' ? 'asc' : 'desc'); } }}
+                    style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
+                    {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  </th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {sorted.map((c, i) => {
+                  const pd = platDelta[c.name.toLowerCase().trim()];
+                  const growth = c.growth7d || 0;
+                  const td = { padding: "10px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+                  return (
+                    <tr key={c.id || i} onClick={() => onOpenClient(c)} style={{ cursor: "pointer" }}
+                      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <td style={{ ...td, color: G.text, fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Avatar name={c.name} photoUrl={c.photoUrl} size={30} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
+                        </div>
+                      </td>
+                      {platCell(countFrom(c.igFollowers), pd?.ig, td)}
+                      {platCell(countFrom(c.twitterFollowers), pd?.x, td)}
+                      {platCell(countFrom(c.tiktokFollowers), pd?.tk, td)}
+                      <td style={{ ...td, color: G.text, fontWeight: 700 }}>{bigNum(clientReach(c))}</td>
+                      <td style={{ ...td, fontWeight: 700, color: growth > 0 ? G.green : growth < 0 ? G.red : G.textTertiary }}>
+                        {growth === 0 ? '—' : <>{growth > 0 ? '+' : ''}{bigNum(growth)}{c.growth7dPct ? <span style={{ color: G.textTertiary, fontWeight: 500 }}> · {c.growth7dPct}%</span> : null}</>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
@@ -4827,6 +4978,11 @@ function App() {
       // stale — close out and refetch the roster.
       setEditing(null);
       if (opts.deleted) { setClients(prev => prev.filter(c => c.name !== opts.name)); if (view === 'detail') setView('roster'); }
+      // A brand-new client gets an immediate follower pull for the handles
+      // they came in with, instead of waiting for tonight's cron.
+      if (opts.created && updatedClient?.name) {
+        fetch(`/api/refresh-music-socials?name=${encodeURIComponent(updatedClient.name.trim())}&platforms=ig,x,tiktok`).catch(() => {});
+      }
       fetch('/api/sheets')
         .then(r => r.json())
         .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); })
@@ -4923,6 +5079,7 @@ function App() {
   const NAV_MUSIC = [
     { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
     { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
+    { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
   ];
   const [onboardLinksOpen, setOnboardLinksOpen] = useState(false);
   const navClick = (it) => {
@@ -5233,7 +5390,11 @@ function App() {
                 <MusicDashboard clients={clients} isMobile={isMobile} user={currentUser}
                   onOpenClient={(c) => setView('detail', c)}
                   onGoRoster={() => { clearCustomGroup(); setFilterTypes([]); goMusicPage('roster'); }}
-                  onFilterType={(t) => { clearCustomGroup(); setFilterTypes([t]); goMusicPage('roster'); }} />
+                  onFilterType={(t) => { clearCustomGroup(); setFilterTypes([t]); goMusicPage('roster'); }}
+                  onGoMarketing={() => goMusicPage('marketing')} />
+              )}
+              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'marketing' && (
+                <MusicMarketingPage isMobile={isMobile} clients={clients} onOpenClient={(c) => setView('detail', c)} />
               )}
               {!loading && !error && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
