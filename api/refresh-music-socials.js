@@ -20,7 +20,7 @@
 // Auth: admin cookie, or `Authorization: Bearer $CRON_SECRET`, or ?key=.
 const crypto = require('crypto');
 const { authState } = require('../lib/auth');
-const { fetchIG, fetchTikTok, fetchX, getGuestToken, runTasks, handle, formatNum, proxyActive } = require('../lib/social-scrapers');
+const { fetchIG, chooseIG, fetchTikTok, fetchX, getGuestToken, runTasks, handle, formatNum, parseCount: parseStored, proxyActive } = require('../lib/social-scrapers');
 
 const SHEET_ID = process.env.MUSIC_SHEET_ID;
 
@@ -142,7 +142,13 @@ module.exports = async (req, res) => {
     for (const n of names) {
       const c = clients[n];
       results[n] = {};
-      if (only.includes('ig') && c.ig) tasks.push(async () => { const v = await fetchIG(c.ig); if (v != null) { results[n].ig = v; stats.ig.ok++; } else stats.ig.fail++; });
+      if (only.includes('ig') && c.ig) tasks.push(async () => {
+        const v = await fetchIG(c.ig);
+        // A coarse meta read never clobbers a finer stored count (chooseIG).
+        const existing = igCol >= 0 ? parseStored(c.cells[igCol]) : null;
+        const chosen = chooseIG(v, existing);
+        if (chosen != null) { results[n].ig = chosen; stats.ig.ok++; } else stats.ig.fail++;
+      });
       if (only.includes('tiktok') && c.tk) tasks.push(async () => { const v = await fetchTikTok(c.tk); if (v != null) { results[n].tk = v; stats.tiktok.ok++; } else stats.tiktok.fail++; });
       if (only.includes('x') && c.tw) tasks.push(async () => { const v = await fetchX(c.tw, guestToken); if (v != null) { results[n].tw = v; stats.x.ok++; } else stats.x.fail++; });
     }
@@ -203,6 +209,19 @@ module.exports = async (req, res) => {
           .map(n => [today, clients[n].name, current[n].ig ?? '', current[n].tw ?? '', current[n].tk ?? '']);
         if (!dryRun && snapRows.length) await sheetAppendRows(token, "'SocialHistory'!A:E", snapRows);
         history.snapshots = snapRows.length;
+      } else if (hist && alreadyToday && q.resnap === '1') {
+        // Maintenance: rewrite today's snapshot rows with the current values —
+        // used after a data-quality fix so tomorrow's growth doesn't diff
+        // against bad numbers.
+        const snapUpdates = [];
+        (hist.values || []).forEach((r, i) => {
+          if (i === 0 || r[0] !== today) return;
+          const c = current[String(r[1] || '').toLowerCase().trim()];
+          if (!c) return;
+          snapUpdates.push({ range: `'SocialHistory'!C${i + 1}:E${i + 1}`, values: [[c.ig ?? '', c.tw ?? '', c.tk ?? '']] });
+        });
+        if (!dryRun) await sheetBatchUpdate(token, snapUpdates);
+        history.resnapped = snapUpdates.length;
       }
       // Baseline: per client, the snapshot closest to 7 days old (0.9–10d window).
       const baseline = {};

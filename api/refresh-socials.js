@@ -17,7 +17,7 @@ const crypto = require('crypto');
 const { authState } = require('../lib/auth');
 // Platform fetchers + helpers shared with the music sync (same engine, two sheets).
 const scrapers = require('../lib/social-scrapers');
-const { UA, fetchIG, fetchTikTok, fetchX, getGuestToken, runTasks, handle, formatNum } = scrapers;
+const { UA, fetchIG, chooseIG, fetchTikTok, fetchX, getGuestToken, runTasks, handle, formatNum, parseCount: parseStored } = scrapers;
 const proxyDispatcher = scrapers.proxyDispatcher(), proxyFetch = scrapers.proxyFetch();
 
 const SHEET_ID = process.env.SPORTS_SHEET_ID;
@@ -96,7 +96,8 @@ module.exports = async (req, res) => {
   // One-off IG diagnostics: ?debugIG=<handle> fetches that profile through
   // the proxy and returns the raw status + a body snippet (no sheet writes).
   if (q.debugIG) {
-    const value = await fetchIG(q.debugIG);
+    const dbg = await fetchIG(q.debugIG);
+    const value = dbg ? `${dbg.n} (${dbg.src})` : null;
     let metaSnippet = null;
     try {
       const useProxy = proxyDispatcher && proxyFetch;
@@ -179,7 +180,14 @@ module.exports = async (req, res) => {
     for (const n of names) {
       const h = handles[n];
       results[n] = {};
-      if (only.includes('ig') && h.ig) tasks.push(async () => { const v = await fetchIG(h.ig); if (v != null) { results[n].ig = v; stats.ig.ok++; } else stats.ig.fail++; });
+      if (only.includes('ig') && h.ig) tasks.push(async () => {
+        const v = await fetchIG(h.ig);
+        // A coarse meta read never clobbers a finer stored count (chooseIG).
+        const row = rowByName[n];
+        const existing = row && igCol >= 0 ? parseStored((rows[row.i] || [])[igCol]) : null;
+        const chosen = chooseIG(v, existing);
+        if (chosen != null) { results[n].ig = chosen; stats.ig.ok++; } else stats.ig.fail++;
+      });
       if (only.includes('tiktok') && h.tk) tasks.push(async () => { const v = await fetchTikTok(h.tk); if (v != null) { results[n].tk = v; stats.tiktok.ok++; } else stats.tiktok.fail++; });
       if (only.includes('x') && h.tw) tasks.push(async () => { const v = await fetchX(h.tw, guestToken); if (v != null) { results[n].tw = v; stats.x.ok++; } else stats.x.fail++; });
     }
