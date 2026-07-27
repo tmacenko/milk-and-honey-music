@@ -1514,9 +1514,11 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
         )}
         {isAdmin && <MusicSocialsModule client={c} />}
 
-        {(c.spotifyMonthly || c.spotifyFollowers || c.spotifyPopularity != null) && (
+        {((isAdmin && c.spotifyMonthly) || c.spotifyFollowers > 0 || c.spotifyPopularity != null) && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {c.spotifyMonthly && (
+            {/* Listener counts are internal-only for now — company sessions see
+                them, the b2b login doesn't. */}
+            {isAdmin && c.spotifyMonthly && (
               <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px" }}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmt(c.spotifyMonthly)}</div>
                 <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Monthly Listeners</div>
