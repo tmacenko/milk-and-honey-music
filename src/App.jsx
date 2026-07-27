@@ -4148,6 +4148,7 @@ const parseDeals = (d) => {
     company: c.company >= 0 ? r.cells[c.company] || '' : '',
     clients: (c.clients >= 0 ? r.cells[c.clients] || '' : '').split(',').map(s => s.trim()).filter(Boolean),
     category: c.category >= 0 ? r.cells[c.category] || '' : '',
+    categories: (c.category >= 0 ? r.cells[c.category] || '' : '').split(',').map(s => s.trim()).filter(Boolean),
     value: c.value >= 0 ? r.cells[c.value] || '' : '',
     deliverables: c.deliverables >= 0 ? r.cells[c.deliverables] || '' : '',
     dateSubmitted: c.date >= 0 ? r.cells[c.date] || '' : '',
@@ -4244,8 +4245,10 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           <Field label="Category">
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {BRAND_DEAL_CATEGORIES.map(cat => {
-                const on = form.category === cat;
-                return <button key={cat} onClick={() => set('category', on ? '' : cat)}
+                const picked = form.category.split(',').map(s => s.trim()).filter(Boolean);
+                const on = picked.includes(cat);
+                return <button key={cat}
+                  onClick={() => set('category', (on ? picked.filter(x => x !== cat) : [...picked, cat]).join(', '))}
                   style={{ padding: "8px 12px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
                   {cat}
                 </button>;
@@ -4295,7 +4298,7 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   const athleteNames = useMemo(() => athletes.map(a => a.name).sort((a, b) => a.localeCompare(b)), [athletes]);
   const ql = q.trim().toLowerCase();
   const filtered = deals
-    .filter(d => cat === 'All' || d.category === cat)
+    .filter(d => cat === 'All' || d.categories.includes(cat))
     .filter(d => agent === 'All' || d.clients.some(n => String(athleteByName[n.toLowerCase()]?.agentAssigned || '').toLowerCase().includes(agent.toLowerCase())))
     .filter(d => !ql || d.company.toLowerCase().includes(ql) || d.clients.join(' ').toLowerCase().includes(ql) || d.category.toLowerCase().includes(ql) || d.deliverables.toLowerCase().includes(ql));
   const sorted = [...filtered].sort((a, b) => {
@@ -4374,7 +4377,7 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                           );
                         })}
                       </td>
-                      <td style={td}>{d.category || '—'}</td>
+                      <td style={td}>{d.categories.join(' · ') || '—'}</td>
                       <td style={{ ...td, color: G.text, fontWeight: 600 }}>{d.value || '—'}</td>
                       <td style={td}>{d.dateSubmitted || '—'}</td>
                       <td style={{ ...td, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }}>{d.deliverables || '—'}</td>
@@ -4420,7 +4423,7 @@ function BrandDealsModule({ athlete: a }) {
                 {d.company}{d.value ? <span style={{ color: G.green, fontWeight: 700 }}> · {d.value}</span> : null}
               </div>
               <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {[d.category, d.dateSubmitted, d.deliverables].filter(Boolean).join(' · ')}
+                {[d.categories.join(' · '), d.dateSubmitted, d.deliverables].filter(Boolean).join(' · ')}
               </div>
             </div>
             {d.fileId && (
