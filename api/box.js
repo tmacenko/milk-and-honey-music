@@ -125,6 +125,13 @@ module.exports = async (req, res) => {
   try {
     const token = await serviceToken();
 
+    // Read-only diagnostics: proves auth works and shows what the service
+    // account can see at its root (collaborated folders appear there).
+    if (req.method === 'GET' && req.query.probe) {
+      const list = await boxApi(token, '/folders/0/items?limit=1000&fields=id,name,type');
+      return res.json({ ok: true, rootItems: (list.entries || []).map(e => `${e.type}: ${e.name}`) });
+    }
+
     if (req.method === 'GET' && req.query.download) {
       const r = await fetch(`${API}/files/${encodeURIComponent(req.query.download)}/content`, {
         headers: { Authorization: `Bearer ${token}` }, redirect: 'manual',
