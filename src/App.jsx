@@ -3912,10 +3912,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-        <div>
-          <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Recruiting</div>
-          <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 3 }}>{data ? `${data.rows.length} recruits · synced with the sheet` : ' '}</div>
-        </div>
+        <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Recruiting</div>
         <div style={{ flex: 1 }} />
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search recruits..." style={{ ...inputBase, width: isMobile ? 140 : 200 }} />
         <button onClick={() => setEditing('new')} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
@@ -4309,9 +4306,6 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
     else { const f = sv[sortCol] || sv.company; cmp = f(a) < f(b) ? -1 : f(a) > f(b) ? 1 : 0; }
     return (sortDir === 'desc' ? -1 : 1) * (cmp || a.company.localeCompare(b.company));
   });
-  const totalValue = deals.reduce((s, d) => s + dealMoney(d.value), 0);
-  const thisMonth = deals.filter(d => d.dateSubmitted.startsWith(new Date().toISOString().slice(0, 7))).length;
-  const fmtMoney = (n) => n >= 1e6 ? `$${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
   const sections = [
     {
       id: 'category', title: 'Category', value: cat === 'All' ? 'All' : cat,
@@ -4328,25 +4322,9 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
       ],
     },
   ].filter(Boolean);
-  const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
-  const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Brand Deals</div>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
-        <div style={card}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{deals.length}</div>
-          <div style={statLabel}>Total deals</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{totalValue ? fmtMoney(totalValue) : '—'}</div>
-          <div style={statLabel}>Total value</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{thisMonth}</div>
-          <div style={statLabel}>Added this month</div>
-        </div>
-      </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         <FilterMenu compact={isMobile} sections={sections} active={cat !== 'All' || agent !== 'All'}
           label={[cat !== 'All' ? cat : null, agent !== 'All' ? agent : null].filter(Boolean).join(', ') || 'All'}
