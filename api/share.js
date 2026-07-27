@@ -136,8 +136,13 @@ function resolveLogoUrl(url) {
 function cardFields(c) {
   const types = (c.types || []).join(' · ');
   const team = c.label || c.pro || '';
-  // Accept a full logo array (new) or fall back to the single legacy field.
-  const raw = (c.logoUrls && c.logoUrls.length) ? c.logoUrls : [c.logoUrl];
+  // Accept a full logo array (the in-app export), else rebuild it from the
+  // share payload's pro/publisher/label logo lists (hosted share links store
+  // those instead), else fall back to the single legacy field.
+  const shareLogos = [...(c.proLogos || []), ...(c.pubLogos || []), ...(c.labelLogos || [])]
+    .map(l => l && l.url).filter(Boolean);
+  const raw = (c.logoUrls && c.logoUrls.length) ? c.logoUrls
+    : shareLogos.length ? shareLogos : [c.logoUrl];
   const seen = new Set();
   const logoUrls = raw.map(resolveLogoUrl).filter(u => u && !seen.has(u) && seen.add(u));
   return { photoUrl: c.photoUrl, logoUrls, flag: flagUrl(c.country), line1: types, line2: team };
@@ -404,7 +409,9 @@ async function buildDetailedRosterPdf(items, title, logos, pathPrefix = '') {
 async function sendRosterPdf(data, res) {
   const items = data.athletes || data.clients || [];
   const title = data.title || 'Milk & Honey Music — Client Roster';
-  const pdf = await buildRosterPdf(items, title);
+  // Athlete shares deep-link their cards into the sports side of the app.
+  const isSports = ['NFL', 'College', 'High School'].includes(items[0]?.level);
+  const pdf = await buildRosterPdf(items, title, isSports ? 'sports/' : '');
   const filename = title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
