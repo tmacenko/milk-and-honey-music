@@ -2352,7 +2352,6 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               </div>
             );
           })()}
-          {BOX_DOCS_ENABLED && companyView && <DocsModule person={a.name} kind="sports" />}
           {a.profileUrl247 && (
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
               <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>
@@ -2958,7 +2957,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
     </div>
   );
   return (
-    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : (BOX_DOCS_ENABLED ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr"), gap: 12 }}>
       <div style={mod}>
         {head('Social media', pd ? `${days}-day change` : '')}
         {rows.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No socials on file.</div>
@@ -3028,6 +3027,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
           ))}
         </div>
       </div>
+      {BOX_DOCS_ENABLED && <DocsModule person={a.name} kind="sports" />}
     </div>
   );
 }
