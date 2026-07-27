@@ -2087,10 +2087,7 @@ function athleteSearchMatch(a, q) {
 // The server hands back a token scoped to just that one folder, so uploads go
 // browser → Box directly and never hit the serverless body-size ceiling.
 //
-// OFF until Box is connected: the Custom App needs an enterprise admin to
-// authorize it and to read out the Enterprise ID (BOX_* env vars). Flip this to
-// true once those are in Vercel — the module and api/box.js are finished.
-const BOX_DOCS_ENABLED = false;
+const BOX_DOCS_ENABLED = true;
 function DocsModule({ person, kind }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');

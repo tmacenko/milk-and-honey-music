@@ -19,7 +19,12 @@
 const { authState } = require('../lib/auth');
 
 const API = 'https://api.box.com/2.0';
-const ROOTS = { sports: 'Athletes', music: 'Clients' };
+// The folder tree lives in the COMPANY Box: Tyler created "Milk & Honey
+// Portal/Sports|Music" and invited the app's service account as an Editor, so
+// everything the app stores is natively visible to the team. The app walks
+// (and if ever missing, creates) this path from its own root — collaborated
+// folders appear there automatically.
+const ROOTS = { sports: ['Milk & Honey Portal', 'Sports'], music: ['Milk & Honey Portal', 'Music'] };
 
 // Service-account token + root folder ids, cached per warm instance.
 let cachedToken = null, cachedTokenExp = 0;
@@ -81,11 +86,13 @@ async function findOrCreateFolder(token, parentId, name) {
 }
 
 async function rootFor(token, kind) {
-  const name = ROOTS[kind];
-  if (!name) throw new Error('Bad kind');
+  const path = ROOTS[kind];
+  if (!path) throw new Error('Bad kind');
   if (rootIds[kind]) return rootIds[kind];
-  rootIds[kind] = await findOrCreateFolder(token, '0', name);
-  return rootIds[kind];
+  let id = '0';
+  for (const name of path) id = await findOrCreateFolder(token, id, name);
+  rootIds[kind] = id;
+  return id;
 }
 
 // Exchange the service token for one that can only touch this one folder —
