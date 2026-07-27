@@ -4019,7 +4019,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
 function MarketingPage({ isMobile, athletes, staff, onOpenAthlete }) {
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
-      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Marketing</div>
+      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Social</div>
       <GrowthBoardSection athletes={athletes} staff={staff} onOpenAthlete={onOpenAthlete} isMobile={isMobile} />
     </div>
   );
