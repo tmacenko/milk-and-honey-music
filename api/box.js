@@ -132,6 +132,15 @@ module.exports = async (req, res) => {
       return res.json({ ok: true, rootItems: (list.entries || []).map(e => `${e.type}: ${e.name}`) });
     }
 
+    // Box's hosted preview for one file — an expiring (~60 min) URL that
+    // renders docs/images/video inside an iframe, no download needed.
+    if (req.method === 'GET' && req.query.preview) {
+      const d = await boxApi(token, `/files/${encodeURIComponent(req.query.preview)}?fields=expiring_embed_link`);
+      const url = d.expiring_embed_link && d.expiring_embed_link.url;
+      if (!url) return res.status(500).json({ error: 'No preview available for this file' });
+      return res.json({ url });
+    }
+
     if (req.method === 'GET' && req.query.download) {
       const r = await fetch(`${API}/files/${encodeURIComponent(req.query.download)}/content`, {
         headers: { Authorization: `Bearer ${token}` }, redirect: 'manual',

@@ -2134,6 +2134,16 @@ function DocsModule({ person, kind }) {
       else throw new Error(d.error || 'Download failed');
     } catch (e) { alert(e.message); }
   };
+  // Click a row → Box's hosted preview in a modal (expiring embed link).
+  const [preview, setPreview] = useState(null); // { f, url? } — url absent while loading
+  const openPreview = async (f) => {
+    setPreview({ f });
+    try {
+      const d = await (await fetch(`/api/box?preview=${encodeURIComponent(f.id)}`)).json();
+      if (d.url) setPreview(p => (p && p.f.id === f.id ? { f, url: d.url } : p));
+      else throw new Error(d.error || 'Preview failed');
+    } catch (e) { setPreview(null); alert(e.message); }
+  };
   const del = async (f) => {
     if (!window.confirm(`Delete ${f.name}? It moves to the Box trash.`)) return;
     setBusy(true);
@@ -2162,7 +2172,7 @@ function DocsModule({ person, kind }) {
         : data.items.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary }}>No documents yet — drop files here or hit Upload.</div>
         : data.items.map((f, i, arr) => (
           <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
-            <div onClick={() => download(f.id)} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+            <div onClick={() => openPreview(f)} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
               <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 1 }}>
                 {fmtSize(f.size)}{f.modifiedAt ? ` · ${new Date(f.modifiedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
@@ -2176,6 +2186,25 @@ function DocsModule({ person, kind }) {
               style={{ background: "transparent", border: "none", color: G.textTertiary, cursor: "pointer", padding: 4, fontSize: 13, fontFamily: ff }}>✕</button>
           </div>
         ))}
+
+      {preview && (
+        <div onClick={() => setPreview(null)} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 1000, height: "86vh", display: "flex", flexDirection: "column", overflow: "hidden", animation: "modalIn .18s ease" }}>
+            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview.f.name}</div>
+              <button onClick={() => download(preview.f.id)}
+                style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: G.green, cursor: "pointer", padding: "6px 12px", fontSize: 12, fontWeight: 600, fontFamily: ff }}>Download</button>
+              <button onClick={() => setPreview(null)}
+                style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 13, fontFamily: ff }}>✕</button>
+            </div>
+            {preview.url
+              ? <iframe title={preview.f.name} src={preview.url} allowFullScreen style={{ flex: 1, width: "100%", border: "none", background: "#0a0a0a" }} />
+              : <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: G.textTertiary, fontSize: 13 }}>
+                  <span style={{ display: "inline-block", animation: "spin 1s linear infinite", marginRight: 8 }}>⟳</span> Loading preview…
+                </div>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
