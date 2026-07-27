@@ -5421,10 +5421,15 @@ function App() {
     { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
     { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
     { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
-    { key: 'branddeals', label: 'Brand Deals', icon: 'M4 7h16v13H4zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2' },
     { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
-    { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
-    { key: 'gifting', label: 'Gifting', icon: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z' },
+    {
+      key: 'marketing-group', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z',
+      children: [
+        { key: 'branddeals', label: 'Brand Deals', icon: 'M4 7h16v13H4zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2' },
+        { key: 'marketing', label: 'Social', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
+        { key: 'gifting', label: 'Gifting', icon: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z' },
+      ],
+    },
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
   ];
@@ -5434,6 +5439,9 @@ function App() {
     { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
   ];
   const [onboardLinksOpen, setOnboardLinksOpen] = useState(false);
+  // Expand/collapse state for sidebar groups; a group with the active page
+  // inside starts open.
+  const [openNavGroups, setOpenNavGroups] = useState({});
   const navClick = (it) => {
     if (it.modal) { setOnboardLinksOpen(true); return; }
     if (domain === 'music') { goMusicPage(it.key); return; }
@@ -5456,6 +5464,30 @@ function App() {
   const sidebar = ((navActive || musicNavActive) && !isMobile) ? (
     <div style={{ width: 176, flexShrink: 0, borderRight: `1px solid ${G.surfaceBorder}`, padding: "18px 10px", position: "sticky", top: 62, alignSelf: "flex-start", maxHeight: "calc(100vh - 62px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
       {navItems.map(it => {
+        if (it.children) {
+          const childActive = it.children.some(c => navPage === c.key);
+          const open = openNavGroups[it.key] !== undefined ? openNavGroups[it.key] : childActive;
+          return (
+            <div key={it.key}>
+              <button onClick={() => setOpenNavGroups(o => ({ ...o, [it.key]: !open }))}
+                style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: "transparent", border: "none", borderRadius: 9, color: childActive ? G.green : G.textSecondary, fontWeight: childActive ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={it.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <span style={{ flex: 1 }}>{it.label}</span>
+                <span style={{ fontSize: 9, color: G.textTertiary, transform: open ? 'rotate(180deg)' : 'none', transition: `transform 0.15s ${G.ease}` }}>▼</span>
+              </button>
+              {open && it.children.map(c => {
+                const on = navPage === c.key;
+                return (
+                  <button key={c.key} onClick={() => navClick(c)}
+                    style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px 8px 27px", background: on ? G.greenSubtle : "transparent", border: "none", borderRadius: 9, color: on ? G.green : G.textSecondary, fontWeight: on ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={c.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <span style={{ flex: 1 }}>{c.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        }
         const on = navPage === it.key;
         return (
           <button key={it.key} onClick={() => navClick(it)}
@@ -5472,7 +5504,7 @@ function App() {
     <div className="mh-hscroll" style={{ display: "flex", gap: 4, alignItems: "center", overflowX: "auto" }}>
       {domainToggle}
       <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-        {navItems.map((it, i) => (
+        {navItems.flatMap(it => it.children || [it]).map((it, i) => (
           <button key={it.key} onClick={() => navClick(it)}
             style={{ padding: "8px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", background: navPage === it.key ? G.greenSubtle : "transparent", color: navPage === it.key ? G.green : G.textSecondary, fontWeight: navPage === it.key ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
             {it.label}
