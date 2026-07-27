@@ -2134,16 +2134,8 @@ function DocsModule({ person, kind }) {
       else throw new Error(d.error || 'Download failed');
     } catch (e) { alert(e.message); }
   };
-  // Click a row → Box's hosted preview in a modal (expiring embed link).
-  const [preview, setPreview] = useState(null); // { f, url? } — url absent while loading
-  const openPreview = async (f) => {
-    setPreview({ f });
-    try {
-      const d = await (await fetch(`/api/box?preview=${encodeURIComponent(f.id)}`)).json();
-      if (d.url) setPreview(p => (p && p.f.id === f.id ? { f, url: d.url } : p));
-      else throw new Error(d.error || 'Preview failed');
-    } catch (e) { setPreview(null); alert(e.message); }
-  };
+  // Click a row → Box's hosted preview (shared modal).
+  const [preview, setPreview] = useState(null);
   const del = async (f) => {
     if (!window.confirm(`Delete ${f.name}? It moves to the Box trash.`)) return;
     setBusy(true);
@@ -2172,7 +2164,7 @@ function DocsModule({ person, kind }) {
         : data.items.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary }}>No documents yet — drop files here or hit Upload.</div>
         : data.items.map((f, i, arr) => (
           <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
-            <div onClick={() => openPreview(f)} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+            <div onClick={() => setPreview(f)} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
               <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 1 }}>
                 {fmtSize(f.size)}{f.modifiedAt ? ` · ${new Date(f.modifiedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
@@ -2187,24 +2179,46 @@ function DocsModule({ person, kind }) {
           </div>
         ))}
 
-      {preview && (
-        <div onClick={() => setPreview(null)} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 1000, height: "86vh", display: "flex", flexDirection: "column", overflow: "hidden", animation: "modalIn .18s ease" }}>
-            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-              <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview.f.name}</div>
-              <button onClick={() => download(preview.f.id)}
-                style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: G.green, cursor: "pointer", padding: "6px 12px", fontSize: 12, fontWeight: 600, fontFamily: ff }}>Download</button>
-              <button onClick={() => setPreview(null)}
-                style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 13, fontFamily: ff }}>✕</button>
-            </div>
-            {preview.url
-              ? <iframe title={preview.f.name} src={preview.url} allowFullScreen style={{ flex: 1, width: "100%", border: "none", background: "#0a0a0a" }} />
-              : <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: G.textTertiary, fontSize: 13 }}>
-                  <span style={{ display: "inline-block", animation: "spin 1s linear infinite", marginRight: 8 }}>⟳</span> Loading preview…
-                </div>}
-          </div>
+      {preview && <BoxPreviewModal file={preview} onClose={() => setPreview(null)} />}
+    </div>
+  );
+}
+
+// Box preview in a modal — fetches an expiring embed link (~60 min) for the
+// file and frames Box's hosted renderer. Pass { id, name }.
+function BoxPreviewModal({ file, onClose }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let dead = false;
+    fetch(`/api/box?preview=${encodeURIComponent(file.id)}`)
+      .then(r => r.json())
+      .then(d => { if (!dead) { if (d.url) setUrl(d.url); else throw new Error(d.error || 'Preview failed'); } })
+      .catch(e => { if (!dead) { onClose(); alert(e.message); } });
+    return () => { dead = true; };
+  }, [file.id]);
+  const download = async () => {
+    try {
+      const d = await (await fetch(`/api/box?download=${encodeURIComponent(file.id)}`)).json();
+      if (d.url) window.open(d.url, '_blank');
+      else throw new Error(d.error || 'Download failed');
+    } catch (e) { alert(e.message); }
+  };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 1000, height: "86vh", display: "flex", flexDirection: "column", overflow: "hidden", animation: "modalIn .18s ease" }}>
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+          <button onClick={download}
+            style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: G.green, cursor: "pointer", padding: "6px 12px", fontSize: 12, fontWeight: 600, fontFamily: ff }}>Download</button>
+          <button onClick={onClose}
+            style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 13, fontFamily: ff }}>✕</button>
         </div>
-      )}
+        {url
+          ? <iframe title={file.name} src={url} allowFullScreen style={{ flex: 1, width: "100%", border: "none", background: "#0a0a0a" }} />
+          : <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: G.textTertiary, fontSize: 13 }}>
+              <span style={{ display: "inline-block", animation: "spin 1s linear infinite", marginRight: 8 }}>⟳</span> Loading preview…
+            </div>}
+      </div>
     </div>
   );
 }
@@ -2307,6 +2321,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             </div>
           )}
           {companyView && <SocialContractModules athlete={a} isMobile={isMobile} />}
+          {companyView && <BrandDealsModule athlete={a} />}
           {(() => {
             // Up to four chip modules side by side: worked-with + interests are
             // partner-visible; targets + music tastes are company-only intel.
@@ -4113,6 +4128,336 @@ function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
   );
 }
 
+// ── Brand deal tracker (company only — lives in the left nav) ────────────────
+const BRAND_DEAL_CATEGORIES = ['Public Appearance', 'Trading Card', 'Social Post', 'In Game Activation', 'Memorabilia Signing', 'Photo Shoot'];
+// Deal value → dollars when parseable ("$5,000", "$1.2M", "7500"); product-only
+// deals ("3 pairs of cleats") count as 0 in the money stats but still show.
+const dealMoney = (v) => {
+  const s = String(v || '').trim();
+  if (!s) return 0;
+  const m = s.match(/\$\s*([\d,]+(?:\.\d+)?)\s*([kKmM])?/) || (/^[\d,]+(?:\.\d+)?$/.test(s) ? [s, s, ''] : null);
+  if (!m) return 0;
+  const n = parseFloat(String(m[1]).replace(/,/g, ''));
+  if (!isFinite(n)) return 0;
+  const suf = (m[2] || '').toLowerCase();
+  return Math.round(n * (suf === 'm' ? 1e6 : suf === 'k' ? 1e3 : 1));
+};
+const parseDeals = (d) => {
+  if (!d) return [];
+  const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
+  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName') };
+  return d.rows.map(r => ({
+    _row: r._row,
+    company: c.company >= 0 ? r.cells[c.company] || '' : '',
+    clients: (c.clients >= 0 ? r.cells[c.clients] || '' : '').split(',').map(s => s.trim()).filter(Boolean),
+    category: c.category >= 0 ? r.cells[c.category] || '' : '',
+    value: c.value >= 0 ? r.cells[c.value] || '' : '',
+    deliverables: c.deliverables >= 0 ? r.cells[c.deliverables] || '' : '',
+    dateSubmitted: c.date >= 0 ? r.cells[c.date] || '' : '',
+    fileId: c.fileId >= 0 ? r.cells[c.fileId] || '' : '',
+    fileName: c.fileName >= 0 ? r.cells[c.fileName] || '' : '',
+  })).filter(x => x.company || x.clients.length);
+};
+
+// Add / edit one deal. The optional file uploads straight to the FIRST tagged
+// player's Box folder, then copies land in every other tagged player's folder.
+function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
+  const editing = !!(initial && initial._row);
+  const [form, setForm] = useState(() => ({
+    company: initial?.company || '', clients: (initial?.clients || []).join(', '),
+    category: initial?.category || '', value: initial?.value || '', deliverables: initial?.deliverables || '',
+  }));
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef();
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const post = (body) => fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+  const save = async () => {
+    const names = form.clients.split(',').map(s => s.trim()).filter(Boolean);
+    if (!form.company.trim()) return alert('Company is required');
+    if (!names.length) return alert('Tag at least one client');
+    setBusy(true);
+    try {
+      const values = { company: form.company.trim(), clients: names.join(', '), category: form.category, value: form.value, deliverables: form.deliverables };
+      if (!editing) {
+        values.dateSubmitted = new Date().toISOString().slice(0, 10);
+        values.createdBy = user?.name || 'Team';
+      }
+      if (file) {
+        // Upload into the first tagged player's folder, then copy to the rest.
+        const meta = await (await fetch(`/api/box?person=${encodeURIComponent(names[0])}&kind=sports`)).json();
+        if (meta.error) throw new Error(meta.error);
+        const fd = new FormData();
+        fd.append('attributes', JSON.stringify({ name: file.name, parent: { id: String(meta.folderId) } }));
+        fd.append('file', file);
+        let r = await fetch('https://upload.box.com/api/2.0/files/content', { method: 'POST', headers: { Authorization: `Bearer ${meta.token}` }, body: fd });
+        let uploaded = null;
+        if (r.status === 409) {
+          const conflict = await r.json().catch(() => null);
+          const existingId = conflict?.context_info?.conflicts?.id;
+          if (existingId) {
+            const vf = new FormData();
+            vf.append('attributes', JSON.stringify({ name: file.name }));
+            vf.append('file', file);
+            r = await fetch(`https://upload.box.com/api/2.0/files/${existingId}/content`, { method: 'POST', headers: { Authorization: `Bearer ${meta.token}` }, body: vf });
+          }
+        }
+        if (!r.ok) throw new Error('File upload failed');
+        uploaded = (await r.json()).entries?.[0];
+        values.fileId = uploaded?.id || '';
+        values.fileName = file.name;
+        for (const n of names.slice(1)) {
+          await fetch('/api/box', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'copy', fileId: values.fileId, person: n, kind: 'sports' }) }).catch(() => {});
+        }
+      }
+      const resp = editing
+        ? await post({ action: 'tab-update', tab: 'branddeals', row: initial._row, values })
+        : await post({ action: 'tab-append', tab: 'branddeals', values });
+      if (resp.error) throw new Error(resp.error);
+      onDone();
+    } catch (e) { alert('Save failed: ' + e.message); }
+    setBusy(false);
+  };
+  const del = async () => {
+    if (!window.confirm('Remove this deal? Files already in player folders stay in Box.')) return;
+    setBusy(true);
+    try {
+      const resp = await post({ action: 'tab-delete', tab: 'branddeals', row: initial._row });
+      if (resp.error) throw new Error(resp.error);
+      onDone();
+    } catch (e) { alert('Remove failed: ' + e.message); setBusy(false); }
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 560, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: G.shadowLg }}>
+        <div style={{ padding: "18px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <span style={{ fontWeight: 700, fontSize: 16, color: G.text }}>{editing ? 'Edit Brand Deal' : 'Add Brand Deal'}</span>
+          <button onClick={onCancel} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 14, fontFamily: ff }}>✕</button>
+        </div>
+        <div style={{ overflowY: "auto", padding: "20px 24px" }}>
+          <Field label="Company"><Input value={form.company} onChange={e => set('company', e.target.value)} placeholder="Nike" /></Field>
+          <Field label="Client(s)">
+            <MultiSelectCombo value={form.clients} onChange={v => set('clients', v)} options={athleteNames} placeholder="Tag one or more players..." />
+          </Field>
+          <Field label="Category">
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {BRAND_DEAL_CATEGORIES.map(cat => {
+                const on = form.category === cat;
+                return <button key={cat} onClick={() => set('category', on ? '' : cat)}
+                  style={{ padding: "8px 12px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+                  {cat}
+                </button>;
+              })}
+            </div>
+          </Field>
+          <Field label="Value"><Input value={form.value} onChange={e => set('value', e.target.value)} placeholder="$5,000 — or product, e.g. 3 pairs of cleats" /></Field>
+          <Field label="Deliverables"><Textarea value={form.deliverables} onChange={e => set('deliverables', e.target.value)} rows={3} placeholder="2 IG posts + 1 appearance at store opening" /></Field>
+          <div style={{ marginBottom: 4 }}>
+            <label style={labelStyle}>Deal file</label>
+            <div onClick={() => fileRef.current?.click()}
+              style={{ ...inputBase, cursor: "pointer", color: file || initial?.fileName ? G.text : G.textTertiary }}>
+              {file ? file.name : initial?.fileName ? `${initial.fileName} — click to replace` : 'Attach a file (goes to each tagged player’s Box folder)'}
+            </div>
+            <input ref={fileRef} type="file" style={{ display: "none" }} onChange={e => setFile(e.target.files?.[0] || null)} />
+          </div>
+        </div>
+        <div style={{ padding: "14px 24px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, flexShrink: 0 }}>
+          {editing && (
+            <button onClick={del} disabled={busy} style={{ background: "transparent", border: `1px solid ${G.red}`, borderRadius: 12, padding: "11px 16px", color: G.red, fontWeight: 600, fontSize: 14, cursor: busy ? "not-allowed" : "pointer", fontFamily: ff }}>Delete</button>
+          )}
+          <button onClick={onCancel} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>Cancel</button>
+          <button onClick={save} disabled={busy} style={{ flex: 2, background: busy ? G.surfaceRaised : G.green, border: "none", borderRadius: 12, padding: "11px", color: busy ? G.textTertiary : "#0a0a0a", fontWeight: 700, fontSize: 14, cursor: busy ? "wait" : "pointer", fontFamily: ff }}>
+            {busy ? 'Saving…' : editing ? 'Save Changes' : 'Add Deal'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
+  const tab = useAdminTab('branddeals');
+  const deals = useMemo(() => parseDeals(tab.data), [tab.data]);
+  const [q, setQ] = useCachedState('bdeals.q', '');
+  const [cat, setCat] = useCachedState('bdeals.cat', 'All');
+  const [agent, setAgent] = useCachedState('bdeals.agent', 'All');
+  const [sortCol, setSortCol] = useCachedState('bdeals.sortCol', 'date');
+  const [sortDir, setSortDir] = useCachedState('bdeals.sortDir', 'desc');
+  const [editing, setEditing] = useState(null); // {} = new, deal = edit
+  const [previewFile, setPreviewFile] = useState(null);
+  const athleteByName = useMemo(() => {
+    const m = {};
+    athletes.forEach(a => { m[a.name.toLowerCase().trim()] = a; });
+    return m;
+  }, [athletes]);
+  const athleteNames = useMemo(() => athletes.map(a => a.name).sort((a, b) => a.localeCompare(b)), [athletes]);
+  const ql = q.trim().toLowerCase();
+  const filtered = deals
+    .filter(d => cat === 'All' || d.category === cat)
+    .filter(d => agent === 'All' || d.clients.some(n => String(athleteByName[n.toLowerCase()]?.agentAssigned || '').toLowerCase().includes(agent.toLowerCase())))
+    .filter(d => !ql || d.company.toLowerCase().includes(ql) || d.clients.join(' ').toLowerCase().includes(ql) || d.category.toLowerCase().includes(ql) || d.deliverables.toLowerCase().includes(ql));
+  const sorted = [...filtered].sort((a, b) => {
+    const sv = { company: x => x.company.toLowerCase(), clients: x => (x.clients[0] || '').toLowerCase(), category: x => x.category.toLowerCase() };
+    const nv = { value: x => dealMoney(x.value), date: x => Date.parse(x.dateSubmitted) || 0 };
+    let cmp;
+    if (nv[sortCol]) cmp = nv[sortCol](a) - nv[sortCol](b);
+    else { const f = sv[sortCol] || sv.company; cmp = f(a) < f(b) ? -1 : f(a) > f(b) ? 1 : 0; }
+    return (sortDir === 'desc' ? -1 : 1) * (cmp || a.company.localeCompare(b.company));
+  });
+  const totalValue = deals.reduce((s, d) => s + dealMoney(d.value), 0);
+  const thisMonth = deals.filter(d => d.dateSubmitted.startsWith(new Date().toISOString().slice(0, 7))).length;
+  const fmtMoney = (n) => n >= 1e6 ? `$${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
+  const sections = [
+    {
+      id: 'category', title: 'Category', value: cat === 'All' ? 'All' : cat,
+      rows: [
+        { on: cat === 'All', label: 'All categories', onClick: () => setCat('All') },
+        ...BRAND_DEAL_CATEGORIES.map(c => ({ on: cat === c, label: c, onClick: () => setCat(cat === c ? 'All' : c) })),
+      ],
+    },
+    (staff || []).length > 0 && {
+      id: 'agent', title: 'Agent', value: agent,
+      rows: [
+        { on: agent === 'All', label: 'All agents', onClick: () => setAgent('All') },
+        ...(staff || []).map(n => ({ on: agent === n, label: n, onClick: () => setAgent(agent === n ? 'All' : n) })),
+      ],
+    },
+  ].filter(Boolean);
+  const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Brand Deals</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
+        <div style={card}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{deals.length}</div>
+          <div style={statLabel}>Total deals</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{totalValue ? fmtMoney(totalValue) : '—'}</div>
+          <div style={statLabel}>Total value</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{thisMonth}</div>
+          <div style={statLabel}>Added this month</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        <FilterMenu compact={isMobile} sections={sections} active={cat !== 'All' || agent !== 'All'}
+          label={[cat !== 'All' ? cat : null, agent !== 'All' ? agent : null].filter(Boolean).join(', ') || 'All'}
+          onAll={() => { setCat('All'); setAgent('All'); }} />
+        <div style={{ flex: 1 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search deals..."
+          style={{ ...inputBase, width: isMobile ? 120 : 200, padding: "7px 11px", fontSize: 12 }} />
+        <button onClick={() => setEditing({})}
+          style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+          + Add Deal
+        </button>
+      </div>
+      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+        {tab.loading && !tab.data ? (
+          <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
+        ) : sorted.length === 0 ? (
+          <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{deals.length === 0 ? 'No brand deals yet — add the first one.' : 'No deals match these filters.'}</div>
+        ) : (
+          <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead><tr>
+                {[['company', 'Company'], ['clients', 'Client(s)'], ['category', 'Category'], ['value', 'Value'], ['date', 'Submitted'], ['deliverables', 'Deliverables'], ['file', 'File']].map(([key, h]) => (
+                  <th key={key}
+                    onClick={() => { if (key === 'deliverables' || key === 'file') return; if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(key === 'company' || key === 'clients' ? 'asc' : 'desc'); } }}
+                    style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: key === 'deliverables' || key === 'file' ? "default" : "pointer", userSelect: "none" }}>
+                    {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  </th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {sorted.map((d, i) => {
+                  const td = { padding: "10px 14px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+                  return (
+                    <tr key={d._row} onClick={() => setEditing(d)} style={{ cursor: "pointer" }}
+                      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <td style={{ ...td, color: G.text, fontWeight: 600 }}>{d.company}</td>
+                      <td style={td}>
+                        {d.clients.map((n, j) => {
+                          const a = athleteByName[n.toLowerCase()];
+                          return (
+                            <span key={j}>
+                              {j > 0 && <span style={{ color: G.textTertiary }}> · </span>}
+                              <span onClick={a ? (e) => { e.stopPropagation(); onOpenAthlete(a); } : undefined}
+                                style={a ? { color: G.text, cursor: "pointer", textDecoration: "underline", textDecorationColor: G.surfaceBorderLight, textUnderlineOffset: 3 } : {}}>{n}</span>
+                            </span>
+                          );
+                        })}
+                      </td>
+                      <td style={td}>{d.category || '—'}</td>
+                      <td style={{ ...td, color: G.text, fontWeight: 600 }}>{d.value || '—'}</td>
+                      <td style={td}>{d.dateSubmitted || '—'}</td>
+                      <td style={{ ...td, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }}>{d.deliverables || '—'}</td>
+                      <td style={td}>
+                        {d.fileId ? (
+                          <button onClick={(e) => { e.stopPropagation(); setPreviewFile({ id: d.fileId, name: d.fileName || 'file' }); }} title={d.fileName}
+                            style={{ background: "transparent", border: "none", color: G.green, cursor: "pointer", padding: 2, display: "flex" }}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2l7 7M13 2v7h7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </button>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {editing && (
+        <BrandDealForm initial={editing._row ? editing : null} athleteNames={athleteNames} user={user}
+          onDone={() => { setEditing(null); tab.reload(); }} onCancel={() => setEditing(null)} />
+      )}
+      {previewFile && <BoxPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+    </div>
+  );
+}
+
+// Brand deals card on the player profile (company view) — this player's deals.
+function BrandDealsModule({ athlete: a }) {
+  const tab = useAdminTab('branddeals');
+  const key = a.name.toLowerCase().trim();
+  const deals = useMemo(() => parseDeals(tab.data).filter(d => d.clients.some(n => n.toLowerCase().trim() === key)), [tab.data, key]);
+  const [previewFile, setPreviewFile] = useState(null);
+  return (
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Brand deals</div>
+      {deals.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary }}>No brand deals yet.</div>
+        : deals.map((d, i, arr) => (
+          <div key={d._row} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {d.company}{d.value ? <span style={{ color: G.green, fontWeight: 700 }}> · {d.value}</span> : null}
+              </div>
+              <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {[d.category, d.dateSubmitted, d.deliverables].filter(Boolean).join(' · ')}
+              </div>
+            </div>
+            {d.fileId && (
+              <button onClick={() => setPreviewFile({ id: d.fileId, name: d.fileName || 'file' })} title={d.fileName}
+                style={{ background: "transparent", border: "none", color: G.green, cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2l7 7M13 2v7h7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            )}
+          </div>
+        ))}
+      {previewFile && <BoxPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+    </div>
+  );
+}
+
 // ── Contracts page (company only — lives in the left nav) ────────────────────
 // Every athlete with a deal (Spotrac NFL terms or the manual college $/yr),
 // ranked by yearly value, filterable by league / position group / team.
@@ -5098,6 +5443,7 @@ function App() {
     { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
     { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
     { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
+    { key: 'branddeals', label: 'Brand Deals', icon: 'M4 7h16v13H4zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2' },
     { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
     { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
     { key: 'gifting', label: 'Gifting', icon: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z' },
@@ -5382,6 +5728,7 @@ function App() {
                   onGoRecruiting={() => goSportsPage('recruiting')} />
               )}
               {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && sportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => setAthletesLoaded(false)} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'gifting' && <GiftingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}

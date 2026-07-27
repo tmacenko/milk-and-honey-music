@@ -173,6 +173,22 @@ module.exports = async (req, res) => {
         await boxApi(token, `/files/${encodeURIComponent(fileId)}`, { method: 'DELETE' });
         return res.json({ success: true });
       }
+      // Copy an existing file into another person's folder (multi-client brand
+      // deals put a copy in every tagged player's folder).
+      if (action === 'copy' && fileId && req.body.person) {
+        const rootId = await rootFor(token, String(req.body.kind || 'sports'));
+        const folderId = await findOrCreateFolder(token, rootId, safeName(req.body.person));
+        try {
+          const copied = await boxApi(token, `/files/${encodeURIComponent(fileId)}/copy`, {
+            method: 'POST', body: JSON.stringify({ parent: { id: String(folderId) } }),
+          });
+          return res.json({ success: true, fileId: copied.id });
+        } catch (e) {
+          // Same name already in that folder — treat as done.
+          if (/item_name_in_use|409/.test(e.message)) return res.json({ success: true, existed: true });
+          throw e;
+        }
+      }
       return res.status(400).json({ error: 'Unknown action' });
     }
 

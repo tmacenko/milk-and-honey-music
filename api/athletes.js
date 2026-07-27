@@ -483,7 +483,11 @@ const ADMIN_TABS = {
   onboarding: { title: 'Onboarding', writable: true }, // form-fed log — writable so staff can janitor junk submissions
   socialhistory: { title: 'SocialHistory', writable: false }, // robot snapshots — growth board + sparklines
   stathistory: { title: 'StatHistory', writable: false },     // robot snapshots — depth/rank trend tracking
-  todos: { title: 'Todos', writable: true },                  // dashboard to-do list (auto-created on first read)
+  todos: { title: 'Todos', writable: true, autoCreate: ['text', 'createdBy', 'createdAt', 'done'] }, // dashboard to-do list
+  // Brand deal tracker — one row per deal; clients is a comma list of roster
+  // names; fileId/fileName point at the deal file in Box (copied into each
+  // tagged player's folder at upload time).
+  branddeals: { title: 'BrandDeals', writable: true, autoCreate: ['company', 'clients', 'category', 'value', 'deliverables', 'dateSubmitted', 'fileId', 'fileName', 'createdBy'] },
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {
@@ -1155,14 +1159,14 @@ module.exports = async (req, res) => {
       let out;
       try { out = await readAdminTab(token, tab); }
       catch (e) {
-        if (tabKey !== 'todos') throw e;
-        // First use — create the Todos tab with headers and return empty.
+        if (!tab.autoCreate) throw e;
+        // First use — create the tab with its headers and return empty.
         await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
           method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'Todos', gridProperties: { rowCount: 1000, columnCount: 4 } } } }] }),
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: tab.title, gridProperties: { rowCount: 1000, columnCount: tab.autoCreate.length } } } }] }),
         });
-        await sheetAppend(token, "'Todos'!A:D", ['text', 'createdBy', 'createdAt', 'done']);
-        out = { headers: ['text', 'createdBy', 'createdAt', 'done'], rows: [] };
+        await sheetAppend(token, tabRange(tab.title), tab.autoCreate);
+        out = { headers: tab.autoCreate, rows: [] };
       }
       return res.json({ ...out, writable: tab.writable });
     } catch (err) {
