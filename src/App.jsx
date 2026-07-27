@@ -1869,10 +1869,10 @@ const athleteReach = a => parseReach(a.igFollowers) + parseReach(a.twitterFollow
 // standard SEC/B1G programs but not the Ohio States), then other FBS.
 const CONF_TIERS = [
   // 10 — elite SEC / Big Ten brands + Notre Dame
-  [10, ['georgia', 'alabama', 'ohio state', 'michigan', 'texas', 'lsu', 'oregon', 'penn state', 'usc', 'oklahoma', 'tennessee', 'notre dame', 'florida']],
+  [10, ['georgia', 'alabama', 'ohio state', 'michigan', 'texas', 'lsu', 'oregon', 'penn state', 'usc', 'oklahoma', 'tennessee', 'notre dame', 'florida', 'indiana']],
   // 8 — rest of SEC + Big Ten, and elite ACC / Big 12 programs
   [8, ['auburn', 'texas a&m', 'arkansas', 'kentucky', 'missouri', 'mississippi state', 'ole miss', 'south carolina', 'vanderbilt',
-    'illinois', 'indiana', 'iowa', 'maryland', 'michigan state', 'minnesota', 'nebraska', 'northwestern', 'purdue', 'rutgers', 'ucla', 'washington', 'wisconsin',
+    'illinois', 'iowa', 'maryland', 'michigan state', 'minnesota', 'nebraska', 'northwestern', 'purdue', 'rutgers', 'ucla', 'washington', 'wisconsin',
     'clemson', 'florida state', 'miami', 'texas tech', 'colorado', 'utah', 'byu']],
   // 6 — rest of ACC + Big 12
   [6, ['boston college', 'california', 'cal', 'duke', 'georgia tech', 'louisville', 'nc state', 'north carolina', 'pittsburgh', 'pitt', 'smu', 'stanford', 'syracuse', 'virginia', 'virginia tech', 'wake forest',
