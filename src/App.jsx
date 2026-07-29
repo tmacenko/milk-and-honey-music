@@ -2889,7 +2889,7 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
                   const growth = a.growth7d || 0;
                   const td = { padding: "10px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
                   return (
-                    <tr key={a.id || i} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
+                    <tr key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ ...td, color: G.text, fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -3249,7 +3249,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         <div style={{ marginTop: 18 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
             {topClients.map((a, i) => (
-              <SportsCard key={a.id || i} athlete={a} isMobile={false} showDepth onClick={() => onOpenAthlete(a)} />
+              <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} showDepth onClick={() => onOpenAthlete(a)} />
             ))}
           </div>
           <button onClick={personal ? onShowMine : onGoRoster}
@@ -3512,7 +3512,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
         <div style={{ marginTop: 18 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
             {s.top.map((c, i) => (
-              <div key={c.id || i} onClick={() => onOpenClient(c)}
+              <div key={`${c._rowIndex ?? ''}-${c.id || i}`} onClick={() => onOpenClient(c)}
                 onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
                 onMouseLeave={e => { e.currentTarget.style.background = G.surface; }}
                 style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 18, padding: "18px 18px 16px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
@@ -4175,7 +4175,7 @@ function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
                   const growth = c.growth7d || 0;
                   const td = { padding: "10px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
                   return (
-                    <tr key={c.id || i} onClick={() => onOpenClient(c)} style={{ cursor: "pointer" }}
+                    <tr key={`${c._rowIndex ?? ''}-${c.id || i}`} onClick={() => onOpenClient(c)} style={{ cursor: "pointer" }}
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ ...td, color: G.text, fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -4663,7 +4663,7 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
                   const td = { padding: "10px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" };
                   const tot = moneyNum(a.contractTotal), gtd = moneyNum(a.contractGuaranteed);
                   return (
-                    <tr key={a.id || i} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
+                    <tr key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ ...td, color: G.text, fontWeight: 600 }}>
@@ -4780,7 +4780,7 @@ function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
                 {sorted.map((a, i) => {
                   const td = { padding: "10px 14px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap" };
                   return (
-                    <tr key={a.id || i} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
+                    <tr key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ ...td, color: G.text, fontWeight: 600, maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -5834,13 +5834,13 @@ function App() {
                   ) : rosterView === 'detailed' ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
                       {filteredAthletes.map((a, i) => (
-                        <DetailedAthleteCard key={a.id || i} athlete={a} isMobile={isMobile} onClick={() => setView('detail', a)} />
+                        <DetailedAthleteCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={isMobile} onClick={() => setView('detail', a)} />
                       ))}
                     </div>
                   ) : (
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
                       {filteredAthletes.map((a, i) => (
-                        <SportsCard key={a.id || i} athlete={a} isMobile={isMobile} showDepth={isAdmin} onClick={() => setView('detail', a)} />
+                        <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={isMobile} showDepth={isAdmin} onClick={() => setView('detail', a)} />
                       ))}
                     </div>
                   )}
@@ -5871,13 +5871,13 @@ function App() {
                   ) : rosterView === 'detailed' ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
                       {filtered.map((c, i) => (
-                        <DetailedClientCard key={c.id || i} client={c} logos={logos} isMobile={isMobile} onClick={() => setView('detail', c)} />
+                        <DetailedClientCard key={`${c._rowIndex ?? ''}-${c.id || i}`} client={c} logos={logos} isMobile={isMobile} onClick={() => setView('detail', c)} />
                       ))}
                     </div>
                   ) : (
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
                       {filtered.map((c, i) => (
-                        <ClientCard key={c.id || i} client={c} logos={logos} isMobile={isMobile} onClick={() => setView('detail', c)} />
+                        <ClientCard key={`${c._rowIndex ?? ''}-${c.id || i}`} client={c} logos={logos} isMobile={isMobile} onClick={() => setView('detail', c)} />
                       ))}
                     </div>
                   )}
