@@ -162,6 +162,9 @@ module.exports = async (req, res) => {
       'Shirt': sub.shirt, 'Hoodie': sub.hoodie, 'Shorts': sub.shorts, 'Pants': sub.pants,
       'Shoes': sub.shoes, 'Gloves': sub.gloves, 'Gaming System': sub.gamingSystem,
       'ClassOf': sub.classOf, 'Class Of': sub.classOf,
+      // Set when staff upgrades a recruit from the board (the public form
+      // never sends it) — carries their recruiter over as Lead Agent.
+      'Lead Agent': sub.agent, 'Agent': sub.agent,
     };
     // Enrichment for AppData (by header, submitted fields only).
     const appVals = {

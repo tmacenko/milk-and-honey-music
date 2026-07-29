@@ -474,7 +474,9 @@ async function saveAthlete(token, body) {
 // Served raw (headers + rows) so the UI adapts to whatever columns the sheet
 // has. Admin-only in both directions; writes are limited to Recruiting Info.
 const ADMIN_TABS = {
-  recruiting: { title: 'Recruiting Info', writable: true },
+  // ensureCols: headers the app needs that the sheet may predate — appended
+  // (with grid growth) on first read so nobody has to touch the sheet by hand.
+  recruiting: { title: 'Recruiting Info', writable: true, ensureCols: ['Stage'] },
   nflteams: { title: 'NFL Team Info', writable: false },
   stateregs: { title: 'State Registration', writable: false },
   appdata: { title: 'AppData', writable: false },
@@ -511,6 +513,28 @@ async function readAdminTab(token, tab) {
     .filter(r => r.cells.some(c => c));
   return { headers, rows };
 }
+// Append any missing ensureCols headers to a tab (growing the grid when the
+// sheet is already at its column limit) and return the updated header list.
+async function ensureTabCols(token, tab, headers) {
+  const missing = (tab.ensureCols || []).filter(c => !headers.some(h => h.toLowerCase() === c.toLowerCase()));
+  if (!missing.length) return headers;
+  const meta = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties))`, {
+    headers: { Authorization: `Bearer ${token}` } })).json();
+  const sheet = (meta.sheets || []).find(s => (s.properties?.title || '').trim().toLowerCase() === tab.title.toLowerCase());
+  if (!sheet) throw new Error(`Tab "${tab.title}" not found`);
+  const gid = sheet.properties.sheetId;
+  const colCount = sheet.properties.gridProperties?.columnCount || headers.length;
+  const need = headers.length + missing.length - colCount;
+  if (need > 0) {
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ appendDimension: { sheetId: gid, dimension: 'COLUMNS', length: need } }] }),
+    });
+  }
+  await sheetBatchUpdate(token, missing.map((c, i) => ({ range: `'${tab.title}'!${colLetter(headers.length + i)}1`, values: [[c]] })));
+  return [...headers, ...missing];
+}
+
 async function handleTabAction(token, body) {
   const tab = ADMIN_TABS[body.tab];
   if (!tab) throw new Error('Unknown tab');
@@ -1157,7 +1181,10 @@ module.exports = async (req, res) => {
     try {
       const token = await getToken('https://www.googleapis.com/auth/spreadsheets');
       let out;
-      try { out = await readAdminTab(token, tab); }
+      try {
+        out = await readAdminTab(token, tab);
+        if (tab.ensureCols) out.headers = await ensureTabCols(token, tab, out.headers);
+      }
       catch (e) {
         if (!tab.autoCreate) throw e;
         // First use — create the tab with its headers and return empty.

@@ -3732,7 +3732,7 @@ function SheetTable({ headers, rows, onRowClick, emptyMsg, renderCell }) {
 }
 
 // Edit/add modal for a sheet-tab row: one field per column, notes get a textarea.
-function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title }) {
+function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title, selects = {} }) {
   const [vals, setVals] = useState(() => {
     const o = {};
     headers.forEach((h, i) => { o[h] = initial ? (initial.cells[i] || '') : ''; });
@@ -3763,10 +3763,16 @@ function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {headers.map(h => {
             const isNote = /note|comment/i.test(h);
+            const opts = selects[h.trim().toLowerCase()];
             return (
               <div key={h} style={{ gridColumn: isNote ? "1 / -1" : "auto" }}>
                 <label style={labelStyle}>{h}</label>
-                {isNote
+                {opts
+                  ? <select value={vals[h]} onChange={e => setVals(v => ({ ...v, [h]: e.target.value }))} style={{ ...inputBase, cursor: "pointer" }}>
+                      <option value="">—</option>
+                      {opts.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  : isNote
                   ? <textarea value={vals[h]} onChange={e => setVals(v => ({ ...v, [h]: e.target.value }))} rows={3} style={{ ...inputBase, resize: "vertical" }} />
                   : <input value={vals[h]} onChange={e => setVals(v => ({ ...v, [h]: e.target.value }))} style={inputBase} />}
               </div>
@@ -3784,6 +3790,11 @@ function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title }) {
     </div>
   );
 }
+
+// Recruiting pipeline stages, in order. Signed unlocks the one-click upgrade
+// that creates the recruit as a roster client.
+const REC_STAGES = ['Outreach', 'Consistent Contact', 'Signed', 'Signed Elsewhere'];
+const stageColor = (s) => s === 'Signed' ? G.green : s === 'Consistent Contact' ? G.yellow : s === 'Signed Elsewhere' ? G.red : G.textSecondary;
 
 function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const { data, err, loading, reload } = useAdminTab('recruiting');
@@ -3854,12 +3865,47 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const [group, setGroup] = useCachedState('recruiting.group', 'All');
   const [agent, setAgent] = useCachedState('recruiting.agent', 'All');
   const [klass, setKlass] = useCachedState('recruiting.klass', 'All');
+  const [stageF, setStageF] = useCachedState('recruiting.stagef', 'All');
   const [sortCol, setSortCol] = useCachedState('recruiting.sortCol', 'rating');
   const [sortDir, setSortDir] = useCachedState('recruiting.sortDir', 'desc');
   const hFind = (re) => headers.findIndex(h => re.test(h));
   const nameI = hFind(/name/i), schoolI = hFind(/school/i), levelI = hFind(/^level/i),
-    posI = hFind(/position/i), rankI = hFind(/rank/i), classI = hFind(/class|year/i);
+    posI = hFind(/position/i), rankI = hFind(/rank/i), classI = hFind(/class|year/i),
+    stageI = hFind(/^stage/i);
   const cellOf = (r, i) => (i >= 0 ? (r.cells[i] || '') : '');
+  // Inline stage change straight from the table — no need to open the row.
+  const [stageBusy, setStageBusy] = useState(0);
+  const setStage = async (r, v) => {
+    setStageBusy(r._row);
+    try { await post({ action: 'tab-update', tab: 'recruiting', row: r._row, values: { stage: v } }); reload(); }
+    catch (e) { alert(e.message || 'Stage update failed'); }
+    finally { setStageBusy(0); }
+  };
+  // Upgrade a Signed recruit to a roster client: replays their board row
+  // through the signed onboarding path (same as the submission promote), which
+  // also kicks off ESPN/247/social enrichment server-side.
+  const upgrade = async (r) => {
+    const name = cellOf(r, nameI).trim();
+    if (!window.confirm(`Add ${name} to the roster as a client? Their profile stays hidden from the public site until you flip Public.`)) return;
+    setPromoting(name);
+    try {
+      const resp = await fetch('/api/onboard', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name, level: cellOf(r, levelI).trim() || 'College', position: cellOf(r, posI),
+          schoolOrTeam: cellOf(r, schoolI), classOf: cellOf(r, classI), agent: cellOf(r, agentCol),
+        }),
+      });
+      const d = await resp.json();
+      if (!resp.ok || !d.success) throw new Error(d.error || 'Upgrade failed');
+      setJustPromoted(p => ({ ...p, [name.toLowerCase()]: true }));
+      if (onPromoted) onPromoted();
+    } catch (e) {
+      alert(e.message || 'Upgrade failed');
+    } finally {
+      setPromoting('');
+    }
+  };
   const starsOf = (r) => { const m = String(cellOf(r, rankI)).match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
   const classes = useMemo(() => [...new Set((data?.rows || []).filter(r => recLevels.includes(cellOf(r, levelI).trim())).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI, levelI, recLevels]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = (data?.rows || [])
@@ -3868,6 +3914,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
     .filter(r => { if (side === 'All') return true; const g = contractPosGroup(cellOf(r, posI)); return POS_SIDES[side].includes(g) && (group === 'All' || g === group); })
     .filter(r => agent === 'All' || String(agentCol >= 0 ? (r.cells[agentCol] || '') : '').toLowerCase().includes(agent.toLowerCase()))
     .filter(r => klass === 'All' || cellOf(r, classI).trim() === klass)
+    .filter(r => stageF === 'All' || cellOf(r, stageI).trim() === stageF)
     .sort((a, b) => {
       // Default view floats the logged-in agent's own recruits to the top.
       if (sortCol === 'rating' && user?.agentKey && agentCol >= 0) {
@@ -3877,6 +3924,8 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
       const SORT_COLS = { player: nameI, position: posI, school: schoolI, class: classI, agent: agentCol };
       const cmp = sortCol === 'rating'
         ? (starsOf(a) - starsOf(b)) || cellOf(a, nameI).localeCompare(cellOf(b, nameI))
+        : sortCol === 'stage'
+        ? (REC_STAGES.indexOf(cellOf(a, stageI).trim()) - REC_STAGES.indexOf(cellOf(b, stageI).trim())) || cellOf(a, nameI).localeCompare(cellOf(b, nameI))
         : cellOf(a, SORT_COLS[sortCol]).localeCompare(cellOf(b, SORT_COLS[sortCol]), undefined, { numeric: true, sensitivity: 'base' }) || cellOf(a, nameI).localeCompare(cellOf(b, nameI));
       return sortDir === 'desc' ? -cmp : cmp;
     });
@@ -3887,6 +3936,13 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
       rows: [
         { on: agent === 'All', label: 'All agents', onClick: () => setAgent('All') },
         ...(staff || []).map(n => ({ on: agent === n, label: n, onClick: () => setAgent(agent === n ? 'All' : n) })),
+      ],
+    },
+    {
+      id: 'stage', title: 'Stage', value: stageF,
+      rows: [
+        { on: stageF === 'All', label: 'All stages', onClick: () => setStageF('All') },
+        ...REC_STAGES.map(s => ({ on: stageF === s, label: s, onClick: () => setStageF(stageF === s ? 'All' : s) })),
       ],
     },
     {
@@ -3907,8 +3963,8 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
       ],
     },
   ].filter(Boolean);
-  const filterActive = agent !== 'All' || side !== 'All' || klass !== 'All';
-  const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, klass !== 'All' ? klass : null].filter(Boolean).join(', ') || 'All';
+  const filterActive = agent !== 'All' || side !== 'All' || klass !== 'All' || stageF !== 'All';
+  const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, klass !== 'All' ? klass : null, stageF !== 'All' ? stageF : null].filter(Boolean).join(', ') || 'All';
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -3921,7 +3977,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
         {['High School', 'College'].map(lv => levelChipBtn(recLevels.includes(lv), lv, () => { toggleRecLevel(lv); setKlass('All'); }))}
         <div style={{ width: 10 }} />
         <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
-          onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); }} />
+          onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); setStageF('All'); }} />
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
         {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
@@ -3931,7 +3987,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead><tr>
-                  {[['player', 'Player'], ['position', 'Position'], ['school', 'School'], ['class', 'Class'], ['agent', 'Agent'], ['rating', 'Rating']].map(([key, h]) => (
+                  {[['player', 'Player'], ['position', 'Position'], ['school', 'School'], ['class', 'Class'], ['agent', 'Agent'], ['rating', 'Rating'], ['stage', 'Stage']].map(([key, h]) => (
                     <th key={key}
                       onClick={() => { if (sortCol === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(key === 'rating' ? 'desc' : 'asc'); } }}
                       style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
@@ -3952,6 +4008,28 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                         <td style={td}>{cellOf(r, classI)}</td>
                         <td style={td}>{cellOf(r, agentCol)}</td>
                         <td style={{ ...td, color: starsOf(r) >= 4 ? G.green : G.textSecondary, fontWeight: 700 }}>{cellOf(r, rankI)}</td>
+                        <td style={{ ...td, overflow: "visible", maxWidth: "none" }} onClick={e => e.stopPropagation()}>
+                          {(() => {
+                            const stage = cellOf(r, stageI).trim();
+                            const name = cellOf(r, nameI).trim();
+                            const onRoster = rosterNames.has(name.toLowerCase()) || justPromoted[name.toLowerCase()];
+                            return (
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <select value={stage} disabled={stageBusy === r._row} onChange={e => setStage(r, e.target.value)}
+                                  style={{ background: G.surfaceRaised, border: `1px solid ${stage ? stageColor(stage) + '55' : G.surfaceBorder}`, borderRadius: 8, padding: "5px 8px", color: stage ? stageColor(stage) : G.textTertiary, fontWeight: 600, fontSize: 12, fontFamily: ff, cursor: stageBusy === r._row ? 'wait' : 'pointer', appearance: "auto" }}>
+                                  <option value="">—</option>
+                                  {REC_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                {stage === 'Signed' && (onRoster
+                                  ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.green, whiteSpace: "nowrap" }}>Client ✓</span>
+                                  : <button onClick={() => upgrade(r)} disabled={promoting === name}
+                                      style={{ background: promoting === name ? G.surfaceRaised : G.greenSubtle, border: `1px solid ${promoting === name ? G.surfaceBorder : G.green}`, borderRadius: 8, padding: "5px 9px", color: promoting === name ? G.textTertiary : G.green, fontWeight: 700, fontSize: 11.5, cursor: promoting === name ? 'wait' : 'pointer', fontFamily: ff, whiteSpace: "nowrap" }}>
+                                      {promoting === name ? 'Upgrading…' : 'Upgrade to client'}
+                                    </button>)}
+                              </div>
+                            );
+                          })()}
+                        </td>
                       </tr>
                     );
                   })}
@@ -3998,7 +4076,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
         </div>
       )}
       {editing && (
-        <TabRowForm headers={headers} initial={editing === 'new' ? null : editing}
+        <TabRowForm headers={headers} initial={editing === 'new' ? null : editing} selects={{ stage: REC_STAGES }}
           title={editing === 'new' ? 'Add recruit' : (editing.cells[0] || 'Edit recruit')}
           onCancel={() => setEditing(null)}
           onSave={async (vals) => {
