@@ -3795,13 +3795,16 @@ function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title, selec
 // that creates the recruit as a roster client.
 const REC_STAGES = ['Outreach', 'Consistent Contact', 'Signed', 'Signed Elsewhere'];
 const stageColor = (s) => s === 'Signed' ? G.green : s === 'Consistent Contact' ? G.yellow : s === 'Signed Elsewhere' ? G.red : G.textSecondary;
+// Same normalization the onboarding merge uses — so "Jr." vs "Jr" or stray
+// punctuation can't make the board think a rostered player isn't a client yet.
+const nameKey = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 
 function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const { data, err, loading, reload } = useAdminTab('recruiting');
   const sub = useAdminTab('onboarding');
   const [promoting, setPromoting] = useState('');
   const [justPromoted, setJustPromoted] = useState({});
-  const rosterNames = useMemo(() => new Set((athletes || []).map(a => a.name.toLowerCase().trim())), [athletes]);
+  const rosterNames = useMemo(() => new Set((athletes || []).map(a => nameKey(a.name))), [athletes]);
   // Latest recruit-type submission per person, newest first.
   const recruitSubs = useMemo(() => {
     if (!sub.data) return [];
@@ -3838,7 +3841,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
       });
       const d = await resp.json();
       if (!resp.ok || !d.success) throw new Error(d.error || 'Promote failed');
-      setJustPromoted(p => ({ ...p, [name.toLowerCase().trim()]: true }));
+      setJustPromoted(p => ({ ...p, [nameKey(name)]: true }));
       if (onPromoted) onPromoted();
     } catch (e) {
       alert(e.message || 'Promote failed');
@@ -3898,7 +3901,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
       });
       const d = await resp.json();
       if (!resp.ok || !d.success) throw new Error(d.error || 'Upgrade failed');
-      setJustPromoted(p => ({ ...p, [name.toLowerCase()]: true }));
+      setJustPromoted(p => ({ ...p, [nameKey(name)]: true }));
       if (onPromoted) onPromoted();
     } catch (e) {
       alert(e.message || 'Upgrade failed');
@@ -4012,7 +4015,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                           {(() => {
                             const stage = cellOf(r, stageI).trim();
                             const name = cellOf(r, nameI).trim();
-                            const onRoster = rosterNames.has(name.toLowerCase()) || justPromoted[name.toLowerCase()];
+                            const onRoster = rosterNames.has(nameKey(name)) || justPromoted[nameKey(name)];
                             return (
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <select value={stage} disabled={stageBusy === r._row} onChange={e => setStage(r, e.target.value)}
@@ -4050,7 +4053,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
               const h = sub.data.headers;
               const cell = (n) => { const i = h.indexOf(n); return i >= 0 ? (r.cells[i] || '') : ''; };
               const name = cell('name');
-              const onRoster = rosterNames.has(name.toLowerCase().trim()) || justPromoted[name.toLowerCase().trim()];
+              const onRoster = rosterNames.has(nameKey(name)) || justPromoted[nameKey(name)];
               const meta = [cell('level'), cell('schoolOrTeam'), cell('position')].filter(Boolean).join(' · ');
               return (
                 <div key={r._row} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: idx < recruitSubs.length - 1 ? `1px solid ${G.surfaceBorder}` : "none" }}>
