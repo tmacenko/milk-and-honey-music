@@ -154,6 +154,10 @@ const COLLEGE_LOGOS = {
   "ohio": 195, "northern illinois": 2459, "miami (oh)": 193,
   "notre dame": 87, "army": 349, "navy": 2426, "liberty": 2335, "james madison": 256, "jmu": 256,
   "uconn": 41, "connecticut": 41, "holy cross": 107, "montana state": 147, "montana": 149,
+  // Keep multi-word programs ABOVE their base-name cousins conceptually: the
+  // exact-match lookup runs before the fuzzy word-match, so "georgia southern"
+  // must exist here or the fuzzy pass hands it Georgia's logo.
+  "georgia southern": 290, "georgia state": 2247,
 };
 function collegeKeyMatch(college, key) {
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

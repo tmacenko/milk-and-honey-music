@@ -3141,6 +3141,12 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       .map(r => ({ row: r._row, text: r.cells[ti] }));
   }, [todosTab.data]);
   const [showOnboards, setShowOnboards] = useState(false);
+  // Review nudges (new onboarding, hidden athletes) are management chores —
+  // agents' to-do tiles stay personal. House-password sessions count as admin.
+  const adminRole = !user?.userRole || user.userRole === 'admin';
+  const [showHidden, setShowHidden] = useState(false);
+  const hiddenAthletes = useMemo(() =>
+    (athletes || []).filter(a => a.public === false).sort((a, b) => a.name.localeCompare(b.name)), [athletes]);
   const recentOnboards = useMemo(() => {
     const d = onboardTab.data;
     if (!d) return [];
@@ -3299,10 +3305,16 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               Incomplete profiles: {s.incomplete.length} players
             </div>
           )}
-          {newOnboards > 0 && (
+          {adminRole && newOnboards > 0 && (
             <div onClick={() => setShowOnboards(true)}
               style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
               Check new onboarding ({newOnboards})
+            </div>
+          )}
+          {adminRole && hiddenAthletes.length > 0 && (
+            <div onClick={() => setShowHidden(true)}
+              style={{ fontSize: 13, color: G.yellow, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
+              Hidden athletes ({hiddenAthletes.length})
             </div>
           )}
           {todoItems.map(t => (
@@ -3312,7 +3324,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               <span style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
             </div>
           ))}
-          {s.incomplete.length === 0 && newOnboards === 0 && todoItems.length === 0 && !addingTodo && (
+          {s.incomplete.length === 0 && (!adminRole || (newOnboards === 0 && hiddenAthletes.length === 0)) && todoItems.length === 0 && !addingTodo && (
             <div style={{ fontSize: 13, color: G.green, padding: "6px 0" }}>All clear ✓</div>
           )}
         </div>
@@ -3342,6 +3354,31 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {showHidden && (
+        <div onClick={() => setShowHidden(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 540, maxHeight: "80vh", overflowY: "auto", padding: 20, animation: "modalIn .18s ease" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>Hidden athletes</div>
+              <button onClick={() => setShowHidden(false)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: G.textTertiary, marginBottom: 10 }}>Not shown on the public site — click a name, then Edit and flip Public to publish.</div>
+            {hiddenAthletes.map((a, i, arr) => (
+              <div key={`${a.level}-${a._rowIndex}`} onClick={() => { setShowHidden(false); onOpenAthlete(a); }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <Avatar name={a.name} photoUrl={a.photoUrl} size={30} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
+                    <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[a.level, a.nflTeam || a.college].filter(Boolean).join(' · ')}</div>
+                  </div>
+                </div>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: G.yellow, flexShrink: 0 }}>Hidden</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -3889,7 +3926,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   // also kicks off ESPN/247/social enrichment server-side.
   const upgrade = async (r) => {
     const name = cellOf(r, nameI).trim();
-    if (!window.confirm(`Add ${name} to the roster as a client? Their profile stays hidden from the public site until you flip Public.`)) return;
+    if (!window.confirm(`Add ${name} to the roster as a client? They'll appear on the public site — flip Public off on their profile to hide them.`)) return;
     setPromoting(name);
     try {
       const resp = await fetch('/api/onboard', {
@@ -4074,7 +4111,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
             })}
           </div>
           <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 8 }}>
-            Promoting creates their roster profile from their submission — hidden from the public site until you review and flip Public.
+            Promoting creates their roster profile from their submission — it goes public right away (flip Public off on their profile to hide it).
           </div>
         </div>
       )}
@@ -5776,7 +5813,7 @@ function App() {
                 </div>
                 {isAdmin && (
                   <button onClick={() => domain === 'sports'
-                    ? setEditingAthlete({ level: 'College', name: '', position: '', public: false, brands: [], interests: [] })
+                    ? setEditingAthlete({ level: 'College', name: '', position: '', public: true, brands: [], interests: [] })
                     : setEditing({})}
                     style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap", flexShrink: 0 }}>
                     + Add

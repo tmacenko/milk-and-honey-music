@@ -11,7 +11,7 @@
 //
 // Name matching is deterministic (exact normalized name + suffix + level
 // guards, same rules the old app used). New signed athletes are created with
-// Public unset, so staff reviews before they appear on the public site.
+// Public=TRUE (visible right away); staff can flip it off from the profile.
 // ?dryRun=1 reports what would be written without writing.
 const crypto = require('crypto');
 
@@ -199,9 +199,12 @@ module.exports = async (req, res) => {
       if (appRow) {
         await sheetBatchUpdate(token, headerUpdates('AppData', appHeaders, appRow, appVals));
       } else {
+        // Brand-new athletes go public immediately (existing rows keep their
+        // Public flag — a re-submission never flips someone's visibility).
+        const appValsNew = { ...appVals, public: 'TRUE' };
         await sheetAppend(token, 'AppData!A:AZ', appHeaders.map(h => {
-          const key = Object.keys(appVals).find(k => k.toLowerCase() === h.toLowerCase());
-          return key && appVals[key] !== undefined ? String(appVals[key] ?? '') : '';
+          const key = Object.keys(appValsNew).find(k => k.toLowerCase() === h.toLowerCase());
+          return key && appValsNew[key] !== undefined ? String(appValsNew[key] ?? '') : '';
         }));
       }
     }
