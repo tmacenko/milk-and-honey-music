@@ -5274,7 +5274,7 @@ function App() {
       return downloadPdf({
         action: 'roster-pdf', title: rosterTitle(),
         clients: allRows.map(r => r.kind === 'sports'
-          ? { name: r.it.name, types: [r.it.position].filter(Boolean), photoUrl: r.it.photoUrl, label: (r.it.nflTeam || r.it.college || ''), logoUrls: [r.it.teamLogo].filter(Boolean), pathPrefix: 'sports/' }
+          ? { name: r.it.name, types: [r.it.position, r.it.jerseyNumber ? `#${r.it.jerseyNumber}` : '', r.it.nflTeam || r.it.college || ''].filter(Boolean), photoUrl: r.it.photoUrl, label: (r.it.nflTeam || r.it.college || ''), logoUrls: [r.it.teamLogo].filter(Boolean), pathPrefix: 'sports/' }
           : {
               name: r.it.name, types: r.it.types, photoUrl: r.it.photoUrl, label: r.it.label, pro: r.it.pro, country: r.it.country,
               logoUrls: [r.it.pro, r.it.publisher, r.it.label].filter(Boolean)
@@ -5291,7 +5291,7 @@ function App() {
             const team = a.nflTeam || a.college || '';
             return {
               name: a.name, photoUrl: a.photoUrl, headerUrl: a.heroImageUrl,
-              types: [a.position, team].filter(Boolean),
+              types: [a.position, a.jerseyNumber ? `#${a.jerseyNumber}` : '', team].filter(Boolean),
               instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
               bio: a.bio, logoUrls: [a.teamLogo].filter(Boolean),
               sections: [['Brands', a.brands], ['Interests', a.interests]],
@@ -5301,7 +5301,7 @@ function App() {
       }
       return downloadPdf({
         action: 'roster-pdf', title: rosterTitle(), pathPrefix: 'sports/',
-        clients: filteredAthletes.map(a => ({ name: a.name, types: [a.position].filter(Boolean), photoUrl: a.photoUrl, label: (a.nflTeam || a.college || ''), logoUrls: [a.teamLogo].filter(Boolean) })),
+        clients: filteredAthletes.map(a => ({ name: a.name, types: [a.position, a.jerseyNumber ? `#${a.jerseyNumber}` : '', a.nflTeam || a.college || ''].filter(Boolean), photoUrl: a.photoUrl, label: (a.nflTeam || a.college || ''), logoUrls: [a.teamLogo].filter(Boolean) })),
       }, `${base}.pdf`);
     }
     if (detailed) {
@@ -5340,7 +5340,7 @@ function App() {
     const team = a.nflTeam || a.college || '';
     return {
       name: a.name, level: a.level || 'Athlete', photoUrl: a.photoUrl, headerUrl: a.heroImageUrl,
-      logoUrl: a.teamLogo, types: [a.position, team].filter(Boolean),
+      logoUrl: a.teamLogo, types: [a.position, a.jerseyNumber ? `#${a.jerseyNumber}` : '', team].filter(Boolean),
       position: a.position, team, bio: a.bio,
       instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
       igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
@@ -5514,7 +5514,18 @@ function App() {
     ].filter(r => !q || hay(r).includes(q));
     const byReach = (a, b) => (b.reach - a.reach) || a.it.name.localeCompare(b.it.name);
     if (allSort === 'division') {
-      return [...list.filter(r => r.kind === 'music'), ...list.filter(r => r.kind === 'sports').sort(byReach)];
+      // Music keeps its sheet order; football follows in ITS default roster
+      // order — league (NFL → College → HS), free agents to the bottom of
+      // each league, then by reach.
+      const sportsDefault = (x, y) => {
+        const a = x.it, b = y.it;
+        const lr = (LEAGUE_RANK[a.level] ?? 9) - (LEAGUE_RANK[b.level] ?? 9);
+        if (lr !== 0) return lr;
+        const fa = (a.status === 'Free Agent' ? 1 : 0) - (b.status === 'Free Agent' ? 1 : 0);
+        if (fa !== 0) return fa;
+        return byReach(x, y);
+      };
+      return [...list.filter(r => r.kind === 'music'), ...list.filter(r => r.kind === 'sports').sort(sportsDefault)];
     }
     return [...list].sort(byReach);
   }, [domain, clients, athletes, search, allSort]);
