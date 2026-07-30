@@ -19,9 +19,16 @@
     },
     "api/refresh-music-socials.js": {
       "maxDuration": 60
+    },
+    "api/backup.js": {
+      "maxDuration": 60
     }
   },
   "crons": [
+    {
+      "path": "/api/backup",
+      "schedule": "0 7 * * 0"
+    },
     {
       "path": "/api/refresh-socials",
       "schedule": "0 9 * * *"
