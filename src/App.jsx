@@ -25,12 +25,12 @@ const THEME_CSS = `
 [data-theme="light"]{
   --mh-green:#1f8a5c; --mh-green-subtle:rgba(31,138,92,0.10); --mh-green-border:rgba(31,138,92,0.35);
   --mh-green-shadow:0 0 20px rgba(31,138,92,0.14);
-  --mh-bg:#f5f5f3; --mh-surface:#ffffff; --mh-surface-raised:#efeff0;
+  --mh-bg:#f3f3f5; --mh-surface:#ffffff; --mh-surface-raised:#efeff0;
   --mh-surface-glass:rgba(255,255,255,0.9);
   --mh-border:#e3e3e6; --mh-border-light:#d2d2d8;
   --mh-text:#141417; --mh-text-2:#4c4c56; --mh-text-3:#71717c;
-  --mh-shadow:0 1px 2px rgba(20,20,25,0.07), 0 4px 16px rgba(20,20,25,0.05);
-  --mh-shadow-lg:0 4px 12px rgba(20,20,25,0.10), 0 20px 60px rgba(20,20,25,0.13);
+  --mh-shadow:0 1px 2px rgba(20,20,25,0.04), 0 4px 16px rgba(20,20,25,0.03);
+  --mh-shadow-lg:0 4px 12px rgba(20,20,25,0.07), 0 20px 60px rgba(20,20,25,0.08);
   --mh-yellow:#b45309; --mh-red:#dc2626;
 }
 html, body, #root { background: var(--mh-bg); }
@@ -1261,7 +1261,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
   const locationEl = locationParts && (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       {locationParts.flags && <span style={{ fontSize: 16 }}>{locationParts.flags}</span>}
-      <span style={{ fontSize: 14, color: G.text }}>{locationParts.cities}</span>
+      <span style={{ fontSize: 14, color: c.headerUrl ? "#fff" : G.text }}>{locationParts.cities}</span>
     </div>
   );
   const creditsPills = c.credits?.length > 0 && (
@@ -1343,18 +1343,18 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-              <h1 style={{ fontSize: 28, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.1, flex: 1 }}>{c.name}</h1>
+              <h1 style={{ fontSize: 28, fontWeight: 800, color: c.headerUrl ? "#fff" : G.text, letterSpacing: "-0.03em", margin: 0, lineHeight: 1.1, flex: 1 }}>{c.name}</h1>
               {c.contact && (
                 <a href={contactMailto} style={{ display: "flex", alignItems: "center", justifyContent: "center", background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: "8px 10px", textDecoration: "none", flexShrink: 0 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke={G.green} strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke={G.green} strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke={G.green} strokeWidth="2" strokeLinecap="round"/></svg>
                 </a>
               )}
             </div>
-            {typesText && <div style={{ fontSize: 14, color: "#fff", fontWeight: 500 }}>{typesText}</div>}
+            {typesText && <div style={{ fontSize: 14, color: c.headerUrl ? "#fff" : G.text, fontWeight: 500 }}>{typesText}</div>}
             {socialBtns.length > 0 && (
               <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
                 {socialBtns.map((btn, i) => (
-                  <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", textDecoration: "none", color: "#fff", transition: "opacity 0.15s" }}
+                  <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", textDecoration: "none", color: c.headerUrl ? "#fff" : G.text, transition: "opacity 0.15s" }}
                     onMouseEnter={e => e.currentTarget.style.opacity = 0.65}
                     onMouseLeave={e => e.currentTarget.style.opacity = 1}>
                     {btn.icon}
@@ -1462,7 +1462,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-              <h1 style={{ fontSize: 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.04em", margin: 0, lineHeight: 1.05, flex: 1 }}>{c.name}</h1>
+              <h1 style={{ fontSize: 38, fontWeight: 800, color: c.headerUrl ? "#fff" : G.text, letterSpacing: "-0.04em", margin: 0, lineHeight: 1.05, flex: 1 }}>{c.name}</h1>
               {c.contact && (
                 <a href={contactMailto} style={{ display: "flex", alignItems: "center", gap: 7, background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: "9px 14px", textDecoration: "none", flexShrink: 0, marginTop: 4 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke={G.green} strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke={G.green} strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke={G.green} strokeWidth="2" strokeLinecap="round"/></svg>
@@ -1471,14 +1471,14 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
               )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 4 }}>
-              {typesText && <span style={{ fontSize: 15, color: "#fff", fontWeight: 500 }}>{typesText}</span>}
+              {typesText && <span style={{ fontSize: 15, color: c.headerUrl ? "#fff" : G.text, fontWeight: 500 }}>{typesText}</span>}
               {locationEl}
             </div>
             <div style={{ display: "flex", gap: 22, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
               {socialBtns.length > 0 && (
                 <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
                   {socialBtns.map((btn, i) => (
-                    <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", textDecoration: "none", color: "#fff", transition: "opacity 0.15s" }}
+                    <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", textDecoration: "none", color: c.headerUrl ? "#fff" : G.text, transition: "opacity 0.15s" }}
                       onMouseEnter={e => e.currentTarget.style.opacity = 0.65}
                       onMouseLeave={e => e.currentTarget.style.opacity = 1}>
                       {btn.icon}
@@ -2303,7 +2303,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
               {/* Name + Contact button on one line (mirrors the music detail page). */}
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.05, flex: 1, minWidth: 0 }}>{a.name}</h1>
+                <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 800, color: banner ? "#fff" : G.text, letterSpacing: "-0.03em", margin: 0, lineHeight: 1.05, flex: 1, minWidth: 0 }}>{a.name}</h1>
                 {!hideContact && (
                   <a href={`mailto:marketing@milkhoneysports.com?subject=${encodeURIComponent('Partnership inquiry — ' + a.name)}`}
                     style={{ display: "flex", alignItems: "center", gap: 7, background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: isMobile ? "8px 10px" : "9px 14px", textDecoration: "none", flexShrink: 0, marginTop: 4 }}>
@@ -2314,9 +2314,9 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
                 <TeamLogo url={a.teamLogo} size={26} />
-                {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: "#fff", fontWeight: 500 }}>{typeLine}</span>}
+                {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: banner ? "#fff" : G.text, fontWeight: 500 }}>{typeLine}</span>}
                 {companyView && a.depthRank > 0 && (
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: a.depthRank === 1 ? G.green : G.textSecondary, background: a.depthRank === 1 ? G.greenSubtle : "rgba(255,255,255,0.07)", border: `1px solid ${a.depthRank === 1 ? G.greenBorder : "rgba(255,255,255,0.18)"}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: a.depthRank === 1 ? G.green : G.textSecondary, background: a.depthRank === 1 ? G.greenSubtle : (banner ? "rgba(255,255,255,0.07)" : G.surfaceRaised), border: `1px solid ${a.depthRank === 1 ? G.greenBorder : (banner ? "rgba(255,255,255,0.18)" : G.surfaceBorder)}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
                     {a.depthRank === 1 ? 'Starter' : a.depthRank === 2 ? '2nd string' : a.depthRank === 3 ? '3rd string' : `${a.depthRank}th string`}{a.depthPos ? ` · ${a.depthPos}` : ''}
                   </span>
                 )}
@@ -2326,9 +2326,9 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               {socialBtns.length > 0 && (
                 <div style={{ display: "flex", gap: isMobile ? 16 : 24, marginTop: 13, alignItems: "center", flexWrap: "wrap" }}>
                   {socialBtns.map((b, i) => (
-                    <a key={i} href={b.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 7, color: "#fff", textDecoration: "none", transition: "opacity 0.15s" }} onMouseEnter={e => e.currentTarget.style.opacity = 0.65} onMouseLeave={e => e.currentTarget.style.opacity = 1}>
+                    <a key={i} href={b.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 7, color: banner ? "#fff" : G.text, textDecoration: "none", transition: "opacity 0.15s" }} onMouseEnter={e => e.currentTarget.style.opacity = 0.65} onMouseLeave={e => e.currentTarget.style.opacity = 1}>
                       {b.icon}
-                      {!companyView && b.count && <span style={{ fontSize: isMobile ? 14 : 15, fontWeight: 700, color: "#fff" }}>{b.count}</span>}
+                      {!companyView && b.count && <span style={{ fontSize: isMobile ? 14 : 15, fontWeight: 700, color: banner ? "#fff" : G.text }}>{b.count}</span>}
                     </a>
                   ))}
                 </div>
