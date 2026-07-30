@@ -1332,7 +1332,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
       {c.headerUrl && (
         <div style={{ position: "sticky", top: 0, height: 200, overflow: "hidden", zIndex: 0, pointerEvents: "none" }}>
           <img src={c.headerUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 30%", display: "block" }} />
-          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(to bottom, rgba(8,8,9,0.25) 0%, rgba(8,8,9,0.1) 30%, rgba(8,8,9,0.72) 76%, ${G.bg} 100%)` }} />
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(to bottom, rgba(8,8,9,0.25) 0%, rgba(8,8,9,0.1) 30%, rgba(8,8,9,0.72) 76%, #080809 100%)` }} />
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1, marginTop: c.headerUrl ? -200 : 0 }}>
@@ -1451,7 +1451,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
       {c.headerUrl && (
         <div style={{ position: "sticky", top: 0, height: 340, overflow: "hidden", zIndex: 0, pointerEvents: "none" }}>
           <img src={c.headerUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 30%", display: "block" }} />
-          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(to bottom, rgba(8,8,9,0.25) 0%, rgba(8,8,9,0.1) 35%, rgba(8,8,9,0.7) 78%, ${G.bg} 100%)` }} />
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(to bottom, rgba(8,8,9,0.25) 0%, rgba(8,8,9,0.1) 35%, rgba(8,8,9,0.7) 78%, #080809 100%)` }} />
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1, marginTop: c.headerUrl ? -340 : 0 }}>
@@ -2291,7 +2291,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
       {banner && (
         <div style={{ position: "sticky", top: 0, height: bannerH, overflow: "hidden", zIndex: 0, pointerEvents: "none" }}>
           <img src={banner} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 30%", display: "block" }} />
-          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(to bottom, rgba(8,8,9,0.25) 0%, rgba(8,8,9,0.1) 35%, rgba(8,8,9,0.72) 78%, ${G.bg} 100%)` }} />
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(to bottom, rgba(8,8,9,0.25) 0%, rgba(8,8,9,0.1) 35%, rgba(8,8,9,0.72) 78%, #080809 100%)` }} />
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1, marginTop: banner ? -bannerH : 0 }}>
