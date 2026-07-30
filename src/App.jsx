@@ -20,6 +20,7 @@ const THEME_CSS = `
   --mh-text:#f4f4f5; --mh-text-2:#b4b4be; --mh-text-3:#8a8a98;
   --mh-shadow:0 1px 2px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.35);
   --mh-shadow-lg:0 4px 12px rgba(0,0,0,0.7), 0 20px 60px rgba(0,0,0,0.5);
+  --mh-tile-shadow:0 1px 4px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.12);
   --mh-yellow:#d97706; --mh-red:#dc2626;
 }
 [data-theme="light"]{
@@ -31,6 +32,7 @@ const THEME_CSS = `
   --mh-text:#141417; --mh-text-2:#4c4c56; --mh-text-3:#71717c;
   --mh-shadow:0 1px 2px rgba(20,20,25,0.01), 0 4px 16px rgba(20,20,25,0.01);
   --mh-shadow-lg:0 4px 12px rgba(20,20,25,0.01), 0 20px 60px rgba(20,20,25,0.01);
+  --mh-tile-shadow:0 1px 3px rgba(20,20,25,0.06), inset 0 0 0 1px rgba(20,20,25,0.08);
   --mh-yellow:#b45309; --mh-red:#dc2626;
 }
 html, body, #root { background: var(--mh-bg); }
@@ -110,7 +112,7 @@ function LogoBadge({ url, label, size = 32 }) {
     return <span style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, fontWeight: 600, color: G.textSecondary, whiteSpace: "nowrap" }}>{label}</span>;
   }
   return (
-    <div style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), background: "#fff", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.12)", flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), background: "#fff", overflow: "hidden", boxShadow: "var(--mh-tile-shadow)", flexShrink: 0 }}>
       <img src={resolvedUrl} alt={label} onError={() => setErr(true)} style={{ width: "110%", height: "110%", objectFit: "cover", display: "block", margin: "-5%" }} />
     </div>
   );
@@ -1987,7 +1989,7 @@ function latest247From(rows) {
 function TeamLogo({ url, size = 38 }) {
   if (!url) return null;
   return (
-    <div style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.12)", flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", boxShadow: "var(--mh-tile-shadow)", flexShrink: 0 }}>
       <img src={url} alt="" referrerPolicy="no-referrer" style={{ width: "82%", height: "82%", objectFit: "contain", display: "block" }} />
     </div>
   );
