@@ -2729,19 +2729,7 @@ const clientReach = (c) => countFrom(c.igFollowers) + countFrom(c.twitterFollowe
 // Reach = IG + X + TikTok followers on both sides (Spotify listeners are a
 // different metric and stay out of the ranking). Internal-only — the toggle
 // never renders for b2b/public sessions. Each side keeps its own card style.
-function AllRoster({ clients, athletes, logos, isMobile, isAdmin, search, onOpen }) {
-  const rows = useMemo(() => {
-    const q = (search || '').toLowerCase();
-    const hay = (r) => r.kind === 'music'
-      ? [r.it.name, ...(r.it.types || [])].join(' ').toLowerCase()
-      : [r.it.name, r.it.position, r.it.nflTeam, r.it.college].filter(Boolean).join(' ').toLowerCase();
-    return [
-      ...(clients || []).map(c => ({ kind: 'music', it: c, reach: clientReach(c) })),
-      ...(athletes || []).map(a => ({ kind: 'sports', it: a, reach: athleteReach(a) })),
-    ]
-      .filter(r => !q || hay(r).includes(q))
-      .sort((a, b) => (b.reach - a.reach) || a.it.name.localeCompare(b.it.name));
-  }, [clients, athletes, search]);
+function AllRoster({ rows, logos, isMobile, isAdmin, search, onOpen }) {
   return (
     <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
       {rows.length === 0 ? (
@@ -5249,7 +5237,7 @@ function App() {
     } catch (e) { alert('Could not generate the PDF. Please try again.'); }
     setPdfBusy(false);
   };
-  const rosterTitle = () => customGroup.length ? (customGroupTitle || 'Milk & Honey — Custom Group') : (domain === 'sports' ? 'Milk & Honey Sports' : 'Milk & Honey Music');
+  const rosterTitle = () => customGroup.length ? (customGroupTitle || 'Milk & Honey — Custom Group') : (domain === 'sports' ? 'Milk & Honey Sports' : domain === 'all' ? 'Milk & Honey' : 'Milk & Honey Music');
   // AI-powered custom group: send a compact roster + a plain-English query,
   // get back the matching names and a descriptive title.
   const smartGroup = async (query) => {
@@ -5280,6 +5268,21 @@ function App() {
   const downloadRosterPdf = (layout) => {
     const detailed = layout ? layout === 'detailed' : rosterView === 'detailed';
     const base = slugOf(rosterTitle()) || 'roster';
+    if (domain === 'all') {
+      // Combined family PDF: always the compact 3×5 grid, in the on-screen
+      // order. Each card carries its own link prefix (athletes → /sports/...).
+      return downloadPdf({
+        action: 'roster-pdf', title: rosterTitle(),
+        clients: allRows.map(r => r.kind === 'sports'
+          ? { name: r.it.name, types: [r.it.position].filter(Boolean), photoUrl: r.it.photoUrl, label: (r.it.nflTeam || r.it.college || ''), logoUrls: [r.it.teamLogo].filter(Boolean), pathPrefix: 'sports/' }
+          : {
+              name: r.it.name, types: r.it.types, photoUrl: r.it.photoUrl, label: r.it.label, pro: r.it.pro, country: r.it.country,
+              logoUrls: [r.it.pro, r.it.publisher, r.it.label].filter(Boolean)
+                .flatMap(v => String(v).split(',').map(s => s.trim())).filter(Boolean)
+                .map(n => lookupLogo(logos, n)).filter(Boolean),
+            }),
+      }, `${base}.pdf`);
+    }
     if (domain === 'sports') {
       if (detailed) {
         return downloadPdf({
@@ -5383,7 +5386,9 @@ function App() {
   const generateShareLink = async (expiry) => {
     setShareRosterLoading(true); setShareRosterUrl(null);
     try {
-      const mapped = domain === 'sports' ? filteredAthletes.map(mapAthleteForShare) : filtered.map(mapClientForShare);
+      const mapped = domain === 'sports' ? filteredAthletes.map(mapAthleteForShare)
+        : domain === 'all' ? allRows.map(r => r.kind === 'sports' ? mapAthleteForShare(r.it) : mapClientForShare(r.it))
+        : filtered.map(mapClientForShare);
       setShareRosterUrl(await createShareLink(mapped, rosterTitle(), expiry));
     } catch (e) { alert('Share failed: ' + e.message); }
     setShareRosterLoading(false);
@@ -5493,6 +5498,27 @@ function App() {
     });
   }, [athletes, sportsLevels, depthFilter, agentFilter, posSide, posGroup, currentUser, search, customGroup, clientSort]);
 
+  // "All" view rows: both rosters combined. Sort modes — 'reach' (one list by
+  // IG+X+TikTok followers) or 'division' (music first in sheet order, then
+  // football by reach). Hoisted out of AllRoster so Export uses the same order.
+  const [allSort, setAllSort] = useCachedState('all.sort', 'reach');
+  const allRows = useMemo(() => {
+    if (domain !== 'all') return [];
+    const q = search.toLowerCase();
+    const hay = (r) => r.kind === 'music'
+      ? [r.it.name, ...(r.it.types || [])].join(' ').toLowerCase()
+      : [r.it.name, r.it.position, r.it.nflTeam, r.it.college].filter(Boolean).join(' ').toLowerCase();
+    const list = [
+      ...(clients || []).map(c => ({ kind: 'music', it: c, reach: clientReach(c) })),
+      ...(athletes || []).map(a => ({ kind: 'sports', it: a, reach: athleteReach(a) })),
+    ].filter(r => !q || hay(r).includes(q));
+    const byReach = (a, b) => (b.reach - a.reach) || a.it.name.localeCompare(b.it.name);
+    if (allSort === 'division') {
+      return [...list.filter(r => r.kind === 'music'), ...list.filter(r => r.kind === 'sports').sort(byReach)];
+    }
+    return [...list].sort(byReach);
+  }, [domain, clients, athletes, search, allSort]);
+
   const saveClient = (updatedClient, opts) => {
     if (opts && (opts.deleted || opts.created)) {
       // Rows were added/removed in the sheet, so cached row indexes are
@@ -5581,6 +5607,18 @@ function App() {
         <button key={d} onClick={() => setDomain(d)}
           style={{ padding: "8px 10px", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
           {d}
+        </button>
+      ))}
+    </div>
+  );
+  // "All" view sort modes: one reach-ranked list, or music (sheet order) then
+  // football (reach order).
+  const allSortToggle = (
+    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+      {[['reach', 'Total reach'], ['division', 'By division']].map(([k, lbl]) => (
+        <button key={k} onClick={() => setAllSort(k)}
+          style={{ padding: "8px 10px", border: "none", background: allSort === k ? G.greenSubtle : "transparent", color: allSort === k ? G.green : G.textSecondary, fontWeight: allSort === k ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+          {lbl}
         </button>
       ))}
     </div>
@@ -5741,7 +5779,7 @@ function App() {
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   );
   const exportControl = (iconOnly = false) => (
-    <ExportMenu iconOnly={iconOnly} view={rosterView} count={domain === 'sports' ? filteredAthletes.length : filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
+    <ExportMenu iconOnly={iconOnly} view={domain === 'all' ? 'list' : rosterView} count={domain === 'sports' ? filteredAthletes.length : domain === 'all' ? allRows.length : filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
       onPdf={downloadRosterPdf} linkUrl={shareRosterUrl} linkLoading={shareRosterLoading}
       onLink={generateShareLink} onClearLink={() => setShareRosterUrl(null)} />
   );
@@ -5794,7 +5832,7 @@ function App() {
               <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
                 <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
                 <div style={{ flex: 1 }} />
-                {rosterControlsOn && domain !== 'all' && exportControl(true)}
+                {rosterControlsOn && exportControl(true)}
                 {authBtnMobile}
               </div>
               {/* Row 2: domain + view + sort + layout + search — one line (scrolls if tight) */}
@@ -5818,6 +5856,7 @@ function App() {
                     {domain !== 'all' && viewFilter}
                     {domain !== 'all' && <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} compact />}
                     {domain !== 'all' && viewToggle}
+                    {domain === 'all' && allSortToggle}
                     <div style={{ flex: 1, minWidth: 0 }} />
                     <button onClick={() => setMobileSearchOpen(true)} title="Search"
                       style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 11px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
@@ -5852,12 +5891,13 @@ function App() {
                 {authBtn}
               </>
             ) : domain === 'all' ? (
-              // Combined view keeps the header lean: search only — the grid is
-              // always the full family sorted by reach.
+              // Combined view: search + the two sort modes + export.
               <>
                 <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search everyone..."
                   style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
+                {allSortToggle}
                 <div style={{ flex: 1 }} />
+                {exportControl()}
                 {authBtn}
               </>
             ) : (
@@ -5904,7 +5944,7 @@ function App() {
 
           {domain === 'all' ? (
             !error && athletesLoaded && !loading && view === 'roster' && (
-              <AllRoster clients={clients} athletes={athletes} logos={logos} isMobile={isMobile} isAdmin={isAdmin}
+              <AllRoster rows={allRows} logos={logos} isMobile={isMobile} isAdmin={isAdmin}
                 search={search} onOpen={openFromAll} />
             )
           ) : domain === 'sports' ? (

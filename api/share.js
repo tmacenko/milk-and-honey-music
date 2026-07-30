@@ -180,7 +180,9 @@ async function pdfPrefetchImages(items) {
 function pdfDrawCard(doc, item, x, y, imageCache, pathPrefix = '') {
   doc.roundedRect(x, y, PDF_CARD_W, PDF_CARD_H, 8).fillAndStroke(PDF_SURFACE, PDF_BORDER);
   const slug = slugOf(item.name);
-  if (slug) doc.link(x, y, PDF_CARD_W, PDF_CARD_H, `${APP_URL}/${pathPrefix}${slug}`);
+  // Mixed rosters (the "All" view) carry a per-card prefix so athletes link
+  // into /sports/... while musicians keep root slugs.
+  if (slug) doc.link(x, y, PDF_CARD_W, PDF_CARD_H, `${APP_URL}/${item.pathPrefix ?? pathPrefix}${slug}`);
 
   const { photoUrl, logoUrls, flag, line1, line2 } = cardFields(item);
   const pad = 12;
@@ -299,7 +301,7 @@ function drawInlineChips(doc, items, x, y, maxX) {
 function drawDetailedBand(doc, c, bx, by, bw, bh, cache, logoUrlFor, pathPrefix = '') {
   doc.roundedRect(bx, by, bw, bh, 12).fillAndStroke(PDF_SURFACE, PDF_BORDER);
   const slug = slugOf(c.name);
-  if (slug) doc.link(bx, by, bw, bh, `${APP_URL}/${pathPrefix}${slug}`);
+  if (slug) doc.link(bx, by, bw, bh, `${APP_URL}/${c.pathPrefix ?? pathPrefix}${slug}`);
   const pad = 18, avR = 32;
   const avCx = bx + pad + avR, avCy = by + pad + avR;
 
@@ -407,11 +409,14 @@ async function buildDetailedRosterPdf(items, title, logos, pathPrefix = '') {
 }
 
 async function sendRosterPdf(data, res) {
-  const items = data.athletes || data.clients || [];
+  const items = (data.athletes || data.clients || []).map(it => ({
+    ...it,
+    // Deep-link each card by ITS OWN level — mixed "All" shares hold both
+    // athletes (→ /sports/slug) and musicians (→ /slug) in one list.
+    pathPrefix: it.pathPrefix ?? (['NFL', 'College', 'High School'].includes(it?.level) ? 'sports/' : ''),
+  }));
   const title = data.title || 'Milk & Honey Music — Client Roster';
-  // Athlete shares deep-link their cards into the sports side of the app.
-  const isSports = ['NFL', 'College', 'High School'].includes(items[0]?.level);
-  const pdf = await buildRosterPdf(items, title, isSports ? 'sports/' : '');
+  const pdf = await buildRosterPdf(items, title, '');
   const filename = title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
