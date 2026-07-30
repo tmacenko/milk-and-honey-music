@@ -2724,6 +2724,40 @@ const parseListeners = v => {
 const isUKClient = (c) => [c.country, c.country2, c.country3]
   .some(v => ['uk', 'united kingdom', 'england', 'britain', 'scotland', 'wales'].includes(String(v || '').toLowerCase().trim()));
 const clientReach = (c) => countFrom(c.igFollowers) + countFrom(c.twitterFollowers) + countFrom(c.tiktokFollowers);
+
+// ── "All" view: both rosters in one grid, ranked by social reach ─────────────
+// Reach = IG + X + TikTok followers on both sides (Spotify listeners are a
+// different metric and stay out of the ranking). Internal-only — the toggle
+// never renders for b2b/public sessions. Each side keeps its own card style.
+function AllRoster({ clients, athletes, logos, isMobile, isAdmin, search, onOpen }) {
+  const rows = useMemo(() => {
+    const q = (search || '').toLowerCase();
+    const hay = (r) => r.kind === 'music'
+      ? [r.it.name, ...(r.it.types || [])].join(' ').toLowerCase()
+      : [r.it.name, r.it.position, r.it.nflTeam, r.it.college].filter(Boolean).join(' ').toLowerCase();
+    return [
+      ...(clients || []).map(c => ({ kind: 'music', it: c, reach: clientReach(c) })),
+      ...(athletes || []).map(a => ({ kind: 'sports', it: a, reach: athleteReach(a) })),
+    ]
+      .filter(r => !q || hay(r).includes(q))
+      .sort((a, b) => (b.reach - a.reach) || a.it.name.localeCompare(b.it.name));
+  }, [clients, athletes, search]);
+  return (
+    <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
+      {rows.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
+          <div style={{ fontSize: 15 }}>{search ? 'Nobody matches your search.' : 'Nothing to show yet.'}</div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: isMobile ? 0 : 14 }}>
+          {rows.map((r, i) => r.kind === 'music'
+            ? <ClientCard key={`m-${r.it._rowIndex ?? ''}-${r.it.id || i}`} client={r.it} logos={logos} isMobile={isMobile} onClick={() => onOpen(r.it, 'music')} />
+            : <SportsCard key={`s-${r.it.level || ''}-${r.it._rowIndex ?? ''}-${r.it.id || i}`} athlete={r.it} isMobile={isMobile} showDepth={isAdmin} onClick={() => onOpen(r.it, 'sports')} />)}
+        </div>
+      )}
+    </div>
+  );
+}
 // Tolerant sheet-date parser: "6/15/2001", "2001-06-15", "June 15, 2001", or a
 // year-less "6/15" (birthdays) -> { month, day, year|null }.
 const parseSheetDate = (s) => {
@@ -5005,10 +5039,11 @@ function App() {
   const parseUrl = () => {
     const parts = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
     if (parts[0] === 'sports') return { domain: 'sports', slug: parts[1] || '' };
+    if (parts[0] === 'all') return { domain: 'all', slug: '' };
     return { domain: 'music', slug: parts[0] || '' };
   };
   const [domain, setDomainState] = useState(() => parseUrl().domain);
-  const pathFor = (d, slug) => d === 'sports' ? (slug ? `/sports/${slug}` : '/sports') : (slug ? `/${slug}` : '/');
+  const pathFor = (d, slug) => d === 'sports' ? (slug ? `/sports/${slug}` : '/sports') : d === 'all' ? '/all' : (slug ? `/${slug}` : '/');
   const resolveItem = (list, dslug) => {
     const s = slugOf(dslug != null ? dslug : parseUrl().slug);
     if (s) { const hit = list.find(c => slugOf(c.name) === s); if (hit) return hit; }
@@ -5059,6 +5094,15 @@ function App() {
     setViewState('roster');
     setSearch('');
     window.history.pushState({ view: 'roster', domain: d }, '', pathFor(d));
+  };
+  // Opening a profile from the All view: push the person's real music/sports
+  // URL (so refresh/share works) and flip the domain to match — the browser
+  // back button pops history to /all and lands back on the combined grid.
+  const openFromAll = (item, side) => {
+    window.history.pushState({ view: 'detail', slug: slugOf(item.name), domain: side }, '', pathFor(side, slugOf(item.name)));
+    setDomainState(side);
+    setSelected(item);
+    setViewState('detail');
   };
   // Called by the landing gate once the site password is accepted.
   const enterSite = (d) => {
@@ -5118,9 +5162,14 @@ function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, [clients, athletes]);
 
-  // Lazily load the Sports roster the first time the Sports domain is shown.
+  // The combined view is internal-only: b2b/public sessions that land on /all
+  // (typed URL, stale bookmark) get bounced to the music roster.
   useEffect(() => {
-    if (!gateUnlocked || domain !== 'sports' || athletesLoaded) return;
+    if (authKnown && !isAdmin && domain === 'all') setDomain('music');
+  }, [authKnown, isAdmin, domain]); // eslint-disable-line
+  // Lazily load the Sports roster the first time Sports (or All) is shown.
+  useEffect(() => {
+    if (!gateUnlocked || (domain !== 'sports' && domain !== 'all') || athletesLoaded) return;
     fetch('/api/athletes')
       .then(r => r.json())
       .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); if (d.decks) setSportsDecks(d.decks); setAthletesLoaded(true); })
@@ -5157,7 +5206,7 @@ function App() {
 
   // Reflect the current view in the browser tab title.
   useEffect(() => {
-    const brand = `Milk & Honey ${domain === 'sports' ? 'Sports' : 'Music'}`;
+    const brand = domain === 'all' ? 'Milk & Honey' : `Milk & Honey ${domain === 'sports' ? 'Sports' : 'Music'}`;
     document.title = (view === 'detail' && selected) ? `${selected.name} — ${brand}` : brand;
   }, [view, selected, domain]);
   // Hosted share-link state (generated from the current filtered roster via the Export menu).
@@ -5528,7 +5577,7 @@ function App() {
   // Music / Sports domain toggle (header).
   const domainToggle = (
     <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-      {['music', 'sports'].map(d => (
+      {['music', 'sports', ...(isAdmin ? ['all'] : [])].map(d => (
         <button key={d} onClick={() => setDomain(d)}
           style={{ padding: "8px 10px", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
           {d}
@@ -5745,7 +5794,7 @@ function App() {
               <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
                 <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
                 <div style={{ flex: 1 }} />
-                {rosterControlsOn && exportControl(true)}
+                {rosterControlsOn && domain !== 'all' && exportControl(true)}
                 {authBtnMobile}
               </div>
               {/* Row 2: domain + view + sort + layout + search — one line (scrolls if tight) */}
@@ -5753,22 +5802,22 @@ function App() {
                 {!rosterControlsOn ? ((navActive || musicNavActive) ? mobileNavStrip : <div style={{ display: "flex", gap: 4, alignItems: "center" }}>{domainToggle}</div>) : mobileSearchOpen ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
-                    <input ref={searchRef} autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : "Search clients..."}
+                    <input ref={searchRef} autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : domain === 'all' ? "Search everyone..." : "Search clients..."}
                       style={{ background: "none", border: "none", outline: "none", fontSize: 16, color: G.text, fontFamily: ff, flex: 1, minWidth: 0 }} />
                     <button onClick={() => { setMobileSearchOpen(false); setSearch(''); }} style={{ background: "none", border: "none", color: G.textSecondary, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: ff }}>✕</button>
                   </div>
                 ) : (
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                     {domainToggle}
-                    {isAdmin && (domain === 'sports' || isTyler) && (
+                    {isAdmin && domain !== 'all' && (domain === 'sports' || isTyler) && (
                       <button onClick={() => domain === 'sports' ? goSportsPage('home') : goMusicPage('home')} title="Home"
                         style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 9px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
                     )}
-                    {viewFilter}
-                    <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} compact />
-                    {viewToggle}
+                    {domain !== 'all' && viewFilter}
+                    {domain !== 'all' && <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} compact />}
+                    {domain !== 'all' && viewToggle}
                     <div style={{ flex: 1, minWidth: 0 }} />
                     <button onClick={() => setMobileSearchOpen(true)} title="Search"
                       style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 11px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
@@ -5802,6 +5851,15 @@ function App() {
                 <div style={{ flex: 1 }} />
                 {authBtn}
               </>
+            ) : domain === 'all' ? (
+              // Combined view keeps the header lean: search only — the grid is
+              // always the full family sorted by reach.
+              <>
+                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search everyone..."
+                  style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
+                <div style={{ flex: 1 }} />
+                {authBtn}
+              </>
             ) : (
               <>
                 <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder={domain === 'sports' ? "Search athletes..." : "Search clients..."}
@@ -5830,10 +5888,10 @@ function App() {
         <div style={{ flex: 1, display: "flex", minWidth: 0, alignItems: "stretch" }}>
         {sidebar}
         <div style={{ flex: 1, overflow: "visible", minWidth: 0 }}>
-          {(domain === 'sports' ? (!athletesLoaded || !authKnown) : loading) && (
+          {(domain === 'sports' ? (!athletesLoaded || !authKnown) : domain === 'all' ? (!athletesLoaded || loading || !authKnown) : loading) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: 14 }}>
               <span style={{ fontSize: 24, animation: "spin 1s linear infinite", display: "inline-block", color: G.textTertiary }}>⟳</span>
-              <span style={{ fontSize: 13, color: G.textTertiary }}>Loading {domain === 'sports' ? 'athletes' : 'clients'}...</span>
+              <span style={{ fontSize: 13, color: G.textTertiary }}>Loading {domain === 'sports' ? 'athletes' : domain === 'all' ? 'everyone' : 'clients'}...</span>
             </div>
           )}
           {error && (
@@ -5844,7 +5902,12 @@ function App() {
             </div>
           )}
 
-          {domain === 'sports' ? (
+          {domain === 'all' ? (
+            !error && athletesLoaded && !loading && view === 'roster' && (
+              <AllRoster clients={clients} athletes={athletes} logos={logos} isMobile={isMobile} isAdmin={isAdmin}
+                search={search} onOpen={openFromAll} />
+            )
+          ) : domain === 'sports' ? (
             <>
               {!error && athletesLoaded && view === 'detail' && selected && (
                 <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} />
