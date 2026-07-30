@@ -107,8 +107,19 @@ function pdfImageKind(buf) {
   if (buf[0] === 0x89 && buf[1] === 0x50) return 'png';
   return null;
 }
+// Warm-instance image cache: headshots/logos barely change, and prefetching
+// hundreds of them dominates PDF generation time. Capped so a long-lived
+// instance can't grow without bound (each entry is a ~5-50KB buffer).
+const IMG_CACHE = new Map();
+const IMG_CACHE_MAX = 800;
+function imgCachePut(url, buf) {
+  if (IMG_CACHE.size >= IMG_CACHE_MAX) IMG_CACHE.delete(IMG_CACHE.keys().next().value);
+  IMG_CACHE.set(url, buf);
+}
+
 async function pdfFetchImageBuffer(url) {
   if (!url) return null;
+  if (IMG_CACHE.has(url)) return IMG_CACHE.get(url);
   const get = async (u) => {
     try {
       const r = await fetch(u, { signal: AbortSignal.timeout(5000), headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'image/jpeg,image/png;q=0.9,*/*;q=0.5' } });
@@ -117,10 +128,12 @@ async function pdfFetchImageBuffer(url) {
     } catch { return null; }
   };
   const buf = await get(url);
-  if (buf && pdfImageKind(buf)) return buf;
+  if (buf && pdfImageKind(buf)) { imgCachePut(url, buf); return buf; }
   // Unsupported format — re-pull through the weserv proxy, which converts to JPEG.
   const converted = await get(`https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg&w=800`);
-  return converted && pdfImageKind(converted) ? converted : null;
+  const out = converted && pdfImageKind(converted) ? converted : null;
+  if (out) imgCachePut(url, out);
+  return out;
 }
 
 // Logo URLs in the share payload are mostly homepage URLs (e.g. https://bmi.com),
@@ -169,7 +182,7 @@ async function pdfPrefetchImages(items) {
   });
   const cache = new Map();
   const list = Array.from(urls);
-  const CHUNK = 20;
+  const CHUNK = 40;
   for (let i = 0; i < list.length; i += CHUNK) {
     const chunk = list.slice(i, i + CHUNK);
     await Promise.all(chunk.map(async url => { cache.set(url, await pdfFetchImageBuffer(url)); }));
