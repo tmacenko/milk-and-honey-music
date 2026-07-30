@@ -29,8 +29,8 @@ const THEME_CSS = `
   --mh-surface-glass:rgba(255,255,255,0.9);
   --mh-border:#e3e3e6; --mh-border-light:#d2d2d8;
   --mh-text:#141417; --mh-text-2:#4c4c56; --mh-text-3:#71717c;
-  --mh-shadow:0 1px 2px rgba(20,20,25,0.04), 0 4px 16px rgba(20,20,25,0.03);
-  --mh-shadow-lg:0 4px 12px rgba(20,20,25,0.07), 0 20px 60px rgba(20,20,25,0.08);
+  --mh-shadow:0 1px 2px rgba(20,20,25,0.01), 0 4px 16px rgba(20,20,25,0.01);
+  --mh-shadow-lg:0 4px 12px rgba(20,20,25,0.01), 0 20px 60px rgba(20,20,25,0.01);
   --mh-yellow:#b45309; --mh-red:#dc2626;
 }
 html, body, #root { background: var(--mh-bg); }
@@ -1336,7 +1336,10 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1, marginTop: c.headerUrl ? -200 : 0 }}>
-        <div style={{ padding: c.headerUrl ? "120px 16px 16px" : "20px 16px 16px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+        {/* Hard-stop fill: the header block runs taller than the banner, so the
+            overflow strip stays banner-dark instead of showing the page bg
+            (visible as a light gap under the avatar in light mode). */}
+        <div style={{ padding: c.headerUrl ? "120px 16px 16px" : "20px 16px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, background: c.headerUrl ? "linear-gradient(to bottom, rgba(0,0,0,0) 200px, #080809 200px)" : undefined }}>
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
           <div style={{ flexShrink: 0, width: 90, height: 90, borderRadius: "50%", overflow: "hidden", border: `2px solid ${G.surfaceBorderLight}` }}>
             <Avatar name={c.name} photoUrl={c.photoUrl} size={90} />
@@ -1455,7 +1458,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1, marginTop: c.headerUrl ? -340 : 0 }}>
-        <div style={{ padding: c.headerUrl ? "220px 32px 24px" : "28px 32px 24px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+        <div style={{ padding: c.headerUrl ? "220px 32px 24px" : "28px 32px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, background: c.headerUrl ? "linear-gradient(to bottom, rgba(0,0,0,0) 340px, #080809 340px)" : undefined }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 24 }}>
           <div style={{ flexShrink: 0, width: 120, height: 120, borderRadius: "50%", overflow: "hidden", border: `2px solid ${G.surfaceBorderLight}` }}>
             <Avatar name={c.name} photoUrl={c.photoUrl} size={120} />
@@ -2295,7 +2298,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1, marginTop: banner ? -bannerH : 0 }}>
-        <div style={{ position: "relative", padding: banner ? `${bannerH - avSize / 2}px ${pad}px 20px` : `${pad}px ${pad}px 20px`, borderBottom: `1px solid ${G.surfaceBorder}` }}>
+        <div style={{ position: "relative", padding: banner ? `${bannerH - avSize / 2}px ${pad}px 20px` : `${pad}px ${pad}px 20px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: banner ? `linear-gradient(to bottom, rgba(0,0,0,0) ${bannerH}px, #080809 ${bannerH}px)` : undefined }}>
           <div style={{ display: "flex", gap: isMobile ? 16 : 24, alignItems: "flex-end" }}>
             <div style={{ flexShrink: 0, width: avSize, height: avSize, borderRadius: "50%", overflow: "hidden", border: `2px solid ${G.surfaceBorderLight}` }}>
               <Avatar name={a.name} photoUrl={a.photoUrl} size={avSize} />
