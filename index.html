@@ -22,9 +22,13 @@
   <meta name="twitter:title" content="Milk & Honey" />
   <meta name="twitter:description" content="Milk & Honey — music & sports talent management." />
   <meta name="twitter:image" content="https://www.milkandhoneyfamily.com/share-image.jpg" />
+  <!-- Apply the saved theme before first paint so light-mode users don't get
+       a dark flash while the bundle loads. The app defines the full palettes. -->
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem('mh_theme')||'dark'}catch(e){}</script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root { height: 100%; background: #080809; }
+    [data-theme="light"], [data-theme="light"] body, [data-theme="light"] #root { background: #f5f5f3; }
     /* Kill any stray horizontal scroll (e.g. iOS Safari phantom pan). Applied to
        html so the sticky header keeps working (verified). */
     html { overflow-x: hidden; }

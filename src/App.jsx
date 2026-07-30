@@ -6,17 +6,54 @@ import ReactDOM from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
+// Every color routes through CSS variables so the whole app re-skins from one
+// attribute: <html data-theme="light"> swaps the palette (staff toggle in the
+// sidebar; choice persists per browser via localStorage 'mh_theme').
+// PDFs and hosted share pages are rendered server-side and stay dark-branded.
+const THEME_CSS = `
+:root{
+  --mh-green:#3eaa78; --mh-green-subtle:rgba(62,170,120,0.09); --mh-green-border:rgba(62,170,120,0.3);
+  --mh-green-shadow:0 0 20px rgba(62,170,120,0.18);
+  --mh-bg:#080809; --mh-surface:#111113; --mh-surface-raised:#18181b;
+  --mh-surface-glass:rgba(17,17,19,0.85);
+  --mh-border:#1e1e22; --mh-border-light:#28282d;
+  --mh-text:#f4f4f5; --mh-text-2:#b4b4be; --mh-text-3:#8a8a98;
+  --mh-shadow:0 1px 2px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.35);
+  --mh-shadow-lg:0 4px 12px rgba(0,0,0,0.7), 0 20px 60px rgba(0,0,0,0.5);
+  --mh-yellow:#d97706; --mh-red:#dc2626;
+}
+[data-theme="light"]{
+  --mh-green:#1f8a5c; --mh-green-subtle:rgba(31,138,92,0.10); --mh-green-border:rgba(31,138,92,0.35);
+  --mh-green-shadow:0 0 20px rgba(31,138,92,0.14);
+  --mh-bg:#f5f5f3; --mh-surface:#ffffff; --mh-surface-raised:#efeff0;
+  --mh-surface-glass:rgba(255,255,255,0.9);
+  --mh-border:#e3e3e6; --mh-border-light:#d2d2d8;
+  --mh-text:#141417; --mh-text-2:#4c4c56; --mh-text-3:#71717c;
+  --mh-shadow:0 1px 2px rgba(20,20,25,0.07), 0 4px 16px rgba(20,20,25,0.05);
+  --mh-shadow-lg:0 4px 12px rgba(20,20,25,0.10), 0 20px 60px rgba(20,20,25,0.13);
+  --mh-yellow:#b45309; --mh-red:#dc2626;
+}
+html, body, #root { background: var(--mh-bg); }
+`;
+if (typeof document !== 'undefined') {
+  const el = document.createElement('style');
+  el.textContent = THEME_CSS;
+  document.head.appendChild(el);
+  document.documentElement.dataset.theme = (() => {
+    try { return localStorage.getItem('mh_theme') || 'dark'; } catch { return 'dark'; }
+  })();
+}
 const G = {
-  green: "#3eaa78", greenSubtle: "rgba(62,170,120,0.09)", greenBorder: "rgba(62,170,120,0.3)",
-  greenShadow: "0 0 20px rgba(62,170,120,0.18)",
-  bg: "#080809", surface: "#111113", surfaceRaised: "#18181b",
-  surfaceGlass: "rgba(17,17,19,0.85)",
-  surfaceBorder: "#1e1e22", surfaceBorderLight: "#28282d",
-  text: "#f4f4f5", textSecondary: "#b4b4be", textTertiary: "#8a8a98",
-  shadow: "0 1px 2px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.35)",
-  shadowLg: "0 4px 12px rgba(0,0,0,0.7), 0 20px 60px rgba(0,0,0,0.5)",
+  green: "var(--mh-green)", greenSubtle: "var(--mh-green-subtle)", greenBorder: "var(--mh-green-border)",
+  greenShadow: "var(--mh-green-shadow)",
+  bg: "var(--mh-bg)", surface: "var(--mh-surface)", surfaceRaised: "var(--mh-surface-raised)",
+  surfaceGlass: "var(--mh-surface-glass)",
+  surfaceBorder: "var(--mh-border)", surfaceBorderLight: "var(--mh-border-light)",
+  text: "var(--mh-text)", textSecondary: "var(--mh-text-2)", textTertiary: "var(--mh-text-3)",
+  shadow: "var(--mh-shadow)",
+  shadowLg: "var(--mh-shadow-lg)",
   ease: "cubic-bezier(0.4,0,0.2,1)",
-  yellow: "#d97706", red: "#dc2626",
+  yellow: "var(--mh-yellow)", red: "var(--mh-red)",
 };
 const ff = "-apple-system,'SF Pro Display','Helvetica Neue',sans-serif";
 
@@ -1081,7 +1118,7 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
     <div style={{ marginTop: 12 }}>
       <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 8 }}>{label}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-        {items.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
+        {items.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 500, color: G.text, whiteSpace: "nowrap" }}>{it}</span>)}
       </div>
     </div>
   );
@@ -1175,7 +1212,7 @@ function MusicSocialsModule({ client: c }) {
       </div>
       {rows.map((r, i) => (
         <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", textDecoration: "none", color: "#fff" }}>
+          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", textDecoration: "none", color: G.text }}>
           {r.icon}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{r.platform}</div>
@@ -1224,7 +1261,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
   const locationEl = locationParts && (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       {locationParts.flags && <span style={{ fontSize: 16 }}>{locationParts.flags}</span>}
-      <span style={{ fontSize: 14, color: "#fff" }}>{locationParts.cities}</span>
+      <span style={{ fontSize: 14, color: G.text }}>{locationParts.cities}</span>
     </div>
   );
   const creditsPills = c.credits?.length > 0 && (
@@ -1238,7 +1275,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
     <div>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>{label}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {items.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
+        {items.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: G.text, whiteSpace: "nowrap" }}>{it}</span>)}
       </div>
     </div>
   );
@@ -2006,7 +2043,7 @@ function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
     <div style={{ marginTop: 12 }}>
       <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 8 }}>{label}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-        {items.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{it}</span>)}
+        {items.map((it, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 500, color: G.text, whiteSpace: "nowrap" }}>{it}</span>)}
       </div>
     </div>
   );
@@ -2329,7 +2366,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               <div key={title} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>{title}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {items.map((v, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: "#fff", whiteSpace: "nowrap" }}>{v}</span>)}
+                  {items.map((v, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: G.text, whiteSpace: "nowrap" }}>{v}</span>)}
                 </div>
               </div>
             ) : null);
@@ -3002,7 +3039,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
         {rows.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No socials on file.</div>
           : rows.map((r, i) => (
             <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", textDecoration: "none", color: "#fff" }}>
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", textDecoration: "none", color: G.text }}>
               {r.icon}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{r.platform}</div>
@@ -3855,7 +3892,10 @@ function TabRowForm({ headers, initial, onSave, onDelete, onCancel, title, selec
 // Recruiting pipeline stages, in order. Signed unlocks the one-click upgrade
 // that creates the recruit as a roster client.
 const REC_STAGES = ['Outreach', 'Consistent Contact', 'Signed', 'Signed Elsewhere'];
-const stageColor = (s) => s === 'Signed' ? G.green : s === 'Consistent Contact' ? G.yellow : s === 'Signed Elsewhere' ? G.red : G.textSecondary;
+// Literal hexes (not theme vars): the stage select derives its border by
+// appending an alpha byte, which only works on a real hex. These read fine on
+// both themes.
+const stageColor = (s) => s === 'Signed' ? '#3eaa78' : s === 'Consistent Contact' ? '#d97706' : s === 'Signed Elsewhere' ? '#dc2626' : '#8a8a98';
 // Same normalization the onboarding merge uses — so "Jr." vs "Jr" or stray
 // punctuation can't make the board think a rostered player isn't a client yet.
 const nameKey = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
@@ -5127,6 +5167,15 @@ function App() {
   const [clientSort, setClientSort] = useState('default');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  // Light/dark theme — per-browser staff preference; index.html applies the
+  // saved value pre-paint, this just keeps state + storage in sync on toggle.
+  const [theme, setThemeState] = useState(() => { try { return localStorage.getItem('mh_theme') || 'dark'; } catch { return 'dark'; } });
+  const toggleTheme = () => {
+    const t = theme === 'dark' ? 'light' : 'dark';
+    setThemeState(t);
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('mh_theme', t); } catch { /* private mode */ }
+  };
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', onResize);
@@ -5719,6 +5768,15 @@ function App() {
           </button>
         );
       })}
+      <div style={{ marginTop: 8, borderTop: `1px solid ${G.surfaceBorder}`, paddingTop: 8 }}>
+        <button onClick={toggleTheme}
+          style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: "transparent", border: "none", borderRadius: 9, color: G.textSecondary, fontWeight: 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+          {theme === 'dark'
+            ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+            : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          <span style={{ flex: 1 }}>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+        </button>
+      </div>
     </div>
   ) : null;
   const mobileNavStrip = (
