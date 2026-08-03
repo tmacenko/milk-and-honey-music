@@ -191,6 +191,9 @@ function parseSpotracContracts(html) {
       url: /^https?:/i.test(am[1]) ? am[1] : `https://www.spotrac.com${am[1].startsWith('/') ? '' : '/'}${am[1]}`,
       total: cells[8], aav: cells[9], gtd,
       years: /^\d{4}$/.test(cells[5]) && /^\d{4}$/.test(cells[6]) ? `${cells[5]}–${cells[6]}` : '',
+      // Raw display name, kept for the surname fallback when exact keys miss
+      // (our "Kam Curl" vs Spotrac's "Kamren Curl").
+      raw: am[2].replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim(),
     };
   }
   return out;
@@ -664,7 +667,24 @@ module.exports = async (req, res) => {
           const table = parseSpotracContracts(html);
           contracts.teams++;
           for (const p of byTeam[sl]) {
-            const hit = table[nameKey(p['Name'])];
+            let hit = table[nameKey(p['Name'])];
+            // Nickname tolerance: Spotrac uses formal first names ("Kamren
+            // Curl", "Michael Hall Jr.") where the sheet may have the common
+            // form. Fall back to surname + first initial, but only when
+            // exactly ONE player on this team's table qualifies — ambiguity
+            // means we write nothing rather than risk the wrong contract.
+            if (!hit) {
+              const toks = (n) => String(n).toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, '')
+                .replace(/[^a-z ]/g, '').trim().split(/\s+/).filter(Boolean);
+              const pt = toks(p['Name']);
+              if (pt.length >= 2) {
+                const cands = Object.values(table).filter(e => {
+                  const et = toks(e.raw || '');
+                  return et.length >= 2 && et[et.length - 1] === pt[pt.length - 1] && et[0][0] === pt[0][0];
+                });
+                if (cands.length === 1) { hit = cands[0]; contracts.fuzzyMatched = (contracts.fuzzyMatched || 0) + 1; }
+              }
+            }
             if (!hit) continue;
             const rowNum = await ensureAutoRow(p['Name']);
             if (!rowNum) continue;
