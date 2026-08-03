@@ -2712,7 +2712,7 @@ function Landing({ onEnter }) {
 
       {/* Content */}
       <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", padding: 24, animation: `mhLandIn 0.6s ${G.ease}` }}>
-        <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" style={{ height: 96, maxWidth: "80vw", objectFit: "contain", marginBottom: 44 }} />
+        <img src="/mh-logo.png" alt="Milk & Honey" style={{ height: 96, maxWidth: "80vw", objectFit: "contain", marginBottom: 44 }} />
 
         {!pending ? (
           <div style={{ display: "flex", gap: 16 }}>
@@ -5906,7 +5906,7 @@ function App() {
             <div style={{ flexShrink: 0, position: "sticky", top: 0, zIndex: 40, background: G.bg }}>
               {/* Row 1: logo (left) + export + profile (right) — always just these three */}
               <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
-                <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
+                <img src="/mh-logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
                 <div style={{ flex: 1 }} />
                 {rosterControlsOn && exportControl(true)}
                 {authBtnMobile}
@@ -5947,7 +5947,7 @@ function App() {
         ) : (
           // ── Desktop header ────────────────────────────────────────────────
           <div style={{ padding: "12px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0, position: view === 'detail' ? "static" : "sticky", top: 0, zIndex: 40, background: G.bg }}>
-            <img src="https://www.milkhoneyla.com/wp-content/uploads/2024/05/cropped-MH-Logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
+            <img src="/mh-logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
             <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
             {domainToggle}
             {view === 'detail' ? (
