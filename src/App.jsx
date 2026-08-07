@@ -2950,7 +2950,7 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
         rows: exportList.map(a => {
           const pd = platDelta[a.name.toLowerCase().trim()] || {};
           return {
-            name: a.name, level: a.level, team: a.nflTeam || a.college || '',
+            name: a.name, level: a.level, team: a.nflTeam || a.college || '', photoUrl: a.photoUrl || '',
             ig: parseReach(a.igFollowers), igD: pd.ig || 0,
             x: parseReach(a.twitterFollowers), xD: pd.x || 0,
             tk: parseReach(a.tiktokFollowers), tkD: pd.tk || 0,

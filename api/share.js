@@ -455,6 +455,12 @@ async function buildSocialPdf(data) {
   for (let i = 0; i < rows.length; i += perPage) pages.push(rows.slice(i, i + perPage));
   if (!pages.length) pages.push([]);
   const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  // Headshots for the Player column (warm-instance cache makes repeats cheap).
+  const photoCache = new Map();
+  const photoUrls = [...new Set(rows.map(r => r.photoUrl).filter(Boolean))];
+  for (let i = 0; i < photoUrls.length; i += 40) {
+    await Promise.all(photoUrls.slice(i, i + 40).map(async u => { photoCache.set(u, await pdfFetchImageBuffer(u)); }));
+  }
   pages.forEach((pageRows, pi) => {
     if (pi > 0) doc.addPage({ size: 'LETTER', layout: 'landscape', margin: 0 });
     doc.rect(0, 0, W, H).fill(PDF_BG);
@@ -475,8 +481,25 @@ async function buildSocialPdf(data) {
       cols.forEach(c => {
         const pad = 6, tw = c.w - pad * 2;
         if (c.key === 'name') {
-          doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9.5).text(r.name || '', cx + pad, y + (r.level ? 5 : 10), { width: tw, height: 12, ellipsis: true });
-          if (r.level) doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(7.5).text(String(r.level), cx + pad, y + 17, { width: tw, lineBreak: false });
+          const avR = 10, avCx = cx + pad + avR, avCy = y + rowH / 2;
+          const buf = r.photoUrl ? photoCache.get(r.photoUrl) : null;
+          let drew = false;
+          if (buf) {
+            doc.save();
+            try {
+              doc.circle(avCx, avCy, avR).clip();
+              doc.image(buf, avCx - avR, avCy - avR, { fit: [avR * 2, avR * 2], align: 'center', valign: 'center' });
+              drew = true;
+            } catch { drew = false; }
+            doc.restore();
+          }
+          if (!drew) {
+            doc.circle(avCx, avCy, avR).fillAndStroke('#18181b', PDF_BORDER);
+            doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(6.5).text(pdfInitials(r.name), avCx - avR, avCy - 3, { width: avR * 2, align: 'center', lineBreak: false });
+          }
+          const nx = cx + pad + avR * 2 + 7, nw = c.w - pad * 2 - avR * 2 - 7;
+          doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9.5).text(r.name || '', nx, y + (r.level ? 5 : 10), { width: nw, height: 12, ellipsis: true });
+          if (r.level) doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(7.5).text(String(r.level), nx, y + 17, { width: nw, lineBreak: false });
         } else if (c.key === 'team') {
           doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(9).text(r.team || '—', cx + pad, y + 10, { width: tw, height: 11, ellipsis: true });
         } else if (c.key === 'ig' || c.key === 'x' || c.key === 'tk') {
