@@ -421,6 +421,90 @@ async function buildDetailedRosterPdf(items, title, logos, pathPrefix = '') {
   return Buffer.concat(chunks);
 }
 
+// ── Social board export: the Social page table as a LANDSCAPE letter PDF ─────
+// Player | Team | Instagram | X | TikTok | Total [| 7-day Growth] [| Score] —
+// growth and score columns drop out via the export menu toggles. Rows arrive
+// preformatted from the client (raw numbers); we format and paginate.
+async function buildSocialPdf(data) {
+  const rows = data.rows || [];
+  const showGrowth = data.includeGrowth !== false;
+  const showScore = data.includeScore !== false;
+  const W = 792, H = 612, M = 32, CW = W - M * 2;
+  const doc = new PDFDocument({ size: 'LETTER', layout: 'landscape', margin: 0, bufferPages: true });
+  const chunks = []; doc.on('data', c => chunks.push(c));
+  const done = new Promise(r => doc.on('end', r));
+  const fmt = (n) => { n = Number(n) || 0; const a = Math.abs(n);
+    return a >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'
+      : a >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K' : String(Math.round(n)); };
+  const RED = '#dc2626';
+  const cols = [
+    { key: 'name', label: 'PLAYER', w: 0.20 },
+    { key: 'team', label: 'TEAM', w: 0.17 },
+    { key: 'ig', label: 'INSTAGRAM', w: 0.11 },
+    { key: 'x', label: 'X', w: 0.10 },
+    { key: 'tk', label: 'TIKTOK', w: 0.11 },
+    { key: 'total', label: 'TOTAL', w: 0.10 },
+    ...(showGrowth ? [{ key: 'growth', label: '7-DAY GROWTH', w: 0.12 }] : []),
+    ...(showScore ? [{ key: 'score', label: 'SCORE', w: 0.08 }] : []),
+  ];
+  const wsum = cols.reduce((s, c) => s + c.w, 0);
+  cols.forEach(c => { c.w = c.w / wsum * CW; });
+  const rowH = 30, headRowH = 24, topY = M + 46;
+  const perPage = Math.max(1, Math.floor((H - topY - headRowH - M) / rowH));
+  const pages = [];
+  for (let i = 0; i < rows.length; i += perPage) pages.push(rows.slice(i, i + perPage));
+  if (!pages.length) pages.push([]);
+  const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  pages.forEach((pageRows, pi) => {
+    if (pi > 0) doc.addPage({ size: 'LETTER', layout: 'landscape', margin: 0 });
+    doc.rect(0, 0, W, H).fill(PDF_BG);
+    doc.image(MH_LOGO_BUF, M, M - 2, { fit: [54, 24] });
+    doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(14).text(data.title || 'Social', M + 64, M + 1, { width: CW - 64 - 220, height: 16, ellipsis: true });
+    doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(9)
+      .text(`${rows.length} player${rows.length !== 1 ? 's' : ''} · ${dateStr}`, M, M + 4, { width: CW, align: 'right', lineBreak: false });
+    if (data.subtitle) doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(9).text(data.subtitle, M + 64, M + 20, { width: CW - 64 - 220, height: 11, ellipsis: true });
+    doc.moveTo(M, topY - 8).lineTo(M + CW, topY - 8).lineWidth(1.5).strokeColor(PDF_GREEN).stroke();
+    let hx = M;
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PDF_TEXT3);
+    cols.forEach(c => { doc.text(c.label, hx + 6, topY + 8, { width: c.w - 12, characterSpacing: 0.8, lineBreak: false }); hx += c.w; });
+    doc.moveTo(M, topY + headRowH).lineTo(M + CW, topY + headRowH).lineWidth(0.7).strokeColor(PDF_BORDER).stroke();
+    pageRows.forEach((r, ri) => {
+      const y = topY + headRowH + ri * rowH;
+      if (ri % 2 === 1) doc.rect(M, y, CW, rowH).fill(PDF_SURFACE);
+      let cx = M;
+      cols.forEach(c => {
+        const pad = 6, tw = c.w - pad * 2;
+        if (c.key === 'name') {
+          doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9.5).text(r.name || '', cx + pad, y + (r.level ? 5 : 10), { width: tw, height: 12, ellipsis: true });
+          if (r.level) doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(7.5).text(String(r.level), cx + pad, y + 17, { width: tw, lineBreak: false });
+        } else if (c.key === 'team') {
+          doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(9).text(r.team || '—', cx + pad, y + 10, { width: tw, height: 11, ellipsis: true });
+        } else if (c.key === 'ig' || c.key === 'x' || c.key === 'tk') {
+          const n = Number(r[c.key]) || 0, d = Number(r[c.key + 'D']) || 0;
+          doc.fillColor(n ? PDF_TEXT : PDF_TEXT3).font('Helvetica-Bold').fontSize(9.5).text(n ? fmt(n) : '—', cx + pad, y + (d ? 5 : 10), { width: tw, lineBreak: false });
+          if (d) doc.fillColor(d > 0 ? PDF_GREEN : RED).font('Helvetica-Bold').fontSize(7.5).text(`${d > 0 ? '+' : '-'}${fmt(Math.abs(d))}`, cx + pad, y + 17, { width: tw, lineBreak: false });
+        } else if (c.key === 'total') {
+          doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9.5).text(fmt(r.total), cx + pad, y + 10, { width: tw, lineBreak: false });
+        } else if (c.key === 'growth') {
+          const g = Number(r.growth) || 0;
+          const pct = String(r.growthPct || '').trim();
+          const txt = g ? `${g > 0 ? '+' : '-'}${fmt(Math.abs(g))}${pct ? ` · ${pct}%` : ''}` : '—';
+          doc.fillColor(g > 0 ? PDF_GREEN : g < 0 ? RED : PDF_TEXT3).font('Helvetica-Bold').fontSize(9.5).text(txt, cx + pad, y + 10, { width: tw, lineBreak: false });
+        } else if (c.key === 'score') {
+          const s = r.score;
+          doc.fillColor(s != null && s >= 70 ? PDF_GREEN : PDF_TEXT).font('Helvetica-Bold').fontSize(9.5).text(s != null ? String(s) : '—', cx + pad, y + 10, { width: tw, lineBreak: false });
+        }
+        cx += c.w;
+      });
+      doc.moveTo(M, y + rowH).lineTo(M + CW, y + rowH).lineWidth(0.5).strokeColor(PDF_BORDER).stroke();
+    });
+    doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(8).text(`Page ${pi + 1} of ${pages.length}`, M, H - M + 8, { width: CW, align: 'right', lineBreak: false });
+  });
+  doc.end();
+  await done;
+  return Buffer.concat(chunks);
+}
+
 async function sendRosterPdf(data, res) {
   const items = (data.athletes || data.clients || []).map(it => ({
     ...it,
@@ -749,6 +833,11 @@ module.exports = async function handler(req, res) {
         if (!body.athlete?.name) return res.status(400).json({ error: 'No athlete provided' });
         const pdf = await buildAthletePdf(body.athlete);
         const fname = body.athlete.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
+        return sendPdf(pdf, fname, res);
+      }
+      if (body.action === 'social-pdf') {
+        const pdf = await buildSocialPdf(body);
+        const fname = (body.title || 'social-board').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
         return sendPdf(pdf, fname, res);
       }
 
