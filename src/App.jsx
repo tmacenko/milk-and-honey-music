@@ -209,6 +209,10 @@ function Sec({ title, children }) {
 }
 
 // ── Chat component ────────────────────────────────────────────────────────────
+// Shelved for now (Tyler, Aug 2026: "just does not work great") — flip this to
+// true to bring the floating assistant back; the component and /api/smart-group
+// plumbing stay intact.
+const CHAT_ENABLED = false;
 // Minimal markdown renderer for chat bubbles — headings, bold, bullet and
 // numbered lists, paragraph spacing. React elements only (no innerHTML).
 function chatInline(text) {
@@ -6242,7 +6246,7 @@ function App() {
       {editingAthlete && <AthleteForm initial={editingAthlete} staffNames={sportsStaff} onSave={saveAthlete} onCancel={() => setEditingAthlete(null)} />}
 
       {/* Internal AI chat — company sessions only (context spans both rosters + all tabs). */}
-      {!loading && isAdmin && authKnown && <FloatingChat isMobile={isMobile} />}
+      {CHAT_ENABLED && !loading && isAdmin && authKnown && <FloatingChat isMobile={isMobile} />}
     </div>
   );
 }
