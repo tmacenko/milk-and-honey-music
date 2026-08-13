@@ -4985,6 +4985,58 @@ function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
   ].filter(Boolean);
   const filterActive = agent !== 'All' || side !== 'All';
   const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null].filter(Boolean).join(', ') || 'All';
+  // ── Export: gifting sheet as a landscape PDF (mirrors the Social export) ────
+  const [expOpen, setExpOpen] = useState(false);
+  const [expBusy, setExpBusy] = useState(false);
+  const [expSizes, setExpSizes] = useState(true);
+  const [expGaming, setExpGaming] = useState(true);
+  const [expAddress, setExpAddress] = useState(true);
+  const [picked, setPicked] = useState(null); // null = everyone shown
+  const [showPicker, setShowPicker] = useState(false);
+  const expRef = useRef();
+  useEffect(() => {
+    const h = e => { if (expRef.current && !expRef.current.contains(e.target)) setExpOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const exportList = picked ? sorted.filter(a => picked.has(a.name)) : sorted;
+  const togglePick = (name) => setPicked(prev => {
+    const next = new Set(prev || sorted.map(a => a.name));
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
+  const doExport = async () => {
+    if (!exportList.length || expBusy) return;
+    setExpBusy(true); setExpOpen(false);
+    try {
+      const levelLabel = levels.length === ALL_LEVELS.length ? 'All levels' : levels.join(' + ');
+      const subtitle = [levelLabel, agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null].filter(Boolean).join(' · ');
+      const payload = {
+        action: 'gifting-pdf', title: 'Milk & Honey Sports — Gifting', subtitle,
+        includeSizes: expSizes, includeGaming: expGaming, includeAddress: expAddress,
+        rows: exportList.map(a => ({
+          name: a.name, level: a.level, team: a.nflTeam || a.college || '', photoUrl: a.photoUrl || '',
+          shirt: a.shirtSize || '', hoodie: a.hoodieSize || '', shorts: a.shortsSize || '',
+          pants: a.sweatpantsSize || '', shoes: a.shoeSize || '', gloves: a.glovesSize || '',
+          gaming: a.gamingSystem || '', address: a.address || '',
+        })),
+      };
+      const r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error('PDF failed');
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const el = document.createElement('a');
+      el.href = url; el.download = 'gifting-sheet.pdf'; document.body.appendChild(el); el.click(); el.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch { alert('Could not generate the PDF. Please try again.'); }
+    setExpBusy(false);
+  };
+  const expToggleRow = (on, label, flip) => (
+    <button onClick={flip} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "9px 11px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, textAlign: "left" }}>
+      <span style={{ width: 15, height: 15, borderRadius: 4, flexShrink: 0, border: `1.5px solid ${on ? G.green : G.textTertiary}`, background: on ? G.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#0a0a0a", fontSize: 10, fontWeight: 800 }}>{on ? '✓' : ''}</span>
+      <span style={{ fontSize: 13, color: G.text }}>{label}</span>
+    </button>
+  );
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Gifting</div>
@@ -4996,7 +5048,68 @@ function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
         <div style={{ flex: 1 }} />
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search athletes..."
           style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
+        <div ref={expRef} style={{ position: "relative", flexShrink: 0 }}>
+          <button onClick={() => setExpOpen(v => !v)} title="Export"
+            style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "7px 13px", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6 }}>
+            {expBusy
+              ? <span style={{ animation: "spin 1s linear infinite", display: "inline-block", fontSize: 12, lineHeight: 1, color: G.green }}>⟳</span>
+              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            {expBusy ? 'Preparing…' : 'Export'}
+          </button>
+          {expOpen && (
+            <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 250, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 14, padding: 10, zIndex: 500, boxShadow: G.shadowLg }}>
+              {expToggleRow(expSizes, 'Include sizes', () => setExpSizes(v => !v))}
+              {expToggleRow(expGaming, 'Include gaming', () => setExpGaming(v => !v))}
+              {expToggleRow(expAddress, 'Include address', () => setExpAddress(v => !v))}
+              <button onClick={() => { setExpOpen(false); setShowPicker(true); }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "9px 11px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff }}>
+                <span style={{ fontSize: 13, color: G.text }}>Choose players</span>
+                <span style={{ fontSize: 12, color: picked ? G.green : G.textTertiary, fontWeight: picked ? 700 : 500 }}>{exportList.length} of {sorted.length}</span>
+              </button>
+              <div style={{ height: 1, background: G.surfaceBorder, margin: "8px 0" }} />
+              <button onClick={doExport} disabled={!exportList.length || expBusy}
+                style={{ width: "100%", background: exportList.length ? G.green : G.surfaceRaised, color: exportList.length ? "#0a0a0a" : G.textTertiary, border: "none", borderRadius: 9, padding: "10px", fontWeight: 700, fontSize: 13, cursor: exportList.length ? "pointer" : "default", fontFamily: ff }}>
+                Download PDF · {exportList.length}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+      {showPicker && (
+        <div onClick={() => setShowPicker(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 460, maxHeight: "82vh", display: "flex", flexDirection: "column", padding: 18, animation: "modalIn .18s ease" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: G.text, letterSpacing: "-0.02em" }}>Choose players</div>
+              <button onClick={() => setShowPicker(false)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "5px 10px", fontSize: 13, fontFamily: ff }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: G.textTertiary, marginBottom: 10 }}>{exportList.length} of {sorted.length} shown will export</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <button onClick={() => setPicked(null)} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${!picked ? G.green : G.surfaceBorder}`, borderRadius: 8, padding: "7px", color: !picked ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>All shown</button>
+              <button onClick={() => setPicked(new Set())} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "7px", color: G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>None</button>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1, minHeight: 0, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10 }}>
+              {sorted.map((a, i) => {
+                const on = !picked || picked.has(a.name);
+                return (
+                  <div key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} onClick={() => togglePick(a.name)}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer" }}>
+                    <span style={{ width: 15, height: 15, borderRadius: 4, flexShrink: 0, border: `1.5px solid ${on ? G.green : G.textTertiary}`, background: on ? G.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#0a0a0a", fontSize: 10, fontWeight: 800 }}>{on ? '✓' : ''}</span>
+                    <Avatar name={a.name} photoUrl={a.photoUrl} size={26} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
+                      <div style={{ fontSize: 11, color: G.textTertiary }}>{[a.level, a.nflTeam || a.college].filter(Boolean).join(' · ')}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={() => setShowPicker(false)}
+              style={{ marginTop: 12, background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "10px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>
+              Done · {exportList.length} selected
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
         {sorted.length === 0 ? (
           <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No athletes match these filters.</div>

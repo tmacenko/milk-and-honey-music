@@ -528,6 +528,99 @@ async function buildSocialPdf(data) {
   return Buffer.concat(chunks);
 }
 
+// ── Gifting sheet export: landscape table for sending product ────────────────
+// Player | Team [| Shirt..Gloves] [| Gaming] [| Address] — the three groups
+// drop out via export-menu toggles. Address gets a wide, wrapping cell.
+async function buildGiftingPdf(data) {
+  const rows = data.rows || [];
+  const showSizes = data.includeSizes !== false;
+  const showGaming = data.includeGaming !== false;
+  const showAddress = data.includeAddress !== false;
+  const W = 792, H = 612, M = 32, CW = W - M * 2;
+  const doc = new PDFDocument({ size: 'LETTER', layout: 'landscape', margin: 0, bufferPages: true });
+  const chunks = []; doc.on('data', c => chunks.push(c));
+  const done = new Promise(r => doc.on('end', r));
+  const SIZES = [['shirt', 'SHIRT'], ['hoodie', 'HOODIE'], ['shorts', 'SHORTS'], ['pants', 'PANTS'], ['shoes', 'SHOES'], ['gloves', 'GLOVES']];
+  const cols = [
+    { key: 'name', label: 'PLAYER', w: 0.17 },
+    { key: 'team', label: 'TEAM', w: 0.13 },
+    ...(showSizes ? SIZES.map(([k, l]) => ({ key: k, label: l, w: 0.055 })) : []),
+    ...(showGaming ? [{ key: 'gaming', label: 'GAMING', w: 0.08 }] : []),
+    ...(showAddress ? [{ key: 'address', label: 'ADDRESS', w: 0.29 }] : []),
+  ];
+  const wsum = cols.reduce((s, c) => s + c.w, 0);
+  cols.forEach(c => { c.w = c.w / wsum * CW; });
+  const rowH = 34, headRowH = 24, topY = M + 46;
+  const perPage = Math.max(1, Math.floor((H - topY - headRowH - M) / rowH));
+  const pages = [];
+  for (let i = 0; i < rows.length; i += perPage) pages.push(rows.slice(i, i + perPage));
+  if (!pages.length) pages.push([]);
+  const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const photoCache = new Map();
+  const photoUrls = [...new Set(rows.map(r => r.photoUrl).filter(Boolean))];
+  for (let i = 0; i < photoUrls.length; i += 40) {
+    await Promise.all(photoUrls.slice(i, i + 40).map(async u => { photoCache.set(u, await pdfFetchImageBuffer(u)); }));
+  }
+  pages.forEach((pageRows, pi) => {
+    if (pi > 0) doc.addPage({ size: 'LETTER', layout: 'landscape', margin: 0 });
+    doc.rect(0, 0, W, H).fill(PDF_BG);
+    doc.image(MH_LOGO_BUF, M, M - 2, { fit: [54, 24] });
+    doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(14).text(data.title || 'Gifting', M + 64, M + 1, { width: CW - 64 - 220, height: 16, ellipsis: true });
+    doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(9)
+      .text(`${rows.length} player${rows.length !== 1 ? 's' : ''} · ${dateStr}`, M, M + 4, { width: CW, align: 'right', lineBreak: false });
+    if (data.subtitle) doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(9).text(data.subtitle, M + 64, M + 20, { width: CW - 64 - 220, height: 11, ellipsis: true });
+    doc.moveTo(M, topY - 8).lineTo(M + CW, topY - 8).lineWidth(1.5).strokeColor(PDF_GREEN).stroke();
+    let hx = M;
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PDF_TEXT3);
+    cols.forEach(c => { doc.text(c.label, hx + 6, topY + 8, { width: c.w - 12, characterSpacing: 0.8, lineBreak: false }); hx += c.w; });
+    doc.moveTo(M, topY + headRowH).lineTo(M + CW, topY + headRowH).lineWidth(0.7).strokeColor(PDF_BORDER).stroke();
+    pageRows.forEach((r, ri) => {
+      const y = topY + headRowH + ri * rowH;
+      if (ri % 2 === 1) doc.rect(M, y, CW, rowH).fill(PDF_SURFACE);
+      let cx = M;
+      cols.forEach(c => {
+        const pad = 6, tw = c.w - pad * 2;
+        if (c.key === 'name') {
+          const avR = 10, avCx = cx + pad + avR, avCy = y + rowH / 2;
+          const buf = r.photoUrl ? photoCache.get(r.photoUrl) : null;
+          let drew = false;
+          if (buf) {
+            doc.save();
+            try {
+              doc.circle(avCx, avCy, avR).clip();
+              doc.image(buf, avCx - avR, avCy - avR, { fit: [avR * 2, avR * 2], align: 'center', valign: 'center' });
+              drew = true;
+            } catch { drew = false; }
+            doc.restore();
+          }
+          if (!drew) {
+            doc.circle(avCx, avCy, avR).fillAndStroke('#18181b', PDF_BORDER);
+            doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(6.5).text(pdfInitials(r.name), avCx - avR, avCy - 3, { width: avR * 2, align: 'center', lineBreak: false });
+          }
+          const nx = cx + pad + avR * 2 + 7, nw = c.w - pad * 2 - avR * 2 - 7;
+          doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9.5).text(r.name || '', nx, y + (r.level ? 7 : 12), { width: nw, height: 12, ellipsis: true });
+          if (r.level) doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(7.5).text(String(r.level), nx, y + 19, { width: nw, lineBreak: false });
+        } else if (c.key === 'team') {
+          doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(8.5).text(r.team || '—', cx + pad, y + 12, { width: tw, height: 11, ellipsis: true });
+        } else if (c.key === 'address') {
+          const v = String(r.address || '').trim();
+          doc.fillColor(v ? PDF_TEXT2 : PDF_TEXT3).font('Helvetica').fontSize(7.5)
+            .text(v || '—', cx + pad, v.length > 45 ? y + 6 : y + 12, { width: tw, height: 22, ellipsis: true });
+        } else {
+          const v = String(r[c.key] || '').trim();
+          doc.fillColor(v ? PDF_TEXT : PDF_TEXT3).font('Helvetica-Bold').fontSize(9).text(v || '—', cx + pad, y + 12, { width: tw, height: 11, ellipsis: true });
+        }
+        cx += c.w;
+      });
+      doc.moveTo(M, y + rowH).lineTo(M + CW, y + rowH).lineWidth(0.5).strokeColor(PDF_BORDER).stroke();
+    });
+    doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(8).text(`Page ${pi + 1} of ${pages.length}`, M, H - M + 8, { width: CW, align: 'right', lineBreak: false });
+  });
+  doc.end();
+  await done;
+  return Buffer.concat(chunks);
+}
+
 async function sendRosterPdf(data, res) {
   const items = (data.athletes || data.clients || []).map(it => ({
     ...it,
@@ -861,6 +954,11 @@ module.exports = async function handler(req, res) {
       if (body.action === 'social-pdf') {
         const pdf = await buildSocialPdf(body);
         const fname = (body.title || 'social-board').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
+        return sendPdf(pdf, fname, res);
+      }
+      if (body.action === 'gifting-pdf') {
+        const pdf = await buildGiftingPdf(body);
+        const fname = (body.title || 'gifting-sheet').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '.pdf';
         return sendPdf(pdf, fname, res);
       }
 
