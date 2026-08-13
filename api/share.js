@@ -572,7 +572,8 @@ async function buildGiftingPdf(data) {
     doc.moveTo(M, topY - 8).lineTo(M + CW, topY - 8).lineWidth(1.5).strokeColor(PDF_GREEN).stroke();
     let hx = M;
     doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PDF_TEXT3);
-    cols.forEach(c => { doc.text(c.label, hx + 6, topY + 8, { width: c.w - 12, characterSpacing: 0.8, lineBreak: false }); hx += c.w; });
+    // No width box on narrow headers — natural single-line width, never wraps.
+    cols.forEach(c => { doc.text(c.label, hx + 6, topY + 8, { characterSpacing: 0.5, lineBreak: false }); hx += c.w; });
     doc.moveTo(M, topY + headRowH).lineTo(M + CW, topY + headRowH).lineWidth(0.7).strokeColor(PDF_BORDER).stroke();
     pageRows.forEach((r, ri) => {
       const y = topY + headRowH + ri * rowH;
