@@ -1,4 +1,8 @@
 
+# Local secrets — never commit
+.env
+.env.*
+
 # Generated PDF exports / local reference files
 *.pdf
 .DS_Store

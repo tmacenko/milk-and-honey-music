@@ -937,6 +937,7 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
               {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5 }}>Overrides the ESPN headshot.</div>}
             </div>
             <Field label="Hero Image URL"><Input value={form.heroImageUrl} onChange={e => set('heroImageUrl', e.target.value)} placeholder="https://..." /></Field>
+            <Field label="Address"><Input value={form.address} onChange={e => set('address', e.target.value)} placeholder="123 Main St, Cincinnati, OH 45202" /></Field>
             <Field label="Hometown"><Input value={form.hometown} onChange={e => set('hometown', e.target.value)} placeholder="Cincinnati, OH" /></Field>
             {lockInput('jersey', 'Jersey #', 'jerseyNumber', '12')}
             {lockInput('height', 'Height', 'height', `6' 2"`)}
@@ -2282,6 +2283,9 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
   const weightTxt = a.weight && (/^\d+(\.\d+)?$/.test(String(a.weight).trim()) ? `${a.weight} lbs` : a.weight);
   const meta = [
     (a.height || weightTxt) && ['Height/Weight', [a.height, weightTxt].filter(Boolean).join(' · ')],
+    // Company view only — the API already strips address for public/b2b
+    // sessions, this guard just makes the intent explicit.
+    companyView && a.address && ['Address', a.address],
     a.hometown && ['Hometown', a.hometown],
     a.classOf && ['Class of', a.classOf],
     a.committedTo && ['Committed', a.committedTo],

@@ -378,7 +378,7 @@ async function saveAthlete(token, body) {
     'School': a.level !== 'NFL' ? a.college : undefined,
     'Instagram': a.instagram, 'Twitter': a.twitter, 'TikTok': a.tiktok, 'Tiktok': a.tiktok,
     'Agent': a.agentAssigned, 'Lead Agent': a.agentAssigned,
-    'Birthday': a.birthday,
+    'Birthday': a.birthday, 'Address': a.address,
     'ClassOf': a.level === 'High School' ? a.classOf : undefined,
     'Class Of': a.level === 'High School' ? a.classOf : undefined,
     'Commitment': a.level === 'High School' ? a.committedTo : undefined,
@@ -423,6 +423,8 @@ async function saveAthlete(token, body) {
     profileUrl247: a.profileUrl247,
     espnId: a.espnId,
     contractValue: a.contractYearly,
+    // Kept in sync with the level tab's Address column (parse prefers that).
+    address: a.address,
     status: a.status, tiktok: a.tiktok,
     interests: Array.isArray(a.interests) ? a.interests.join(', ') : a.interests,
     brands: Array.isArray(a.brands) ? a.brands.join(', ') : a.brands,
