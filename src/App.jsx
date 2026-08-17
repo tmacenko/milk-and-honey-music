@@ -2284,13 +2284,16 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
     let dead = false;
     (async () => {
       const base = `https://site.web.api.espn.com/apis/common/v3/sports/football/${league}/athletes/${a.espnId}`;
-      const [stats, log] = await Promise.all([
+      const [stats, log, ov] = await Promise.all([
         fetch(`${base}/stats`).then(r => r.json()).catch(() => null),
         fetch(`${base}/gamelog`).then(r => r.json()).catch(() => null),
+        // The overview feed carries what the season tables don't have yet:
+        // the previous/next game card (preseason included) + last-5 lines.
+        fetch(`${base}/overview`).then(r => r.json()).catch(() => null),
       ]);
       if (dead) return;
-      if (!stats && !log) { setFailed(true); return; }
-      ESPN_STATS_CACHE[a.espnId] = { stats, log };
+      if (!stats && !log && !ov) { setFailed(true); return; }
+      ESPN_STATS_CACHE[a.espnId] = { stats, log, ov };
       setData(ESPN_STATS_CACHE[a.espnId]);
     })();
     return () => { dead = true; };
@@ -2376,10 +2379,58 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
     </table>
   ), games[0]?.typeName);
 
+  // Previous/next game callout — same module ESPN shows on their player
+  // overview. This is where fresh preseason games live before the season
+  // tables pick them up. The label flips ("Previous Game" / "Next Game").
+  const ng = (data.ov || {}).nextGame || {};
+  const gameEv = ((ng.league || {}).events || [])[0];
+  let gameCard = null;
+  if (gameEv) {
+    const comps = gameEv.competitors || [];
+    const away = comps.find(c => c.homeAway === 'away') || comps[0] || {};
+    const home = comps.find(c => c.homeAway === 'home') || comps[1] || {};
+    const status = gameEv.fullStatus?.type?.shortDetail || '';
+    const isFinal = /final/i.test(status);
+    const when = gameEv.date ? new Date(gameEv.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    // The player's own line for this game, if the last-5 feed has it.
+    const pairs = [];
+    (((data.ov || {}).gameLog || {}).statistics || []).forEach(gr => {
+      const e = (gr.events || []).find(x => String(x.eventId) === String(gameEv.id));
+      if (e) (gr.labels || []).forEach((l, i) => { if (pairs.length < 8 && String(e.stats?.[i] ?? '') !== '') pairs.push(`${e.stats[i]} ${l}`); });
+    });
+    const teamCell = (t, alignRight) => (
+      <div style={{ display: "flex", alignItems: "center", gap: 9, flexDirection: alignRight ? "row-reverse" : "row", minWidth: 0 }}>
+        {t.logo && <img src={t.logo} alt="" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0 }} />}
+        <span style={{ fontSize: 15, fontWeight: t.winner ? 800 : 600, color: t.winner ? G.text : G.textSecondary }}>{t.abbrev || t.abbreviation || ''}</span>
+        {isFinal && <span style={{ fontSize: 19, fontWeight: t.winner ? 800 : 600, color: t.winner ? G.text : G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{t.score}</span>}
+      </div>
+    );
+    gameCard = (
+      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: "14px 16px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{ng.displayName || 'Game'}</div>
+          <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[gameEv.weekText, when].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          {teamCell(away)}
+          <span style={{ fontSize: 12, color: G.textTertiary }}>@</span>
+          {teamCell(home, true)}
+          <span style={{ fontSize: 12, fontWeight: 700, color: isFinal ? G.textSecondary : G.green, marginLeft: "auto", whiteSpace: "nowrap" }}>{status}</span>
+        </div>
+        {pairs.length > 0 && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${G.surfaceBorder}`, fontSize: 12.5, fontWeight: 600, color: G.textSecondary }}>
+            <span style={{ color: G.textTertiary }}>{(a.name || '').split(' ')[0]}'s line · </span>{pairs.join(' · ')}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const espnUrl = `https://www.espn.com/${league === 'nfl' ? 'nfl' : 'college-football'}/player/stats/_/id/${a.espnId}`;
   return (
     <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
-      {catCards.length === 0 && !logCard && (
+      {gameCard}
+      {catCards.length === 0 && !logCard && !gameCard && (
         <div style={{ padding: 30, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>ESPN doesn't have stat lines for {a.name} yet — they'll appear here once games are logged.</div>
       )}
       {logCard}
