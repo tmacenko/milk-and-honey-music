@@ -174,6 +174,9 @@ module.exports = async (req, res) => {
       'brandTargets': joinList(sub.brands), 'tiktok': sub.tiktok,
       'college': level !== 'NFL' ? sub.schoolOrTeam : undefined,
       'onboardedAt': new Date().toISOString(),
+      // Linked identity from the recruiting board upgrade — lets the instant
+      // enrichment hit the exact ESPN/247 profile instead of re-discovering.
+      'espnId': sub.espnId, 'profileUrl247': sub.profileUrl247,
     };
 
     const planned = { baseTab: base.tab, matched: !!matchRow, matchedName };

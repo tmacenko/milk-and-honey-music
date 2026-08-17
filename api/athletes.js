@@ -10,6 +10,110 @@ const SHEET_ID = process.env.SPORTS_SHEET_ID;
 
 function b64url(str) { return Buffer.from(str).toString('base64url'); }
 
+// ── Recruit lookup (Add Recruit search-assist) ───────────────────────────────
+// College players resolve against ESPN, high schoolers against 247's season
+// Recruits JSON. 247 blocks datacenter IPs, so those calls ride the same
+// residential proxy the nightly sync uses.
+const LOOKUP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+let rsProxyAgent = null, rsProxyFetch = null;
+if (process.env.PROXY_URL) {
+  try { const u = require('undici'); rsProxyAgent = new u.ProxyAgent(process.env.PROXY_URL); rsProxyFetch = u.fetch; } catch { /* undici unavailable */ }
+}
+async function lookupFetch(url, viaProxy = false) {
+  const opts = { headers: { 'User-Agent': LOOKUP_UA, 'Accept-Language': 'en-US,en;q=0.9' }, redirect: 'follow' };
+  const useProxy = viaProxy && rsProxyAgent && rsProxyFetch;
+  if (useProxy) opts.dispatcher = rsProxyAgent;
+  const r = await (useProxy ? rsProxyFetch : fetch)(url, opts);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.text();
+}
+// Same normalization the sync uses — suffix/punctuation-proof name compare.
+const lookupNameKey = (raw) => String(raw || '').toLowerCase()
+  .replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, '').replace(/[^a-z]/g, '');
+const lookupSchoolKey = (s) => String(s || '').toLowerCase()
+  .replace(/\bsaint\b/g, 'st').replace(/\bmount\b/g, 'mt').replace(/\bfort\b/g, 'ft')
+  .replace(/\b(high school|hs|senior|academy|prep|preparatory|school|university|college|state)\b/g, '')
+  .replace(/[^a-z]/g, '');
+
+// College: ESPN search → hydrate top NCAAF hits with team/position/class/photo.
+async function searchCollegeRecruit(name) {
+  const sr = JSON.parse(await lookupFetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=10`));
+  const ids = [];
+  for (const g of sr.results || []) {
+    if (g.type !== 'player') continue;
+    for (const it of g.contents || []) {
+      if (String(it.description || '').toUpperCase() !== 'NCAAF') continue;
+      const m = String(it.uid || '').match(/a:(\d+)/) || String((it.link || {}).web || '').match(/\/id\/(\d+)/);
+      if (m && !ids.includes(m[1])) ids.push(m[1]);
+    }
+  }
+  const out = await Promise.all(ids.slice(0, 5).map(async (id) => {
+    try {
+      const [detail, core] = await Promise.all([
+        lookupFetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/college-football/athletes/${id}`).then(JSON.parse),
+        lookupFetch(`https://sports.core.api.espn.com/v2/sports/football/leagues/college-football/athletes/${id}`).then(JSON.parse).catch(() => ({})),
+      ]);
+      const a = detail.athlete || detail;
+      if (!a || !a.displayName) return null;
+      return {
+        source: 'espn', espnId: id,
+        name: a.displayName,
+        school: (a.team || {}).location || (a.team || {}).displayName || '',
+        position: ((a.position || {}).abbreviation || '').toUpperCase(),
+        classYear: (core.experience || {}).displayValue || '',
+        height: String(a.displayHeight || '').replace(/\s+/g, ''),
+        weight: String(a.displayWeight || '').replace(/\s*lbs.*$/i, ''),
+        jersey: String(a.jersey || ''),
+        photo: (a.headshot || {}).href || `https://a.espncdn.com/i/headshots/college-football/players/full/${id}.png`,
+        link: `https://www.espn.com/college-football/player/_/id/${id}`,
+      };
+    } catch { return null; }
+  }));
+  return out.filter(Boolean);
+}
+
+// High school: 247 season Recruits JSON across candidate class years.
+async function searchHsRecruit(name, school, classOf) {
+  const now = new Date().getUTCFullYear();
+  const cls = parseInt(String(classOf || '').replace(/\D/g, ''), 10);
+  const years = cls ? [cls] : [now, now + 1, now + 2, now + 3];
+  const seen = new Set(), cands = [];
+  for (const y of years) {
+    try {
+      const body = await lookupFetch(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(name)}`, true);
+      for (const r of JSON.parse(body) || []) {
+        const pl = r.Player || {};
+        if (lookupNameKey(pl.FullName) !== lookupNameKey(name)) continue;
+        const url = String(pl.Url || '');
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        const town = pl.Hometown || {};
+        cands.push({
+          source: '247', url247: url,
+          name: pl.FullName || name,
+          school: (pl.PlayerHighSchool || {}).Name || '',
+          hometown: [town.City, town.State].filter(Boolean).join(', '),
+          position: ((pl.PrimaryPlayerPosition || {}).Abbreviation || '').toUpperCase(),
+          classYear: String(r.Year || y),
+          height: String(pl.Height || ''),
+          weight: pl.Weight ? String(Math.round(pl.Weight)) : '',
+          stars: pl.StarRating || 0,
+          rating: pl.Rating || '',
+          photo: pl.DefaultAssetUrl ? String(pl.DefaultAssetUrl) + '?width=400' : '',
+          link: url,
+        });
+      }
+    } catch { /* year with no results or fetch hiccup — others may still hit */ }
+  }
+  // School match floats to the top (never filtered out — data entry varies).
+  const sk = lookupSchoolKey(school);
+  if (sk) cands.sort((a, b) => {
+    const am = lookupSchoolKey(a.school), bm = lookupSchoolKey(b.school);
+    return ((bm && (bm.includes(sk) || sk.includes(bm))) ? 1 : 0) - ((am && (am.includes(sk) || sk.includes(am))) ? 1 : 0);
+  });
+  return cands.slice(0, 6);
+}
+
 async function getToken(scope = 'https://www.googleapis.com/auth/spreadsheets.readonly') {
   const key = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
   const now = Math.floor(Date.now() / 1000);
@@ -482,7 +586,7 @@ async function saveAthlete(token, body) {
 const ADMIN_TABS = {
   // ensureCols: headers the app needs that the sheet may predate — appended
   // (with grid growth) on first read so nobody has to touch the sheet by hand.
-  recruiting: { title: 'Recruiting Info', writable: true, ensureCols: ['Stage'] },
+  recruiting: { title: 'Recruiting Info', writable: true, ensureCols: ['Stage', 'EspnId', 'Url247', 'Photo'] },
   nflteams: { title: 'NFL Team Info', writable: false },
   stateregs: { title: 'State Registration', writable: false },
   appdata: { title: 'AppData', writable: false },
@@ -1031,6 +1135,17 @@ module.exports = async (req, res) => {
       if (String((req.body || {}).action || '').startsWith('tab-')) {
         await handleTabAction(token, req.body || {});
         return res.json({ success: true });
+      }
+
+      // Add Recruit search-assist: name (+ school/level) → linkable candidates.
+      // No sheet writes — the client saves the picked candidate as a normal row.
+      if ((req.body || {}).action === 'recruit-search') {
+        const { name, school, level, classOf } = req.body;
+        if (!String(name || '').trim()) return res.status(400).json({ error: 'Name is required' });
+        const candidates = level === 'College'
+          ? await searchCollegeRecruit(String(name).trim())
+          : await searchHsRecruit(String(name).trim(), String(school || '').trim(), classOf);
+        return res.json({ candidates });
       }
 
       // One-time sheet restructure (2026-07 cleanup), additive only:

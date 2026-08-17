@@ -4032,6 +4032,200 @@ const stageColor = (s) => s === 'Signed' ? '#3eaa78' : s === 'Consistent Contact
 // punctuation can't make the board think a rostered player isn't a client yet.
 const nameKey = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 
+// Uniform recruit inputs: every field that has a known value set is a select.
+const REC_POSITIONS = ['QB', 'RB', 'FB', 'WR', 'TE', 'OT', 'OG', 'C', 'OL', 'EDGE', 'DE', 'DT', 'DL', 'LB', 'CB', 'S', 'DB', 'ATH', 'K', 'P', 'LS'];
+const REC_COLLEGE_CLASSES = ['Freshman', 'RS Freshman', 'Sophomore', 'RS Sophomore', 'Junior', 'RS Junior', 'Senior', 'RS Senior', 'Graduate'];
+const REC_RATINGS = ['5-star', '4-star', '3-star', '2-star'];
+const recHsClasses = () => { const y = new Date().getFullYear(); return [y, y + 1, y + 2, y + 3, y + 4].map(String); };
+// Display normalizers for legacy hand-entered values ("RS JR" → "RS Junior",
+// "3 Star" → "3-star"). The nightly sync rewrites linked rows at the source.
+const prettyClass = (v) => {
+  const s = String(v || '').trim();
+  const m = s.toLowerCase().match(/^(rs\s*[- ]?)?\s*(fr|so|jr|sr|gr)\.?$/);
+  if (!m) return s;
+  return (m[1] ? 'RS ' : '') + ({ fr: 'Freshman', so: 'Sophomore', jr: 'Junior', sr: 'Senior', gr: 'Graduate' })[m[2]];
+};
+const prettyRating = (v) => String(v || '').trim().replace(/^(\d)\s*[- ]?\s*star$/i, '$1-star');
+
+// Add/edit form for the recruiting board. Add mode leads with the lookup:
+// pick the level, type a name (+ school to disambiguate), hit Find profile,
+// tap the right match — position, school, class, rating and photo fill in and
+// the row stays linked so the nightly sync keeps it fresh. No match → the
+// same form works fully manually.
+function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, onCancel }) {
+  const hOf = (re) => headers.find(h => re.test(h)) || null;
+  const H = {
+    name: hOf(/player\s*name|^name/i), school: hOf(/school/i), level: hOf(/^level/i),
+    pos: hOf(/position/i), rank: hOf(/rank/i), klass: hOf(/class|year/i),
+    agent: hOf(/agent/i), notes: hOf(/note|comment/i), stage: hOf(/^stage/i),
+    espnId: hOf(/^espnid/i), url247: hOf(/^url247/i), photo: hOf(/^photo/i),
+  };
+  const cell = (h) => (initial && h) ? (initial.cells[headers.indexOf(h)] || '') : '';
+  const [level, setLevel] = useState(cell(H.level) || defaultLevel || 'High School');
+  const [f, setF] = useState({
+    name: cell(H.name), school: cell(H.school), pos: cell(H.pos).toUpperCase(),
+    rank: prettyRating(cell(H.rank)), klass: cell(H.klass), agent: cell(H.agent),
+    notes: cell(H.notes), stage: cell(H.stage),
+    espnId: cell(H.espnId), url247: cell(H.url247), photo: cell(H.photo),
+  });
+  const set = (k) => (e) => setF(v => ({ ...v, [k]: e.target.value }));
+  const linked = level === 'College' ? !!f.espnId : !!f.url247;
+  const [searching, setSearching] = useState(false);
+  const [cands, setCands] = useState(null); // null = not searched yet; [] = nothing found
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  const doSearch = async () => {
+    if (!f.name.trim()) { alert('Enter the player\'s name first.'); return; }
+    setSearching(true); setCands(null);
+    try {
+      const r = await fetch('/api/athletes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'recruit-search', name: f.name.trim(), school: f.school.trim(), level, classOf: level === 'High School' ? f.klass : undefined }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || 'Search failed');
+      setCands(d.candidates || []);
+    } catch (e) { alert(e.message || 'Search failed'); }
+    finally { setSearching(false); }
+  };
+  const pickCand = (c) => {
+    setF(v => ({
+      ...v,
+      name: c.name || v.name, school: c.school || v.school,
+      pos: (c.position || v.pos).toUpperCase(), klass: c.classYear || v.klass,
+      rank: c.stars ? `${c.stars}-star` : v.rank, photo: c.photo || v.photo,
+      espnId: c.espnId || '', url247: c.url247 || '',
+    }));
+    setCands(null);
+  };
+  const unlink = () => setF(v => ({ ...v, espnId: '', url247: '', photo: '' }));
+  const save = async () => {
+    if (!f.name.trim()) { alert('Name is required.'); return; }
+    setBusy(true);
+    try {
+      const vals = {};
+      const put = (h, v) => { if (h) vals[h] = v; };
+      put(H.name, f.name.trim()); put(H.school, f.school.trim()); put(H.level, level);
+      put(H.pos, f.pos); put(H.rank, f.rank); put(H.klass, f.klass);
+      put(H.agent, f.agent); put(H.notes, f.notes); put(H.stage, f.stage);
+      put(H.espnId, f.espnId); put(H.url247, f.url247); put(H.photo, f.photo);
+      await onSave(vals);
+    } catch (e) { alert(e.message || 'Save failed'); }
+    finally { setBusy(false); }
+  };
+  const del = async () => {
+    if (!window.confirm("Remove this recruit from the board? This can't be undone.")) return;
+    setBusy(true);
+    try { await onDelete(); } catch (e) { alert(e.message || 'Remove failed'); } finally { setBusy(false); }
+  };
+  // Selects keep unusual legacy values selectable instead of blanking them.
+  const withCurrent = (opts, cur) => [...new Set([...(cur ? [cur] : []), ...opts])];
+  const classOpts = withCurrent(level === 'College' ? REC_COLLEGE_CLASSES : recHsClasses(), f.klass);
+  const rankOpts = withCurrent(REC_RATINGS, f.rank);
+  const posOpts = withCurrent(REC_POSITIONS, f.pos);
+  const agentOpts = withCurrent(staff || [], f.agent);
+  const sel = (val, onChange, opts, placeholder) => (
+    <select value={val} onChange={onChange} style={{ ...inputBase, cursor: "pointer" }}>
+      <option value="">{placeholder || '—'}</option>
+      {opts.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+  const sourceLabel = level === 'College' ? 'ESPN' : '247Sports';
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "86vh", overflowY: "auto", padding: 20, animation: "modalIn .18s ease" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>{initial ? (f.name || 'Edit recruit') : 'Add recruit'}</div>
+          <button onClick={onCancel} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
+        </div>
+        {/* Level toggle */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+          {['High School', 'College'].map(lv => (
+            <button key={lv} onClick={() => { if (level !== lv) { setLevel(lv); setCands(null); unlink(); setF(v => ({ ...v, klass: '' })); } }}
+              style={{ flex: 1, background: level === lv ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${level === lv ? G.green : G.surfaceBorder}`, borderRadius: 10, padding: "9px 0", color: level === lv ? G.green : G.textSecondary, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>
+              {lv}
+            </button>
+          ))}
+        </div>
+        {/* Name + school + lookup */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={labelStyle}>Player name</label>
+            <input value={f.name} onChange={set('name')} placeholder="First Last" style={inputBase}
+              onKeyDown={e => { if (e.key === 'Enter') doSearch(); }} />
+          </div>
+          <div>
+            <label style={labelStyle}>School</label>
+            <input value={f.school} onChange={set('school')} placeholder={level === 'College' ? 'e.g. Ohio State' : 'e.g. Moeller HS'} style={inputBase}
+              onKeyDown={e => { if (e.key === 'Enter') doSearch(); }} />
+          </div>
+        </div>
+        {linked ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, background: G.greenSubtle, border: `1px solid ${G.green}44`, borderRadius: 12, padding: "9px 12px" }}>
+            <Avatar name={f.name} photoUrl={f.photo} size={34} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: G.green }}>Linked to {sourceLabel} ✓</div>
+              <div style={{ fontSize: 11, color: G.textTertiary }}>Profile syncs automatically every night</div>
+            </div>
+            <button onClick={unlink} style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 10px", color: G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Unlink</button>
+          </div>
+        ) : (
+          <div style={{ marginTop: 12 }}>
+            <button onClick={doSearch} disabled={searching}
+              style={{ width: "100%", background: G.surfaceRaised, border: `1px dashed ${G.surfaceBorderLight}`, borderRadius: 12, padding: "10px", color: searching ? G.textTertiary : G.text, fontWeight: 700, fontSize: 13, cursor: searching ? 'wait' : 'pointer', fontFamily: ff }}>
+              {searching ? 'Searching…' : `🔍 Find ${sourceLabel} profile`}
+            </button>
+            {cands !== null && (cands.length === 0
+              ? <div style={{ marginTop: 8, fontSize: 12, color: G.textTertiary, textAlign: "center" }}>No {sourceLabel} profile found — fill in the details below.</div>
+              : (
+                <div style={{ marginTop: 8, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, overflow: "hidden" }}>
+                  {cands.map((c, i) => (
+                    <div key={c.espnId || c.url247 || i} onClick={() => pickCand(c)}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer", borderBottom: i < cands.length - 1 ? `1px solid ${G.surfaceBorder}` : "none" }}
+                      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <Avatar name={c.name} photoUrl={c.photo} size={34} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{c.name}</div>
+                        <div style={{ fontSize: 11.5, color: G.textSecondary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {[c.school, c.position, level === 'College' ? c.classYear : `Class of ${c.classYear}`, c.stars ? `${c.stars}★` : ''].filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: G.green, flexShrink: 0 }}>Use →</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+          </div>
+        )}
+        {/* Detail fields — selects everywhere a value set is known */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
+          <div><label style={labelStyle}>Position</label>{sel(f.pos, set('pos'), posOpts)}</div>
+          <div><label style={labelStyle}>{level === 'College' ? 'Class' : 'Graduating class'}</label>{sel(f.klass, set('klass'), classOpts)}</div>
+          <div><label style={labelStyle}>Rating</label>{sel(f.rank, set('rank'), rankOpts, 'Unrated')}</div>
+          <div><label style={labelStyle}>Agent</label>{sel(f.agent, set('agent'), agentOpts)}</div>
+          <div><label style={labelStyle}>Stage</label>{sel(f.stage, set('stage'), REC_STAGES)}</div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={labelStyle}>Notes</label>
+            <textarea value={f.notes} onChange={set('notes')} rows={3} style={{ ...inputBase, resize: "vertical" }} />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+          {initial && onDelete && (
+            <button onClick={del} disabled={busy} style={{ background: "transparent", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "11px 14px", color: G.red, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Remove</button>
+          )}
+          <button onClick={onCancel} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>Cancel</button>
+          <button onClick={save} disabled={busy} style={{ flex: 2, background: busy ? G.surfaceRaised : G.green, border: "none", borderRadius: 12, padding: "11px", color: busy ? G.textTertiary : "#0a0a0a", fontWeight: 700, fontSize: 14, cursor: busy ? "wait" : "pointer", fontFamily: ff }}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const { data, err, loading, reload } = useAdminTab('recruiting');
   const sub = useAdminTab('onboarding');
@@ -4091,12 +4285,9 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   };
   const headers = data?.headers || [];
   const agentCol = headers.findIndex(h => /agent/i.test(h));
-  // Universal filters: multi-select level chips + the shared filter window.
-  const [recLevels, setRecLevels] = useCachedState('recruiting.levels', ['High School', 'College']);
-  const toggleRecLevel = (l) => setRecLevels(prev => {
-    const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
-    return next.length ? next : ['High School', 'College'];
-  });
+  // High School and College are different worlds (grad year vs class standing,
+  // 247 vs ESPN) — the board shows one at a time as tabs.
+  const [recTab, setRecTab] = useCachedState('recruiting.tab', 'High School');
   const [side, setSide] = useCachedState('recruiting.side', 'All');
   const [group, setGroup] = useCachedState('recruiting.group', 'All');
   const [agent, setAgent] = useCachedState('recruiting.agent', 'All');
@@ -4105,9 +4296,9 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const [sortCol, setSortCol] = useCachedState('recruiting.sortCol', 'rating');
   const [sortDir, setSortDir] = useCachedState('recruiting.sortDir', 'desc');
   const hFind = (re) => headers.findIndex(h => re.test(h));
-  const nameI = hFind(/name/i), schoolI = hFind(/school/i), levelI = hFind(/^level/i),
+  const nameI = hFind(/player\s*name|^name/i), schoolI = hFind(/school/i), levelI = hFind(/^level/i),
     posI = hFind(/position/i), rankI = hFind(/rank/i), classI = hFind(/class|year/i),
-    stageI = hFind(/^stage/i);
+    stageI = hFind(/^stage/i), espnI = hFind(/^espnid/i), url247I = hFind(/^url247/i), photoI = hFind(/^photo/i);
   const cellOf = (r, i) => (i >= 0 ? (r.cells[i] || '') : '');
   // Inline stage change straight from the table — no need to open the row.
   const [stageBusy, setStageBusy] = useState(0);
@@ -4130,6 +4321,9 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
         body: JSON.stringify({
           name, level: cellOf(r, levelI).trim() || 'College', position: cellOf(r, posI),
           schoolOrTeam: cellOf(r, schoolI), classOf: cellOf(r, classI), agent: cellOf(r, agentCol),
+          // Linked identity rides along so the new client profile enriches
+          // from the exact same ESPN/247 profile, photo and all.
+          espnId: cellOf(r, espnI).trim(), profileUrl247: cellOf(r, url247I).trim(),
         }),
       });
       const d = await resp.json();
@@ -4143,10 +4337,12 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
     }
   };
   const starsOf = (r) => { const m = String(cellOf(r, rankI)).match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
-  const classes = useMemo(() => [...new Set((data?.rows || []).filter(r => recLevels.includes(cellOf(r, levelI).trim())).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI, levelI, recLevels]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Rows with no Level yet show on both tabs so nothing silently disappears.
+  const onTab = (r) => { const lv = cellOf(r, levelI).trim(); return !lv || lv === recTab; };
+  const classes = useMemo(() => [...new Set((data?.rows || []).filter(onTab).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI, levelI, recTab]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = (data?.rows || [])
     .filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())))
-    .filter(r => recLevels.includes(cellOf(r, levelI).trim()))
+    .filter(onTab)
     .filter(r => { if (side === 'All') return true; const g = contractPosGroup(cellOf(r, posI)); return POS_SIDES[side].includes(g) && (group === 'All' || g === group); })
     .filter(r => agent === 'All' || String(agentCol >= 0 ? (r.cells[agentCol] || '') : '').toLowerCase().includes(agent.toLowerCase()))
     .filter(r => klass === 'All' || cellOf(r, classI).trim() === klass)
@@ -4210,7 +4406,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
         <button onClick={() => setEditing('new')} style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>+ Add</button>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
-        {['High School', 'College'].map(lv => levelChipBtn(recLevels.includes(lv), lv, () => { toggleRecLevel(lv); setKlass('All'); }))}
+        {['High School', 'College'].map(lv => levelChipBtn(recTab === lv, lv, () => { if (recTab !== lv) { setRecTab(lv); setKlass('All'); } }))}
         <div style={{ width: 10 }} />
         <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
           onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); setStageF('All'); }} />
@@ -4238,12 +4434,17 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                       <tr key={r._row} onClick={() => setEditing(r)} style={{ cursor: "pointer" }}
                         onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                        <td style={{ ...td, color: G.text, fontWeight: 600 }}>{cellOf(r, nameI)}</td>
-                        <td style={td}>{cellOf(r, posI)}</td>
+                        <td style={{ ...td, color: G.text, fontWeight: 600 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <Avatar name={cellOf(r, nameI)} photoUrl={cellOf(r, photoI)} size={28} />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{cellOf(r, nameI)}</span>
+                          </div>
+                        </td>
+                        <td style={td}>{cellOf(r, posI).toUpperCase()}</td>
                         <td style={td}>{cellOf(r, schoolI)}</td>
-                        <td style={td}>{cellOf(r, classI)}</td>
+                        <td style={td}>{prettyClass(cellOf(r, classI))}</td>
                         <td style={td}>{cellOf(r, agentCol)}</td>
-                        <td style={{ ...td, color: starsOf(r) >= 4 ? G.green : G.textSecondary, fontWeight: 700 }}>{cellOf(r, rankI)}</td>
+                        <td style={{ ...td, color: starsOf(r) >= 4 ? G.green : G.textSecondary, fontWeight: 700 }}>{prettyRating(cellOf(r, rankI))}</td>
                         <td style={{ ...td, overflow: "visible", maxWidth: "none" }} onClick={e => e.stopPropagation()}>
                           {(() => {
                             const stage = cellOf(r, stageI).trim();
@@ -4312,8 +4513,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
         </div>
       )}
       {editing && (
-        <TabRowForm headers={headers} initial={editing === 'new' ? null : editing} selects={{ stage: REC_STAGES }}
-          title={editing === 'new' ? 'Add recruit' : (editing.cells[0] || 'Edit recruit')}
+        <RecruitForm headers={headers} initial={editing === 'new' ? null : editing} defaultLevel={recTab} staff={staff}
           onCancel={() => setEditing(null)}
           onSave={async (vals) => {
             await post(editing === 'new'

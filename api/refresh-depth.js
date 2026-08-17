@@ -226,7 +226,7 @@ module.exports = async (req, res) => {
   if (!SHEET_ID) return res.status(500).json({ error: 'SPORTS_SHEET_ID not set' });
   if (!authorized(req)) return res.status(403).json({ error: 'Not authorized' });
   const dryRun = ['1', 'true'].includes(String((req.query || {}).dryRun || ''));
-  // task=depth|espn|hs|all — the daily cron runs all three modules in order.
+  // task=depth|espn|hs|contracts|recruits|all — the daily cron runs everything.
   const task = String((req.query || {}).task || 'all');
   const wants = (t) => task === 'all' || task === t;
   const deadline = Date.now() + 52000;
@@ -698,6 +698,149 @@ module.exports = async (req, res) => {
       if (!dryRun) for (let i = 0; i < cUpdates.length; i += 100) await sheetBatchUpdate(token, cUpdates.slice(i, i + 100));
     }
 
+    // ── Module 5: Recruiting board sync ──────────────────────────────────────
+    // Keeps 'Recruiting Info' rows fresh from their linked sources: college
+    // recruits from ESPN (school/class/position/photo), high schoolers from
+    // 247 (class/rating/position/photo). Unlinked rows get bounded
+    // auto-discovery (unique name(+school) match only) so the pre-existing
+    // board backfills itself across nightly runs. Ranking for college rows is
+    // never touched (that's their HS pedigree, not a live stat).
+    const recruits = { linked: 0, refreshed: 0, discovered: 0, ambiguous: [], errors: [] };
+    if (wants('recruits') && !onlyName) { // board-wide only; single-athlete onboard runs skip it
+      try {
+        const rec = await sheetGet(token, "'Recruiting Info'!A:Z");
+        const recRows = rec.values || [];
+        let recHeaders = (recRows[0] || []).map(h => String(h || '').trim());
+        // Link/photo columns may predate this module — append them if missing.
+        const REC_EXTRA = ['EspnId', 'Url247', 'Photo'].filter(c => !recHeaders.some(h => h.toLowerCase() === c.toLowerCase()));
+        if (REC_EXTRA.length && !dryRun) {
+          const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties(columnCount)))`, { headers: { Authorization: `Bearer ${token}` } });
+          const meta = await metaR.json();
+          const rMeta = (meta.sheets || []).find(s => (s.properties?.title || '').trim().toLowerCase() === 'recruiting info');
+          if (rMeta) {
+            const width = rMeta.properties?.gridProperties?.columnCount || recHeaders.length;
+            if (recHeaders.length + REC_EXTRA.length > width) {
+              await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+                method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requests: [{ appendDimension: { sheetId: rMeta.properties.sheetId, dimension: 'COLUMNS', length: recHeaders.length + REC_EXTRA.length - width } }] }),
+              });
+            }
+            await sheetBatchUpdate(token, [{ range: `'Recruiting Info'!${colLetter(recHeaders.length)}1`, values: [REC_EXTRA] }]);
+            recHeaders = [...recHeaders, ...REC_EXTRA];
+          }
+        }
+        const rIdx = (re) => recHeaders.findIndex(h => re.test(h));
+        const rNameC = rIdx(/player\s*name|^name/i), rSchoolC = rIdx(/school/i), rLevelC = rIdx(/^level/i),
+          rPosC = rIdx(/position/i), rRankC = rIdx(/rank/i), rClassC = rIdx(/class|year/i),
+          rEspnC = rIdx(/^espnid/i), r247C = rIdx(/^url247/i), rPhotoC = rIdx(/^photo/i);
+        const cellAt = (row, c) => c >= 0 ? String(row[c] || '').trim() : '';
+        const schoolKey2 = s => String(s || '').toLowerCase()
+          .replace(/\bsaint\b/g, 'st').replace(/\bmount\b/g, 'mt').replace(/\bfort\b/g, 'ft')
+          .replace(/\b(high school|hs|senior|academy|prep|preparatory|school|university|college|state)\b/g, '')
+          .replace(/[^a-z]/g, '');
+        const items = recRows.map((row, i) => ({ row, num: i + 1 })).filter(x => x.num > 1 && cellAt(x.row, rNameC));
+        const rUpdates = [];
+        const putRec = (c, num, v) => { if (c >= 0 && String(v ?? '').trim()) rUpdates.push({ range: `'Recruiting Info'!${colLetter(c)}${num}`, values: [[String(v)]] }); };
+        let discCollege = 0, discHs = 0, hsRefresh = 0;
+        // Rotate row order daily so bounded lookups drain the whole board.
+        const rotR = items.length ? Math.floor(Date.now() / 86400000) % items.length : 0;
+        const ordered = [...items.slice(rotR), ...items.slice(0, rotR)];
+        const recTasks = ordered.map(({ row, num }) => async () => {
+          const name = cellAt(row, rNameC);
+          const level = cellAt(row, rLevelC);
+          const isCollege = /college/i.test(level);
+          let espnId = cellAt(row, rEspnC), url247 = cellAt(row, r247C);
+          try {
+            if (isCollege) {
+              // Discover a missing ESPN link (unique NCAAF name match; school
+              // used to break ties, ambiguity means we leave it manual).
+              if (!espnId && discCollege < 10) {
+                discCollege++;
+                const sr = JSON.parse(await fetchText(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=10`));
+                const hits = [];
+                for (const g of sr.results || []) {
+                  if (g.type !== 'player') continue;
+                  for (const it of g.contents || []) {
+                    if (String(it.description || '').toUpperCase() !== 'NCAAF') continue;
+                    if (nameKey(it.displayName) !== nameKey(name)) continue;
+                    const m = String(it.uid || '').match(/a:(\d+)/) || String((it.link || {}).web || '').match(/\/id\/(\d+)/);
+                    if (m) hits.push({ id: m[1], team: String(it.subtitle || '') });
+                  }
+                }
+                const sk = schoolKey2(cellAt(row, rSchoolC));
+                const schoolHits = sk ? hits.filter(h => { const hk = schoolKey2(h.team); return hk && (hk.includes(sk) || sk.includes(hk)); }) : [];
+                const pick = hits.length === 1 ? hits[0] : (schoolHits.length === 1 ? schoolHits[0] : null);
+                if (pick) { espnId = pick.id; putRec(rEspnC, num, espnId); recruits.discovered++; }
+                else if (hits.length > 1) recruits.ambiguous.push(name);
+              }
+              if (!espnId) return;
+              recruits.linked++;
+              const [detail, core] = await Promise.all([
+                fetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/college-football/athletes/${espnId}`, { headers: { 'User-Agent': UA } }).then(r => r.json()),
+                fetch(`https://sports.core.api.espn.com/v2/sports/football/leagues/college-football/athletes/${espnId}`, { headers: { 'User-Agent': UA } }).then(r => r.json()).catch(() => ({})),
+              ]);
+              const a = detail.athlete || detail;
+              if (!a || !a.displayName) return;
+              putRec(rSchoolC, num, (a.team || {}).location || (a.team || {}).displayName || '');
+              putRec(rPosC, num, ((a.position || {}).abbreviation || '').toUpperCase());
+              putRec(rClassC, num, (core.experience || {}).displayValue || '');
+              putRec(rPhotoC, num, (a.headshot || {}).href || '');
+              recruits.refreshed++;
+            } else {
+              // High school: seasons JSON by class year (bounded — 247 rides
+              // the proxy and is the slow leg of this module).
+              const cls = parseInt(cellAt(row, rClassC).replace(/\D/g, ''), 10);
+              const nowY = new Date().getUTCFullYear();
+              const years = cls ? [cls] : [nowY, nowY + 1, nowY + 2, nowY + 3];
+              if (!url247) {
+                if (discHs >= 8) return;
+                discHs++;
+              } else {
+                if (hsRefresh >= 20) return;
+                hsRefresh++;
+              }
+              let hit = null, hitYear = 0;
+              const cands = [];
+              for (const y of years) {
+                if (hit) break;
+                try {
+                  const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(name)}`, true);
+                  for (const r2 of JSON.parse(body) || []) {
+                    const pl = r2.Player || {};
+                    if (url247) {
+                      const pid = u => (String(u || '').match(/-(\d+)\/?$/) || [])[1] || '';
+                      if (pid(pl.Url) && pid(pl.Url) === pid(url247)) { hit = pl; hitYear = r2.Year || y; break; }
+                    } else if (nameKey(pl.FullName) === nameKey(name)) {
+                      cands.push({ pl, year: r2.Year || y });
+                    }
+                  }
+                } catch (e) { recruits.errors.push(`${name} (${y}): ${e.message}`); }
+              }
+              if (!url247) {
+                const sk = schoolKey2(cellAt(row, rSchoolC));
+                const matched = sk ? cands.filter(c => { const ck = schoolKey2((c.pl.PlayerHighSchool || {}).Name); return ck && (ck.includes(sk) || sk.includes(ck)); }) : [];
+                const uniq = [...new Set((matched.length ? matched : cands).map(c => String(c.pl.Url || '')))].filter(Boolean);
+                const pool = matched.length ? matched : cands;
+                if (uniq.length === 1) { hit = pool[0].pl; hitYear = pool[0].year; putRec(r247C, num, uniq[0]); recruits.discovered++; }
+                else if (cands.length > 1) recruits.ambiguous.push(name);
+              }
+              if (!hit) return;
+              recruits.linked++;
+              putRec(rClassC, num, hitYear ? String(hitYear) : '');
+              putRec(rPosC, num, ((hit.PrimaryPlayerPosition || {}).Abbreviation || '').toUpperCase());
+              if (hit.StarRating) putRec(rRankC, num, `${hit.StarRating}-star`);
+              if (hit.DefaultAssetUrl) putRec(rPhotoC, num, String(hit.DefaultAssetUrl) + '?width=400');
+              if (!cellAt(row, rSchoolC) && (hit.PlayerHighSchool || {}).Name) putRec(rSchoolC, num, hit.PlayerHighSchool.Name);
+              recruits.refreshed++;
+            }
+          } catch (e) { recruits.errors.push(`${name}: ${e.message}`); }
+        });
+        await runTasks(recTasks, 4, deadline);
+        if (!dryRun) for (let i = 0; i < rUpdates.length; i += 100) await sheetBatchUpdate(token, rUpdates.slice(i, i + 100));
+        recruits.cells = rUpdates.length;
+      } catch (e) { recruits.errors.push(`board: ${e.message}`); }
+    }
+
     // ── StatHistory: one row per athlete per day with depth rank (NFL/College,
     // from Ourlads) and 247 rating/ranks (HS). Hidden robot tab — feeds the
     // depth-riser / rank-riser features with real history from day one.
@@ -761,6 +904,7 @@ module.exports = async (req, res) => {
       sample: matches.slice(0, 12),
       espn: { updated: espn.updated, idsFound: espn.idsFound, errors: espn.errors.slice(0, 10) },
       hs247,
+      recruits: { ...recruits, ambiguous: recruits.ambiguous.slice(0, 15), errors: recruits.errors.slice(0, 10) },
     });
   } catch (err) {
     console.error('Depth refresh error:', err.message);
