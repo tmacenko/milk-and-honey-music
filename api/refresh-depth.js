@@ -924,7 +924,9 @@ module.exports = async (req, res) => {
           await put('Unknown');
           pipeline.unknown++;
         });
-        await runTasks(pTasks, 3, deadline);
+        // Gentle by design: this is a weeks-long backfill, and 247 rate-limits
+        // aggressive bursts (403s) — low concurrency keeps the nightly slot safe.
+        await runTasks(pTasks, 2, deadline);
       } catch (e) { pipeline.errors.push(e.message); }
     }
 
