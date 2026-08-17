@@ -2270,8 +2270,129 @@ function BoxPreviewModal({ file, onClose }) {
   );
 }
 
+// ── Stats tab (staff view) ────────────────────────────────────────────────────
+// Career + season stats and the game log, fetched straight from ESPN's public
+// JSON in the browser (their API sends open CORS headers) using the espnId the
+// nightly sync already found. Cached per athlete for the session.
+const ESPN_STATS_CACHE = {};
+function SportsStatsTab({ athlete: a, isMobile, pad }) {
+  const league = a.level === 'NFL' ? 'nfl' : 'college-football';
+  const [data, setData] = useState(ESPN_STATS_CACHE[a.espnId] || null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!a.espnId || ESPN_STATS_CACHE[a.espnId]) return;
+    let dead = false;
+    (async () => {
+      const base = `https://site.web.api.espn.com/apis/common/v3/sports/football/${league}/athletes/${a.espnId}`;
+      const [stats, log] = await Promise.all([
+        fetch(`${base}/stats`).then(r => r.json()).catch(() => null),
+        fetch(`${base}/gamelog`).then(r => r.json()).catch(() => null),
+      ]);
+      if (dead) return;
+      if (!stats && !log) { setFailed(true); return; }
+      ESPN_STATS_CACHE[a.espnId] = { stats, log };
+      setData(ESPN_STATS_CACHE[a.espnId]);
+    })();
+    return () => { dead = true; };
+  }, [a.espnId, league]);
+
+  const prettySlug = (s) => String(s || '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  const thStyle = { textAlign: "right", padding: "9px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" };
+  const tdStyle = { textAlign: "right", padding: "8px 10px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
+  const sectionCard = (title, table, note) => (
+    <div key={title} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "14px 16px 0" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{title}</div>
+        {note && <div style={{ fontSize: 11, color: G.textTertiary }}>{note}</div>}
+      </div>
+      <div className="mh-hscroll" style={{ overflowX: "auto", padding: "6px 6px 8px" }}>{table}</div>
+    </div>
+  );
+
+  if (!a.espnId) return <div style={{ padding: `40px ${pad}px`, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No ESPN profile linked yet — add their ESPN ID in the edit form and stats appear here.</div>;
+  if (failed) return <div style={{ padding: `40px ${pad}px`, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Couldn't reach ESPN just now — try again in a minute.</div>;
+  if (!data) return <div style={{ padding: `40px ${pad}px`, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading stats from ESPN…</div>;
+
+  // Career / season-by-season tables, one per stat category.
+  const teams = (data.stats || {}).teams || {};
+  const cats = ((data.stats || {}).categories || []).filter(c => (c.statistics || []).length);
+  const glossary = {};
+  ((data.stats || {}).glossary || []).forEach(g => { glossary[g.abbreviation] = g.displayName; });
+  const catCards = cats.map(c => {
+    const seasons = [...(c.statistics || [])].sort((x, y) => (y.season?.year || 0) - (x.season?.year || 0));
+    return sectionCard(c.displayName || c.name, (
+      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <thead><tr>
+          <th style={{ ...thStyle, textAlign: "left" }}>Season</th>
+          <th style={{ ...thStyle, textAlign: "left" }}>Team</th>
+          {(c.labels || []).map((l, i) => <th key={i} style={thStyle} title={glossary[l] || (c.displayNames || [])[i] || ''}>{l}</th>)}
+        </tr></thead>
+        <tbody>
+          {seasons.map((s, i) => (
+            <tr key={i} style={{ background: i % 2 ? G.surfaceRaised : "transparent" }}>
+              <td style={{ ...tdStyle, textAlign: "left", color: G.text, fontWeight: 600 }}>{s.season?.displayName || ''}</td>
+              <td style={{ ...tdStyle, textAlign: "left" }}>{(teams[s.teamId] || {}).abbreviation || prettySlug(s.teamSlug)}</td>
+              {(s.stats || []).map((v, j) => <td key={j} style={tdStyle}>{v}</td>)}
+            </tr>
+          ))}
+          {(c.totals || []).length > 0 && (
+            <tr style={{ borderTop: `1px solid ${G.surfaceBorder}` }}>
+              <td style={{ ...tdStyle, textAlign: "left", color: G.text, fontWeight: 700 }}>Career</td>
+              <td style={tdStyle} />
+              {c.totals.map((v, j) => <td key={j} style={{ ...tdStyle, color: G.text, fontWeight: 700 }}>{v}</td>)}
+            </tr>
+          )}
+        </tbody>
+      </table>
+    ));
+  });
+
+  // Game log — flatten every season type's events, newest first.
+  const log = data.log || {};
+  const games = [];
+  (log.seasonTypes || []).forEach(t => (t.categories || []).forEach(c => (c.events || []).forEach(ev => {
+    const meta = (log.events || {})[ev.eventId] || {};
+    games.push({ ...meta, stats: ev.stats || [], typeName: t.displayName || '' });
+  })));
+  games.sort((x, y) => String(y.gameDate || '').localeCompare(String(x.gameDate || '')));
+  const logCard = games.length > 0 && sectionCard('Game log', (
+    <table style={{ borderCollapse: "collapse", width: "100%" }}>
+      <thead><tr>
+        <th style={{ ...thStyle, textAlign: "left" }}>Date</th>
+        <th style={{ ...thStyle, textAlign: "left" }}>Opp</th>
+        <th style={{ ...thStyle, textAlign: "left" }}>Result</th>
+        {(log.labels || []).map((l, i) => <th key={i} style={thStyle} title={((log.displayNames || [])[i]) || ''}>{l}</th>)}
+      </tr></thead>
+      <tbody>
+        {games.map((g, i) => (
+          <tr key={i} style={{ background: i % 2 ? G.surfaceRaised : "transparent" }}>
+            <td style={{ ...tdStyle, textAlign: "left", color: G.text, fontWeight: 600 }}>{String(g.gameDate || '').slice(0, 10)}</td>
+            <td style={{ ...tdStyle, textAlign: "left" }}>{(g.atVs === 'at' ? '@ ' : 'vs ') + ((g.opponent || {}).abbreviation || '')}</td>
+            <td style={{ ...tdStyle, textAlign: "left", color: g.gameResult === 'W' ? G.green : g.gameResult === 'L' ? G.red : G.textSecondary, fontWeight: 700 }}>{[g.gameResult, g.score].filter(Boolean).join(' ')}</td>
+            {g.stats.map((v, j) => <td key={j} style={tdStyle}>{v}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ), games[0]?.typeName);
+
+  const espnUrl = `https://www.espn.com/${league === 'nfl' ? 'nfl' : 'college-football'}/player/stats/_/id/${a.espnId}`;
+  return (
+    <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
+      {catCards.length === 0 && !logCard && (
+        <div style={{ padding: 30, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>ESPN doesn't have stat lines for {a.name} yet — they'll appear here once games are logged.</div>
+      )}
+      {logCard}
+      {catCards}
+      <div><a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>Full stats on ESPN →</a></div>
+    </div>
+  );
+}
+
 function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
   const [bioExp, setBioExp] = useState(false);
+  // Staff profile pages: Overview (everything below) + Stats (ESPN pull).
+  const [page, setPage] = useState('overview');
   const team = a.nflTeam || a.college || '';
   const typeLine = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join('  ·  ');
   const socialBtns = [
@@ -2349,6 +2470,21 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             </div>
           </div>
         </div>
+        {/* Page tabs (staff only): Overview | Stats. Stats needs an ESPN link,
+            so the bar only shows when there's a second page to visit. */}
+        {companyView && a.espnId && (
+          <div style={{ display: "flex", gap: 24, padding: `0 ${pad}px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>
+            {[['overview', 'Overview'], ['stats', 'Stats']].map(([k, l]) => (
+              <button key={k} onClick={() => setPage(k)}
+                style={{ background: "none", border: "none", padding: "13px 2px 11px", fontFamily: ff, fontSize: 13.5, fontWeight: page === k ? 700 : 500, color: page === k ? G.text : G.textTertiary, borderBottom: `2px solid ${page === k ? G.green : 'transparent'}`, marginBottom: -1, cursor: "pointer" }}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
+        {companyView && a.espnId && page === 'stats' ? (
+          <SportsStatsTab athlete={a} isMobile={isMobile} pad={pad} />
+        ) : (
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
           {a.bio && (
             <div>
@@ -2423,6 +2559,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );
