@@ -888,6 +888,7 @@ module.exports = async (req, res) => {
           // Scan the whole window before deciding — a same-name player in a
           // different class year must count as ambiguity, not a false match.
           const cands = new Map();
+          let fetchFailed = false;
           for (const y of years) {
             if (y < 2000 || y > nowY + 1) continue;
             try {
@@ -901,8 +902,11 @@ module.exports = async (req, res) => {
                   town: [town.City, town.State].filter(Boolean).join(', '),
                 });
               }
-            } catch { /* single-year fetch misses are fine */ }
+            } catch (e) { pipeline.errors.push(`${t.name} (${y}): ${e.message}`); fetchFailed = true; }
           }
+          // Never stamp Unknown off the back of failed fetches — that's a
+          // retry-tomorrow situation, not a definitive miss.
+          if (fetchFailed && !cands.size) return;
           const put = async (v) => { if (!dryRun) await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(hsColP)}${rec.row}`, values: [[v]] }]); };
           if (cands.size === 1) {
             const c = [...cands.values()][0];
