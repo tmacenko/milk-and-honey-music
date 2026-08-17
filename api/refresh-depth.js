@@ -284,7 +284,8 @@ module.exports = async (req, res) => {
     const appRows = app.values || [];
     let appHeaders = (appRows[0] || []).map(h => String(h || '').trim());
     // Manual-override columns the edit form writes to — ensure they exist.
-    for (const needCol of ['teamOverride', 'contractValue']) {
+    // highSchool is robot-filled from 247 (pipeline tracking; no UI yet).
+    for (const needCol of ['teamOverride', 'contractValue', 'highSchool']) {
     if (!appHeaders.some(h => h.toLowerCase() === needCol.toLowerCase()) && !dryRun) {
       const metaR = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties(columnCount)))`, {
         headers: { Authorization: `Bearer ${token}` } });
@@ -847,6 +848,82 @@ module.exports = async (req, res) => {
       } catch (e) { recruits.errors.push(`board: ${e.message}`); }
     }
 
+    // ── Module 6: High-school pipeline backfill (College + NFL) ──────────────
+    // Fills AppData.highSchool ("School — City, ST") from 247's season recruit
+    // JSON so we can map which high schools our athletes came through. Class
+    // years are aimed by birthday (NFL) / a recent-classes window (College);
+    // only a UNIQUE name match across the searched years is accepted. Misses
+    // and ambiguous names get "Unknown" so nightly runs stop re-searching them
+    // (fix by typing the real school over "Unknown" in AppData).
+    const pipeline = { checked: 0, found: 0, unknown: 0, ambiguous: [], errors: [] };
+    if (wants('highschools') && !onlyName) {
+      try {
+        const hsColP = appIdx('highSchool'), homeColP = appIdx('hometown');
+        if (hsColP < 0) throw new Error('AppData highSchool column missing');
+        const capP = parseInt((req.query || {}).maxdisc, 10) || 8;
+        const targets = [
+          ...colPlayers.map(p => ({ name: p['Name'], kind: 'college' })),
+          ...nflPlayers.map(p => ({ name: p['Name'], kind: 'nfl', bday: p['Birthday'] })),
+        ].filter(t => {
+          const rec = appByKey[nameKey(t.name)];
+          return t.name && rec && !String(rec.cells[hsColP] || '').trim();
+        });
+        const rotP = targets.length ? Math.floor(Date.now() / 86400000) % targets.length : 0;
+        const ordered = [...targets.slice(rotP), ...targets.slice(0, rotP)].slice(0, capP);
+        const draftColP = appIdx('draftYear');
+        const nowY = new Date().getUTCFullYear();
+        const pTasks = ordered.map(t => async () => {
+          pipeline.checked++;
+          const rec = appByKey[nameKey(t.name)];
+          let years;
+          if (t.kind === 'college') {
+            years = [nowY, nowY - 1, nowY - 2, nowY - 3, nowY - 4, nowY - 5];
+          } else {
+            const by = (String(t.bday || '').match(/(\d{4})/) || [])[1];
+            const dy = draftColP >= 0 ? parseInt(String(rec.cells[draftColP] || '').replace(/\D/g, ''), 10) : 0;
+            if (by) years = [+by + 18, +by + 19, +by + 17];
+            else if (dy) years = [dy - 3, dy - 4, dy - 5];
+            else years = [nowY - 4, nowY - 5, nowY - 6, nowY - 7];
+          }
+          // Scan the whole window before deciding — a same-name player in a
+          // different class year must count as ambiguity, not a false match.
+          const cands = new Map();
+          for (const y of years) {
+            if (y < 2000 || y > nowY + 1) continue;
+            try {
+              const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(t.name)}`, true);
+              for (const r2 of JSON.parse(body) || []) {
+                const pl = r2.Player || {};
+                if (nameKey(pl.FullName) !== nameKey(t.name)) continue;
+                const town = pl.Hometown || {};
+                cands.set(String(pl.Url || pl.Key || cands.size), {
+                  hs: (pl.PlayerHighSchool || {}).Name || '',
+                  town: [town.City, town.State].filter(Boolean).join(', '),
+                });
+              }
+            } catch { /* single-year fetch misses are fine */ }
+          }
+          const put = async (v) => { if (!dryRun) await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(hsColP)}${rec.row}`, values: [[v]] }]); };
+          if (cands.size === 1) {
+            const c = [...cands.values()][0];
+            if (c.hs) {
+              await put(c.town ? `${c.hs} — ${c.town}` : c.hs);
+              pipeline.found++;
+              // Blank-only hometown fill while we're here.
+              if (homeColP >= 0 && c.town && !String(rec.cells[homeColP] || '').trim() && !dryRun) {
+                await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(homeColP)}${rec.row}`, values: [[c.town]] }]);
+              }
+              return;
+            }
+          }
+          if (cands.size > 1) pipeline.ambiguous.push(t.name);
+          await put('Unknown');
+          pipeline.unknown++;
+        });
+        await runTasks(pTasks, 3, deadline);
+      } catch (e) { pipeline.errors.push(e.message); }
+    }
+
     // ── StatHistory: one row per athlete per day with depth rank (NFL/College,
     // from Ourlads) and 247 rating/ranks (HS). Hidden robot tab — feeds the
     // depth-riser / rank-riser features with real history from day one.
@@ -911,6 +988,7 @@ module.exports = async (req, res) => {
       espn: { updated: espn.updated, idsFound: espn.idsFound, errors: espn.errors.slice(0, 10) },
       hs247,
       recruits: { ...recruits, ambiguous: recruits.ambiguous.slice(0, 15), errors: recruits.errors.slice(0, 10) },
+      pipeline: { ...pipeline, ambiguous: pipeline.ambiguous.slice(0, 15), errors: pipeline.errors.slice(0, 5) },
     });
   } catch (err) {
     console.error('Depth refresh error:', err.message);
