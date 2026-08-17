@@ -2293,7 +2293,25 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
       ]);
       if (dead) return;
       if (!stats && !log && !ov) { setFailed(true); return; }
-      ESPN_STATS_CACHE[a.espnId] = { stats, log, ov };
+      // Fresh games (this week's preseason) finish before ESPN's last-5 feed
+      // rolls them in — the game's own box score has the line immediately.
+      let boxGroups = null;
+      try {
+        const ev = (((ov || {}).nextGame || {}).league || {}).events?.[0];
+        const isFinal = /final/i.test(ev?.fullStatus?.type?.shortDetail || '');
+        const inRecent = (((ov || {}).gameLog || {}).statistics || []).some(gr => (gr.events || []).some(x => String(x.eventId) === String(ev?.id)));
+        if (ev && isFinal && !inRecent) {
+          const sum = await fetch(`https://site.web.api.espn.com/apis/site/v2/sports/football/${league}/summary?event=${ev.id}`).then(r => r.json());
+          const groups = [];
+          ((sum.boxscore || {}).players || []).forEach(team => (team.statistics || []).forEach(cat => {
+            const hit = (cat.athletes || []).find(x => String((x.athlete || {}).id) === String(a.espnId));
+            if (hit) groups.push({ name: cat.displayName || cat.name || '', pairs: (cat.labels || []).map((l, i) => `${hit.stats?.[i] ?? ''} ${l}`) });
+          }));
+          if (groups.length) boxGroups = groups;
+        }
+      } catch { /* card renders without a line */ }
+      if (dead) return;
+      ESPN_STATS_CACHE[a.espnId] = { stats, log, ov, boxGroups };
       setData(ESPN_STATS_CACHE[a.espnId]);
     })();
     return () => { dead = true; };
@@ -2392,12 +2410,19 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
     const status = gameEv.fullStatus?.type?.shortDetail || '';
     const isFinal = /final/i.test(status);
     const when = gameEv.date ? new Date(gameEv.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '';
-    // The player's own line for this game, if the last-5 feed has it.
+    // The player's own line for this game: the last-5 feed when it has the
+    // game, else the box score fetched above (fresh preseason games).
     const pairs = [];
     (((data.ov || {}).gameLog || {}).statistics || []).forEach(gr => {
       const e = (gr.events || []).find(x => String(x.eventId) === String(gameEv.id));
       if (e) (gr.labels || []).forEach((l, i) => { if (pairs.length < 8 && String(e.stats?.[i] ?? '') !== '') pairs.push(`${e.stats[i]} ${l}`); });
     });
+    if (!pairs.length && data.boxGroups) {
+      data.boxGroups.forEach(g => {
+        const seg = g.pairs.join(' · ');
+        pairs.push(data.boxGroups.length > 1 ? `${g.name} — ${seg}` : seg);
+      });
+    }
     const teamCell = (t, alignRight) => (
       <div style={{ display: "flex", alignItems: "center", gap: 9, flexDirection: alignRight ? "row-reverse" : "row", minWidth: 0 }}>
         {t.logo && <img src={t.logo} alt="" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0 }} />}
