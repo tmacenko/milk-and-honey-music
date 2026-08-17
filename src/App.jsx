@@ -4054,6 +4054,50 @@ const prettyRating = (v) => {
   return s.replace(/^(\d)\s*[- ]*\s*star$/i, '$1-star');
 };
 
+// Multi-select dropdown, same mechanics as the board's filter menu: a quiet
+// select-looking trigger that opens a checklist — click entries to toggle,
+// click outside to close. Value is stored as the joined string the sheet uses.
+function MultiPick({ value, onChange, options, splitRe, joiner, placeholder = '—' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef();
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const cur = String(value || '').split(splitRe).map(s => s.trim()).filter(Boolean);
+  const all = [...new Set([...options, ...cur])]; // legacy values stay listed
+  const toggle = (o) => {
+    const next = cur.includes(o) ? cur.filter(x => x !== o) : [...cur, o];
+    onChange(next.join(joiner));
+  };
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button type="button" onClick={() => setOpen(v => !v)}
+        style={{ ...inputBase, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", textAlign: "left", width: "100%" }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: cur.length ? G.text : G.textTertiary }}>{cur.length ? cur.join(joiner) : placeholder}</span>
+        <span style={{ fontSize: 9, opacity: 0.6, flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: `transform 0.15s ${G.ease}` }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, maxHeight: 230, overflowY: "auto", background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, padding: 6, zIndex: 600, boxShadow: G.shadowLg }}>
+          {all.map(o => {
+            const on = cur.includes(o);
+            return (
+              <button key={o} type="button" onClick={() => toggle(o)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, fontSize: 13, fontWeight: on ? 700 : 400, color: on ? G.green : G.text, textAlign: "left" }}
+                onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                {o}
+                {on && <span style={{ color: G.green, fontSize: 12 }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Add/edit form for the recruiting board. Add mode leads with the lookup:
 // pick the level, type a name (+ school to disambiguate), hit Find profile,
 // tap the right match — position, school, class, rating and photo fill in and
@@ -4134,29 +4178,6 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
   const withCurrent = (opts, cur) => [...new Set([...(cur ? [cur] : []), ...opts])];
   const classOpts = withCurrent(level === 'College' ? REC_COLLEGE_CLASSES : recHsClasses(), f.klass);
   const rankOpts = withCurrent(REC_RATINGS, f.rank);
-  // Position and Agent are multi-select chips — two-way players ("WR/CB") and
-  // shared recruits ("Seth Karlins, Jake Presser") are normal on this board.
-  const multiChips = (key, opts, splitRe, joiner) => {
-    const cur = String(f[key] || '').split(splitRe).map(s => s.trim()).filter(Boolean);
-    const all = [...new Set([...opts, ...cur])];
-    const toggle = (o) => {
-      const next = cur.includes(o) ? cur.filter(x => x !== o) : [...cur, o];
-      setF(v => ({ ...v, [key]: next.join(joiner) }));
-    };
-    return (
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-        {all.map(o => {
-          const on = cur.includes(o);
-          return (
-            <button key={o} type="button" onClick={() => toggle(o)}
-              style={{ background: on ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 8, padding: "4px 9px", color: on ? G.green : G.textSecondary, fontWeight: 600, fontSize: 11.5, cursor: "pointer", fontFamily: ff }}>
-              {o}
-            </button>
-          );
-        })}
-      </div>
-    );
-  };
   const sel = (val, onChange, opts, placeholder) => (
     <select value={val} onChange={onChange} style={{ ...inputBase, cursor: "pointer" }}>
       <option value="">{placeholder || '—'}</option>
@@ -4233,8 +4254,8 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
         )}
         {/* Detail fields — selects everywhere a value set is known */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-          <div style={{ gridColumn: "1 / -1" }}><label style={labelStyle}>Position — tap all that apply</label>{multiChips('pos', REC_POSITIONS, /[\/,]+/, '/')}</div>
-          <div style={{ gridColumn: "1 / -1" }}><label style={labelStyle}>Agent — tap all that apply</label>{multiChips('agent', staff || [], /,/, ', ')}</div>
+          <div><label style={labelStyle}>Position</label><MultiPick value={f.pos} onChange={v => setF(x => ({ ...x, pos: v }))} options={REC_POSITIONS} splitRe={/[\/,]+/} joiner="/" /></div>
+          <div><label style={labelStyle}>Agent</label><MultiPick value={f.agent} onChange={v => setF(x => ({ ...x, agent: v }))} options={staff || []} splitRe={/,/} joiner=", " /></div>
           <div><label style={labelStyle}>{level === 'College' ? 'Class' : 'Graduating class'}</label>{sel(f.klass, set('klass'), classOpts)}</div>
           <div><label style={labelStyle}>Rating</label>{sel(f.rank, set('rank'), rankOpts, 'Unrated')}</div>
           <div><label style={labelStyle}>Stage</label>{sel(f.stage, set('stage'), REC_STAGES)}</div>
