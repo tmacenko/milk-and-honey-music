@@ -4041,11 +4041,18 @@ const recHsClasses = () => { const y = new Date().getFullYear(); return [y, y + 
 // "3 Star" → "3-star"). The nightly sync rewrites linked rows at the source.
 const prettyClass = (v) => {
   const s = String(v || '').trim();
-  const m = s.toLowerCase().match(/^(rs\s*[- ]?)?\s*(fr|so|jr|sr|gr)\.?$/);
-  if (!m) return s;
-  return (m[1] ? 'RS ' : '') + ({ fr: 'Freshman', so: 'Sophomore', jr: 'Junior', sr: 'Senior', gr: 'Graduate' })[m[2]];
+  const yy = s.match(/^'?(2\d)$/);
+  if (yy) return '20' + yy[1]; // "27" / "'28" → full grad year
+  const M = { fr: 'Freshman', fresh: 'Freshman', freshman: 'Freshman', so: 'Sophomore', soph: 'Sophomore', sophmore: 'Sophomore', sopmore: 'Sophomore', sophomore: 'Sophomore', jr: 'Junior', junior: 'Junior', sr: 'Senior', senior: 'Senior', gr: 'Graduate', grad: 'Graduate', graduate: 'Graduate' };
+  const m = s.toLowerCase().match(/^(rs\s*[- ]?)?\s*([a-z]+)\.?$/);
+  if (!m || !M[m[2]]) return s;
+  return (m[1] ? 'RS ' : '') + M[m[2]];
 };
-const prettyRating = (v) => String(v || '').trim().replace(/^(\d)\s*[- ]?\s*star$/i, '$1-star');
+const prettyRating = (v) => {
+  const s = String(v || '').trim();
+  if (/^(un\s*ranked|unranked|unrated|unanked|[-—–]+)$/i.test(s)) return '';
+  return s.replace(/^(\d)\s*[- ]*\s*star$/i, '$1-star');
+};
 
 // Add/edit form for the recruiting board. Add mode leads with the lookup:
 // pick the level, type a name (+ school to disambiguate), hit Find profile,
@@ -4061,7 +4068,8 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
     espnId: hOf(/^espnid/i), url247: hOf(/^url247/i), photo: hOf(/^photo/i),
   };
   const cell = (h) => (initial && h) ? (initial.cells[headers.indexOf(h)] || '') : '';
-  const [level, setLevel] = useState(cell(H.level) || defaultLevel || 'High School');
+  const rawLevel = cell(H.level);
+  const [level, setLevel] = useState(rawLevel ? (/college/i.test(rawLevel) ? 'College' : 'High School') : (defaultLevel || 'High School'));
   const [f, setF] = useState({
     name: cell(H.name), school: cell(H.school), pos: cell(H.pos).toUpperCase(),
     rank: prettyRating(cell(H.rank)), klass: cell(H.klass), agent: cell(H.agent),
@@ -4337,8 +4345,10 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
     }
   };
   const starsOf = (r) => { const m = String(cellOf(r, rankI)).match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
-  // Rows with no Level yet show on both tabs so nothing silently disappears.
-  const onTab = (r) => { const lv = cellOf(r, levelI).trim(); return !lv || lv === recTab; };
+  // Rows with no Level yet show on both tabs so nothing silently disappears,
+  // and level matching is spelling-proof ("Highschool" still lands on the tab).
+  const lvlKey = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+  const onTab = (r) => { const lv = lvlKey(cellOf(r, levelI)); return !lv || lv === lvlKey(recTab); };
   const classes = useMemo(() => [...new Set((data?.rows || []).filter(onTab).map(r => cellOf(r, classI).trim()).filter(Boolean))].sort(), [data, classI, levelI, recTab]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = (data?.rows || [])
     .filter(r => !q || r.cells.some(c => c.toLowerCase().includes(q.toLowerCase())))

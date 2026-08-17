@@ -741,6 +741,9 @@ module.exports = async (req, res) => {
         const items = recRows.map((row, i) => ({ row, num: i + 1 })).filter(x => x.num > 1 && cellAt(x.row, rNameC));
         const rUpdates = [];
         const putRec = (c, num, v) => { if (c >= 0 && String(v ?? '').trim()) rUpdates.push({ range: `'Recruiting Info'!${colLetter(c)}${num}`, values: [[String(v)]] }); };
+        // ?maxdisc= raises the per-run discovery caps for manual backlog drains.
+        const discCap = parseInt((req.query || {}).maxdisc, 10) || 0;
+        const discCapC = discCap || 10, discCapH = discCap || 8;
         let discCollege = 0, discHs = 0, hsRefresh = 0;
         // Rotate row order daily so bounded lookups drain the whole board.
         const rotR = items.length ? Math.floor(Date.now() / 86400000) % items.length : 0;
@@ -754,7 +757,7 @@ module.exports = async (req, res) => {
             if (isCollege) {
               // Discover a missing ESPN link (unique NCAAF name match; school
               // used to break ties, ambiguity means we leave it manual).
-              if (!espnId && discCollege < 10) {
+              if (!espnId && discCollege < discCapC) {
                 discCollege++;
                 const sr = JSON.parse(await fetchText(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=10`));
                 const hits = [];
@@ -793,7 +796,7 @@ module.exports = async (req, res) => {
               const nowY = new Date().getUTCFullYear();
               const years = cls ? [cls] : [nowY, nowY + 1, nowY + 2, nowY + 3];
               if (!url247) {
-                if (discHs >= 8) return;
+                if (discHs >= discCapH) return;
                 discHs++;
               } else {
                 if (hsRefresh >= 20) return;
