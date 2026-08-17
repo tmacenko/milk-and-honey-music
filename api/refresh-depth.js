@@ -826,6 +826,9 @@ module.exports = async (req, res) => {
               }
               if (!hit) return;
               recruits.linked++;
+              // A 247 link proves the level — fill it when blank so the row
+              // stops straddling both tabs.
+              if (!level) putRec(rLevelC, num, 'High School');
               putRec(rClassC, num, hitYear ? String(hitYear) : '');
               putRec(rPosC, num, ((hit.PrimaryPlayerPosition || {}).Abbreviation || '').toUpperCase());
               if (hit.StarRating) putRec(rRankC, num, `${hit.StarRating}-star`);
