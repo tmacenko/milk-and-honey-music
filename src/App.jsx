@@ -4134,8 +4134,29 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
   const withCurrent = (opts, cur) => [...new Set([...(cur ? [cur] : []), ...opts])];
   const classOpts = withCurrent(level === 'College' ? REC_COLLEGE_CLASSES : recHsClasses(), f.klass);
   const rankOpts = withCurrent(REC_RATINGS, f.rank);
-  const posOpts = withCurrent(REC_POSITIONS, f.pos);
-  const agentOpts = withCurrent(staff || [], f.agent);
+  // Position and Agent are multi-select chips — two-way players ("WR/CB") and
+  // shared recruits ("Seth Karlins, Jake Presser") are normal on this board.
+  const multiChips = (key, opts, splitRe, joiner) => {
+    const cur = String(f[key] || '').split(splitRe).map(s => s.trim()).filter(Boolean);
+    const all = [...new Set([...opts, ...cur])];
+    const toggle = (o) => {
+      const next = cur.includes(o) ? cur.filter(x => x !== o) : [...cur, o];
+      setF(v => ({ ...v, [key]: next.join(joiner) }));
+    };
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        {all.map(o => {
+          const on = cur.includes(o);
+          return (
+            <button key={o} type="button" onClick={() => toggle(o)}
+              style={{ background: on ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 8, padding: "4px 9px", color: on ? G.green : G.textSecondary, fontWeight: 600, fontSize: 11.5, cursor: "pointer", fontFamily: ff }}>
+              {o}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
   const sel = (val, onChange, opts, placeholder) => (
     <select value={val} onChange={onChange} style={{ ...inputBase, cursor: "pointer" }}>
       <option value="">{placeholder || '—'}</option>
@@ -4212,10 +4233,10 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
         )}
         {/* Detail fields — selects everywhere a value set is known */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-          <div><label style={labelStyle}>Position</label>{sel(f.pos, set('pos'), posOpts)}</div>
+          <div style={{ gridColumn: "1 / -1" }}><label style={labelStyle}>Position — tap all that apply</label>{multiChips('pos', REC_POSITIONS, /[\/,]+/, '/')}</div>
+          <div style={{ gridColumn: "1 / -1" }}><label style={labelStyle}>Agent — tap all that apply</label>{multiChips('agent', staff || [], /,/, ', ')}</div>
           <div><label style={labelStyle}>{level === 'College' ? 'Class' : 'Graduating class'}</label>{sel(f.klass, set('klass'), classOpts)}</div>
           <div><label style={labelStyle}>Rating</label>{sel(f.rank, set('rank'), rankOpts, 'Unrated')}</div>
-          <div><label style={labelStyle}>Agent</label>{sel(f.agent, set('agent'), agentOpts)}</div>
           <div><label style={labelStyle}>Stage</label>{sel(f.stage, set('stage'), REC_STAGES)}</div>
           <div style={{ gridColumn: "1 / -1" }}>
             <label style={labelStyle}>Notes</label>
@@ -4308,41 +4329,53 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
     posI = hFind(/position/i), rankI = hFind(/rank/i), classI = hFind(/class|year/i),
     stageI = hFind(/^stage/i), espnI = hFind(/^espnid/i), url247I = hFind(/^url247/i), photoI = hFind(/^photo/i);
   const cellOf = (r, i) => (i >= 0 ? (r.cells[i] || '') : '');
-  // Inline stage change straight from the table — no need to open the row.
-  const [stageBusy, setStageBusy] = useState(0);
-  const setStage = async (r, v) => {
-    setStageBusy(r._row);
-    try { await post({ action: 'tab-update', tab: 'recruiting', row: r._row, values: { stage: v } }); reload(); }
-    catch (e) { alert(e.message || 'Stage update failed'); }
-    finally { setStageBusy(0); }
-  };
-  // Upgrade a Signed recruit to a roster client: replays their board row
-  // through the signed onboarding path (same as the submission promote), which
-  // also kicks off ESPN/247/social enrichment server-side.
-  const upgrade = async (r) => {
-    const name = cellOf(r, nameI).trim();
-    if (!window.confirm(`Add ${name} to the roster as a client? They'll appear on the public site — flip Public off on their profile to hide them.`)) return;
-    setPromoting(name);
+  // Signed means client: marking a recruit Signed asks for one confirmation,
+  // then creates them as a roster client on the spot (same onboarding path as
+  // the submission promote — kicks off ESPN/247/social enrichment too). The
+  // linked identity rides along so the new profile enriches from the exact
+  // same ESPN/247 profile, photo and all.
+  const isClient = (name) => rosterNames.has(nameKey(name)) || justPromoted[nameKey(name)];
+  const upgradeClient = async (p) => {
+    setPromoting(p.name);
     try {
       const resp = await fetch('/api/onboard', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name, level: cellOf(r, levelI).trim() || 'College', position: cellOf(r, posI),
-          schoolOrTeam: cellOf(r, schoolI), classOf: cellOf(r, classI), agent: cellOf(r, agentCol),
-          // Linked identity rides along so the new client profile enriches
-          // from the exact same ESPN/247 profile, photo and all.
-          espnId: cellOf(r, espnI).trim(), profileUrl247: cellOf(r, url247I).trim(),
+          name: p.name, level: p.level || 'College', position: p.position,
+          schoolOrTeam: p.school, classOf: p.classOf, agent: p.agent,
+          espnId: p.espnId || '', profileUrl247: p.url247 || '',
         }),
       });
       const d = await resp.json();
       if (!resp.ok || !d.success) throw new Error(d.error || 'Upgrade failed');
-      setJustPromoted(p => ({ ...p, [nameKey(name)]: true }));
+      setJustPromoted(prev => ({ ...prev, [nameKey(p.name)]: true }));
       if (onPromoted) onPromoted();
     } catch (e) {
       alert(e.message || 'Upgrade failed');
     } finally {
       setPromoting('');
     }
+  };
+  const rowFields = (r) => ({
+    name: cellOf(r, nameI).trim(), level: cellOf(r, levelI).trim(), position: cellOf(r, posI),
+    school: cellOf(r, schoolI), classOf: cellOf(r, classI), agent: cellOf(r, agentCol),
+    espnId: cellOf(r, espnI).trim(), url247: cellOf(r, url247I).trim(),
+  });
+  const confirmClient = (name) => window.confirm(`Mark ${name} as Signed and add them as a client? They'll appear on the client dashboard and public site — flip Public off on their profile to hide them.`);
+  // Inline stage change straight from the table — no need to open the row.
+  const [stageBusy, setStageBusy] = useState(0);
+  const setStage = async (r, v) => {
+    const name = cellOf(r, nameI).trim();
+    const makeClient = v === 'Signed' && name && !isClient(name);
+    if (makeClient && !confirmClient(name)) return;
+    setStageBusy(r._row);
+    try {
+      await post({ action: 'tab-update', tab: 'recruiting', row: r._row, values: { stage: v } });
+      if (makeClient) await upgradeClient(rowFields(r));
+      reload();
+    }
+    catch (e) { alert(e.message || 'Stage update failed'); }
+    finally { setStageBusy(0); }
   };
   const starsOf = (r) => { const m = String(cellOf(r, rankI)).match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
   // Rows with no Level yet show on both tabs so nothing silently disappears,
@@ -4454,26 +4487,26 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                         <td style={td}>{cellOf(r, schoolI)}</td>
                         <td style={td}>{prettyClass(cellOf(r, classI))}</td>
                         <td style={td}>{cellOf(r, agentCol)}</td>
-                        <td style={{ ...td, color: starsOf(r) >= 4 ? G.green : G.textSecondary, fontWeight: 700 }}>{prettyRating(cellOf(r, rankI))}</td>
+                        <td style={{ ...td, color: starsOf(r) >= 4 ? G.green : G.textSecondary, fontWeight: 700 }}>
+                          {(() => {
+                            const rt = prettyRating(cellOf(r, rankI));
+                            const u = cellOf(r, url247I).trim();
+                            return rt && u
+                              ? <a href={u} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                                  style={{ color: "inherit", textDecoration: "underline", textDecorationColor: G.surfaceBorderLight, textUnderlineOffset: 3 }}>{rt}</a>
+                              : rt;
+                          })()}
+                        </td>
                         <td style={{ ...td, overflow: "visible", maxWidth: "none" }} onClick={e => e.stopPropagation()}>
                           {(() => {
                             const stage = cellOf(r, stageI).trim();
-                            const name = cellOf(r, nameI).trim();
-                            const onRoster = rosterNames.has(nameKey(name)) || justPromoted[nameKey(name)];
+                            const busy = stageBusy === r._row || promoting === cellOf(r, nameI).trim();
                             return (
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <select value={stage} disabled={stageBusy === r._row} onChange={e => setStage(r, e.target.value)}
-                                  style={{ background: G.surfaceRaised, border: `1px solid ${stage ? stageColor(stage) + '55' : G.surfaceBorder}`, borderRadius: 8, padding: "5px 8px", color: stage ? stageColor(stage) : G.textTertiary, fontWeight: 600, fontSize: 12, fontFamily: ff, cursor: stageBusy === r._row ? 'wait' : 'pointer', appearance: "auto" }}>
-                                  <option value="">—</option>
-                                  {REC_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
-                                {stage === 'Signed' && (onRoster
-                                  ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.green, whiteSpace: "nowrap" }}>Client ✓</span>
-                                  : <button onClick={() => upgrade(r)} disabled={promoting === name}
-                                      style={{ background: promoting === name ? G.surfaceRaised : G.greenSubtle, border: `1px solid ${promoting === name ? G.surfaceBorder : G.green}`, borderRadius: 8, padding: "5px 9px", color: promoting === name ? G.textTertiary : G.green, fontWeight: 700, fontSize: 11.5, cursor: promoting === name ? 'wait' : 'pointer', fontFamily: ff, whiteSpace: "nowrap" }}>
-                                      {promoting === name ? 'Upgrading…' : 'Upgrade to client'}
-                                    </button>)}
-                              </div>
+                              <select value={stage} disabled={busy} onChange={e => setStage(r, e.target.value)}
+                                style={{ background: G.surfaceRaised, border: `1px solid ${stage ? stageColor(stage) + '55' : G.surfaceBorder}`, borderRadius: 8, padding: "5px 8px", color: stage ? stageColor(stage) : G.textTertiary, fontWeight: 600, fontSize: 12, fontFamily: ff, cursor: busy ? 'wait' : 'pointer', appearance: "auto" }}>
+                                <option value="">—</option>
+                                {REC_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
                             );
                           })()}
                         </td>
@@ -4529,6 +4562,13 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
             await post(editing === 'new'
               ? { action: 'tab-append', tab: 'recruiting', values: vals }
               : { action: 'tab-update', tab: 'recruiting', row: editing._row, values: vals });
+            // Saving a row as Signed goes through the same confirm-to-client
+            // flow as the inline stage select.
+            const g = (re) => { const k = Object.keys(vals).find(h => re.test(h)); return k ? String(vals[k] || '').trim() : ''; };
+            const nm = g(/player\s*name|^name/i);
+            if (g(/^stage/i) === 'Signed' && nm && !isClient(nm) && confirmClient(nm)) {
+              await upgradeClient({ name: nm, level: g(/^level/i), position: g(/position/i), school: g(/school/i), classOf: g(/class|year/i), agent: g(/agent/i), espnId: g(/^espnid/i), url247: g(/^url247/i) });
+            }
             setEditing(null); reload();
           }}
           onDelete={editing === 'new' ? null : async () => {
