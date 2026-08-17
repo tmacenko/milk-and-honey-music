@@ -4057,7 +4057,7 @@ const prettyRating = (v) => {
 // Multi-select dropdown, same mechanics as the board's filter menu: a quiet
 // select-looking trigger that opens a checklist — click entries to toggle,
 // click outside to close. Value is stored as the joined string the sheet uses.
-function MultiPick({ value, onChange, options, splitRe, joiner, placeholder = '—' }) {
+function MultiPick({ value, onChange, options, splitRe = /\n/, joiner = '', single = false, placeholder = '—' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef();
   useEffect(() => {
@@ -4065,9 +4065,12 @@ function MultiPick({ value, onChange, options, splitRe, joiner, placeholder = '�
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const cur = String(value || '').split(splitRe).map(s => s.trim()).filter(Boolean);
+  const cur = single
+    ? (String(value || '').trim() ? [String(value).trim()] : [])
+    : String(value || '').split(splitRe).map(s => s.trim()).filter(Boolean);
   const all = [...new Set([...options, ...cur])]; // legacy values stay listed
   const toggle = (o) => {
+    if (single) { onChange(cur.includes(o) ? '' : o); setOpen(false); return; }
     const next = cur.includes(o) ? cur.filter(x => x !== o) : [...cur, o];
     onChange(next.join(joiner));
   };
@@ -4178,12 +4181,6 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
   const withCurrent = (opts, cur) => [...new Set([...(cur ? [cur] : []), ...opts])];
   const classOpts = withCurrent(level === 'College' ? REC_COLLEGE_CLASSES : recHsClasses(), f.klass);
   const rankOpts = withCurrent(REC_RATINGS, f.rank);
-  const sel = (val, onChange, opts, placeholder) => (
-    <select value={val} onChange={onChange} style={{ ...inputBase, cursor: "pointer" }}>
-      <option value="">{placeholder || '—'}</option>
-      {opts.map(o => <option key={o} value={o}>{o}</option>)}
-    </select>
-  );
   const sourceLabel = level === 'College' ? 'ESPN' : '247Sports';
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onCancel}>
@@ -4256,9 +4253,9 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
           <div><label style={labelStyle}>Position</label><MultiPick value={f.pos} onChange={v => setF(x => ({ ...x, pos: v }))} options={REC_POSITIONS} splitRe={/[\/,]+/} joiner="/" /></div>
           <div><label style={labelStyle}>Agent</label><MultiPick value={f.agent} onChange={v => setF(x => ({ ...x, agent: v }))} options={staff || []} splitRe={/,/} joiner=", " /></div>
-          <div><label style={labelStyle}>{level === 'College' ? 'Class' : 'Graduating class'}</label>{sel(f.klass, set('klass'), classOpts)}</div>
-          <div><label style={labelStyle}>Rating</label>{sel(f.rank, set('rank'), rankOpts, 'Unrated')}</div>
-          <div><label style={labelStyle}>Stage</label>{sel(f.stage, set('stage'), REC_STAGES)}</div>
+          <div><label style={labelStyle}>{level === 'College' ? 'Class' : 'Graduating class'}</label><MultiPick single value={f.klass} onChange={v => setF(x => ({ ...x, klass: v }))} options={classOpts} /></div>
+          <div><label style={labelStyle}>Rating</label><MultiPick single value={f.rank} onChange={v => setF(x => ({ ...x, rank: v }))} options={rankOpts} placeholder="Unrated" /></div>
+          <div><label style={labelStyle}>Stage</label><MultiPick single value={f.stage} onChange={v => setF(x => ({ ...x, stage: v }))} options={REC_STAGES} /></div>
           <div style={{ gridColumn: "1 / -1" }}>
             <label style={labelStyle}>Notes</label>
             <textarea value={f.notes} onChange={set('notes')} rows={3} style={{ ...inputBase, resize: "vertical" }} />
