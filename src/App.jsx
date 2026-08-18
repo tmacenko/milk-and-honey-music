@@ -6215,16 +6215,19 @@ function App() {
   // sidebar sections instead of leaving the site. URL carries ?page= so a
   // refresh lands back on the same section.
   const goSportsPage = (key) => {
-    if (key === sportsPage) return;
+    if (key === sportsPage && view !== 'detail') return;
     window.history.pushState({ view: 'roster', domain: 'sports', sportsPage: key }, '', key === 'home' ? '/sports' : `/sports?page=${key}`);
     setSportsPage(key);
+    // Sidebar clicks from a player page leave the profile and land there.
+    if (view === 'detail') { setSelected(null); setViewState('roster'); }
   };
   // Music employee section (Tyler-only while it's broken in): 'home' / 'roster'.
   const [musicPage, setMusicPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
   const goMusicPage = (key) => {
-    if (key === musicPage) return;
+    if (key === musicPage && view !== 'detail') return;
     window.history.pushState({ view: 'roster', domain: 'music', musicPage: key }, '', key === 'home' ? '/' : `/?page=${key}`);
     setMusicPage(key);
+    if (view === 'detail') { setSelected(null); setViewState('roster'); }
   };
 
   const setView = (v, item) => {
@@ -6856,7 +6859,10 @@ function App() {
   // (and always for public sessions). Both domains wait for the auth answer so
   // employees land straight on the dashboard with no roster flash.
   const rosterControlsOn = authKnown && (!navActive || sportsPage === 'roster') && (!musicNavActive || musicPage === 'roster');
-  const sidebar = ((navActive || musicNavActive) && !isMobile) ? (
+  // The sidebar stays up on player pages too (desktop staff view) — only the
+  // page-content gating uses the view-aware navActive flags.
+  const sidebarOn = !isMobile && isAdmin && (domain === 'sports' || (domain === 'music' && isTyler));
+  const sidebar = sidebarOn ? (
     <div style={{ width: 176, flexShrink: 0, borderRight: `1px solid ${G.surfaceBorder}`, padding: "18px 10px", position: "sticky", top: 62, alignSelf: "flex-start", maxHeight: "calc(100vh - 62px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
       {navItems.map(it => {
         if (it.children) {
