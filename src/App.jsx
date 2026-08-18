@@ -2375,7 +2375,16 @@ const fmtCount = (n) => {
 function GrowthChart({ points, metric, isMobile }) {
   const [hov, setHov] = useState(null); // index into points
   const wrapRef = useRef();
-  const W = 640, H = 200, PL = 6, PR = 52, PT = 12, PB = 20;
+  // Render at the container's true pixel width so SVG text stays 10px instead
+  // of scaling with the viewBox.
+  const [cw, setCw] = useState(480);
+  useEffect(() => {
+    const m = () => { if (wrapRef.current) setCw(Math.max(260, wrapRef.current.offsetWidth)); };
+    m();
+    window.addEventListener('resize', m);
+    return () => window.removeEventListener('resize', m);
+  }, []);
+  const W = cw, H = 170, PL = 6, PR = 46, PT = 10, PB = 18;
   const vals = points.map(p => p[metric] || 0);
   if (points.length < 2) {
     return <div style={{ padding: "36px 0", textAlign: "center", color: G.textTertiary, fontSize: 12.5 }}>Not enough history yet — daily tracking builds this chart automatically.</div>;
@@ -2401,7 +2410,7 @@ function GrowthChart({ points, metric, isMobile }) {
   const hovPt = hov != null ? points[hov] : null;
   return (
     <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHov(null)}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ display: "block", maxWidth: "100%" }}>
         {gridYs.map((y, i) => <line key={i} x1={PL} x2={W - PR} y1={y} y2={y} stroke={G.surfaceBorder} strokeWidth="1" />)}
         {[lo + (hi - lo) * 0.75, lo + (hi - lo) * 0.5, lo + (hi - lo) * 0.25].map((v, i) => (
           <text key={i} x={W - PR + 6} y={gridYs[i] + 3.5} fontSize="10" fill={G.textTertiary} fontFamily={ff}>{fmtCount(v)}</text>
@@ -2500,59 +2509,65 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
     chipCard('Music artists', a.musicArtists),
     chipCard('Gaming', a.gamingSystem ? [a.gamingSystem] : null),
   ].filter(Boolean);
-  return (
-    <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
-      {card('Follower growth', (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          {platforms.map(([k, l]) => toggleBtn(metric === k, l, () => setMetric(k)))}
-          <div style={{ width: 8 }} />
-          {[['30', '30d'], ['90', '90d'], ['all', 'All']].map(([k, l]) => toggleBtn(range === k, l, () => setRange(k)))}
-        </div>
-      ), (
-        <>
-          {hist.loading && !series.length
-            ? <div style={{ padding: "36px 0", textAlign: "center", color: G.textTertiary, fontSize: 12.5 }}>Loading history…</div>
-            : <GrowthChart points={points} metric={metric} isMobile={isMobile} />}
-          {delta7 != null && (
-            <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: delta7 >= 0 ? G.green : G.red }}>
-              {delta7 >= 0 ? '▲' : '▼'} {Math.abs(delta7).toLocaleString()} <span style={{ color: G.textTertiary, fontWeight: 500 }}>past 7 days</span>
-            </div>
-          )}
-        </>
-      ))}
-      {card('Marketability', <div style={{ fontSize: 11, color: G.textTertiary }}>starts at a base of 50</div>, (
-        <div style={{ display: "flex", gap: isMobile ? 16 : 28, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ fontSize: 46, fontWeight: 800, color: score >= 75 ? G.green : G.text, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{score}</div>
-          <div style={{ flex: 1, minWidth: 220, display: "grid", gap: 8 }}>
-            {parts.map(([label, val, max]) => (
-              <div key={label} style={{ display: "grid", gridTemplateColumns: "86px 1fr 44px", gap: 10, alignItems: "center" }}>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: G.textSecondary }}>{label}</div>
-                <div style={{ height: 6, borderRadius: 4, background: G.surfaceRaised, overflow: "hidden" }}>
-                  <div style={{ width: `${Math.round((val / max) * 100)}%`, height: "100%", background: G.green, borderRadius: 4 }} />
-                </div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: G.text, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{val}/{max}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-      {card('Reach', null, (
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : `repeat(${Math.min(facts.length, 5)}, 1fr)`, gap: "14px 12px" }}>
-          {facts.map(([label, value, d]) => (
-            <div key={label}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{value || '—'}</div>
-              {d != null && d !== 0 && <div style={{ fontSize: 11, fontWeight: 700, color: d > 0 ? G.green : G.red, marginTop: 2 }}>{d > 0 ? '+' : ''}{d.toLocaleString()} · 7d</div>}
-            </div>
-          ))}
-        </div>
-      ))}
-      <BrandDealsModule athlete={a} />
-      {chipCards.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${Math.min(chipCards.length, 2)}, 1fr)`, gap: 12 }}>
-          {chipCards}
+  const chartCard = card('Follower growth', (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      {platforms.map(([k, l]) => toggleBtn(metric === k, l, () => setMetric(k)))}
+      <div style={{ width: 8 }} />
+      {[['7', '7d'], ['30', '30d'], ['90', '90d'], ['all', 'All']].map(([k, l]) => toggleBtn(range === k, l, () => setRange(k)))}
+    </div>
+  ), (
+    <>
+      {hist.loading && !series.length
+        ? <div style={{ padding: "36px 0", textAlign: "center", color: G.textTertiary, fontSize: 12.5 }}>Loading history…</div>
+        : <GrowthChart points={points} metric={metric} isMobile={isMobile} />}
+      {delta7 != null && (
+        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: delta7 >= 0 ? G.green : G.red }}>
+          {delta7 >= 0 ? '▲' : '▼'} {Math.abs(delta7).toLocaleString()} <span style={{ color: G.textTertiary, fontWeight: 500 }}>past 7 days</span>
         </div>
       )}
+    </>
+  ));
+  const marketabilityCard = card('Marketability', <div style={{ fontSize: 11, color: G.textTertiary }}>base of 50</div>, (
+    <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ fontSize: 36, fontWeight: 800, color: score >= 75 ? G.green : G.text, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{score}</div>
+      <div style={{ flex: 1, minWidth: 200, display: "grid", gap: 7 }}>
+        {parts.map(([label, val, max]) => (
+          <div key={label} style={{ display: "grid", gridTemplateColumns: "80px 1fr 40px", gap: 10, alignItems: "center" }}>
+            <div style={{ fontSize: 11.5, fontWeight: 600, color: G.textSecondary }}>{label}</div>
+            <div style={{ height: 6, borderRadius: 4, background: G.surfaceRaised, overflow: "hidden" }}>
+              <div style={{ width: `${Math.round((val / max) * 100)}%`, height: "100%", background: G.green, borderRadius: 4 }} />
+            </div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: G.text, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{val}/{max}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  ));
+  const reachCard = card('Reach', null, (
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: "12px 12px" }}>
+      {facts.map(([label, value, d]) => (
+        <div key={label}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{value || '—'}</div>
+          {d != null && d !== 0 && <div style={{ fontSize: 11, fontWeight: 700, color: d > 0 ? G.green : G.red, marginTop: 2 }}>{d > 0 ? '+' : ''}{d.toLocaleString()} · 7d</div>}
+        </div>
+      ))}
+    </div>
+  ));
+  // Two columns on desktop so the whole tab fits one viewport.
+  return (
+    <div style={{ padding: `20px ${pad}px`, background: G.bg }}>
+      <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          {chartCard}
+          {reachCard}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          {marketabilityCard}
+          <BrandDealsModule athlete={a} />
+          {chipCards}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2607,13 +2622,13 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
   const prettySlug = (s) => String(s || '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   const thStyle = { textAlign: "right", padding: "9px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" };
   const tdStyle = { textAlign: "right", padding: "8px 10px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
-  const sectionCard = (title, table, note) => (
+  const sectionCard = (title, table, note, maxH) => (
     <div key={title} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "14px 16px 0" }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{title}</div>
         {note && <div style={{ fontSize: 11, color: G.textTertiary }}>{note}</div>}
       </div>
-      <div className="mh-hscroll" style={{ overflowX: "auto", padding: "6px 6px 8px" }}>{table}</div>
+      <div className="mh-hscroll" style={{ overflowX: "auto", padding: "6px 6px 8px", ...(maxH ? { maxHeight: maxH, overflowY: "auto" } : {}) }}>{table}</div>
     </div>
   );
 
@@ -2682,7 +2697,7 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
         ))}
       </tbody>
     </table>
-  ), games[0]?.typeName);
+  ), games[0]?.typeName, isMobile ? undefined : 430);
 
   // Previous/next game callout — same module ESPN shows on their player
   // overview. This is where fresh preseason games live before the season
@@ -2739,14 +2754,22 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
   }
 
   const espnUrl = `https://www.espn.com/${league === 'nfl' ? 'nfl' : 'college-football'}/player/stats/_/id/${a.espnId}`;
+  // One-viewport goal: game log and career tables sit side by side on desktop,
+  // each scrolling inside its own card instead of stretching the page.
   return (
-    <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
+    <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
       {gameCard}
       {catCards.length === 0 && !logCard && !gameCard && (
         <div style={{ padding: 30, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>ESPN doesn't have stat lines for {a.name} yet — they'll appear here once games are logged.</div>
       )}
-      {logCard}
-      {catCards}
+      <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: logCard && catCards.length ? "1fr 1fr" : "1fr", gap: 14, alignItems: "start" }}>
+        {logCard}
+        {catCards.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, ...(isMobile ? {} : { maxHeight: 470, overflowY: "auto" }) }}>
+            {catCards}
+          </div>
+        )}
+      </div>
       <div><a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>Full stats on ESPN →</a></div>
     </div>
   );
