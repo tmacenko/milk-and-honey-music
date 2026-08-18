@@ -768,6 +768,48 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
   const teamKey = isNFL ? 'nflTeam' : 'college';
   const teamEdited = String(form[teamKey] || '').trim() !== String(initial[teamKey] || '').trim();
 
+  // Profile linking, same assist as the recruiting board: NFL/College resolve
+  // against ESPN, HS against 247. Linked athletes sync nightly.
+  const linked = isHS ? !!String(form.profileUrl247 || '').trim() : !!String(form.espnId || '').trim();
+  const sourceLabel = isHS ? '247Sports' : 'ESPN';
+  const [linkCands, setLinkCands] = useState(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const doLinkSearch = async () => {
+    if (!String(form.name || '').trim()) { alert('Enter their name first.'); return; }
+    setLinkBusy(true); setLinkCands(null);
+    try {
+      const r = await fetch('/api/athletes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'recruit-search', name: String(form.name).trim(), school: String(form[teamKey] || '').trim(), level: form.level, classOf: isHS ? form.classOf : undefined }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || 'Search failed');
+      setLinkCands(d.candidates || []);
+    } catch (e) { alert(e.message || 'Search failed'); }
+    finally { setLinkBusy(false); }
+  };
+  const pickLink = (c) => {
+    setForm(f => {
+      const fill = (k, v) => (String(f[k] || '').trim() ? f[k] : (v || f[k]));
+      return {
+        ...f,
+        espnId: isHS ? f.espnId : (c.espnId || ''),
+        profileUrl247: isHS ? (c.url247 || '') : f.profileUrl247,
+        position: fill('position', c.position),
+        [teamKey]: fill(teamKey, c.school),
+        jerseyNumber: fill('jerseyNumber', c.jersey),
+        height: fill('height', c.height),
+        weight: fill('weight', c.weight),
+        hometown: fill('hometown', c.hometown),
+        classOf: isHS ? fill('classOf', c.classYear) : f.classOf,
+        // HS photos otherwise wait for the nightly 247 pass.
+        photoUrlOverride: isHS && c.photo && !String(f.photoUrl || '').trim() && !String(f.photoUrlOverride || '').trim() ? c.photo : f.photoUrlOverride,
+      };
+    });
+    setLinkCands(null);
+  };
+  const unlinkProfile = () => setForm(f => ({ ...f, ...(isHS ? { profileUrl247: '' } : { espnId: '' }) }));
+
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -787,7 +829,16 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
         body: JSON.stringify({ athlete: payload, originalName: initial.name, prevLevel: initial.level }),
       });
       const data = await resp.json();
-      if (data.success) onSave({ ...payload, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl }, { levelChanged, created: !initial._rowIndex });
+      if (data.success) {
+        // Brand-new athletes get the same instant enrichment the onboarding
+        // flow kicks off — fire-and-forget, nightly crons cover any misses.
+        if (!initial._rowIndex) {
+          const nm = encodeURIComponent(String(form.name).trim());
+          fetch(`/api/refresh-depth?task=all&name=${nm}`).catch(() => {});
+          fetch(`/api/refresh-socials?name=${nm}&platforms=ig,x,tiktok`).catch(() => {});
+        }
+        onSave({ ...payload, photoUrl: (form.photoUrlOverride || '').trim() || form.photoUrl }, { levelChanged, created: !initial._rowIndex });
+      }
       else throw new Error(data.error || 'Save failed');
     } catch (e) { alert('Save failed: ' + e.message); }
     setSaving(false);
@@ -909,6 +960,46 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
                 <Input value={form[teamKey] || ''} onChange={e => set(teamKey, e.target.value)} placeholder={isNFL ? 'Kansas City Chiefs' : 'Michigan'} />
               </Field>
               {teamEdited && <div style={{ fontSize: 11, color: G.textTertiary, marginTop: -10, marginBottom: 12 }}>Overrides the auto team sync until it catches up.</div>}
+            </div>
+            <div style={{ gridColumn: "1/-1", marginBottom: 14 }}>
+              {linked ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: G.greenSubtle, border: `1px solid ${G.green}44`, borderRadius: 12, padding: "9px 12px" }}>
+                  <Avatar name={form.name} photoUrl={(form.photoUrlOverride || '').trim() || form.photoUrl} size={34} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: G.green }}>Linked to {sourceLabel} ✓</div>
+                    <div style={{ fontSize: 11, color: G.textTertiary }}>Team, measurements{isHS ? ', class, rating' : ''} and photo sync automatically every night</div>
+                  </div>
+                  <button onClick={unlinkProfile} style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 10px", color: G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>Unlink</button>
+                </div>
+              ) : (
+                <>
+                  <button onClick={doLinkSearch} disabled={linkBusy}
+                    style={{ width: "100%", background: G.surfaceRaised, border: `1px dashed ${G.surfaceBorderLight}`, borderRadius: 12, padding: "10px", color: linkBusy ? G.textTertiary : G.text, fontWeight: 700, fontSize: 13, cursor: linkBusy ? 'wait' : 'pointer', fontFamily: ff }}>
+                    {linkBusy ? 'Searching…' : `🔍 Find ${sourceLabel} profile`}
+                  </button>
+                  {linkCands !== null && (linkCands.length === 0
+                    ? <div style={{ marginTop: 8, fontSize: 12, color: G.textTertiary, textAlign: "center" }}>No {sourceLabel} profile found — details can be filled in manually.</div>
+                    : (
+                      <div style={{ marginTop: 8, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, overflow: "hidden" }}>
+                        {linkCands.map((c, i) => (
+                          <div key={c.espnId || c.url247 || i} onClick={() => pickLink(c)}
+                            style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer", borderBottom: i < linkCands.length - 1 ? `1px solid ${G.surfaceBorder}` : "none" }}
+                            onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                            <Avatar name={c.name} photoUrl={c.photo} size={34} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{c.name}</div>
+                              <div style={{ fontSize: 11.5, color: G.textSecondary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {[c.school, c.position, isHS ? (c.classYear && `Class of ${c.classYear}`) : c.classYear, c.stars ? `${c.stars}★` : ''].filter(Boolean).join(' · ')}
+                              </div>
+                            </div>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: G.green, flexShrink: 0 }}>Use →</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                </>
+              )}
             </div>
             <Field label="Lead Agent">
               <select value={form.agentAssigned || ''} onChange={e => set('agentAssigned', e.target.value)} style={{ ...inputBase, cursor: "pointer" }}>

@@ -35,14 +35,16 @@ const lookupSchoolKey = (s) => String(s || '').toLowerCase()
   .replace(/\b(high school|hs|senior|academy|prep|preparatory|school|university|college|state)\b/g, '')
   .replace(/[^a-z]/g, '');
 
-// College: ESPN search → hydrate top NCAAF hits with team/position/class/photo.
-async function searchCollegeRecruit(name) {
+// ESPN search → hydrate top hits with team/position/class/photo. Works for
+// both leagues: league = 'nfl' | 'college-football'.
+async function searchEspnPlayer(name, league) {
+  const wantLeague = league === 'nfl' ? 'NFL' : 'NCAAF';
   const sr = JSON.parse(await lookupFetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=10`));
   const ids = [];
   for (const g of sr.results || []) {
     if (g.type !== 'player') continue;
     for (const it of g.contents || []) {
-      if (String(it.description || '').toUpperCase() !== 'NCAAF') continue;
+      if (String(it.description || '').toUpperCase() !== wantLeague) continue;
       const m = String(it.uid || '').match(/a:(\d+)/) || String((it.link || {}).web || '').match(/\/id\/(\d+)/);
       if (m && !ids.includes(m[1])) ids.push(m[1]);
     }
@@ -50,22 +52,22 @@ async function searchCollegeRecruit(name) {
   const out = await Promise.all(ids.slice(0, 5).map(async (id) => {
     try {
       const [detail, core] = await Promise.all([
-        lookupFetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/college-football/athletes/${id}`).then(JSON.parse),
-        lookupFetch(`https://sports.core.api.espn.com/v2/sports/football/leagues/college-football/athletes/${id}`).then(JSON.parse).catch(() => ({})),
+        lookupFetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/${league}/athletes/${id}`).then(JSON.parse),
+        league === 'nfl' ? Promise.resolve({}) : lookupFetch(`https://sports.core.api.espn.com/v2/sports/football/leagues/${league}/athletes/${id}`).then(JSON.parse).catch(() => ({})),
       ]);
       const a = detail.athlete || detail;
       if (!a || !a.displayName) return null;
       return {
         source: 'espn', espnId: id,
         name: a.displayName,
-        school: (a.team || {}).location || (a.team || {}).displayName || '',
+        school: league === 'nfl' ? ((a.team || {}).displayName || '') : ((a.team || {}).location || (a.team || {}).displayName || ''),
         position: ((a.position || {}).abbreviation || '').toUpperCase(),
-        classYear: (core.experience || {}).displayValue || '',
+        classYear: league === 'nfl' ? '' : ((core.experience || {}).displayValue || ''),
         height: String(a.displayHeight || '').replace(/\s+/g, ''),
         weight: String(a.displayWeight || '').replace(/\s*lbs.*$/i, ''),
         jersey: String(a.jersey || ''),
-        photo: (a.headshot || {}).href || `https://a.espncdn.com/i/headshots/college-football/players/full/${id}.png`,
-        link: `https://www.espn.com/college-football/player/_/id/${id}`,
+        photo: (a.headshot || {}).href || `https://a.espncdn.com/i/headshots/${league === 'nfl' ? 'nfl' : 'college-football'}/players/full/${id}.png`,
+        link: `https://www.espn.com/${league === 'nfl' ? 'nfl' : 'college-football'}/player/_/id/${id}`,
       };
     } catch { return null; }
   }));
@@ -1143,7 +1145,9 @@ module.exports = async (req, res) => {
         const { name, school, level, classOf } = req.body;
         if (!String(name || '').trim()) return res.status(400).json({ error: 'Name is required' });
         const candidates = level === 'College'
-          ? await searchCollegeRecruit(String(name).trim())
+          ? await searchEspnPlayer(String(name).trim(), 'college-football')
+          : level === 'NFL'
+          ? await searchEspnPlayer(String(name).trim(), 'nfl')
           : await searchHsRecruit(String(name).trim(), String(school || '').trim(), classOf);
         return res.json({ candidates });
       }
