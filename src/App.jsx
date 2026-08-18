@@ -2361,6 +2361,202 @@ function BoxPreviewModal({ file, onClose }) {
   );
 }
 
+// ── Marketing tab (staff view) ───────────────────────────────────────────────
+const fmtCount = (n) => {
+  const v = Math.round(+n || 0);
+  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(v % 1e6 === 0 ? 0 : 1) + 'M';
+  if (Math.abs(v) >= 1e4) return Math.round(v / 1e3) + 'K';
+  if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+  return String(v);
+};
+
+// Follower growth line chart — one series at a time (the platform toggle picks
+// it), house green, crosshair tooltip. Hand-rolled SVG, theme-aware via G.
+function GrowthChart({ points, metric, isMobile }) {
+  const [hov, setHov] = useState(null); // index into points
+  const wrapRef = useRef();
+  const W = 640, H = 200, PL = 6, PR = 52, PT = 12, PB = 20;
+  const vals = points.map(p => p[metric] || 0);
+  if (points.length < 2) {
+    return <div style={{ padding: "36px 0", textAlign: "center", color: G.textTertiary, fontSize: 12.5 }}>Not enough history yet — daily tracking builds this chart automatically.</div>;
+  }
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (hi === lo) { hi += Math.max(2, hi * 0.01); lo -= Math.max(2, lo * 0.01); }
+  const pad = (hi - lo) * 0.08;
+  lo = Math.max(0, lo - pad); hi += pad;
+  const xAt = (i) => PL + (i / (points.length - 1)) * (W - PL - PR);
+  const yAt = (v) => PT + (1 - (v - lo) / (hi - lo)) * (H - PT - PB);
+  const path = vals.map((v, i) => `${i ? 'L' : 'M'}${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join('');
+  const area = `${path}L${xAt(points.length - 1).toFixed(1)},${H - PB}L${PL},${H - PB}Z`;
+  const gridYs = [0.25, 0.5, 0.75].map(f => PT + f * (H - PT - PB));
+  const fmtDay = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const onMove = (e) => {
+    const el = wrapRef.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const frac = (e.clientX - r.left) / r.width * W;
+    const i = Math.round((frac - PL) / (W - PL - PR) * (points.length - 1));
+    setHov(Math.max(0, Math.min(points.length - 1, i)));
+  };
+  const last = points[points.length - 1];
+  const hovPt = hov != null ? points[hov] : null;
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHov(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+        {gridYs.map((y, i) => <line key={i} x1={PL} x2={W - PR} y1={y} y2={y} stroke={G.surfaceBorder} strokeWidth="1" />)}
+        {[lo + (hi - lo) * 0.75, lo + (hi - lo) * 0.5, lo + (hi - lo) * 0.25].map((v, i) => (
+          <text key={i} x={W - PR + 6} y={gridYs[i] + 3.5} fontSize="10" fill={G.textTertiary} fontFamily={ff}>{fmtCount(v)}</text>
+        ))}
+        <path d={area} fill={G.green} opacity="0.08" />
+        <path d={path} fill="none" stroke={G.green} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {hovPt && <line x1={xAt(hov)} x2={xAt(hov)} y1={PT} y2={H - PB} stroke={G.surfaceBorderLight} strokeWidth="1" />}
+        {hovPt && <circle cx={xAt(hov)} cy={yAt(hovPt[metric] || 0)} r="4.5" fill={G.green} stroke={G.surface} strokeWidth="2" />}
+        {!hovPt && <circle cx={xAt(points.length - 1)} cy={yAt(vals[vals.length - 1])} r="4.5" fill={G.green} stroke={G.surface} strokeWidth="2" />}
+        <text x={PL} y={H - 6} fontSize="10" fill={G.textTertiary} fontFamily={ff}>{fmtDay(points[0].dt)}</text>
+        <text x={W - PR} y={H - 6} fontSize="10" fill={G.textTertiary} fontFamily={ff} textAnchor="end">{fmtDay(last.dt)}</text>
+      </svg>
+      {hovPt && (
+        <div style={{ position: "absolute", top: 0, left: `${(xAt(hov) / W) * 100}%`, transform: `translateX(${hov > points.length / 2 ? '-108%' : '8%'})`, background: G.surfaceGlass, backdropFilter: "blur(12px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 8, padding: "5px 9px", pointerEvents: "none", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 10, color: G.textTertiary, fontWeight: 600 }}>{fmtDay(hovPt.dt)}</div>
+          <div style={{ fontSize: 13, color: G.text, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{(hovPt[metric] || 0).toLocaleString()}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SportsMarketingTab({ athlete: a, isMobile, pad }) {
+  const hist = useAdminTab('socialhistory');
+  const hist247 = useAdminTab('stathistory');
+  const nk = a.name.toLowerCase().trim();
+  const series = useMemo(() => seriesFromHistory(hist.data?.rows)[nk] || [], [hist.data, nk]);
+  const s247 = useMemo(() => latest247From(hist247.data?.rows)[nk], [hist247.data, nk]);
+  const { score, parts } = computeMarketability(a, series, s247);
+  const [metric, setMetric] = useState('total');
+  const [range, setRange] = useState('30');
+  const platforms = [
+    ['total', 'Total reach'],
+    a.instagram && ['ig', 'Instagram'],
+    a.twitter && ['x', 'X'],
+    a.tiktok && ['tk', 'TikTok'],
+  ].filter(Boolean);
+  const points = useMemo(() => {
+    if (!series.length || range === 'all') return series;
+    const cutoff = series[series.length - 1].dt.getTime() - (+range) * 86400000;
+    return series.filter(p => p.dt.getTime() >= cutoff);
+  }, [series, range]);
+  // 7-day change for the selected metric (baseline must already have counts).
+  const delta7 = useMemo(() => {
+    if (series.length < 2) return null;
+    const last = series[series.length - 1];
+    const target = last.dt.getTime() - 7 * 86400000;
+    let base = series[0];
+    for (const r of series) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
+    if (base === last || !(base[metric] > 0)) return null;
+    return last[metric] - base[metric];
+  }, [series, metric]);
+  const card = (title, right, body) => (
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{title}</div>
+        {right}
+      </div>
+      {body}
+    </div>
+  );
+  const toggleBtn = (on, label, onClick) => (
+    <button key={label} onClick={onClick}
+      style={{ background: on ? G.greenSubtle : "transparent", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 8, padding: "4px 10px", color: on ? G.green : G.textTertiary, fontWeight: 600, fontSize: 11.5, cursor: "pointer", fontFamily: ff }}>
+      {label}
+    </button>
+  );
+  // Per-platform 7d deltas for the facts row.
+  const platDelta = (k) => {
+    if (series.length < 2) return 0;
+    const last = series[series.length - 1];
+    const target = last.dt.getTime() - 7 * 86400000;
+    let base = series[0];
+    for (const r of series) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
+    return base !== last && base[k] > 0 ? last[k] - base[k] : 0;
+  };
+  const facts = [
+    a.instagram && ['Instagram', a.igFollowers, platDelta('ig')],
+    a.twitter && ['X', a.twitterFollowers, platDelta('x')],
+    a.tiktok && ['TikTok', a.tiktokFollowers, platDelta('tk')],
+    ['Total reach', fmtCount(athleteReach(a)), null],
+    a.igEngagement && ['IG engagement', /%/.test(a.igEngagement) ? a.igEngagement : `${a.igEngagement}%`, null],
+  ].filter(Boolean);
+  const chipCard = (title, items) => (items?.length > 0 ? (
+    <div key={title} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>{title}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {items.map((v, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: G.text, whiteSpace: "nowrap" }}>{v}</span>)}
+      </div>
+    </div>
+  ) : null);
+  const chipCards = [
+    chipCard('Brand targets', a.brandTargets),
+    chipCard('Brands worked with', a.brands),
+    chipCard('Interests', a.interests),
+    chipCard('Music artists', a.musicArtists),
+    chipCard('Gaming', a.gamingSystem ? [a.gamingSystem] : null),
+  ].filter(Boolean);
+  return (
+    <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
+      {card('Follower growth', (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {platforms.map(([k, l]) => toggleBtn(metric === k, l, () => setMetric(k)))}
+          <div style={{ width: 8 }} />
+          {[['30', '30d'], ['90', '90d'], ['all', 'All']].map(([k, l]) => toggleBtn(range === k, l, () => setRange(k)))}
+        </div>
+      ), (
+        <>
+          {hist.loading && !series.length
+            ? <div style={{ padding: "36px 0", textAlign: "center", color: G.textTertiary, fontSize: 12.5 }}>Loading history…</div>
+            : <GrowthChart points={points} metric={metric} isMobile={isMobile} />}
+          {delta7 != null && (
+            <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: delta7 >= 0 ? G.green : G.red }}>
+              {delta7 >= 0 ? '▲' : '▼'} {Math.abs(delta7).toLocaleString()} <span style={{ color: G.textTertiary, fontWeight: 500 }}>past 7 days</span>
+            </div>
+          )}
+        </>
+      ))}
+      {card('Marketability', <div style={{ fontSize: 11, color: G.textTertiary }}>starts at a base of 50</div>, (
+        <div style={{ display: "flex", gap: isMobile ? 16 : 28, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ fontSize: 46, fontWeight: 800, color: score >= 75 ? G.green : G.text, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{score}</div>
+          <div style={{ flex: 1, minWidth: 220, display: "grid", gap: 8 }}>
+            {parts.map(([label, val, max]) => (
+              <div key={label} style={{ display: "grid", gridTemplateColumns: "86px 1fr 44px", gap: 10, alignItems: "center" }}>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: G.textSecondary }}>{label}</div>
+                <div style={{ height: 6, borderRadius: 4, background: G.surfaceRaised, overflow: "hidden" }}>
+                  <div style={{ width: `${Math.round((val / max) * 100)}%`, height: "100%", background: G.green, borderRadius: 4 }} />
+                </div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: G.text, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{val}/{max}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {card('Reach', null, (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : `repeat(${Math.min(facts.length, 5)}, 1fr)`, gap: "14px 12px" }}>
+          {facts.map(([label, value, d]) => (
+            <div key={label}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{value || '—'}</div>
+              {d != null && d !== 0 && <div style={{ fontSize: 11, fontWeight: 700, color: d > 0 ? G.green : G.red, marginTop: 2 }}>{d > 0 ? '+' : ''}{d.toLocaleString()} · 7d</div>}
+            </div>
+          ))}
+        </div>
+      ))}
+      <BrandDealsModule athlete={a} />
+      {chipCards.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${Math.min(chipCards.length, 2)}, 1fr)`, gap: 12 }}>
+          {chipCards}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Stats tab (staff view) ────────────────────────────────────────────────────
 // Career + season stats and the game log, fetched straight from ESPN's public
 // JSON in the browser (their API sends open CORS headers) using the espnId the
@@ -2637,19 +2833,23 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             </div>
           </div>
         </div>
-        {/* Page tabs (staff only): Overview | Stats. Stats needs an ESPN link,
-            so the bar only shows when there's a second page to visit. */}
-        {companyView && a.espnId && (
+        {/* Page tabs (staff only): Overview | Marketing | Stats. Stats needs
+            an ESPN link; Marketing shows for everyone. */}
+        {companyView && (
           <div style={{ display: "flex", gap: 24, padding: `0 ${pad}px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>
-            {[['overview', 'Overview'], ['stats', 'Stats']].map(([k, l]) => (
+            {[['overview', 'Overview'], ['marketing', 'Marketing'], ...(a.espnId ? [['stats', 'Stats']] : [])].map(([k, l]) => (
               <button key={k} onClick={() => setPage(k)}
-                style={{ background: "none", border: "none", padding: "13px 2px 11px", fontFamily: ff, fontSize: 13.5, fontWeight: page === k ? 700 : 500, color: page === k ? G.text : G.textTertiary, borderBottom: `2px solid ${page === k ? G.green : 'transparent'}`, marginBottom: -1, cursor: "pointer" }}>
+                onMouseEnter={e => { if (page !== k) e.currentTarget.style.color = G.textSecondary; }}
+                onMouseLeave={e => { if (page !== k) e.currentTarget.style.color = G.textTertiary; }}
+                style={{ background: "none", border: "none", padding: "13px 2px 11px", fontFamily: ff, fontSize: 13.5, fontWeight: page === k ? 700 : 500, color: page === k ? G.text : G.textTertiary, borderBottom: `2px solid ${page === k ? G.green : 'transparent'}`, marginBottom: -1, cursor: "pointer", transition: "color 0.12s" }}>
                 {l}
               </button>
             ))}
           </div>
         )}
-        {companyView && a.espnId && page === 'stats' ? (
+        {companyView && page === 'marketing' ? (
+          <SportsMarketingTab athlete={a} isMobile={isMobile} pad={pad} />
+        ) : companyView && a.espnId && page === 'stats' ? (
           <SportsStatsTab athlete={a} isMobile={isMobile} pad={pad} />
         ) : (
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
@@ -2674,10 +2874,10 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             </div>
           )}
           {companyView && <SocialContractModules athlete={a} isMobile={isMobile} />}
-          {companyView && <BrandDealsModule athlete={a} />}
           {(() => {
-            // Up to four chip modules side by side: worked-with + interests are
-            // partner-visible; targets + music tastes are company-only intel.
+            // Chip modules live on the Marketing tab for staff; the public
+            // one-pager keeps its partner-visible pair here.
+            if (companyView) return null;
             const chipCard = (title, items) => (items?.length > 0 ? (
               <div key={title} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>{title}</div>
