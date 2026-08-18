@@ -503,7 +503,8 @@ async function buildSocialPdf(data) {
         } else if (c.key === 'team') {
           doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(9).text(r.team || '—', cx + pad, y + 10, { width: tw, height: 11, ellipsis: true });
         } else if (c.key === 'ig' || c.key === 'x' || c.key === 'tk') {
-          const n = Number(r[c.key]) || 0, d = Number(r[c.key + 'D']) || 0;
+          // Growth toggle off hides the per-platform deltas too, not just the column.
+          const n = Number(r[c.key]) || 0, d = showGrowth ? (Number(r[c.key + 'D']) || 0) : 0;
           doc.fillColor(n ? PDF_TEXT : PDF_TEXT3).font('Helvetica-Bold').fontSize(9.5).text(n ? fmt(n) : '—', cx + pad, y + (d ? 5 : 10), { width: tw, lineBreak: false });
           if (d) doc.fillColor(d > 0 ? PDF_GREEN : RED).font('Helvetica-Bold').fontSize(7.5).text(`${d > 0 ? '+' : '-'}${fmt(Math.abs(d))}`, cx + pad, y + 17, { width: tw, lineBreak: false });
         } else if (c.key === 'total') {
