@@ -2589,7 +2589,6 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
   ));
   // Brand Profile: the athlete's marketing attributes as compact rows, not cards.
   const gs = String(a.gamingSystem || '').trim();
-  const gsMode = /pc|computer|steam/i.test(gs) ? 'PC' : /ps\d|playstation|xbox|switch|console/i.test(gs) ? 'Console' : null;
   const profileRows = [
     ['Brand Targets', a.brandTargets],
     ['Interests', a.interests],
@@ -2601,15 +2600,7 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
       {gs && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <div style={{ width: 96, flexShrink: 0, fontSize: 12, fontWeight: 700, color: G.text }}>Gaming System</div>
-          {gsMode ? (
-            <div style={{ display: "flex", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: 2, gap: 2 }} title={gs}>
-              {['PC', 'Console'].map(m => (
-                <span key={m} style={{ background: gsMode === m ? G.surface : "transparent", border: `1px solid ${gsMode === m ? G.green : 'transparent'}`, borderRadius: 7, padding: "3px 12px", color: gsMode === m ? G.green : G.textTertiary, fontWeight: 600, fontSize: 11.5 }}>{m}</span>
-              ))}
-            </div>
-          ) : (
-            <span style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.text }}>{gs}</span>
-          )}
+          <span style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.text }}>{gs}</span>
         </div>
       )}
     </div>
