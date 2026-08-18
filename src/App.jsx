@@ -2453,16 +2453,30 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
     const cutoff = series[series.length - 1].dt.getTime() - (+range) * 86400000;
     return series.filter(p => p.dt.getTime() >= cutoff);
   }, [series, range]);
-  // 7-day change for the selected metric (baseline must already have counts).
-  const delta7 = useMemo(() => {
-    if (series.length < 2) return null;
+  // % change across the SELECTED timeframe — the line under the chart.
+  const rangeChange = useMemo(() => {
+    if (points.length < 2) return null;
+    const first = points[0][metric] || 0, last = points[points.length - 1][metric] || 0;
+    if (!(first > 0)) return null;
+    return (last - first) / first * 100;
+  }, [points, metric]);
+  // Score movement: recompute the score as of ~30 days ago from the history we
+  // actually have (follower counts + growth back then) and diff against today.
+  const scoreDelta = useMemo(() => {
+    if (series.length < 8) return null;
     const last = series[series.length - 1];
-    const target = last.dt.getTime() - 7 * 86400000;
-    let base = series[0];
-    for (const r of series) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
-    if (base === last || !(base[metric] > 0)) return null;
-    return last[metric] - base[metric];
-  }, [series, metric]);
+    const target = last.dt.getTime() - 30 * 86400000;
+    let past = series[0];
+    for (const p of series) if (Math.abs(p.dt - target) < Math.abs(past.dt - target)) past = p;
+    if (past === last || (last.dt - past.dt) / 86400000 < 7) return null;
+    const t7 = past.dt.getTime() - 7 * 86400000;
+    let base7 = series[0];
+    for (const p of series) if (p.dt <= past.dt && Math.abs(p.dt - t7) < Math.abs(base7.dt - t7)) base7 = p;
+    const g7 = base7 !== past && base7.total > 0 ? past.total - base7.total : 0;
+    const pastA = { ...a, igFollowers: past.ig, twitterFollowers: past.x, tiktokFollowers: past.tk, growth7d: g7, growth7dPct: base7.total > 0 ? String((g7 / base7.total * 100).toFixed(2)) : '0' };
+    const pastScore = computeMarketability(pastA, series.filter(p => p.dt <= past.dt), s247).score;
+    return score - pastScore;
+  }, [series, a, s247, score]);
   const card = (title, right, body) => (
     <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
@@ -2472,101 +2486,165 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
       {body}
     </div>
   );
-  const toggleBtn = (on, label, onClick) => (
-    <button key={label} onClick={onClick}
-      style={{ background: on ? G.greenSubtle : "transparent", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 8, padding: "4px 10px", color: on ? G.green : G.textTertiary, fontWeight: 600, fontSize: 11.5, cursor: "pointer", fontFamily: ff }}>
-      {label}
-    </button>
+  // Two segmented control groups — metric and range read as separate things.
+  const segGroup = (items) => (
+    <div style={{ display: "flex", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: 2, gap: 2 }}>
+      {items.map(([on, label, onClick]) => (
+        <button key={label} onClick={onClick}
+          style={{ background: on ? G.surface : "transparent", border: `1px solid ${on ? G.green : 'transparent'}`, borderRadius: 7, padding: "3px 9px", color: on ? G.green : G.textTertiary, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+          {label}
+        </button>
+      ))}
+    </div>
   );
-  // Per-platform 7d deltas for the facts row.
-  const platDelta = (k) => {
-    if (series.length < 2) return 0;
-    const last = series[series.length - 1];
-    const target = last.dt.getTime() - 7 * 86400000;
-    let base = series[0];
-    for (const r of series) if (r !== last && Math.abs(r.dt - target) < Math.abs(base.dt - target)) base = r;
-    return base !== last && base[k] > 0 ? last[k] - base[k] : 0;
-  };
-  const facts = [
-    a.instagram && ['Instagram', a.igFollowers, platDelta('ig')],
-    a.twitter && ['X', a.twitterFollowers, platDelta('x')],
-    a.tiktok && ['TikTok', a.tiktokFollowers, platDelta('tk')],
-    ['Total reach', fmtCount(athleteReach(a)), null],
-    a.igEngagement && ['IG engagement', /%/.test(a.igEngagement) ? a.igEngagement : `${a.igEngagement}%`, null],
-  ].filter(Boolean);
-  const chipCard = (title, items) => (items?.length > 0 ? (
-    <div key={title} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>{title}</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {items.map((v, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: G.text, whiteSpace: "nowrap" }}>{v}</span>)}
+  const scoreLabel = score >= 85 ? 'Elite' : score >= 75 ? 'Strong' : score >= 65 ? 'Solid' : score >= 55 ? 'Developing' : 'Early';
+  const scoreColor = score >= 75 ? G.green : G.text;
+  const scoreCard = card('Marketability score', null, (
+    <div style={{ display: "flex", gap: 22, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+          <span style={{ fontSize: 46, fontWeight: 800, color: scoreColor, letterSpacing: "-0.03em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{score}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: G.textTertiary }}>/100</span>
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: scoreColor, marginTop: 4 }}>{scoreLabel}</div>
+        {scoreDelta != null && scoreDelta !== 0 && (
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: scoreDelta > 0 ? G.green : G.red, marginTop: 4 }}>
+            {scoreDelta > 0 ? '↑' : '↓'} {Math.abs(scoreDelta)} pt{Math.abs(scoreDelta) !== 1 ? 's' : ''} this month
+          </div>
+        )}
+      </div>
+      <div style={{ flex: 1, minWidth: 190, display: "grid", gap: 8 }}>
+        {parts.map(([label, val, max]) => (
+          <div key={label} style={{ display: "grid", gridTemplateColumns: "76px 1fr 42px", gap: 10, alignItems: "center" }}>
+            <div style={{ fontSize: 11.5, fontWeight: 600, color: G.textSecondary }}>{label}</div>
+            <div style={{ height: 6, borderRadius: 4, background: G.surfaceRaised, overflow: "hidden" }}>
+              <div style={{ width: `${Math.round((val / max) * 100)}%`, height: "100%", background: G.green, borderRadius: 4 }} />
+            </div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: G.text, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{val} / {max}</div>
+          </div>
+        ))}
       </div>
     </div>
-  ) : null);
-  const chipCards = [
-    chipCard('Brand targets', a.brandTargets),
-    chipCard('Brands worked with', a.brands),
-    chipCard('Interests', a.interests),
-    chipCard('Music artists', a.musicArtists),
-    chipCard('Gaming', a.gamingSystem ? [a.gamingSystem] : null),
-  ].filter(Boolean);
-  const chartCard = card('Follower growth', (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-      {platforms.map(([k, l]) => toggleBtn(metric === k, l, () => setMetric(k)))}
-      <div style={{ width: 8 }} />
-      {[['7', '7d'], ['30', '30d'], ['90', '90d'], ['all', 'All']].map(([k, l]) => toggleBtn(range === k, l, () => setRange(k)))}
+  ));
+  const rangeLabel = range === 'all' ? 'overall' : `over last ${range} days`;
+  const chartCard = card('Reach growth', (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      {segGroup(platforms.map(([k, l]) => [metric === k, l, () => setMetric(k)]))}
+      {segGroup([['7', '7D'], ['30', '30D'], ['90', '90D'], ['all', 'ALL']].map(([k, l]) => [range === k, l, () => setRange(k)]))}
     </div>
   ), (
     <>
       {hist.loading && !series.length
         ? <div style={{ padding: "36px 0", textAlign: "center", color: G.textTertiary, fontSize: 12.5 }}>Loading history…</div>
         : <GrowthChart points={points} metric={metric} isMobile={isMobile} />}
-      {delta7 != null && (
-        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: delta7 >= 0 ? G.green : G.red }}>
-          {delta7 >= 0 ? '▲' : '▼'} {Math.abs(delta7).toLocaleString()} <span style={{ color: G.textTertiary, fontWeight: 500 }}>past 7 days</span>
+      {rangeChange != null && (
+        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: rangeChange >= 0 ? G.green : G.red }}>
+          {rangeChange >= 0 ? '↑' : '↓'} {Math.abs(rangeChange).toFixed(1)}% <span style={{ color: G.textTertiary, fontWeight: 500 }}>{rangeLabel}</span>
         </div>
       )}
     </>
   ));
-  const marketabilityCard = card('Marketability', <div style={{ fontSize: 11, color: G.textTertiary }}>base of 50</div>, (
-    <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
-      <div style={{ fontSize: 36, fontWeight: 800, color: score >= 75 ? G.green : G.text, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{score}</div>
-      <div style={{ flex: 1, minWidth: 200, display: "grid", gap: 7 }}>
-        {parts.map(([label, val, max]) => (
-          <div key={label} style={{ display: "grid", gridTemplateColumns: "80px 1fr 40px", gap: 10, alignItems: "center" }}>
-            <div style={{ fontSize: 11.5, fontWeight: 600, color: G.textSecondary }}>{label}</div>
-            <div style={{ height: 6, borderRadius: 4, background: G.surfaceRaised, overflow: "hidden" }}>
-              <div style={{ width: `${Math.round((val / max) * 100)}%`, height: "100%", background: G.green, borderRadius: 4 }} />
-            </div>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: G.text, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{val}/{max}</div>
+  // Audience: the quick numerical summary (the chart above holds the trend).
+  const totalReach = athleteReach(a);
+  const move30 = useMemo(() => {
+    if (series.length < 2) return null;
+    const last = series[series.length - 1];
+    const target = last.dt.getTime() - 30 * 86400000;
+    let base = series[0];
+    for (const p of series) if (p !== last && Math.abs(p.dt - target) < Math.abs(base.dt - target)) base = p;
+    return base !== last && base.total > 0 ? (last.total - base.total) / base.total * 100 : null;
+  }, [series]);
+  const audiencePlatforms = [
+    a.instagram && ['Instagram', parseReach(a.igFollowers)],
+    a.twitter && ['X', parseReach(a.twitterFollowers)],
+    a.tiktok && ['TikTok', parseReach(a.tiktokFollowers)],
+  ].filter(Boolean);
+  const audienceCard = card('Audience', a.igEngagement ? <div style={{ fontSize: 11, color: G.textTertiary }}>IG engagement {String(a.igEngagement).replace(/%$/, '')}%</div> : null, (
+    <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
+      <div style={{ flexShrink: 0 }}>
+        <div style={{ fontSize: 28, fontWeight: 800, color: G.text, letterSpacing: "-0.02em", lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{fmtCount(totalReach)}</div>
+        <div style={{ fontSize: 11.5, color: G.textTertiary, fontWeight: 600, marginTop: 2 }}>Total followers</div>
+        {move30 != null && Math.abs(move30) >= 0.05 && (
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: move30 > 0 ? G.green : G.red, marginTop: 4 }}>
+            {move30 > 0 ? '↑' : '↓'} {Math.abs(move30).toFixed(1)}% <span style={{ color: G.textTertiary, fontWeight: 500 }}>over last 30 days</span>
           </div>
-        ))}
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+        {audiencePlatforms.map(([label, n]) => {
+          const pct = totalReach > 0 ? Math.round((n / totalReach) * 100) : 0;
+          return (
+            <div key={label} style={{ minWidth: 92 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{fmtCount(n)}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: G.green, marginTop: 3 }}>{pct}%</div>
+              <div style={{ height: 4, borderRadius: 3, background: G.surfaceRaised, overflow: "hidden", marginTop: 3 }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: G.green, borderRadius: 3 }} />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   ));
-  const reachCard = card('Reach', null, (
-    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: "12px 12px" }}>
-      {facts.map(([label, value, d]) => (
-        <div key={label}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{value || '—'}</div>
-          {d != null && d !== 0 && <div style={{ fontSize: 11, fontWeight: 700, color: d > 0 ? G.green : G.red, marginTop: 2 }}>{d > 0 ? '+' : ''}{d.toLocaleString()} · 7d</div>}
+  // Brand Profile: the athlete's marketing attributes as compact rows, not cards.
+  const gs = String(a.gamingSystem || '').trim();
+  const gsMode = /pc|computer|steam/i.test(gs) ? 'PC' : /ps\d|playstation|xbox|switch|console/i.test(gs) ? 'Console' : null;
+  const profileRows = [
+    ['Brand Targets', a.brandTargets],
+    ['Interests', a.interests],
+    ['Music Artists', a.musicArtists],
+  ].filter(([, items]) => items?.length > 0);
+  const brandProfileCard = (profileRows.length > 0 || gs) && card('Brand profile', null, (
+    <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "1fr 1fr", gap: "12px 28px" }}>
+      {profileRows.map(([label, items]) => <PillRow key={label} label={label} items={items} />)}
+      {gs && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <div style={{ width: 96, flexShrink: 0, fontSize: 12, fontWeight: 700, color: G.text }}>Gaming System</div>
+          {gsMode ? (
+            <div style={{ display: "flex", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: 2, gap: 2 }} title={gs}>
+              {['PC', 'Console'].map(m => (
+                <span key={m} style={{ background: gsMode === m ? G.surface : "transparent", border: `1px solid ${gsMode === m ? G.green : 'transparent'}`, borderRadius: 7, padding: "3px 12px", color: gsMode === m ? G.green : G.textTertiary, fontWeight: 600, fontSize: 11.5 }}>{m}</span>
+              ))}
+            </div>
+          ) : (
+            <span style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.text }}>{gs}</span>
+          )}
         </div>
-      ))}
+      )}
     </div>
   ));
-  // Two columns on desktop so the whole tab fits one viewport.
+  // Hierarchy: marketability → trend → size → deals → profile attributes.
   return (
-    <div style={{ padding: `20px ${pad}px`, background: G.bg }}>
-      <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-          {chartCard}
-          {reachCard}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-          {marketabilityCard}
-          <BrandDealsModule athlete={a} />
-          {chipCards}
-        </div>
+    <div style={{ padding: `20px ${pad}px`, background: G.bg, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "5fr 7fr", gap: 14, alignItems: "stretch" }}>
+        {scoreCard}
+        {chartCard}
+      </div>
+      <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "5fr 7fr", gap: 14, alignItems: "stretch" }}>
+        {audienceCard}
+        <BrandDealsModule athlete={a} canAdd />
+      </div>
+      {brandProfileCard}
+    </div>
+  );
+}
+
+// One compact Brand Profile row: label left, pills right, "+N more" expands.
+function PillRow({ label, items }) {
+  const [open, setOpen] = useState(false);
+  const CAP = 4;
+  const shown = open ? items : items.slice(0, CAP);
+  const extra = items.length - CAP;
+  const pill = { background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: G.text, whiteSpace: "nowrap" };
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, minWidth: 0 }}>
+      <div style={{ width: 96, flexShrink: 0, fontSize: 12, fontWeight: 700, color: G.text, paddingTop: 4 }}>{label}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
+        {shown.map((v, i) => <span key={i} style={pill}>{v}</span>)}
+        {!open && extra > 0 && (
+          <button onClick={() => setOpen(true)} style={{ ...pill, color: G.textTertiary, cursor: "pointer", fontFamily: ff, background: "transparent", borderStyle: "dashed" }}>+{extra} more</button>
+        )}
       </div>
     </div>
   );
@@ -5516,15 +5594,27 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
 }
 
 // Brand deals card on the player profile (company view) — this player's deals.
-function BrandDealsModule({ athlete: a }) {
+function BrandDealsModule({ athlete: a, canAdd }) {
   const tab = useAdminTab('branddeals');
   const key = a.name.toLowerCase().trim();
   const deals = useMemo(() => parseDeals(tab.data).filter(d => d.clients.some(n => n.toLowerCase().trim() === key)), [tab.data, key]);
   const [previewFile, setPreviewFile] = useState(null);
+  const [adding, setAdding] = useState(false);
   return (
     <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Brand deals</div>
-      {deals.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary }}>No brand deals yet.</div>
+      {deals.length === 0 ? (
+        canAdd ? (
+          <div style={{ border: `1px dashed ${G.surfaceBorderLight}`, borderRadius: 12, padding: "18px 16px", textAlign: "center" }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: G.text }}>No brand deals yet</div>
+            <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 3 }}>Add their first brand partnership.</div>
+            <button onClick={() => setAdding(true)}
+              style={{ marginTop: 10, background: G.greenSubtle, border: `1px solid ${G.green}`, borderRadius: 10, padding: "7px 14px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>
+              + Add Brand Deal
+            </button>
+          </div>
+        ) : <div style={{ fontSize: 13, color: G.textTertiary }}>No brand deals yet.</div>
+      )
         : deals.map((d, i, arr) => (
           <div key={d._row} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -5544,6 +5634,10 @@ function BrandDealsModule({ athlete: a }) {
           </div>
         ))}
       {previewFile && <BoxPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+      {adding && (
+        <BrandDealForm initial={{ clients: [a.name] }} athleteNames={[a.name]} user={null}
+          onDone={() => { setAdding(false); tab.reload(); }} onCancel={() => setAdding(false)} />
+      )}
     </div>
   );
 }
