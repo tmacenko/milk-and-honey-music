@@ -978,30 +978,62 @@ module.exports = async (req, res) => {
           });
           return out;
         };
+        // College: Wikipedia's college staff coverage is unreliable, but nearly
+        // every athletics site runs Sidearm with a standardized /staff-directory
+        // (name anchor followed by a title cell). School → site map below.
+        const COLLEGE_SITES = {
+          'arizona state': 'thesundevils.com', 'cincinnati': 'gobearcats.com',
+          'college of the holy cross': 'goholycross.com', 'holy cross': 'goholycross.com',
+          'florida state': 'seminoles.com', 'georgia': 'georgiadogs.com',
+          'georgia southern': 'gseagles.com', 'illinois': 'fightingillini.com',
+          'indiana': 'iuhoosiers.com', 'kansas': 'kuathletics.com',
+          'kennesaw state': 'ksuowls.com', 'kent state': 'kentstatesports.com',
+          'miami': 'miamihurricanes.com', 'michigan': 'mgoblue.com',
+          'montana state': 'msubobcats.com', 'north carolina': 'goheels.com',
+          'northwestern': 'nusports.com', 'notre dame': 'fightingirish.com',
+          'ohio state': 'ohiostatebuckeyes.com', 'oklahoma state': 'okstate.com',
+          'penn state': 'gopsusports.com', 'pitt': 'pittsburghpanthers.com',
+          'pittsburgh': 'pittsburghpanthers.com', 'san diego state': 'goaztecs.com',
+          'south carolina': 'gamecocksonline.com', 'syracuse': 'cuse.com',
+          'toledo': 'utrockets.com', 'ucla': 'uclabruins.com',
+          'uconn': 'uconnhuskies.com', 'unlv': 'unlvrebels.com',
+          'usc': 'usctrojans.com', 'vanderbilt': 'vucommodores.com',
+          'wake forest': 'godeacs.com', 'washington': 'gohuskies.com',
+          'western kentucky': 'wkusports.com', 'western michigan': 'wmubroncos.com',
+        };
+        const OTHER_SPORTS = /volleyball|basketball|soccer|baseball|softball|hockey|track|swim|golf|tennis|lacrosse|rowing|gymnast|wrestl|cross country|diving|acrobatics|beach|bowling|fencing|rifle|water polo|cheer|spirit|dance/i;
+        const FOOTBALL_ROLE = /football|quarterback|running back|wide receiver|tight end|offensive lin|offensive coordinator|defensive lin|defensive coordinator|linebacker|cornerback|safeties|secondary|defensive back|special teams|edge|pass rush|passing game|run game/i;
+        const parseSidearmStaff = (html) => {
+          const out = [];
+          const seen = new Set();
+          const re = /staff-directory\/[^"']+["'][^>]*>(?:\s*<span[^>]*>)?([^<]{2,60})</g;
+          let m;
+          while ((m = re.exec(html))) {
+            const name = m[1].replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+            if (!name || /staff directory|bio|full bio/i.test(name)) continue;
+            const rest = html.slice(re.lastIndex, re.lastIndex + 800);
+            const tm = rest.match(/>([^<>]{3,90}?(?:Coach|Coordinator)(?:es|s)?[^<>]{0,40})</i);
+            if (!tm) continue;
+            const role = tm[1].replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+            if (OTHER_SPORTS.test(role) || !FOOTBALL_ROLE.test(role)) continue;
+            const k = (name + '|' + role).toLowerCase();
+            if (seen.has(k)) continue;
+            seen.add(k);
+            out.push({ role, name });
+          }
+          return out;
+        };
         const fetchStaff = async (t) => {
           if (t.kind === 'nfl') {
             const page = 'Template:' + t.team.replace(/ /g, '_') + '_staff';
             const d = await wiki('action=parse&prop=wikitext&redirects=1&page=' + encodeURIComponent(page));
             return { page, staff: parseStaffLines(d.parse.wikitext['*'], true) };
           }
-          // College: "{School} football" usually redirects to the program
-          // article; search is the fallback for mascot-only mismatches.
-          let title = t.team + ' football';
-          let d;
-          try { d = await wiki('action=parse&prop=sections&redirects=1&page=' + encodeURIComponent(title)); }
-          catch {
-            const s = await wiki('action=query&list=search&srlimit=5&srsearch=' + encodeURIComponent(t.team + ' football'));
-            const hit = ((s.query || {}).search || []).find(x => /football$/i.test(x.title));
-            if (!hit) throw new Error('no program article');
-            title = hit.title;
-            d = await wiki('action=parse&prop=sections&page=' + encodeURIComponent(title));
-          }
-          const resolved = d.parse.title || title;
-          const secs = d.parse.sections || [];
-          const sec = secs.find(x => /^(current )?(coaching staff|coaches|personnel|staff)$/i.test(x.line)) || secs.find(x => /coaching staff|personnel/i.test(x.line));
-          if (!sec) throw new Error('no staff section on ' + resolved);
-          const w = await wiki('action=parse&prop=wikitext&page=' + encodeURIComponent(resolved) + '&section=' + sec.index);
-          return { page: resolved, staff: parseStaffLines(w.parse.wikitext['*'], false) };
+          const site = COLLEGE_SITES[t.team.toLowerCase().trim()];
+          if (!site) throw new Error('no athletics-site mapping');
+          const url = `https://${site}/staff-directory`;
+          const html = await fetchText(url);
+          return { page: url, staff: parseSidearmStaff(html) };
         };
 
         // Teams on the roster (skip FA/retired NFL rows).
