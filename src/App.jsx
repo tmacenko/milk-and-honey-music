@@ -2863,6 +2863,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
     // sessions, this guard just makes the intent explicit.
     companyView && a.address && ['Address', a.address],
     a.hometown && ['Hometown', a.hometown],
+    companyView && a.positionCoach && ['Position coach', a.positionCoach],
     a.classOf && ['Class of', a.classOf],
     a.committedTo && ['Committed', a.committedTo],
     (a.draftYear || a.draftRound || a.draftPick) && ['Draft', [a.draftYear, a.draftRound && `R${a.draftRound}`, a.draftPick && `P${a.draftPick}`].filter(Boolean).join(' ')],

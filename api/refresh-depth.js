@@ -226,7 +226,7 @@ module.exports = async (req, res) => {
   if (!SHEET_ID) return res.status(500).json({ error: 'SPORTS_SHEET_ID not set' });
   if (!authorized(req)) return res.status(403).json({ error: 'Not authorized' });
   const dryRun = ['1', 'true'].includes(String((req.query || {}).dryRun || ''));
-  // task=depth|espn|hs|contracts|recruits|all — the daily cron runs everything.
+  // task=depth|espn|hs|contracts|recruits|coaches|all — the daily cron runs everything.
   const task = String((req.query || {}).task || 'all');
   const wants = (t) => task === 'all' || task === t;
   const deadline = Date.now() + 52000;
@@ -243,7 +243,7 @@ module.exports = async (req, res) => {
     // for the ESPN/247 sync are appended to its header row on first run.
     const autoRows = auto.values || [];
     let autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
-    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl'];
+    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach'];
     const missingAuto = AUTO_EXTRA.filter(h => !autoHeaders.some(x => x.toLowerCase() === h.toLowerCase()));
     if (missingAuto.length && !dryRun) {
       // Widen the grid first if the tab is at its column limit.
@@ -930,6 +930,163 @@ module.exports = async (req, res) => {
       } catch (e) { pipeline.errors.push(e.message); }
     }
 
+    // ── Module 7: Position coaches (Wikipedia team staff) ────────────────────
+    // Wikipedia is the one clean source with position-level staff: NFL teams
+    // via Template:{Team} staff, college programs via the Personnel/Coaches
+    // section of the program article. Full staff per team lands in the hidden
+    // TeamStaff tab (one row per team, JSON staff list); each athlete's
+    // matched position coach is written to AutoSync.positionCoach. Teams
+    // refresh when >5 days old, a few per run — staffs rarely change.
+    const coaches = { teams: 0, matched: 0, misses: 0, errors: [] };
+    if (wants('coaches') && !onlyName) {
+      try {
+        const pcCol = autoIdx('positionCoach');
+        const TS_HEAD = ['team', 'kind', 'pageTitle', 'staffJson', 'updated'];
+        let ts = null;
+        try { ts = await sheetGet(token, "'TeamStaff'!A:E"); }
+        catch {
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'TeamStaff', hidden: true, gridProperties: { rowCount: 300, columnCount: 5 } } } }] }),
+          });
+          await sheetBatchUpdate(token, [{ range: "'TeamStaff'!A1", values: [TS_HEAD] }]);
+          ts = { values: [TS_HEAD] };
+        }
+        const tsRows = ts.values || [];
+        const tsByTeam = {};
+        tsRows.forEach((r, i) => { if (i > 0 && r[0]) tsByTeam[String(r[0]).toLowerCase().trim()] = { row: i + 1, cells: r }; });
+        let tsLastRow = tsRows.length;
+
+        const wiki = async (params) => {
+          const d = JSON.parse(await fetchText('https://en.wikipedia.org/w/api.php?format=json&' + params));
+          if (d.error) throw new Error(d.error.info || d.error.code || 'wiki error');
+          return d;
+        };
+        const deWiki = (x) => String(x || '').replace(/\[\[([^\]|]*\|)?([^\]]+)\]\]/g, '$2').replace(/''/g, '').replace(/<[^>]+>/g, '').replace(/\{\{[^}]*\}\}/g, '').trim();
+        // NFL templates list "*Role – [[Name]]"; college articles usually list
+        // "*[[Name]] – ''Role''" — detect the italic (role) side per line.
+        const parseStaffLines = (wt, roleFirstDefault) => {
+          const out = [];
+          wt.split('\n').forEach(l => {
+            const m = l.match(/^\*+\s*(.+?)\s*[–—-]\s*(.+)$/);
+            if (!m) return;
+            const italic1 = /''/.test(m[1]), italic2 = /''/.test(m[2]);
+            const roleFirst = italic1 !== italic2 ? italic1 : roleFirstDefault;
+            const role = deWiki(roleFirst ? m[1] : m[2]);
+            const name = deWiki(roleFirst ? m[2] : m[1]);
+            if (role && name && name.length < 60 && role.length < 90 && !/^vacant/i.test(name)) out.push({ role, name });
+          });
+          return out;
+        };
+        const fetchStaff = async (t) => {
+          if (t.kind === 'nfl') {
+            const page = 'Template:' + t.team.replace(/ /g, '_') + '_staff';
+            const d = await wiki('action=parse&prop=wikitext&redirects=1&page=' + encodeURIComponent(page));
+            return { page, staff: parseStaffLines(d.parse.wikitext['*'], true) };
+          }
+          // College: "{School} football" usually redirects to the program
+          // article; search is the fallback for mascot-only mismatches.
+          let title = t.team + ' football';
+          let d;
+          try { d = await wiki('action=parse&prop=sections&redirects=1&page=' + encodeURIComponent(title)); }
+          catch {
+            const s = await wiki('action=query&list=search&srlimit=5&srsearch=' + encodeURIComponent(t.team + ' football'));
+            const hit = ((s.query || {}).search || []).find(x => /football$/i.test(x.title));
+            if (!hit) throw new Error('no program article');
+            title = hit.title;
+            d = await wiki('action=parse&prop=sections&page=' + encodeURIComponent(title));
+          }
+          const resolved = d.parse.title || title;
+          const secs = d.parse.sections || [];
+          const sec = secs.find(x => /^(current )?(coaching staff|coaches|personnel|staff)$/i.test(x.line)) || secs.find(x => /coaching staff|personnel/i.test(x.line));
+          if (!sec) throw new Error('no staff section on ' + resolved);
+          const w = await wiki('action=parse&prop=wikitext&page=' + encodeURIComponent(resolved) + '&section=' + sec.index);
+          return { page: resolved, staff: parseStaffLines(w.parse.wikitext['*'], false) };
+        };
+
+        // Teams on the roster (skip FA/retired NFL rows).
+        const teams = [];
+        const seenT = new Set();
+        nflPlayers.forEach(p => { const t = String(p['Team'] || '').trim(); const k = t.toLowerCase(); if (t && !/free agent|retired|inactive/i.test(t) && !seenT.has(k)) { seenT.add(k); teams.push({ team: t, kind: 'nfl' }); } });
+        colPlayers.forEach(p => { const t = String(p['School'] || '').trim(); const k = t.toLowerCase(); if (t && !seenT.has(k)) { seenT.add(k); teams.push({ team: t, kind: 'college' }); } });
+        const capC = parseInt((req.query || {}).maxdisc, 10) || 12;
+        const staleTeams = teams.filter(t => {
+          const rec = tsByTeam[t.team.toLowerCase()];
+          if (!rec) return true;
+          const d = new Date(String(rec.cells[4] || ''));
+          return isNaN(d) || (Date.now() - d.getTime()) / 86400000 > 5;
+        });
+        const rotC = staleTeams.length ? Math.floor(Date.now() / 86400000) % staleTeams.length : 0;
+        const targetsC = [...staleTeams.slice(rotC), ...staleTeams.slice(0, rotC)].slice(0, capC);
+        for (const t of targetsC) {
+          if (Date.now() > deadline) break;
+          try {
+            const { page, staff } = await fetchStaff(t);
+            if (!staff.length) throw new Error('parsed 0 staff from ' + page);
+            coaches.teams++;
+            const key = t.team.toLowerCase();
+            const rowVals = [t.team, t.kind, page, JSON.stringify(staff).slice(0, 45000), new Date().toISOString().slice(0, 10)];
+            const rec = tsByTeam[key];
+            if (!dryRun) {
+              if (rec) await sheetBatchUpdate(token, [{ range: `'TeamStaff'!A${rec.row}:E${rec.row}`, values: [rowVals] }]);
+              else {
+                await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'TeamStaff'!A:E")}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
+                  method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ values: [rowVals] }),
+                });
+                tsLastRow += 1;
+              }
+            }
+            tsByTeam[key] = { row: rec ? rec.row : tsLastRow, cells: rowVals };
+          } catch (e) { coaches.errors.push(`${t.team}: ${e.message}`); }
+        }
+
+        // Match every rostered athlete's position group to their team's staff.
+        const posCoachFor = (position, staff) => {
+          const P = String(position || '').toUpperCase().split('/')[0].trim();
+          const pats =
+            /^QB/.test(P) ? [/quarterback/i]
+            : /^(RB|FB|HB)/.test(P) ? [/running back/i]
+            : /^WR/.test(P) ? [/wide receiver|receivers/i]
+            : /^TE/.test(P) ? [/tight end/i]
+            : /^(EDGE|RUSH)/.test(P) ? [/edge|outside linebacker|defensive end/i, /defensive line/i, /linebacker/i]
+            : /^(DE|DT|NT|DL)/.test(P) ? [/defensive line|defensive tackle|defensive end/i]
+            : /^(OLB)/.test(P) ? [/outside linebacker/i, /linebacker/i]
+            : /^(LB|ILB|MLB)/.test(P) ? [/inside linebacker/i, /(?<!outside )linebacker/i, /linebacker/i]
+            : /^(CB|DB|NB)/.test(P) ? [/cornerback/i, /secondary|defensive back/i]
+            : /^(S|FS|SS|SAF)\b/.test(P) ? [/safet/i, /secondary|defensive back/i]
+            : /^(K|P|LS|PK)\b/.test(P) ? [/special teams/i]
+            : /^(OT|OG|C|G|T|OL)\b/.test(P) ? [/offensive line/i]
+            : [];
+          for (const re of pats) {
+            const strong = staff.filter(x => re.test(x.role) && !/assistant|quality control|analyst|intern|graduate|chief of staff|emeritus/i.test(x.role));
+            if (strong.length) return strong[0].name;
+            const weak = staff.filter(x => re.test(x.role) && !/quality control|analyst|intern|graduate/i.test(x.role));
+            if (weak.length) return weak[0].name;
+          }
+          return '';
+        };
+        const cUpdates = [];
+        const everyone = [
+          ...nflPlayers.map(p => ({ p, team: p['Team'] })),
+          ...colPlayers.map(p => ({ p, team: p['School'] })),
+        ];
+        for (const { p, team } of everyone) {
+          const rec = tsByTeam[String(team || '').toLowerCase().trim()];
+          if (!rec) continue;
+          let staff;
+          try { staff = JSON.parse(rec.cells[3] || '[]'); } catch { continue; }
+          const coach = posCoachFor(p['Position'], staff);
+          if (!coach) { coaches.misses++; continue; }
+          const rowNum = await ensureAutoRow(p['Name']);
+          if (!rowNum || pcCol < 0) continue;
+          cUpdates.push({ range: `'AutoSync'!${colLetter(pcCol)}${rowNum}`, values: [[coach]] });
+          coaches.matched++;
+        }
+        if (!dryRun) for (let i = 0; i < cUpdates.length; i += 100) await sheetBatchUpdate(token, cUpdates.slice(i, i + 100));
+      } catch (e) { coaches.errors.push(e.message); }
+    }
+
     // ── StatHistory: one row per athlete per day with depth rank (NFL/College,
     // from Ourlads) and 247 rating/ranks (HS). Hidden robot tab — feeds the
     // depth-riser / rank-riser features with real history from day one.
@@ -995,6 +1152,7 @@ module.exports = async (req, res) => {
       hs247,
       recruits: { ...recruits, ambiguous: recruits.ambiguous.slice(0, 15), errors: recruits.errors.slice(0, 10) },
       pipeline: { ...pipeline, ambiguous: pipeline.ambiguous.slice(0, 15), errors: pipeline.errors.slice(0, 5) },
+      coaches: { ...coaches, errors: coaches.errors.slice(0, 10) },
     });
   } catch (err) {
     console.error('Depth refresh error:', err.message);

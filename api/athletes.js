@@ -353,6 +353,8 @@ function mergeAthlete(row, ext, level) {
     // Ourlads depth chart (synced daily by api/refresh-depth.js).
     depthRank: parseInt(ext['depthRank'], 10) || 0,
     depthPos: ext['depthPos'] || '',
+    // Position coach (Wikipedia team-staff sync) — internal-only.
+    positionCoach: ext['positionCoach'] || '',
     // ── internal-only (stripped for anonymous visitors) ──
     // 7-day follower growth, computed by the daily socials job from the
     // SocialHistory snapshots (dashboard "Hot this week" tile).
@@ -1351,7 +1353,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;
