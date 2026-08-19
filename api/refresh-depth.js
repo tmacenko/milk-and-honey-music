@@ -1062,7 +1062,7 @@ module.exports = async (req, res) => {
         // Teams on the roster (skip FA/retired NFL rows).
         const teams = [];
         const seenT = new Set();
-        nflPlayers.forEach(p => { const t = String(p['Team'] || '').trim(); const k = t.toLowerCase(); if (t && !/free agent|retired|inactive/i.test(t) && !seenT.has(k)) { seenT.add(k); teams.push({ team: t, kind: 'nfl' }); } });
+        nflPlayers.forEach(p => { const t = String(p['Team'] || '').trim(); const k = t.toLowerCase(); if (t && !/free agent|retired|inactive|cfl|ufl|xfl/i.test(t) && !seenT.has(k)) { seenT.add(k); teams.push({ team: t, kind: 'nfl' }); } });
         colPlayers.forEach(p => { const t = String(p['School'] || '').trim(); const k = t.toLowerCase(); if (t && !seenT.has(k)) { seenT.add(k); teams.push({ team: t, kind: 'college' }); } });
         const capC = parseInt((req.query || {}).maxdisc, 10) || 12;
         const staleTeams = teams.filter(t => {
