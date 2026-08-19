@@ -1029,6 +1029,21 @@ module.exports = async (req, res) => {
             seen.add(k);
             out.push({ role, name });
           }
+          // Third variant (e.g. Penn State): table rows with the name as the
+          // last text inside a __link anchor and the role in a __position cell.
+          for (const row of html.split(/<tr[\s>]/)) {
+            if (!/member-position__position/.test(row)) continue;
+            const nm = row.match(/__link[^"]*"[^>]*>[^]*?([A-Za-z][A-Za-z .'’-]{1,58})\s*<\/a>/);
+            const rm = row.match(/__position[^>]*>(?:<!--[^]*?-->|\s|<p[^>]*>)*([^<]{2,90})/);
+            if (!nm || !rm) continue;
+            const name = nm[1].replace(/\s+/g, ' ').trim();
+            const role = rm[1].replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+            if (!name || !role || OTHER_SPORTS.test(role) || !FOOTBALL_ROLE.test(role)) continue;
+            const k = (name + '|' + role).toLowerCase();
+            if (seen.has(k)) continue;
+            seen.add(k);
+            out.push({ role, name });
+          }
           return out;
         };
         const fetchStaff = async (t) => {
