@@ -1003,19 +1003,27 @@ module.exports = async (req, res) => {
         };
         const OTHER_SPORTS = /volleyball|basketball|soccer|baseball|softball|hockey|track|swim|golf|tennis|lacrosse|rowing|gymnast|wrestl|cross country|diving|acrobatics|beach|bowling|fencing|rifle|water polo|cheer|spirit|dance/i;
         const FOOTBALL_ROLE = /football|quarterback|running back|wide receiver|tight end|offensive lin|offensive coordinator|defensive lin|defensive coordinator|linebacker|cornerback|safeties|secondary|defensive back|special teams|edge|pass rush|passing game|run game/i;
+        // Handles both Sidearm generations: older tables (anchor > name text,
+        // role in a later cell ending in "Coach") and newer cards (name inside
+        // an <h4>, role in a bare person-details__position div, e.g.
+        // "Quarterbacks" with no Coach suffix).
         const parseSidearmStaff = (html) => {
           const out = [];
           const seen = new Set();
-          const re = /staff-directory\/[^"']+["'][^>]*>(?:\s*<span[^>]*>)?([^<]{2,60})</g;
+          const anchorRe = /staff-directory\/[^"']+["'][^>]*>/g;
           let m;
-          while ((m = re.exec(html))) {
-            const name = m[1].replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
-            if (!name || /staff directory|bio|full bio/i.test(name)) continue;
-            const rest = html.slice(re.lastIndex, re.lastIndex + 800);
-            const tm = rest.match(/>([^<>]{3,90}?(?:Coach|Coordinator)(?:es|s)?[^<>]{0,40})</i);
-            if (!tm) continue;
-            const role = tm[1].replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
-            if (OTHER_SPORTS.test(role) || !FOOTBALL_ROLE.test(role)) continue;
+          while ((m = anchorRe.exec(html))) {
+            const win = html.slice(anchorRe.lastIndex, anchorRe.lastIndex + 1100);
+            const nm = win.match(/^(?:<!--[^]*?-->|<h\d[^>]*>|<span[^>]*>|\s)*([^<]{2,60})</);
+            if (!nm) continue;
+            const name = nm[1].replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+            if (!name || /full bio|^bio$|staff directory/i.test(name)) continue;
+            let role = '';
+            const pm = win.match(/person-details__position[^>]*>(?:\s*<div[^>]*>)?\s*([^<]{2,90})/i);
+            if (pm) role = pm[1];
+            else { const tm = win.match(/>([^<>]{3,90}?(?:Coach|Coordinator)(?:es|s)?[^<>]{0,40})</i); if (tm) role = tm[1]; }
+            role = role.replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+            if (!role || OTHER_SPORTS.test(role) || !FOOTBALL_ROLE.test(role)) continue;
             const k = (name + '|' + role).toLowerCase();
             if (seen.has(k)) continue;
             seen.add(k);
