@@ -1046,6 +1046,44 @@ module.exports = async (req, res) => {
           }
           return out;
         };
+        // WMT-platform fallbacks: (b) server-rendered coach section on the
+        // football roster page; (c) WordPress REST — football department →
+        // roster posts → per-person fields (content.position holds the title).
+        const parseWmtRoster = (html) => {
+          const out = [];
+          const seen = new Set();
+          const re = /roster\/coach\/[^"']+["'][^>]*>([^<]{2,60})<\/a>/g;
+          let m;
+          while ((m = re.exec(html))) {
+            const name = m[1].replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+            const win = html.slice(re.lastIndex, re.lastIndex + 400);
+            const pm = win.match(/class="position"[^>]*>([^<]{2,90})</);
+            if (!name || !pm) continue;
+            const role = pm[1].replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+            const k = (name + '|' + role).toLowerCase();
+            if (seen.has(k)) continue;
+            seen.add(k);
+            out.push({ role, name });
+          }
+          return out;
+        };
+        const wmtRest = async (site) => {
+          const dep = JSON.parse(await fetchText(`https://${site}/wp-json/wp/v2/department?per_page=100`));
+          const fb = (dep || []).find(x => /football/i.test(String(x.slug || '') + ' ' + String(x.name || '')));
+          if (!fb) throw new Error('no football department');
+          const roster = JSON.parse(await fetchText(`https://${site}/wp-json/wp/v2/roster?department=${fb.id}&per_page=100&_fields=id,title`));
+          const staff = [];
+          const tasks = (roster || []).map(item => async () => {
+            try {
+              const d = JSON.parse(await fetchText(`https://${site}/wp-json/v1/posts/${item.id}/fields`));
+              const role = String((((d || {}).data || {}).content || {}).position || '').trim();
+              const name = String(((item.title || {}).rendered || '')).replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+              if (name && role) staff.push({ role, name });
+            } catch { /* one bio miss is fine */ }
+          });
+          await runTasks(tasks, 8, deadline);
+          return staff;
+        };
         const fetchStaff = async (t) => {
           if (t.kind === 'nfl') {
             const page = 'Template:' + t.team.replace(/ /g, '_') + '_staff';
@@ -1054,9 +1092,14 @@ module.exports = async (req, res) => {
           }
           const site = COLLEGE_SITES[t.team.toLowerCase().trim()];
           if (!site) throw new Error('no athletics-site mapping');
-          const url = `https://${site}/staff-directory`;
-          const html = await fetchText(url);
-          return { page: url, staff: parseSidearmStaff(html) };
+          let staff = [];
+          try { staff = parseSidearmStaff(await fetchText(`https://${site}/staff-directory`)); } catch { /* fall through */ }
+          if (staff.length) return { page: `https://${site}/staff-directory`, staff };
+          try { staff = parseWmtRoster(await fetchText(`https://${site}/sports/football/roster/`)); } catch { /* fall through */ }
+          if (staff.length) return { page: `https://${site}/sports/football/roster/`, staff };
+          staff = await wmtRest(site);
+          if (!staff.length) throw new Error('all three staff sources parsed 0');
+          return { page: `https://${site}/wp-json (WMT REST)`, staff };
         };
 
         // Teams on the roster (skip FA/retired NFL rows).
