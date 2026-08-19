@@ -6852,7 +6852,8 @@ function App() {
   const navActive = domain === 'sports' && isAdmin && view !== 'detail';
   // The music home is Tyler-only while it's broken in — everyone else lands on
   // the roster exactly as before.
-  const isTyler = /^tyler\b/i.test(currentUser?.name || '');
+  // Music dashboard access while it's rolling out: Tyler + Lucas Keller.
+  const isTyler = /^(tyler\b|lucas kel)/i.test(currentUser?.name || '');
   const musicNavActive = domain === 'music' && isAdmin && isTyler && view !== 'detail';
   const navItems = domain === 'sports' ? NAV_SPORTS : NAV_MUSIC;
   const navPage = domain === 'sports' ? sportsPage : musicPage;
