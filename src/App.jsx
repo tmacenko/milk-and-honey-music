@@ -178,6 +178,55 @@ function Textarea({ value, onChange, placeholder, rows = 4 }) {
   return <textarea value={value || ''} onChange={onChange} placeholder={placeholder || ''} rows={rows} style={{ ...inputBase, resize: "vertical", lineHeight: 1.6 }} />;
 }
 
+// Photo URL field + "Upload" ghost button. The picked image is downsized in the
+// browser (max 1400px, JPEG) and pushed through /api/sheets upload-photo, which
+// hosts it in Vercel Blob and returns the URL that lands in the field.
+function PhotoUrlField({ value, onChange, placeholder, name }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [hover, setHover] = useState(false);
+  const fileRef = useRef(null);
+  const pick = async (file) => {
+    if (!file) return;
+    setErr(''); setBusy(true);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          const MAX = 1400, s = Math.min(1, MAX / Math.max(img.width, img.height));
+          const cv = document.createElement('canvas');
+          cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          URL.revokeObjectURL(url);
+          resolve(cv.toDataURL('image/jpeg', 0.86));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
+        img.src = url;
+      });
+      const r = await fetch('/api/sheets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'upload-photo', data: dataUrl, name }) });
+      const j = await r.json();
+      if (!r.ok || !j.url) throw new Error(j.error || 'Upload failed');
+      onChange(j.url);
+    } catch (e) { setErr(e.message || 'Upload failed'); }
+    finally { setBusy(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ flex: 1, minWidth: 0 }}><Input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} /></div>
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => pick(e.target.files && e.target.files[0])} />
+        <button type="button" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()}
+          onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+          style={{ flexShrink: 0, padding: "9px 14px", borderRadius: 9, border: `1px solid ${G.surfaceBorder}`, background: hover && !busy ? G.surfaceRaised : "transparent", color: busy ? G.textTertiary : G.text, fontSize: 13, fontWeight: 600, fontFamily: ff, cursor: busy ? "default" : "pointer", whiteSpace: "nowrap" }}>
+          {busy ? 'Uploading…' : 'Upload'}
+        </button>
+      </div>
+      {err && <div style={{ fontSize: 11.5, color: G.red, marginTop: 5 }}>{err}</div>}
+    </div>
+  );
+}
+
 // ── Blank client template ─────────────────────────────────────────────────────
 const BLANK = {
   public: false,
@@ -700,7 +749,7 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
                 Profile Photo URL
                 <span onClick={() => setPhotoHint(v => !v)} title="Overrides Spotify profile image" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
               </div>
-              <Input value={form.photoUrlOverride ?? ''} onChange={e => set('photoUrlOverride', e.target.value)} placeholder="Auto from Spotify — paste a URL to override" />
+              <PhotoUrlField value={form.photoUrlOverride ?? ''} onChange={v => set('photoUrlOverride', v)} placeholder="Auto from Spotify — paste a URL or upload" name={form.name} />
               {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5, marginBottom: 12 }}>Overrides the Spotify profile image.</div>}
             </div>
             <div style={{ gridColumn: "1/-1", marginTop: photoHint ? 0 : 12 }}>
@@ -1024,7 +1073,7 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
                 Profile Photo URL
                 <span onClick={() => setPhotoHint(v => !v)} title="Overrides ESPN headshot" style={{ color: G.green, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>*</span>
               </div>
-              <Input value={form.photoUrlOverride ?? ''} onChange={e => set('photoUrlOverride', e.target.value)} placeholder="Auto from ESPN — paste a URL to override" />
+              <PhotoUrlField value={form.photoUrlOverride ?? ''} onChange={v => set('photoUrlOverride', v)} placeholder="Auto from ESPN — paste a URL or upload" name={form.name} />
               {photoHint && <div style={{ fontSize: 11, color: G.textSecondary, marginTop: 5 }}>Overrides the ESPN headshot.</div>}
             </div>
             <Field label="Hero Image URL"><Input value={form.heroImageUrl} onChange={e => set('heroImageUrl', e.target.value)} placeholder="https://..." /></Field>

@@ -710,6 +710,30 @@ module.exports = async (req, res) => {
         return res.json({ text: raw });
       }
 
+      // Host a profile photo in Vercel Blob and hand back its public URL. The
+      // edit forms (music + sports) use this for the "Upload" button next to the
+      // Photo URL field; the browser downsizes to ~1400px before sending. Admin
+      // only (gated above). Random suffix so a re-upload for the same person
+      // never collides with a CDN-cached older file.
+      if (req.body?.action === 'upload-photo') {
+        if (!BLOB_TOKEN) return res.status(500).json({ error: 'Photo storage not configured' });
+        const m = String(req.body.data || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+\/=]+)$/);
+        if (!m) return res.status(400).json({ error: 'Expected a JPEG, PNG, or WebP image' });
+        const buf = Buffer.from(m[2], 'base64');
+        if (buf.length > 3 * 1024 * 1024) return res.status(413).json({ error: 'Image too large (max 3MB)' });
+        const ext = m[1] === 'image/png' ? 'png' : m[1] === 'image/webp' ? 'webp' : 'jpg';
+        const slug = String(req.body.name || 'photo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'photo';
+        const path = `photos/${slug}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+        const up = await fetch(`${BLOB_API}/${path}`, {
+          method: 'PUT',
+          headers: { authorization: `Bearer ${BLOB_TOKEN}`, 'x-api-version': '7', 'content-type': m[1], 'x-add-random-suffix': '0', 'x-cache-control-max-age': '31536000' },
+          body: buf,
+        });
+        const ud = await up.json().catch(() => ({}));
+        if (!up.ok || !ud.url) return res.status(502).json({ error: 'Upload failed: ' + JSON.stringify(ud).slice(0, 200) });
+        return res.json({ url: ud.url });
+      }
+
       // Delete a client row. Guarded by a name match so a stale row index can
       // never remove the wrong person.
       if (req.body?.action === 'delete-client') {
