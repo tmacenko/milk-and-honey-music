@@ -5395,7 +5395,7 @@ const dealMoney = (v) => {
 const parseDeals = (d) => {
   if (!d) return [];
   const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires') };
+  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget') };
   return d.rows.map(r => ({
     _row: r._row,
     company: c.company >= 0 ? r.cells[c.company] || '' : '',
@@ -5414,6 +5414,8 @@ const parseDeals = (d) => {
     stipulations: c.stipulations >= 0 ? r.cells[c.stipulations] || '' : '',
     levels: (c.levels >= 0 ? r.cells[c.levels] || '' : '').split(',').map(s => s.trim()).filter(Boolean),
     minFollowers: c.minFollowers >= 0 ? parseInt(String(r.cells[c.minFollowers] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
+    pickCount: c.pickCount >= 0 ? parseInt(String(r.cells[c.pickCount] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
+    pickBudget: c.pickBudget >= 0 ? parseInt(String(r.cells[c.pickBudget] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
     expires: c.expires >= 0 ? r.cells[c.expires] || '' : '',
   })).filter(x => x.company || x.clients.length);
 };
@@ -5434,6 +5436,9 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
     open: !!initial?.open, dealType: initial?.dealType || 'product',
     cashAmount: initial?.dealType === 'cash' ? initial?.value || '' : '',
     productLinks: initial?.products?.length ? initial.products : [''],
+    pickMode: initial?.pickBudget ? 'budget' : 'count',
+    pickCount: initial?.pickCount ? String(initial.pickCount) : '1',
+    pickBudget: initial?.pickBudget ? String(initial.pickBudget) : '',
     levels: initial?.levels || [], minFollowers: initial?.minFollowers ? String(initial.minFollowers) : '',
     hasExpiry: !!initial?.expires, expires: initial?.expires || '',
   }));
@@ -5463,6 +5468,8 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           dealType: form.dealType,
           value: form.dealType === 'cash' ? form.cashAmount.trim() : '',
           products: form.dealType === 'product' ? form.productLinks.map(s => s.trim()).filter(Boolean).join('\n') : '',
+          pickCount: form.dealType === 'product' && form.pickMode === 'count' ? String(form.pickCount).trim() || '1' : '',
+          pickBudget: form.dealType === 'product' && form.pickMode === 'budget' ? String(form.pickBudget).trim() : '',
           levels: form.levels.join(', '),
           minFollowers: String(form.minFollowers).trim(),
           expires: form.hasExpiry ? form.expires : '',
@@ -5593,6 +5600,25 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
                 </div>
               </Field>
             )}
+            {form.dealType === 'product' && (
+              <Field label="Players can choose">
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {[['count', 'Number of products'], ['budget', 'Dollar value']].map(([val, label]) => {
+                    const on = form.pickMode === val;
+                    return <button key={val} onClick={() => set('pickMode', val)}
+                      style={{ padding: "8px 12px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+                      {label}
+                    </button>;
+                  })}
+                  <div style={{ width: 120 }}>
+                    {form.pickMode === 'count'
+                      ? <Input value={form.pickCount} onChange={e => set('pickCount', e.target.value.replace(/[^\d]/g, ''))} placeholder="1" />
+                      : <Input value={form.pickBudget} onChange={e => set('pickBudget', e.target.value.replace(/[^\d]/g, ''))} placeholder="$ 300" />}
+                  </div>
+                  <span style={{ fontSize: 11.5, color: G.textTertiary }}>{form.pickMode === 'count' ? 'products max' : 'max total value'}</span>
+                </div>
+              </Field>
+            )}
             <Field label="Eligible levels">
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {['High School', 'College', 'NFL'].map(lv => {
@@ -5671,18 +5697,27 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
   }, [inv.data, deal.dealId]);
   const byName = useMemo(() => { const m = {}; athletes.forEach(a => { m[a.name.toLowerCase().trim()] = a; }); return m; }, [athletes]);
   const invitedKeys = useMemo(() => new Set(invites.map(i => i.player.toLowerCase().trim())), [invites]);
-  // Mine-first: agents land here to submit THEIR players.
+  // Agents submit only THEIR players; marketers, admins, and house-password
+  // sessions see the whole eligible roster.
+  const agentOnly = user?.userRole === 'agent' && user?.name;
   const eligible = useMemo(() => athletes
     .filter(a => (!deal.levels.length || deal.levels.includes(a.level)) && (!deal.minFollowers || athleteReach(a) >= deal.minFollowers))
     .filter(a => !invitedKeys.has(a.name.toLowerCase().trim()))
+    .filter(a => !agentOnly || String(a.agentAssigned || '').toLowerCase().includes(user.name.toLowerCase()))
     .sort((a, b) => {
       const mineA = user?.name && String(a.agentAssigned || '').includes(user.name) ? 0 : 1;
       const mineB = user?.name && String(b.agentAssigned || '').includes(user.name) ? 0 : 1;
       return mineA - mineB || a.name.localeCompare(b.name);
-    }), [athletes, deal, invitedKeys, user]);
+    }), [athletes, deal, invitedKeys, user, agentOnly]);
+  const shown = useMemo(() => {
+    const q = pq.trim().toLowerCase();
+    if (!q) return eligible;
+    return eligible.filter(a => a.name.toLowerCase().includes(q) || String(a.nflTeam || a.college || a.school || '').toLowerCase().includes(q));
+  }, [eligible, pq]);
   const [checked, setChecked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState('');
+  const [pq, setPq] = useState('');
   const expired = dealExpired(deal);
   const signedCount = invites.filter(i => i.signed).length;
   const linkFor = (tok) => `${window.location.origin}/deal/${tok}`;
@@ -5820,25 +5855,29 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
           {!expired && (
             <div style={{ borderTop: `1px solid ${G.surfaceBorder}`, margin: "14px -24px 0", padding: "16px 24px 4px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <div style={{ ...secLabel, marginBottom: 0 }}>Add your players</div>
+                <div style={{ ...secLabel, marginBottom: 0 }}>{agentOnly ? 'Add your clients' : 'Add players'}</div>
                 <span style={{ fontSize: 12, color: G.textTertiary }}>{eligible.length} eligible</span>
                 <div style={{ flex: 1 }} />
+                <input value={pq} onChange={e => setPq(e.target.value)} placeholder="Search players..."
+                  style={{ ...inputBase, width: 160, padding: "7px 11px", fontSize: 12 }} />
                 <button onClick={invite} disabled={busy || checked.size === 0}
                   style={{ background: checked.size && !busy ? G.green : G.surfaceRaised, border: "none", borderRadius: 10, padding: "8px 14px", color: checked.size && !busy ? "#0a0a0a" : G.textTertiary, fontWeight: 700, fontSize: 12.5, cursor: checked.size && !busy ? "pointer" : "default", fontFamily: ff }}>
                   {busy ? 'Creating links…' : `Invite${checked.size ? ` ${checked.size}` : ''}`}
                 </button>
               </div>
               {eligible.length === 0 ? (
-                <div style={{ fontSize: 13, color: G.textTertiary, padding: "4px 0 10px" }}>Every eligible player is already invited.</div>
+                <div style={{ fontSize: 13, color: G.textTertiary, padding: "4px 0 10px" }}>{agentOnly ? 'All of your eligible clients are already invited.' : 'Every eligible player is already invited.'}</div>
+              ) : shown.length === 0 ? (
+                <div style={{ fontSize: 13, color: G.textTertiary, padding: "4px 0 10px" }}>No eligible players match “{pq}”.</div>
               ) : (
                 <div style={{ maxHeight: 230, overflowY: "auto", border: `1px solid ${G.surfaceBorder}`, borderRadius: 12 }}>
-                  {eligible.map((a, idx) => {
+                  {shown.map((a, idx) => {
                     const on = checked.has(a.name);
                     return (
                       <div key={a.name} onClick={() => toggle(a.name)}
                         onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer", borderBottom: idx === eligible.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer", borderBottom: idx === shown.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
                         <div style={{ width: 16, height: 16, borderRadius: 5, border: `1.5px solid ${on ? G.green : G.textTertiary}`, background: on ? G.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                           {on && <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#0a0a0a" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                         </div>

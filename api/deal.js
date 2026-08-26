@@ -182,12 +182,16 @@ module.exports = async (req, res) => {
     const products = cell(deal.cells, dc('products')).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const expires = cell(deal.cells, dc('expires'));
     const dealType = cell(deal.cells, dc('dealType')) || (products.length ? 'product' : 'cash');
+    const pickCount = parseInt(cell(deal.cells, dc('pickCount')), 10) || 0;
+    const pickBudget = parseInt(cell(deal.cells, dc('pickBudget')), 10) || 0;
     const info = {
       player: cell(invite.cells, ic('player')),
       company: cell(deal.cells, dc('company')),
       value: cell(deal.cells, dc('value')),
       deliverables: cell(deal.cells, dc('deliverables')),
       dealType,
+      pickCount,
+      pickBudget,
       products,
       expired: isExpired(expires),
       signed: /^signed$/i.test(cell(invite.cells, ic('status'))),
@@ -208,9 +212,12 @@ module.exports = async (req, res) => {
     if (info.expired) return res.status(410).json({ error: 'This deal has closed.' });
     if (info.signed) return res.status(409).json({ error: 'Already signed.' });
     const signature = String(req.body?.signature || '').trim().slice(0, 120);
-    const product = String(req.body?.product || '').trim().slice(0, 200);
+    const product = String(req.body?.product || '').trim().slice(0, 500);
     if (!signature) return res.status(400).json({ error: 'Type your full name to sign.' });
     if (dealType === 'product' && products.length && !product) return res.status(400).json({ error: 'Pick a product first.' });
+    // Multi-pick: titles arrive joined with " + " — cap at the deal's count
+    // rule when one is set (budget math stays client-side; prices are dynamic).
+    if (pickCount && product.split(' + ').length > pickCount) return res.status(400).json({ error: `You can pick up to ${pickCount}.` });
 
     const updates = [
       { range: `'${INV_TITLE}'!${colLetter(ic('status'))}${invite.rowNum}`, values: [['signed']] },
