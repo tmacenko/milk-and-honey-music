@@ -611,7 +611,10 @@ const ADMIN_TABS = {
     ensureCols: ['open', 'dealId', 'products', 'stipulations', 'levels', 'minFollowers', 'expires', 'dealType', 'pickCount', 'pickBudget'] },
   // One row per invited player per open deal; token is the signing link's
   // credential. Written by the deal-invite action + the public /api/deal sign.
-  dealinvites: { title: 'DealInvites', writable: true, autoCreate: ['dealId', 'player', 'token', 'invitedBy', 'invitedAt', 'status', 'product', 'signature', 'signedAt'] },
+  dealinvites: { title: 'DealInvites', writable: true, autoCreate: ['dealId', 'player', 'token', 'invitedBy', 'invitedAt', 'status', 'product', 'signature', 'signedAt', 'productUrls'],
+    // productUrls: store links of the chosen products at sign time (newline
+    // list) — the brand export needs them and titles alone can't be re-resolved.
+    ensureCols: ['productUrls'] },
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {

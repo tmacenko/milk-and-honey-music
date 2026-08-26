@@ -143,7 +143,7 @@ async function resolveProducts(links) {
 
 async function loadByToken(token, tok) {
   const [invD, dealD] = await Promise.all([
-    sheetGet(token, `'${INV_TITLE}'!A:I`),
+    sheetGet(token, `'${INV_TITLE}'!A:L`),
     sheetGet(token, `'${DEALS_TITLE}'!A:AZ`),
   ]);
   const iv = invD.values || [], dv = dealD.values || [];
@@ -225,6 +225,16 @@ module.exports = async (req, res) => {
       { range: `'${INV_TITLE}'!${colLetter(ic('signature'))}${invite.rowNum}`, values: [[signature]] },
       { range: `'${INV_TITLE}'!${colLetter(ic('signedAt'))}${invite.rowNum}`, values: [[new Date().toISOString()]] },
     ];
+    // Record the chosen products' store links (server-resolved, so the client
+    // can't forge them) — the brand export ships from these.
+    const uI = ic('productUrls');
+    if (uI >= 0 && dealType === 'product' && products.length) {
+      try {
+        const cards = await resolveProducts(products);
+        const urls = product.split(' + ').map(t => (cards.find(c => c.title === t) || {}).url || '').filter(Boolean);
+        if (urls.length) updates.push({ range: `'${INV_TITLE}'!${colLetter(uI)}${invite.rowNum}`, values: [[urls.join('\n')]] });
+      } catch { /* links are a nice-to-have; the sign still lands */ }
+    }
     // Signing also tags the player on the deal row itself, so the deal shows
     // up on their profile's Brand Deals card like any other deal.
     const clI = dc('clients');

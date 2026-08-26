@@ -113,16 +113,19 @@
     var cards = i.productCards || [];
     var maxN = i.pickBudget ? 0 : (i.pickCount || 1);
     var offer = i.dealType === 'cash' ? i.value : (i.value || (cards.length || i.products.length
-      ? (i.pickBudget ? 'Free product \u2014 pick up to $' + i.pickBudget + ' worth below'
+      ? (cards.length === 1 ? 'Free product'
+        : i.pickBudget ? 'Free product \u2014 pick up to $' + i.pickBudget + ' worth below'
         : maxN > 1 ? 'Free product \u2014 pick up to ' + maxN + ' below'
         : 'Free product \u2014 pick one below') : ''));
     if (offer) html += '<div class="sec"><div class="sec-label">What you get</div><div class="sec-body value">' + esc(offer) + '</div></div>';
+    var single = cards.length === 1;
     if (cards.length) {
       var visible = state.showAll ? cards : cards.slice(0, 4);
       var sum = '';
-      if (i.pickBudget) sum = 'Selected <b>$' + pickedTotal(cards) + '</b> of your $' + i.pickBudget + ' limit';
+      if (single) sum = '';
+      else if (i.pickBudget) sum = 'Selected <b>$' + pickedTotal(cards) + '</b> of your $' + i.pickBudget + ' limit';
       else if (maxN > 1) sum = 'Selected <b>' + state.picked.length + '</b> of up to ' + maxN;
-      html += '<div class="sec"><div class="sec-label">' + (i.pickBudget || maxN > 1 ? 'Pick your products' : 'Pick your product') + '</div>' +
+      html += '<div class="sec"><div class="sec-label">' + (single ? 'Your product' : i.pickBudget || maxN > 1 ? 'Pick your products' : 'Pick your product') + '</div>' +
         (sum ? '<div class="pick-sum">' + sum + '</div>' : '') +
         '<div class="pgrid">' + visible.map(function (p, j) {
         return '<div class="pcard' + (state.picked.indexOf(p.title) >= 0 ? ' on' : '') + '" data-p="' + j + '">' +
@@ -151,6 +154,7 @@
 
     Array.prototype.forEach.call(root.querySelectorAll('.pcard'), function (el) {
       el.onclick = function () {
+        if ((i.productCards || []).length === 1) return; // single product — nothing to choose
         var visible = state.showAll ? (i.productCards || []) : (i.productCards || []).slice(0, 4);
         var card = visible[+el.getAttribute('data-p')];
         if (card) togglePick(card, i);
@@ -189,6 +193,7 @@
       var i = res.j;
       if (i.signed) return message('✓', false, 'Already signed', 'You signed up for the ' + i.company + ' deal' + (i.product ? ' and picked “' + i.product + '”' : '') + '. Your team will follow up with next steps.');
       if (i.expired) return message('⏰', true, 'This deal has closed', 'The window to sign up for the ' + i.company + ' deal has passed. Ask your agent about upcoming deals.');
+      if ((i.productCards || []).length === 1) state.picked = [i.productCards[0].title];
       state.info = i;
       render();
     })

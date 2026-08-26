@@ -5457,6 +5457,7 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
     if (!form.company.trim()) return alert('Company is required');
     if (!form.open && !names.length) return alert('Tag at least one client');
     if (form.open && !form.levels.length) return alert('Pick at least one eligible level');
+    const multiProduct = form.productLinks.filter(l => l.trim()).length > 1 || form.productLinks.some(l => /\/collections\//i.test(l));
     if (form.open && form.hasExpiry && !form.expires) return alert('Pick a closing date, or turn "Closes on" off');
     setBusy(true);
     try {
@@ -5468,8 +5469,8 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           dealType: form.dealType,
           value: form.dealType === 'cash' ? form.cashAmount.trim() : '',
           products: form.dealType === 'product' ? form.productLinks.map(s => s.trim()).filter(Boolean).join('\n') : '',
-          pickCount: form.dealType === 'product' && form.pickMode === 'count' ? String(form.pickCount).trim() || '1' : '',
-          pickBudget: form.dealType === 'product' && form.pickMode === 'budget' ? String(form.pickBudget).trim() : '',
+          pickCount: form.dealType === 'product' && multiProduct && form.pickMode === 'count' ? String(form.pickCount).trim() || '1' : '',
+          pickBudget: form.dealType === 'product' && multiProduct && form.pickMode === 'budget' ? String(form.pickBudget).trim() : '',
           levels: form.levels.join(', '),
           minFollowers: String(form.minFollowers).trim(),
           expires: form.hasExpiry ? form.expires : '',
@@ -5600,7 +5601,7 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
                 </div>
               </Field>
             )}
-            {form.dealType === 'product' && (
+            {form.dealType === 'product' && (form.productLinks.filter(l => l.trim()).length > 1 || form.productLinks.some(l => /\/collections\//i.test(l))) && (
               <Field label="Players can choose">
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   {[['count', 'Number of products'], ['budget', 'Dollar value']].map(([val, label]) => {
@@ -5680,7 +5681,7 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
     const d = inv.data;
     if (!d) return [];
     const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-    const c = { dealId: hi('dealId'), player: hi('player'), token: hi('token'), invitedBy: hi('invitedBy'), status: hi('status'), product: hi('product'), signedAt: hi('signedAt') };
+    const c = { dealId: hi('dealId'), player: hi('player'), token: hi('token'), invitedBy: hi('invitedBy'), status: hi('status'), product: hi('product'), signedAt: hi('signedAt'), productUrls: hi('productUrls') };
     if (c.dealId < 0) return [];
     return d.rows
       .filter(r => r.cells[c.dealId] === deal.dealId)
@@ -5691,6 +5692,7 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
         invitedBy: c.invitedBy >= 0 ? r.cells[c.invitedBy] : '',
         signed: c.status >= 0 && /signed/i.test(r.cells[c.status] || ''),
         product: c.product >= 0 ? r.cells[c.product] : '',
+        productUrls: c.productUrls >= 0 ? r.cells[c.productUrls] : '',
         signedAt: c.signedAt >= 0 ? r.cells[c.signedAt] : '',
       }))
       .sort((a, b) => (a.signed === b.signed ? a.player.localeCompare(b.player) : a.signed ? -1 : 1));
@@ -5739,6 +5741,28 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
       inv.reload();
     } catch (e) { alert('Invite failed: ' + e.message); }
     setBusy(false);
+  };
+  // Brand-facing CSV (opens straight into Excel): every SIGNED player with
+  // their chosen products + store links, apparel sizes, and shipping address.
+  const exportCsv = () => {
+    const cell = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const rows = [['Player', 'Product(s) chosen', 'Product link(s)', 'Shirt', 'Hoodie', 'Shorts', 'Pants', 'Shoes', 'Gloves', 'Shipping address', 'Signed on', 'Agent']];
+    invites.filter(i => i.signed).forEach(i => {
+      const a = byName[i.player.toLowerCase().trim()] || {};
+      let links = String(i.productUrls || '').split(/\r?\n/).filter(Boolean);
+      // single-product deals: the deal's one pasted product link IS the product
+      if (!links.length && deal.products.length === 1 && /^https?:\/\/.+\/products\//i.test(deal.products[0])) links = [deal.products[0]];
+      rows.push([i.player, i.product, links.join('  '), a.shirtSize, a.hoodieSize, a.shortsSize, a.sweatpantsSize, a.shoeSize, a.glovesSize, a.address, i.signedAt ? new Date(i.signedAt).toLocaleDateString() : '', a.agentAssigned]);
+    });
+    const csv = '\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const el = document.createElement('a');
+    el.href = url;
+    el.download = `${deal.company.replace(/[^\w .-]+/g, '').trim() || 'deal'} — signups.csv`;
+    document.body.appendChild(el);
+    el.click();
+    el.remove();
+    URL.revokeObjectURL(url);
   };
   const removeInvite = async (i) => {
     if (!window.confirm(`Remove ${i.player} from this deal? Their link stops working.`)) return;
@@ -5812,6 +5836,12 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
               <div style={{ ...secLabel, marginBottom: 0 }}>Invited players</div>
               <span style={{ fontSize: 12, color: G.textSecondary }}>{signedCount} signed · {invites.length - signedCount} pending</span>
               <div style={{ flex: 1 }} />
+              {signedCount > 0 && (
+                <button onClick={exportCsv} title="CSV of signed players — products, links, sizes, shipping addresses"
+                  style={{ background: G.greenSubtle, border: `1px solid ${G.green}`, borderRadius: 9, color: G.green, cursor: "pointer", padding: "6px 11px", fontSize: 12, fontWeight: 700, fontFamily: ff }}>
+                  Export for brand
+                </button>
+              )}
               {invites.length > 0 && (
                 <button onClick={() => copy(invites.map(i => `${i.player} — ${linkFor(i.token)}`).join('\n'), 'all')}
                   style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: copied === 'all' ? G.green : G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 12, fontWeight: 600, fontFamily: ff }}>
