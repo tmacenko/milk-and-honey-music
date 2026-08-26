@@ -5746,13 +5746,19 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
   // their chosen products + store links, apparel sizes, and shipping address.
   const exportCsv = () => {
     const cell = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-    const rows = [['Player', 'Product(s) chosen', 'Product link(s)', 'Shirt', 'Hoodie', 'Shorts', 'Pants', 'Shoes', 'Gloves', 'Shipping address', 'Signed on', 'Agent']];
-    invites.filter(i => i.signed).forEach(i => {
-      const a = byName[i.player.toLowerCase().trim()] || {};
+    const signed = invites.filter(i => i.signed).map(i => {
       let links = String(i.productUrls || '').split(/\r?\n/).filter(Boolean);
       // single-product deals: the deal's one pasted product link IS the product
       if (!links.length && deal.products.length === 1 && /^https?:\/\/.+\/products\//i.test(deal.products[0])) links = [deal.products[0]];
-      rows.push([i.player, i.product, links.join('  '), a.shirtSize, a.hoodieSize, a.shortsSize, a.sweatpantsSize, a.shoeSize, a.glovesSize, a.address, i.signedAt ? new Date(i.signedAt).toLocaleDateString() : '', a.agentAssigned]);
+      return { i, links };
+    });
+    const maxLinks = Math.max(1, ...signed.map(x => x.links.length));
+    const linkHeads = Array.from({ length: maxLinks }, (_, k) => maxLinks > 1 ? `Product link ${k + 1}` : 'Product link');
+    const rows = [['Player', 'Product(s) chosen', ...linkHeads, 'Shirt', 'Hoodie', 'Shorts', 'Pants', 'Shoes', 'Gloves', 'Shipping address']];
+    signed.forEach(({ i, links }) => {
+      const a = byName[i.player.toLowerCase().trim()] || {};
+      const linkCells = Array.from({ length: maxLinks }, (_, k) => links[k] || '');
+      rows.push([i.player, i.product, ...linkCells, a.shirtSize, a.hoodieSize, a.shortsSize, a.sweatpantsSize, a.shoeSize, a.glovesSize, a.address]);
     });
     const csv = '\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
