@@ -83,6 +83,9 @@ const money = (v) => {
   return isFinite(n) && n > 0 ? '$' + (Math.round(n * 100) / 100).toFixed(2).replace(/\.00$/, '') : '';
 };
 const httpsify = (u) => (typeof u === 'string' && u.startsWith('//') ? 'https:' + u : u || '');
+// Shopify CDN serves any width on demand — the originals are 4000px, which is
+// silly for a 200px card. Non-Shopify URLs pass through untouched.
+const thumb = (u) => (typeof u === 'string' && /cdn\.shopify\.com/.test(u) ? u + (u.includes('?') ? '&' : '?') + 'width=600' : u || '');
 
 async function resolveLink(url) {
   let u;
@@ -95,7 +98,7 @@ async function resolveLink(url) {
       const r = await fetchWithTimeout(`${u.origin}/products/${mProd[1]}.js`);
       if (r.ok) {
         const p = await r.json();
-        return [{ title: p.title || mProd[1], image: httpsify(p.featured_image || (p.images || [])[0]), price: money(p.price), url: u.origin + (p.url || u.pathname) }];
+        return [{ title: p.title || mProd[1], image: thumb(httpsify(p.featured_image || (p.images || [])[0])), price: money(p.price), url: u.origin + (p.url || u.pathname) }];
       }
     } else if (mColl && !mProd) {
       const r = await fetchWithTimeout(`${u.origin}/collections/${mColl[1]}/products.json?limit=24`);
@@ -104,7 +107,7 @@ async function resolveLink(url) {
         if (Array.isArray(j.products) && j.products.length) {
           return j.products.map(p => ({
             title: p.title || p.handle,
-            image: httpsify((p.images || [])[0]?.src),
+            image: thumb(httpsify((p.images || [])[0]?.src)),
             price: money((p.variants || [])[0]?.price),
             url: `${u.origin}/products/${p.handle}`,
           }));
