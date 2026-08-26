@@ -64,6 +64,10 @@
       "destination": "/onboard.html"
     },
     {
+      "source": "/deal/:token",
+      "destination": "/deal.html"
+    },
+    {
       "source": "/sports/:slug",
       "destination": "/api/page?slug=:slug&sport=1"
     },

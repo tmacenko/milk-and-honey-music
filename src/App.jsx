@@ -3886,7 +3886,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
   );
 }
 
-function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, user, decks }) {
+function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, onGoBrandDeals, user, decks }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Agents see THEIR book everywhere: every stat and tile computes over their
@@ -3968,6 +3968,11 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   // onboarding submissions arrived this week.
   const todosTab = useAdminTab('todos');
   const onboardTab = useAdminTab('onboarding');
+  // Fresh open brand deals (≤7 days, still open) get a dashboard nudge for ALL
+  // staff — agents are the ones who submit their players.
+  const dealsTab = useAdminTab('branddeals');
+  const freshOpenDeals = useMemo(() =>
+    parseDeals(dealsTab.data).filter(d => d.open && !dealExpired(d) && dealIsNew(d)), [dealsTab.data]);
   const [addingTodo, setAddingTodo] = useState(false);
   const [todoText, setTodoText] = useState('');
   const todoItems = useMemo(() => {
@@ -4150,6 +4155,12 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               Check new onboarding ({newOnboards})
             </div>
           )}
+          {freshOpenDeals.length > 0 && (
+            <div onClick={onGoBrandDeals}
+              style={{ fontSize: 13, color: G.green, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
+              New open deal{freshOpenDeals.length > 1 ? `s (${freshOpenDeals.length})` : `: ${freshOpenDeals[0].company}`}
+            </div>
+          )}
           {adminRole && hiddenAthletes.length > 0 && (
             <div onClick={() => setShowHidden(true)}
               style={{ fontSize: 13, color: G.yellow, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
@@ -4163,7 +4174,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               <span style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
             </div>
           ))}
-          {s.incomplete.length === 0 && (!adminRole || (newOnboards === 0 && hiddenAthletes.length === 0)) && todoItems.length === 0 && !addingTodo && (
+          {s.incomplete.length === 0 && freshOpenDeals.length === 0 && (!adminRole || (newOnboards === 0 && hiddenAthletes.length === 0)) && todoItems.length === 0 && !addingTodo && (
             <div style={{ fontSize: 13, color: G.green, padding: "6px 0" }}>All clear ✓</div>
           )}
         </div>
@@ -5383,7 +5394,7 @@ const dealMoney = (v) => {
 const parseDeals = (d) => {
   if (!d) return [];
   const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName') };
+  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires') };
   return d.rows.map(r => ({
     _row: r._row,
     company: c.company >= 0 ? r.cells[c.company] || '' : '',
@@ -5395,8 +5406,21 @@ const parseDeals = (d) => {
     dateSubmitted: c.date >= 0 ? r.cells[c.date] || '' : '',
     fileId: c.fileId >= 0 ? r.cells[c.fileId] || '' : '',
     fileName: c.fileName >= 0 ? r.cells[c.fileName] || '' : '',
+    open: c.open >= 0 && /^true$/i.test(r.cells[c.open] || ''),
+    dealId: c.dealId >= 0 ? r.cells[c.dealId] || '' : '',
+    products: (c.products >= 0 ? r.cells[c.products] || '' : '').split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+    stipulations: c.stipulations >= 0 ? r.cells[c.stipulations] || '' : '',
+    levels: (c.levels >= 0 ? r.cells[c.levels] || '' : '').split(',').map(s => s.trim()).filter(Boolean),
+    minFollowers: c.minFollowers >= 0 ? parseInt(String(r.cells[c.minFollowers] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
+    expires: c.expires >= 0 ? r.cells[c.expires] || '' : '',
   })).filter(x => x.company || x.clients.length);
 };
+
+// Deals stay open through the whole expires day. (athleteReach — the same
+// total-follower number the marketability score uses — gates eligibility.)
+const dealExpired = (d) => !!d.expires && new Date(d.expires + 'T23:59:59') < new Date();
+const newDealId = () => Array.from(crypto.getRandomValues(new Uint8Array(5))).map(b => b.toString(16).padStart(2, '0')).join('');
+const dealIsNew = (d) => (Date.parse(d.dateSubmitted) || 0) > Date.now() - 7 * 86400000;
 
 // Add / edit one deal. The optional file uploads straight to the FIRST tagged
 // player's Box folder, then copies land in every other tagged player's folder.
@@ -5405,6 +5429,8 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
   const [form, setForm] = useState(() => ({
     company: initial?.company || '', clients: (initial?.clients || []).join(', '),
     category: initial?.category || '', value: initial?.value || '', deliverables: initial?.deliverables || '',
+    open: !!initial?.open, products: (initial?.products || []).join('\n'), stipulations: initial?.stipulations || '',
+    levels: initial?.levels || [], minFollowers: initial?.minFollowers ? String(initial.minFollowers) : '', expires: initial?.expires || '',
   }));
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -5419,15 +5445,26 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
   const save = async () => {
     const names = form.clients.split(',').map(s => s.trim()).filter(Boolean);
     if (!form.company.trim()) return alert('Company is required');
-    if (!names.length) return alert('Tag at least one client');
+    if (!form.open && !names.length) return alert('Tag at least one client');
     setBusy(true);
     try {
       const values = { company: form.company.trim(), clients: names.join(', '), category: form.category, value: form.value, deliverables: form.deliverables };
+      if (form.open) {
+        Object.assign(values, {
+          open: 'TRUE',
+          dealId: initial?.dealId || newDealId(),
+          products: form.products.split('\n').map(s => s.trim()).filter(Boolean).join('\n'),
+          stipulations: form.stipulations.trim(),
+          levels: form.levels.join(', '),
+          minFollowers: String(form.minFollowers).trim(),
+          expires: form.expires,
+        });
+      }
       if (!editing) {
         values.dateSubmitted = new Date().toISOString().slice(0, 10);
         values.createdBy = user?.name || 'Team';
       }
-      if (file) {
+      if (file && !form.open) {
         // Upload into the first tagged player's folder, then copy to the rest.
         const meta = await (await fetch(`/api/box?person=${encodeURIComponent(names[0])}&kind=sports`)).json();
         if (meta.error) throw new Error(meta.error);
@@ -5475,14 +5512,25 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onCancel}>
       <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 560, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: G.shadowLg }}>
         <div style={{ padding: "18px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-          <span style={{ fontWeight: 700, fontSize: 16, color: G.text }}>{editing ? 'Edit Brand Deal' : 'Add Brand Deal'}</span>
+          <span style={{ fontWeight: 700, fontSize: 16, color: G.text }}>{editing ? (form.open ? 'Edit Open Deal' : 'Edit Brand Deal') : 'Add Brand Deal'}</span>
           <button onClick={onCancel} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 14, fontFamily: ff }}>✕</button>
         </div>
         <div style={{ overflowY: "auto", padding: "20px 24px" }}>
+          {!editing && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {[[false, 'Standard', 'Tag specific players'], [true, 'Open deal', 'Agents submit players via links']].map(([val, label, desc]) => (
+                <button key={label} onClick={() => set('open', val)}
+                  style={{ flex: 1, textAlign: "left", padding: "10px 12px", borderRadius: 11, border: `1px solid ${form.open === val ? G.green : G.surfaceBorder}`, background: form.open === val ? G.greenSubtle : G.surfaceRaised, cursor: "pointer", fontFamily: ff }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: form.open === val ? G.green : G.text }}>{label}</div>
+                  <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 2 }}>{desc}</div>
+                </button>
+              ))}
+            </div>
+          )}
           <Field label="Company"><Input value={form.company} onChange={e => set('company', e.target.value)} placeholder="Nike" /></Field>
-          <Field label="Client(s)">
+          {!form.open && <Field label="Client(s)">
             <MultiSelectCombo value={form.clients} onChange={v => set('clients', v)} options={athleteNames} placeholder="Tag one or more players..." />
-          </Field>
+          </Field>}
           <Field label="Category">
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {BRAND_DEAL_CATEGORIES.map(cat => {
@@ -5498,14 +5546,38 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           </Field>
           <Field label="Value"><Input value={form.value} onChange={e => set('value', e.target.value)} placeholder="$5,000 — or product, e.g. 3 pairs of cleats" /></Field>
           <Field label="Deliverables"><Textarea value={form.deliverables} onChange={e => set('deliverables', e.target.value)} rows={3} placeholder="2 IG posts + 1 appearance at store opening" /></Field>
-          <div style={{ marginBottom: 4 }}>
+          {form.open && <>
+            <Field label="Products players pick from — one per line (blank if there's no choice)">
+              <Textarea value={form.products} onChange={e => set('products', e.target.value)} rows={3} placeholder={"Hoodie — black\nCrewneck — cream\nCleats — size on file"} />
+            </Field>
+            <Field label="Stipulations (staff-only)">
+              <Textarea value={form.stipulations} onChange={e => set('stipulations', e.target.value)} rows={2} placeholder="e.g. Must have posted branded content before · no competing apparel deals" />
+            </Field>
+            <Field label="Eligible levels (none selected = all)">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {['High School', 'College', 'NFL'].map(lv => {
+                  const on = form.levels.includes(lv);
+                  return <button key={lv}
+                    onClick={() => set('levels', on ? form.levels.filter(x => x !== lv) : [...form.levels, lv])}
+                    style={{ padding: "8px 12px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+                    {lv}
+                  </button>;
+                })}
+              </div>
+            </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Min total followers"><Input value={form.minFollowers} onChange={e => set('minFollowers', e.target.value.replace(/[^\d]/g, ''))} placeholder="e.g. 15000 — blank for none" /></Field>
+              <Field label="Closes on"><Input type="date" value={form.expires} onChange={e => set('expires', e.target.value)} /></Field>
+            </div>
+          </>}
+          {!form.open && <div style={{ marginBottom: 4 }}>
             <label style={labelStyle}>Deal file</label>
             <div onClick={() => fileRef.current?.click()}
               style={{ ...inputBase, cursor: "pointer", color: file || initial?.fileName ? G.text : G.textTertiary }}>
               {file ? file.name : initial?.fileName ? `${initial.fileName} — click to replace` : 'Attach a file (goes to each tagged player’s Box folder)'}
             </div>
             <input ref={fileRef} type="file" style={{ display: "none" }} onChange={e => setFile(e.target.files?.[0] || null)} />
-          </div>
+          </div>}
         </div>
         <div style={{ padding: "14px 24px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, flexShrink: 0 }}>
           {editing && (
@@ -5521,6 +5593,220 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
   );
 }
 
+// Open-deal command center: the deal's terms, the eligible-player picker that
+// mints per-player signing links (deal-invite action), and the live
+// invited/signed board. Eligibility (levels + min followers) is enforced here —
+// only eligible players are even offered for invites.
+function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
+  const inv = useAdminTab('dealinvites');
+  const invites = useMemo(() => {
+    const d = inv.data;
+    if (!d) return [];
+    const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
+    const c = { dealId: hi('dealId'), player: hi('player'), token: hi('token'), invitedBy: hi('invitedBy'), status: hi('status'), product: hi('product'), signedAt: hi('signedAt') };
+    if (c.dealId < 0) return [];
+    return d.rows
+      .filter(r => r.cells[c.dealId] === deal.dealId)
+      .map(r => ({
+        _row: r._row,
+        player: c.player >= 0 ? r.cells[c.player] : '',
+        token: c.token >= 0 ? r.cells[c.token] : '',
+        invitedBy: c.invitedBy >= 0 ? r.cells[c.invitedBy] : '',
+        signed: c.status >= 0 && /signed/i.test(r.cells[c.status] || ''),
+        product: c.product >= 0 ? r.cells[c.product] : '',
+        signedAt: c.signedAt >= 0 ? r.cells[c.signedAt] : '',
+      }))
+      .sort((a, b) => (a.signed === b.signed ? a.player.localeCompare(b.player) : a.signed ? -1 : 1));
+  }, [inv.data, deal.dealId]);
+  const byName = useMemo(() => { const m = {}; athletes.forEach(a => { m[a.name.toLowerCase().trim()] = a; }); return m; }, [athletes]);
+  const invitedKeys = useMemo(() => new Set(invites.map(i => i.player.toLowerCase().trim())), [invites]);
+  // Mine-first: agents land here to submit THEIR players.
+  const eligible = useMemo(() => athletes
+    .filter(a => (!deal.levels.length || deal.levels.includes(a.level)) && (!deal.minFollowers || athleteReach(a) >= deal.minFollowers))
+    .filter(a => !invitedKeys.has(a.name.toLowerCase().trim()))
+    .sort((a, b) => {
+      const mineA = user?.name && String(a.agentAssigned || '').includes(user.name) ? 0 : 1;
+      const mineB = user?.name && String(b.agentAssigned || '').includes(user.name) ? 0 : 1;
+      return mineA - mineB || a.name.localeCompare(b.name);
+    }), [athletes, deal, invitedKeys, user]);
+  const [checked, setChecked] = useState(() => new Set());
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState('');
+  const expired = dealExpired(deal);
+  const signedCount = invites.filter(i => i.signed).length;
+  const linkFor = (tok) => `${window.location.origin}/deal/${tok}`;
+  const copy = async (text, key) => {
+    try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(''), 1600); } catch { alert(text); }
+  };
+  const invite = async () => {
+    const players = [...checked];
+    if (!players.length) return;
+    setBusy(true);
+    try {
+      const r = await fetch('/api/athletes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deal-invite', dealId: deal.dealId, players, invitedBy: user?.name || 'Team' }),
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error);
+      setChecked(new Set());
+      inv.reload();
+    } catch (e) { alert('Invite failed: ' + e.message); }
+    setBusy(false);
+  };
+  const removeInvite = async (i) => {
+    if (!window.confirm(`Remove ${i.player} from this deal? Their link stops working.`)) return;
+    try {
+      const r = await fetch('/api/athletes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'tab-delete', tab: 'dealinvites', row: i._row }),
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error);
+      inv.reload();
+    } catch (e) { alert('Remove failed: ' + e.message); }
+  };
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  const secLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 8 };
+  const toggle = (name) => setChecked(prev => { const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n; });
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 22, width: "100%", maxWidth: 680, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: G.shadowLg }}>
+        <div style={{ padding: "18px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <span style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>{deal.company}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: expired ? G.red : G.green, background: expired ? "transparent" : G.greenSubtle, border: `1px solid ${expired ? G.red : G.green}`, borderRadius: 99, padding: "3px 9px" }}>
+            {expired ? 'Closed' : 'Open deal'}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button onClick={onEdit} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 12.5, fontWeight: 600, fontFamily: ff }}>Edit</button>
+          <button onClick={onClose} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "7px 12px", fontSize: 14, fontFamily: ff }}>✕</button>
+        </div>
+        <div style={{ overflowY: "auto", padding: "18px 24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 14, marginBottom: 16 }}>
+            {[
+              ['Offer', deal.value || (deal.products.length ? `${deal.products.length} product options` : '—')],
+              ['Closes', deal.expires || 'No deadline'],
+              ['Eligibility', [deal.levels.length ? deal.levels.join(', ') : 'All levels', deal.minFollowers ? `${deal.minFollowers.toLocaleString()}+ followers` : ''].filter(Boolean).join(' · ')],
+              ['Created by', deal.dateSubmitted ? `${deal.dateSubmitted}` : '—'],
+            ].map(([l, v]) => (
+              <div key={l}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{l}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: G.text, marginTop: 3 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          {deal.deliverables && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={secLabel}>The ask</div>
+              <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.55, whiteSpace: "pre-line" }}>{deal.deliverables}</div>
+            </div>
+          )}
+          {deal.products.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={secLabel}>Products</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {deal.products.map(p => <span key={p} style={{ fontSize: 12, color: G.textSecondary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 99, padding: "4px 11px" }}>{p}</span>)}
+              </div>
+            </div>
+          )}
+          {deal.stipulations && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={secLabel}>Stipulations</div>
+              <div style={{ fontSize: 12.5, color: G.yellow, lineHeight: 1.5 }}>{deal.stipulations}</div>
+            </div>
+          )}
+
+          <div style={{ borderTop: `1px solid ${G.surfaceBorder}`, margin: "16px -24px", padding: "16px 24px 0" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <div style={{ ...secLabel, marginBottom: 0 }}>Invited players</div>
+              <span style={{ fontSize: 12, color: G.textSecondary }}>{signedCount} signed · {invites.length - signedCount} pending</span>
+              <div style={{ flex: 1 }} />
+              {invites.length > 0 && (
+                <button onClick={() => copy(invites.map(i => `${i.player} — ${linkFor(i.token)}`).join('\n'), 'all')}
+                  style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: copied === 'all' ? G.green : G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 12, fontWeight: 600, fontFamily: ff }}>
+                  {copied === 'all' ? 'Copied ✓' : 'Copy all links'}
+                </button>
+              )}
+            </div>
+            {inv.loading && !inv.data ? (
+              <div style={{ fontSize: 13, color: G.textTertiary, padding: "10px 0" }}>Loading…</div>
+            ) : invites.length === 0 ? (
+              <div style={{ fontSize: 13, color: G.textTertiary, padding: "4px 0 10px" }}>No players invited yet — pick from the list below.</div>
+            ) : invites.map((i, idx) => {
+              const a = byName[i.player.toLowerCase().trim()];
+              return (
+                <div key={i._row} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: idx === invites.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
+                  <Avatar name={i.player} photoUrl={a?.photoUrl} size={30} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.player}</div>
+                    <div style={{ fontSize: 11, color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {i.signed
+                        ? [i.product, a && deal.products.length ? [a.shirtSize && `Shirt ${a.shirtSize}`, a.shoeSize && `Shoe ${a.shoeSize}`].filter(Boolean).join(' · ') : '', i.signedAt && new Date(i.signedAt).toLocaleDateString()].filter(Boolean).join(' · ')
+                        : `Invited by ${i.invitedBy || '—'}`}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: i.signed ? G.green : G.yellow, flexShrink: 0 }}>
+                    {i.signed ? 'Signed' : 'Pending'}
+                  </span>
+                  <button onClick={() => copy(linkFor(i.token), i.token)} title="Copy their signing link"
+                    style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, color: copied === i.token ? G.green : G.textSecondary, cursor: "pointer", padding: "5px 9px", fontSize: 11.5, fontWeight: 600, fontFamily: ff, flexShrink: 0 }}>
+                    {copied === i.token ? '✓' : 'Copy link'}
+                  </button>
+                  {!i.signed && (
+                    <button onClick={() => removeInvite(i)} title="Remove invite"
+                      style={{ background: "transparent", border: "none", color: G.textTertiary, cursor: "pointer", padding: 4, fontSize: 13, fontFamily: ff, flexShrink: 0 }}>✕</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {!expired && (
+            <div style={{ borderTop: `1px solid ${G.surfaceBorder}`, margin: "14px -24px 0", padding: "16px 24px 4px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{ ...secLabel, marginBottom: 0 }}>Add your players</div>
+                <span style={{ fontSize: 12, color: G.textTertiary }}>{eligible.length} eligible</span>
+                <div style={{ flex: 1 }} />
+                <button onClick={invite} disabled={busy || checked.size === 0}
+                  style={{ background: checked.size && !busy ? G.green : G.surfaceRaised, border: "none", borderRadius: 10, padding: "8px 14px", color: checked.size && !busy ? "#0a0a0a" : G.textTertiary, fontWeight: 700, fontSize: 12.5, cursor: checked.size && !busy ? "pointer" : "default", fontFamily: ff }}>
+                  {busy ? 'Creating links…' : `Invite${checked.size ? ` ${checked.size}` : ''}`}
+                </button>
+              </div>
+              {eligible.length === 0 ? (
+                <div style={{ fontSize: 13, color: G.textTertiary, padding: "4px 0 10px" }}>Every eligible player is already invited.</div>
+              ) : (
+                <div style={{ maxHeight: 230, overflowY: "auto", border: `1px solid ${G.surfaceBorder}`, borderRadius: 12 }}>
+                  {eligible.map((a, idx) => {
+                    const on = checked.has(a.name);
+                    return (
+                      <div key={a.name} onClick={() => toggle(a.name)}
+                        onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer", borderBottom: idx === eligible.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
+                        <div style={{ width: 16, height: 16, borderRadius: 5, border: `1.5px solid ${on ? G.green : G.textTertiary}`, background: on ? G.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {on && <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#0a0a0a" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </div>
+                        <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
+                        <span style={{ fontSize: 11, color: G.textTertiary, flexShrink: 0 }}>{a.level}{athleteReach(a) ? ` · ${fmtCount(athleteReach(a))}` : ''}</span>
+                        {a.agentAssigned && <span style={{ fontSize: 11, color: G.textTertiary, flexShrink: 0, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.agentAssigned}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   const tab = useAdminTab('branddeals');
   const deals = useMemo(() => parseDeals(tab.data), [tab.data]);
@@ -5530,7 +5816,25 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   const [sortCol, setSortCol] = useCachedState('bdeals.sortCol', 'date');
   const [sortDir, setSortDir] = useCachedState('bdeals.sortDir', 'desc');
   const [editing, setEditing] = useState(null); // {} = new, deal = edit
+  const [openDeal, setOpenDeal] = useState(null); // open deal whose board is up
   const [previewFile, setPreviewFile] = useState(null);
+  const invTab = useAdminTab('dealinvites');
+  const invCounts = useMemo(() => {
+    const d = invTab.data, m = {};
+    if (!d) return m;
+    const di = d.headers.findIndex(h => h.toLowerCase() === 'dealid');
+    const si = d.headers.findIndex(h => h.toLowerCase() === 'status');
+    if (di < 0) return m;
+    d.rows.forEach(r => {
+      const id = r.cells[di];
+      if (!id) return;
+      m[id] = m[id] || { invited: 0, signed: 0 };
+      m[id].invited++;
+      if (/signed/i.test((si >= 0 && r.cells[si]) || '')) m[id].signed++;
+    });
+    return m;
+  }, [invTab.data]);
+  const openDeals = useMemo(() => deals.filter(d => d.open).sort((a, b) => (Date.parse(b.dateSubmitted) || 0) - (Date.parse(a.dateSubmitted) || 0)), [deals]);
   const athleteByName = useMemo(() => {
     const m = {};
     athletes.forEach(a => { m[a.name.toLowerCase().trim()] = a; });
@@ -5539,6 +5843,7 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   const athleteNames = useMemo(() => athletes.map(a => a.name).sort((a, b) => a.localeCompare(b)), [athletes]);
   const ql = q.trim().toLowerCase();
   const filtered = deals
+    .filter(d => !d.open)
     .filter(d => cat === 'All' || d.categories.includes(cat))
     .filter(d => agent === 'All' || d.clients.some(n => String(athleteByName[n.toLowerCase()]?.agentAssigned || '').toLowerCase().includes(agent.toLowerCase())))
     .filter(d => !ql || d.company.toLowerCase().includes(ql) || d.clients.join(' ').toLowerCase().includes(ql) || d.category.toLowerCase().includes(ql) || d.deliverables.toLowerCase().includes(ql));
@@ -5581,6 +5886,39 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
           + Add Deal
         </button>
       </div>
+      {openDeals.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Open deals</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+            {openDeals.map(d => {
+              const c = invCounts[d.dealId] || { invited: 0, signed: 0 };
+              const closed = dealExpired(d);
+              return (
+                <div key={d._row} onClick={() => setOpenDeal(d)}
+                  onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                  onMouseLeave={e => e.currentTarget.style.background = G.surface}
+                  style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, cursor: "pointer" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: G.text, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</span>
+                    {closed
+                      ? <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.red, flexShrink: 0 }}>Closed</span>
+                      : dealIsNew(d) && <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#0a0a0a", background: G.green, borderRadius: 99, padding: "2px 7px", flexShrink: 0 }}>New</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {[d.value || (d.products.length ? `${d.products.length} products` : ''), d.deliverables].filter(Boolean).join(' · ') || 'Open deal'}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: c.signed ? G.green : G.textSecondary }}>{c.signed} signed</span>
+                    <span style={{ fontSize: 12, color: G.textTertiary }}>{c.invited} invited</span>
+                    <div style={{ flex: 1 }} />
+                    {d.expires && !closed && <span style={{ fontSize: 11.5, color: G.textTertiary }}>closes {d.expires}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
         {tab.loading && !tab.data ? (
           <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
@@ -5641,6 +5979,11 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
       {editing && (
         <BrandDealForm initial={editing._row ? editing : null} athleteNames={athleteNames} user={user}
           onDone={() => { setEditing(null); tab.reload(); }} onCancel={() => setEditing(null)} />
+      )}
+      {openDeal && (
+        <OpenDealModal deal={openDeal} athletes={athletes} user={user}
+          onClose={() => { setOpenDeal(null); invTab.reload(); }}
+          onEdit={() => { setEditing(openDeal); setOpenDeal(null); }} />
       )}
       {previewFile && <BoxPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
     </div>
@@ -7224,6 +7567,7 @@ function App() {
                   onGoRoster={() => goSportsPage('roster')}
                   onShowStarters={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('Starters'); goSportsPage('roster'); }}
                   onShowMine={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setAgentFilter(currentUser?.name || 'All'); goSportsPage('roster'); }}
+                  onGoBrandDeals={() => goSportsPage('branddeals')}
                   onGoMarketing={() => goSportsPage('marketing')}
                   onGoRecruiting={() => goSportsPage('recruiting')} />
               )}

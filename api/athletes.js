@@ -603,7 +603,15 @@ const ADMIN_TABS = {
   // Brand deal tracker — one row per deal; clients is a comma list of roster
   // names; fileId/fileName point at the deal file in Box (copied into each
   // tagged player's folder at upload time).
-  branddeals: { title: 'BrandDeals', writable: true, autoCreate: ['company', 'clients', 'category', 'value', 'deliverables', 'dateSubmitted', 'fileId', 'fileName', 'createdBy'] },
+  branddeals: { title: 'BrandDeals', writable: true, autoCreate: ['company', 'clients', 'category', 'value', 'deliverables', 'dateSubmitted', 'fileId', 'fileName', 'createdBy'],
+    // Open-deal columns (agents submit players via per-player signing links):
+    // open=TRUE flags one, dealId joins DealInvites rows, products is a
+    // newline list players pick from, levels/minFollowers gate eligibility,
+    // expires closes the links.
+    ensureCols: ['open', 'dealId', 'products', 'stipulations', 'levels', 'minFollowers', 'expires'] },
+  // One row per invited player per open deal; token is the signing link's
+  // credential. Written by the deal-invite action + the public /api/deal sign.
+  dealinvites: { title: 'DealInvites', writable: true, autoCreate: ['dealId', 'player', 'token', 'invitedBy', 'invitedAt', 'status', 'product', 'signature', 'signedAt'] },
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {
@@ -1139,6 +1147,47 @@ module.exports = async (req, res) => {
       if (String((req.body || {}).action || '').startsWith('tab-')) {
         await handleTabAction(token, req.body || {});
         return res.json({ success: true });
+      }
+
+      // Open-deal invites: mint per-player signing links. One DealInvites row
+      // per (deal, player); re-inviting someone already on the deal returns
+      // their existing link instead of a duplicate.
+      if ((req.body || {}).action === 'deal-invite') {
+        const dealId = String(req.body.dealId || '').trim();
+        const players = Array.isArray(req.body.players) ? req.body.players.map(s => String(s || '').trim()).filter(Boolean) : [];
+        if (!dealId || !players.length) return res.status(400).json({ error: 'Missing dealId or players' });
+        const invitedBy = String(req.body.invitedBy || '').trim();
+        const invTab = ADMIN_TABS.dealinvites;
+        const range = tabRange(invTab.title);
+        let values;
+        try { values = (await sheetGet(token, range)).values || []; }
+        catch { // very first invite — the tab may not exist yet
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ addSheet: { properties: { title: invTab.title, hidden: true, gridProperties: { rowCount: 1000, columnCount: invTab.autoCreate.length } } } }] }),
+          });
+          await sheetAppend(token, range, invTab.autoCreate);
+          values = [invTab.autoCreate];
+        }
+        const heads = (values[0] || []).map(h => String(h || '').trim().toLowerCase());
+        const col = n => heads.indexOf(n.toLowerCase());
+        const dI = col('dealId'), pI = col('player'), tI = col('token');
+        if (dI < 0 || pI < 0 || tI < 0) return res.status(500).json({ error: 'DealInvites tab is missing its columns' });
+        const existing = new Map();
+        values.slice(1).forEach(r => {
+          if (String(r[dI] || '').trim() === dealId) existing.set(String(r[pI] || '').trim().toLowerCase(), String(r[tI] || '').trim());
+        });
+        const nowIso = new Date().toISOString();
+        const fresh = [];
+        const invites = players.map(p => {
+          const have = existing.get(p.toLowerCase());
+          if (have) return { player: p, token: have, existed: true };
+          const tok = crypto.randomBytes(9).toString('base64url');
+          fresh.push([dealId, p, tok, invitedBy, nowIso, 'invited', '', '', '']);
+          return { player: p, token: tok };
+        });
+        await sheetAppend2(token, range, fresh);
+        return res.json({ invites });
       }
 
       // Add Recruit search-assist: name (+ school/level) → linkable candidates.

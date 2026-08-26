@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/favicon.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Brand Deal — Milk &amp; Honey Sports</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { background: #0a0a0a; font-family: -apple-system,'SF Pro Display','Helvetica Neue',sans-serif; min-height: 100vh; color: #f0f0f0; }
+    .shell { max-width: 480px; margin: 0 auto; padding: 0 20px 80px; }
+    .hdr { padding: 32px 0 8px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .hdr img { height: 34px; }
+    .card { background: #111; border: 1.5px solid #1e1e1e; border-radius: 18px; padding: 24px 20px; margin-top: 18px; animation: fadeUp .25s ease; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    .eyebrow { font-size: 10px; font-weight: 700; color: #5BC898; text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 8px; }
+    .brand { font-size: 27px; font-weight: 800; color: #fff; letter-spacing: -0.025em; line-height: 1.1; }
+    .for { font-size: 13px; color: #888; margin-top: 6px; }
+    .for b { color: #f0f0f0; font-weight: 700; }
+    .sec { margin-top: 22px; }
+    .sec-label { font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .sec-body { font-size: 14px; color: #ddd; line-height: 1.55; white-space: pre-line; }
+    .value { color: #5BC898; font-weight: 700; }
+    .deadline { font-size: 12px; color: #b9924d; margin-top: 18px; }
+    .opt { display: flex; align-items: center; gap: 12px; padding: 13px 14px; background: #0d0d0d; border: 1.5px solid #222; border-radius: 12px; cursor: pointer; margin-bottom: 8px; transition: border-color .15s; }
+    .opt.on { border-color: #5BC898; background: rgba(91,200,152,0.07); }
+    .opt-dot { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #444; flex-shrink: 0; }
+    .opt.on .opt-dot { border-color: #5BC898; background: radial-gradient(circle at center, #5BC898 45%, transparent 50%); }
+    .opt-name { font-size: 14px; color: #eee; font-weight: 600; }
+    input[type=text] { width: 100%; padding: 14px 16px; background: #0d0d0d; border: 1.5px solid #222; border-radius: 12px; color: #f0f0f0; font-size: 16px; font-family: inherit; outline: none; }
+    input[type=text]:focus { border-color: #5BC898; }
+    input::placeholder { color: #444; }
+    .sig-note { font-size: 11px; color: #666; margin-top: 6px; }
+    .agree { display: flex; gap: 11px; align-items: flex-start; margin-top: 16px; cursor: pointer; }
+    .agree input { width: 17px; height: 17px; margin-top: 1px; accent-color: #5BC898; flex-shrink: 0; }
+    .agree span { font-size: 12.5px; color: #999; line-height: 1.5; }
+    .btn { width: 100%; margin-top: 20px; padding: 15px; background: #5BC898; border: none; border-radius: 13px; color: #08130d; font-size: 15px; font-weight: 800; font-family: inherit; cursor: pointer; transition: opacity .15s; }
+    .btn:disabled { background: #1c1c1c; color: #555; cursor: default; }
+    .err { color: #e5726c; font-size: 13px; margin-top: 12px; text-align: center; }
+    .center { text-align: center; padding: 36px 0 16px; }
+    .big-icon { width: 54px; height: 54px; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; background: rgba(91,200,152,0.12); color: #5BC898; font-size: 26px; }
+    .big-icon.dim { background: #1a1a1a; color: #666; }
+    .center h2 { font-size: 20px; font-weight: 800; color: #fff; letter-spacing: -0.02em; }
+    .center p { font-size: 13.5px; color: #888; margin-top: 8px; line-height: 1.55; }
+    .foot { text-align: center; font-size: 11px; color: #444; margin-top: 26px; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="hdr"><img src="/mh-logo.png" alt="Milk &amp; Honey" onerror="this.style.display='none'" /></div>
+    <div id="root"><div class="card"><div class="center"><p>Loading…</p></div></div></div>
+    <div class="foot">Milk &amp; Honey Sports</div>
+  </div>
+<script>
+(function () {
+  var root = document.getElementById('root');
+  var m = location.pathname.match(/\/deal\/([A-Za-z0-9_-]+)/);
+  var token = m ? m[1] : new URLSearchParams(location.search).get('t') || '';
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; };
+  var state = { info: null, product: '', name: '', agree: false, busy: false, err: '' };
+
+  function message(icon, dim, title, body) {
+    root.innerHTML = '<div class="card"><div class="center"><div class="big-icon' + (dim ? ' dim' : '') + '">' + icon + '</div><h2>' + esc(title) + '</h2><p>' + esc(body) + '</p></div></div>';
+  }
+
+  function fmtDate(s) {
+    var d = new Date(s + 'T12:00:00');
+    return isNaN(d) ? s : d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+  }
+
+  function render() {
+    var i = state.info;
+    var canSign = state.name.trim() && state.agree && (!i.products.length || state.product) && !state.busy;
+    var html = '<div class="card">' +
+      '<div class="eyebrow">Open brand deal</div>' +
+      '<div class="brand">' + esc(i.company) + '</div>' +
+      '<div class="for">For <b>' + esc(i.player) + '</b> · via Milk &amp; Honey Sports</div>';
+    if (i.value) html += '<div class="sec"><div class="sec-label">What you get</div><div class="sec-body value">' + esc(i.value) + '</div></div>';
+    if (i.products.length) {
+      html += '<div class="sec"><div class="sec-label">Pick your product</div>' + i.products.map(function (p, j) {
+        return '<div class="opt' + (state.product === p ? ' on' : '') + '" data-p="' + j + '"><div class="opt-dot"></div><div class="opt-name">' + esc(p) + '</div></div>';
+      }).join('') + '</div>';
+    }
+    if (i.deliverables) html += '<div class="sec"><div class="sec-label">What they ask in return</div><div class="sec-body">' + esc(i.deliverables) + '</div></div>';
+    if (i.expires) html += '<div class="deadline">Respond by ' + esc(fmtDate(i.expires)) + '</div>';
+    html += '<div class="sec"><div class="sec-label">Sign to accept</div>' +
+      '<input type="text" id="sig" autocomplete="name" placeholder="Type your full name" value="' + esc(state.name) + '" />' +
+      '<div class="sig-note">Typing your name here counts as your digital signature.</div>' +
+      '<label class="agree"><input type="checkbox" id="agree"' + (state.agree ? ' checked' : '') + ' /><span>I agree to complete the deliverables above in exchange for what’s offered, and I’m good with my team at Milk &amp; Honey seeing this.</span></label>' +
+      '<button class="btn" id="go"' + (canSign ? '' : ' disabled') + '>' + (state.busy ? 'Signing…' : 'Count me in') + '</button>' +
+      (state.err ? '<div class="err">' + esc(state.err) + '</div>' : '') +
+      '</div></div>';
+    root.innerHTML = html;
+
+    Array.prototype.forEach.call(root.querySelectorAll('.opt'), function (el) {
+      el.onclick = function () { state.product = i.products[+el.getAttribute('data-p')]; render(); };
+    });
+    var sig = document.getElementById('sig');
+    sig.oninput = function () { state.name = sig.value; document.getElementById('go').disabled = !(state.name.trim() && state.agree && (!i.products.length || state.product)); };
+    document.getElementById('agree').onchange = function (e) { state.agree = e.target.checked; render(); };
+    document.getElementById('go').onclick = sign;
+  }
+
+  function sign() {
+    if (state.busy) return;
+    state.busy = true; state.err = ''; render();
+    fetch('/api/deal', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token, product: state.product, signature: state.name.trim() }),
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { state.busy = false; state.err = res.j.error || 'Something went wrong — try again.'; render(); return; }
+        message('✓', false, 'You’re in!', 'Your team at Milk & Honey has been notified' + (state.product ? ' — you picked “' + state.product + '”' : '') + '. They’ll follow up with next steps.');
+      })
+      .catch(function () { state.busy = false; state.err = 'Network error — try again.'; render(); });
+  }
+
+  if (!token) { message('?', true, 'Link not valid', 'This deal link is incomplete. Ask your agent to resend it.'); return; }
+  fetch('/api/deal?token=' + encodeURIComponent(token))
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok) return message('?', true, 'Link not valid', 'This deal link doesn’t work. Ask your agent to resend it.');
+      var i = res.j;
+      if (i.signed) return message('✓', false, 'Already signed', 'You signed up for the ' + i.company + ' deal' + (i.product ? ' and picked “' + i.product + '”' : '') + '. Your team will follow up with next steps.');
+      if (i.expired) return message('⏰', true, 'This deal has closed', 'The window to sign up for the ' + i.company + ' deal has passed. Ask your agent about upcoming deals.');
+      state.info = i;
+      render();
+    })
+    .catch(function () { message('!', true, 'Connection problem', 'Could not load this deal. Check your connection and refresh.'); });
+})();
+</script>
+</body>
+</html>
