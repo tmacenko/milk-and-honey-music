@@ -5699,6 +5699,7 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
   const invitedKeys = useMemo(() => new Set(invites.map(i => i.player.toLowerCase().trim())), [invites]);
   // Agents submit only THEIR players; marketers, admins, and house-password
   // sessions see the whole eligible roster.
+  const [pq, setPq] = useState('');
   const agentOnly = user?.userRole === 'agent' && user?.name;
   const eligible = useMemo(() => athletes
     .filter(a => (!deal.levels.length || deal.levels.includes(a.level)) && (!deal.minFollowers || athleteReach(a) >= deal.minFollowers))
@@ -5717,7 +5718,6 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
   const [checked, setChecked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState('');
-  const [pq, setPq] = useState('');
   const expired = dealExpired(deal);
   const signedCount = invites.filter(i => i.signed).length;
   const linkFor = (tok) => `${window.location.origin}/deal/${tok}`;
