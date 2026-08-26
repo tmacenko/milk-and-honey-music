@@ -29,7 +29,10 @@
     .opt-dot { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #444; flex-shrink: 0; }
     .opt.on .opt-dot { border-color: #5BC898; background: radial-gradient(circle at center, #5BC898 45%, transparent 50%); }
     .opt-name { font-size: 14px; color: #eee; font-weight: 600; }
-    .pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 430px; overflow-y: auto; padding-right: 2px; }
+    .pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .more-btn { width: 100%; margin-top: 10px; padding: 12px; background: transparent; border: 1.5px dashed #2a2a2a; border-radius: 12px; color: #999; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; }
+    .pick-sum { font-size: 12px; color: #888; margin-bottom: 10px; }
+    .pick-sum b { color: #5BC898; }
     .pcard { border: 1.5px solid #222; border-radius: 14px; overflow: hidden; cursor: pointer; background: #0d0d0d; transition: border-color .15s; position: relative; }
     .pcard.on { border-color: #5BC898; }
     .pcard .chk { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 50%; background: #5BC898; color: #08130d; font-size: 13px; font-weight: 800; display: none; align-items: center; justify-content: center; }
@@ -68,10 +71,30 @@
   var m = location.pathname.match(/\/deal\/([A-Za-z0-9_-]+)/);
   var token = m ? m[1] : new URLSearchParams(location.search).get('t') || '';
   var esc = function (s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; };
-  var state = { info: null, product: '', name: '', agree: false, busy: false, err: '' };
+  var state = { info: null, picked: [], name: '', agree: false, busy: false, err: '', showAll: false };
 
   function message(icon, dim, title, body) {
     root.innerHTML = '<div class="card"><div class="center"><div class="big-icon' + (dim ? ' dim' : '') + '">' + icon + '</div><h2>' + esc(title) + '</h2><p>' + esc(body) + '</p></div></div>';
+  }
+
+  function priceOf(card) { var n = parseFloat(String(card.price || '').replace(/[^0-9.]/g, '')); return isFinite(n) ? n : 0; }
+  function pickedTotal(cards) {
+    var t = 0;
+    state.picked.forEach(function (title) { var c = cards.filter(function (x) { return x.title === title; })[0]; if (c) t += priceOf(c); });
+    return t;
+  }
+  function togglePick(card, i) {
+    var idx = state.picked.indexOf(card.title);
+    if (idx >= 0) { state.picked.splice(idx, 1); render(); return; }
+    var maxN = i.pickBudget ? Infinity : (i.pickCount || 1);
+    if (maxN === 1) { state.picked = [card.title]; render(); return; }
+    if (state.picked.length >= maxN) return; // at the count limit
+    if (i.pickBudget && pickedTotal(i.productCards || []) + priceOf(card) > i.pickBudget) {
+      state.err = 'That would put you over the $' + i.pickBudget + ' limit.'; render(); return;
+    }
+    state.err = '';
+    state.picked.push(card.title);
+    render();
   }
 
   function fmtDate(s) {
@@ -82,25 +105,37 @@
   function render() {
     var i = state.info;
     var needsPick = i.dealType !== 'cash' && (((i.productCards || []).length) || i.products.length);
-    var canSign = state.name.trim() && state.agree && (!needsPick || state.product) && !state.busy;
+    var canSign = state.name.trim() && state.agree && (!needsPick || state.picked.length) && !state.busy;
     var html = '<div class="card">' +
       '<div class="eyebrow">Open brand deal</div>' +
       '<div class="brand">' + esc(i.company) + '</div>' +
-      '<div class="for">For <b>' + esc(i.player) + '</b> · via Milk &amp; Honey Sports</div>';
+      '<div class="for">For <b>' + esc(i.player) + '</b> \u00b7 via Milk &amp; Honey Sports</div>';
     var cards = i.productCards || [];
-    var offer = i.dealType === 'cash' ? i.value : (i.value || (cards.length || i.products.length ? 'Free product \u2014 pick one below' : ''));
+    var maxN = i.pickBudget ? 0 : (i.pickCount || 1);
+    var offer = i.dealType === 'cash' ? i.value : (i.value || (cards.length || i.products.length
+      ? (i.pickBudget ? 'Free product \u2014 pick up to $' + i.pickBudget + ' worth below'
+        : maxN > 1 ? 'Free product \u2014 pick up to ' + maxN + ' below'
+        : 'Free product \u2014 pick one below') : ''));
     if (offer) html += '<div class="sec"><div class="sec-label">What you get</div><div class="sec-body value">' + esc(offer) + '</div></div>';
     if (cards.length) {
-      html += '<div class="sec"><div class="sec-label">Pick your product</div><div class="pgrid">' + cards.map(function (p, j) {
-        return '<div class="pcard' + (state.product === p.title ? ' on' : '') + '" data-p="' + j + '">' +
+      var visible = state.showAll ? cards : cards.slice(0, 4);
+      var sum = '';
+      if (i.pickBudget) sum = 'Selected <b>$' + pickedTotal(cards) + '</b> of your $' + i.pickBudget + ' limit';
+      else if (maxN > 1) sum = 'Selected <b>' + state.picked.length + '</b> of up to ' + maxN;
+      html += '<div class="sec"><div class="sec-label">' + (i.pickBudget || maxN > 1 ? 'Pick your products' : 'Pick your product') + '</div>' +
+        (sum ? '<div class="pick-sum">' + sum + '</div>' : '') +
+        '<div class="pgrid">' + visible.map(function (p, j) {
+        return '<div class="pcard' + (state.picked.indexOf(p.title) >= 0 ? ' on' : '') + '" data-p="' + j + '">' +
           '<div class="chk">\u2713</div>' +
           (p.image ? '<img src="' + esc(p.image) + '" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=pimg>\u25A1</div>\'" />' : '<div class="pimg">\u25A1</div>') +
           '<div class="pn">' + esc(p.title) + '</div>' +
           '<div class="pp">' + esc(p.price || '') + '</div></div>';
-      }).join('') + '</div></div>';
+      }).join('') + '</div>' +
+        (cards.length > 4 && !state.showAll ? '<button class="more-btn" id="more">View ' + (cards.length - 4) + ' more products</button>' : '') +
+        '</div>';
     } else if (i.dealType !== 'cash' && i.products.length) {
       html += '<div class="sec"><div class="sec-label">Pick your product</div>' + i.products.map(function (p, j) {
-        return '<div class="opt' + (state.product === p ? ' on' : '') + '" data-p="' + j + '"><div class="opt-dot"></div><div class="opt-name">' + esc(p) + '</div></div>';
+        return '<div class="opt' + (state.picked.indexOf(p) >= 0 ? ' on' : '') + '" data-p="' + j + '"><div class="opt-dot"></div><div class="opt-name">' + esc(p) + '</div></div>';
       }).join('') + '</div>';
     }
     if (i.deliverables) html += '<div class="sec"><div class="sec-label">What they ask in return</div><div class="sec-body">' + esc(i.deliverables) + '</div></div>';
@@ -108,20 +143,26 @@
     html += '<div class="sec"><div class="sec-label">Sign to accept</div>' +
       '<input type="text" id="sig" autocomplete="name" placeholder="Type your full name" value="' + esc(state.name) + '" />' +
       '<div class="sig-note">Typing your name here counts as your digital signature.</div>' +
-      '<label class="agree"><input type="checkbox" id="agree"' + (state.agree ? ' checked' : '') + ' /><span>I agree to complete the deliverables above in exchange for what’s offered, and I’m good with my team at Milk &amp; Honey seeing this.</span></label>' +
-      '<button class="btn" id="go"' + (canSign ? '' : ' disabled') + '>' + (state.busy ? 'Signing…' : 'Count me in') + '</button>' +
+      '<label class="agree"><input type="checkbox" id="agree"' + (state.agree ? ' checked' : '') + ' /><span>By checking this box I agree to complete the deliverables outlined above in exchange for my selected goods.</span></label>' +
+      '<button class="btn" id="go"' + (canSign ? '' : ' disabled') + '>' + (state.busy ? 'Signing\u2026' : 'Count me in') + '</button>' +
       (state.err ? '<div class="err">' + esc(state.err) + '</div>' : '') +
       '</div></div>';
     root.innerHTML = html;
 
     Array.prototype.forEach.call(root.querySelectorAll('.pcard'), function (el) {
-      el.onclick = function () { state.product = (i.productCards[+el.getAttribute('data-p')] || {}).title || ''; render(); };
+      el.onclick = function () {
+        var visible = state.showAll ? (i.productCards || []) : (i.productCards || []).slice(0, 4);
+        var card = visible[+el.getAttribute('data-p')];
+        if (card) togglePick(card, i);
+      };
     });
+    var more = document.getElementById('more');
+    if (more) more.onclick = function () { state.showAll = true; render(); };
     Array.prototype.forEach.call(root.querySelectorAll('.opt'), function (el) {
-      el.onclick = function () { state.product = i.products[+el.getAttribute('data-p')]; render(); };
+      el.onclick = function () { togglePick({ title: i.products[+el.getAttribute('data-p')], price: '' }, i); };
     });
     var sig = document.getElementById('sig');
-    sig.oninput = function () { state.name = sig.value; document.getElementById('go').disabled = !(state.name.trim() && state.agree && (!needsPick || state.product)); };
+    sig.oninput = function () { state.name = sig.value; document.getElementById('go').disabled = !(state.name.trim() && state.agree && (!needsPick || state.picked.length)); };
     document.getElementById('agree').onchange = function (e) { state.agree = e.target.checked; render(); };
     document.getElementById('go').onclick = sign;
   }
@@ -131,13 +172,13 @@
     state.busy = true; state.err = ''; render();
     fetch('/api/deal', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token, product: state.product, signature: state.name.trim() }),
+      body: JSON.stringify({ token: token, product: state.picked.join(' + '), signature: state.name.trim() }),
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
-        if (!res.ok) { state.busy = false; state.err = res.j.error || 'Something went wrong — try again.'; render(); return; }
-        message('✓', false, 'You’re in!', 'Your team at Milk & Honey has been notified' + (state.product ? ' — you picked “' + state.product + '”' : '') + '. They’ll follow up with next steps.');
+        if (!res.ok) { state.busy = false; state.err = res.j.error || 'Something went wrong \u2014 try again.'; render(); return; }
+        message('\u2713', false, 'You\u2019re in!', 'Your team at Milk & Honey has been notified' + (state.picked.length ? ' \u2014 you picked ' + state.picked.map(function (t) { return '\u201C' + t + '\u201D'; }).join(', ') : '') + '. They\u2019ll follow up with next steps.');
       })
-      .catch(function () { state.busy = false; state.err = 'Network error — try again.'; render(); });
+      .catch(function () { state.busy = false; state.err = 'Network error \u2014 try again.'; render(); });
   }
 
   if (!token) { message('?', true, 'Link not valid', 'This deal link is incomplete. Ask your agent to resend it.'); return; }
