@@ -193,6 +193,7 @@
       var i = res.j;
       if (i.signed) return message('✓', false, 'Already signed', 'You signed up for the ' + i.company + ' deal' + (i.product ? ' and picked “' + i.product + '”' : '') + '. Your team will follow up with next steps.');
       if (i.expired) return message('⏰', true, 'This deal has closed', 'The window to sign up for the ' + i.company + ' deal has passed. Ask your agent about upcoming deals.');
+      if (i.player && i.company) document.title = i.player + ' \u2014 Brand Deal Offer from ' + i.company;
       if ((i.productCards || []).length === 1) state.picked = [i.productCards[0].title];
       state.info = i;
       render();

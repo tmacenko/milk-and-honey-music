@@ -49,6 +49,7 @@ function colLetter(i) { // 0-based index -> A1 letter
   return s;
 }
 
+const PAGE_CACHE = {}; // deal.html body, cached per warm instance
 const INV_TITLE = 'DealInvites';
 const DEALS_TITLE = 'BrandDeals';
 
@@ -171,6 +172,43 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const tok = String((req.method === 'GET' ? req.query?.token : req.body?.token) || '').trim();
+
+  // /deal/{token} rewrites here with ?page=1: serve the static signing page
+  // with a personalized <title> + og tags, so a texted link previews as
+  // "Player — Brand Deal Offer from Brand" instead of the generic site title.
+  // (Link-preview crawlers don't run JS, so this has to happen server-side.)
+  if (req.method === 'GET' && String(req.query?.page || '') === '1') {
+    if (!PAGE_CACHE.html) {
+      try {
+        const r = await fetch(`https://${req.headers.host}/deal.html`);
+        if (r.ok) PAGE_CACHE.html = await r.text();
+      } catch { /* fall through to redirect */ }
+    }
+    if (!PAGE_CACHE.html) {
+      res.setHeader('location', '/deal.html?t=' + encodeURIComponent(tok));
+      return res.status(307).end();
+    }
+    let title = 'Brand Deal — Milk & Honey Sports';
+    if (/^[A-Za-z0-9_-]{8,32}$/.test(tok)) {
+      try {
+        const token = await getToken();
+        const found = await loadByToken(token, tok);
+        if (found) {
+          const player = cell(found.invite.cells, found.ic('player'));
+          const company = cell(found.deal.cells, found.dc('company'));
+          if (player && company) title = `${player} — Brand Deal Offer from ${company}`;
+        }
+      } catch { /* generic title is fine */ }
+    }
+    const escH = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const t = escH(title);
+    const html = PAGE_CACHE.html.replace(/<title>[^<]*<\/title>/,
+      `<title>${t}</title>\n  <meta property="og:title" content="${t}" />\n  <meta property="og:description" content="View your offer and sign in one tap." />\n  <meta property="og:image" content="https://${req.headers.host}/mh-logo.png" />\n  <meta name="twitter:card" content="summary" />`);
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    res.setHeader('cache-control', 'no-store');
+    return res.status(200).send(html);
+  }
+
   if (!/^[A-Za-z0-9_-]{8,32}$/.test(tok)) return res.status(404).json({ error: 'Invalid link' });
 
   try {

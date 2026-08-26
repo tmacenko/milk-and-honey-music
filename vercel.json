@@ -65,7 +65,7 @@
     },
     {
       "source": "/deal/:token",
-      "destination": "/deal.html"
+      "destination": "/api/deal?page=1&token=:token"
     },
     {
       "source": "/sports/:slug",
