@@ -5379,6 +5379,7 @@ function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
 
 // ── Brand deal tracker (company only — lives in the left nav) ────────────────
 const BRAND_DEAL_CATEGORIES = ['Public Appearance', 'Trading Card', 'Social Post', 'In Game Activation', 'Memorabilia Signing', 'Photo Shoot'];
+const OPEN_DEAL_CATEGORIES = ['Story Post', 'Feed Post'];
 // Deal value → dollars when parseable ("$5,000", "$1.2M", "7500"); product-only
 // deals ("3 pairs of cleats") count as 0 in the money stats but still show.
 const dealMoney = (v) => {
@@ -5394,7 +5395,7 @@ const dealMoney = (v) => {
 const parseDeals = (d) => {
   if (!d) return [];
   const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires') };
+  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires') };
   return d.rows.map(r => ({
     _row: r._row,
     company: c.company >= 0 ? r.cells[c.company] || '' : '',
@@ -5407,6 +5408,7 @@ const parseDeals = (d) => {
     fileId: c.fileId >= 0 ? r.cells[c.fileId] || '' : '',
     fileName: c.fileName >= 0 ? r.cells[c.fileName] || '' : '',
     open: c.open >= 0 && /^true$/i.test(r.cells[c.open] || ''),
+    dealType: c.dealType >= 0 ? r.cells[c.dealType] || 'product' : 'product',
     dealId: c.dealId >= 0 ? r.cells[c.dealId] || '' : '',
     products: (c.products >= 0 ? r.cells[c.products] || '' : '').split(/\r?\n/).map(s => s.trim()).filter(Boolean),
     stipulations: c.stipulations >= 0 ? r.cells[c.stipulations] || '' : '',
@@ -5429,8 +5431,11 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
   const [form, setForm] = useState(() => ({
     company: initial?.company || '', clients: (initial?.clients || []).join(', '),
     category: initial?.category || '', value: initial?.value || '', deliverables: initial?.deliverables || '',
-    open: !!initial?.open, products: (initial?.products || []).join('\n'), stipulations: initial?.stipulations || '',
-    levels: initial?.levels || [], minFollowers: initial?.minFollowers ? String(initial.minFollowers) : '', expires: initial?.expires || '',
+    open: !!initial?.open, dealType: initial?.dealType || 'product',
+    cashAmount: initial?.dealType === 'cash' ? initial?.value || '' : '',
+    productLinks: initial?.products?.length ? initial.products : [''],
+    levels: initial?.levels || [], minFollowers: initial?.minFollowers ? String(initial.minFollowers) : '',
+    hasExpiry: !!initial?.expires, expires: initial?.expires || '',
   }));
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -5446,6 +5451,8 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
     const names = form.clients.split(',').map(s => s.trim()).filter(Boolean);
     if (!form.company.trim()) return alert('Company is required');
     if (!form.open && !names.length) return alert('Tag at least one client');
+    if (form.open && !form.levels.length) return alert('Pick at least one eligible level');
+    if (form.open && form.hasExpiry && !form.expires) return alert('Pick a closing date, or turn "Closes on" off');
     setBusy(true);
     try {
       const values = { company: form.company.trim(), clients: names.join(', '), category: form.category, value: form.value, deliverables: form.deliverables };
@@ -5453,11 +5460,12 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
         Object.assign(values, {
           open: 'TRUE',
           dealId: initial?.dealId || newDealId(),
-          products: form.products.split('\n').map(s => s.trim()).filter(Boolean).join('\n'),
-          stipulations: form.stipulations.trim(),
+          dealType: form.dealType,
+          value: form.dealType === 'cash' ? form.cashAmount.trim() : '',
+          products: form.dealType === 'product' ? form.productLinks.map(s => s.trim()).filter(Boolean).join('\n') : '',
           levels: form.levels.join(', '),
           minFollowers: String(form.minFollowers).trim(),
-          expires: form.expires,
+          expires: form.hasExpiry ? form.expires : '',
         });
       }
       if (!editing) {
@@ -5533,7 +5541,7 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           </Field>}
           <Field label="Category">
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {BRAND_DEAL_CATEGORIES.map(cat => {
+              {(form.open ? OPEN_DEAL_CATEGORIES : BRAND_DEAL_CATEGORIES).map(cat => {
                 const picked = form.category.split(',').map(s => s.trim()).filter(Boolean);
                 const on = picked.includes(cat);
                 return <button key={cat}
@@ -5544,16 +5552,48 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
               })}
             </div>
           </Field>
-          <Field label="Value"><Input value={form.value} onChange={e => set('value', e.target.value)} placeholder="$5,000 — or product, e.g. 3 pairs of cleats" /></Field>
+          {!form.open && <Field label="Value"><Input value={form.value} onChange={e => set('value', e.target.value)} placeholder="$5,000 — or product, e.g. 3 pairs of cleats" /></Field>}
+          {form.open && (
+            <Field label="Deal type">
+              <div style={{ display: "flex", gap: 8 }}>
+                {[['product', 'Product deal'], ['cash', 'Cash deal']].map(([val, label]) => {
+                  const on = form.dealType === val;
+                  return <button key={val} onClick={() => set('dealType', val)}
+                    style={{ flex: 1, padding: "9px 12px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+                    {label}
+                  </button>;
+                })}
+              </div>
+            </Field>
+          )}
+          {form.open && form.dealType === 'cash' && (
+            <Field label="Cash amount"><Input value={form.cashAmount} onChange={e => set('cashAmount', e.target.value)} placeholder="$500" /></Field>
+          )}
           <Field label="Deliverables"><Textarea value={form.deliverables} onChange={e => set('deliverables', e.target.value)} rows={3} placeholder="2 IG posts + 1 appearance at store opening" /></Field>
           {form.open && <>
-            <Field label="Products players pick from — one per line (blank if there's no choice)">
-              <Textarea value={form.products} onChange={e => set('products', e.target.value)} rows={3} placeholder={"Hoodie — black\nCrewneck — cream\nCleats — size on file"} />
-            </Field>
-            <Field label="Stipulations (staff-only)">
-              <Textarea value={form.stipulations} onChange={e => set('stipulations', e.target.value)} rows={2} placeholder="e.g. Must have posted branded content before · no competing apparel deals" />
-            </Field>
-            <Field label="Eligible levels (none selected = all)">
+            {form.dealType === 'product' && (
+              <Field label="Gifted Product — paste product or collection links; players see the real product photos">
+                <div>
+                  {form.productLinks.map((link, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Input value={link} onChange={e => set('productLinks', form.productLinks.map((x, j) => j === i ? e.target.value : x))}
+                          placeholder="https://store.com/products/... or /collections/..." />
+                      </div>
+                      {form.productLinks.length > 1 && (
+                        <button onClick={() => set('productLinks', form.productLinks.filter((_, j) => j !== i))}
+                          style={{ background: "transparent", border: "none", color: G.textTertiary, cursor: "pointer", padding: 4, fontSize: 14, fontFamily: ff, flexShrink: 0 }}>✕</button>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => set('productLinks', [...form.productLinks, ''])}
+                    style={{ background: "transparent", border: `1px dashed ${G.surfaceBorderLight}`, borderRadius: 9, padding: "7px 13px", color: G.textSecondary, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+                    + Add another link
+                  </button>
+                </div>
+              </Field>
+            )}
+            <Field label="Eligible levels">
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {['High School', 'College', 'NFL'].map(lv => {
                   const on = form.levels.includes(lv);
@@ -5566,8 +5606,17 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
               </div>
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="Min total followers"><Input value={form.minFollowers} onChange={e => set('minFollowers', e.target.value.replace(/[^\d]/g, ''))} placeholder="e.g. 15000 — blank for none" /></Field>
-              <Field label="Closes on"><Input type="date" value={form.expires} onChange={e => set('expires', e.target.value)} /></Field>
+              <Field label="Min total followers"><Input value={form.minFollowers} onChange={e => set('minFollowers', e.target.value.replace(/[^\d]/g, ''))} placeholder="e.g. 15000" /></Field>
+              <div>
+                <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input type="checkbox" checked={form.hasExpiry} onChange={e => set('hasExpiry', e.target.checked)}
+                    style={{ width: 15, height: 15, accentColor: G.green, cursor: "pointer", margin: 0 }} />
+                  Closes on
+                </label>
+                {form.hasExpiry
+                  ? <Input type="date" value={form.expires} onChange={e => set('expires', e.target.value)} />
+                  : <div style={{ ...inputBase, color: G.textTertiary, cursor: "default" }}>No deadline</div>}
+              </div>
             </div>
           </>}
           {!form.open && <div style={{ marginBottom: 4 }}>
@@ -5584,7 +5633,9 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
             <button onClick={del} disabled={busy} style={{ background: "transparent", border: `1px solid ${G.red}`, borderRadius: 12, padding: "11px 16px", color: G.red, fontWeight: 600, fontSize: 14, cursor: busy ? "not-allowed" : "pointer", fontFamily: ff }}>Delete</button>
           )}
           <button onClick={onCancel} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>Cancel</button>
-          <button onClick={save} disabled={busy} style={{ flex: 2, background: busy ? G.surfaceRaised : G.green, border: "none", borderRadius: 12, padding: "11px", color: busy ? G.textTertiary : "#0a0a0a", fontWeight: 700, fontSize: 14, cursor: busy ? "wait" : "pointer", fontFamily: ff }}>
+          <button onClick={save} disabled={busy || (form.open && !form.levels.length)}
+            style={{ flex: 2, background: busy || (form.open && !form.levels.length) ? G.surfaceRaised : G.green, border: "none", borderRadius: 12, padding: "11px", color: busy || (form.open && !form.levels.length) ? G.textTertiary : "#0a0a0a", fontWeight: 700, fontSize: 14, cursor: busy ? "wait" : form.open && !form.levels.length ? "not-allowed" : "pointer", fontFamily: ff }}
+            title={form.open && !form.levels.length ? 'Pick at least one eligible level' : undefined}>
             {busy ? 'Saving…' : editing ? 'Save Changes' : 'Add Deal'}
           </button>
         </div>
@@ -5688,7 +5739,7 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
         <div style={{ overflowY: "auto", padding: "18px 24px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 14, marginBottom: 16 }}>
             {[
-              ['Offer', deal.value || (deal.products.length ? `${deal.products.length} product options` : '—')],
+              ['Offer', deal.dealType === 'cash' ? (deal.value || 'Cash') : (deal.products.length ? `Gifted product (${deal.products.length} link${deal.products.length > 1 ? 's' : ''})` : 'Gifted product')],
               ['Closes', deal.expires || 'No deadline'],
               ['Eligibility', [deal.levels.length ? deal.levels.join(', ') : 'All levels', deal.minFollowers ? `${deal.minFollowers.toLocaleString()}+ followers` : ''].filter(Boolean).join(' · ')],
               ['Created by', deal.dateSubmitted ? `${deal.dateSubmitted}` : '—'],
@@ -5707,16 +5758,17 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
           )}
           {deal.products.length > 0 && (
             <div style={{ marginBottom: 14 }}>
-              <div style={secLabel}>Products</div>
+              <div style={secLabel}>Gifted product</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {deal.products.map(p => <span key={p} style={{ fontSize: 12, color: G.textSecondary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 99, padding: "4px 11px" }}>{p}</span>)}
+                {deal.products.map(p => {
+                  let label = p;
+                  try { const u = new URL(p); label = decodeURIComponent(u.pathname.split('/').filter(Boolean).slice(-1)[0] || u.hostname).replace(/-/g, ' '); } catch { /* plain text product */ }
+                  const isUrl = /^https?:\/\//i.test(p);
+                  return isUrl
+                    ? <a key={p} href={p} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: G.green, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 99, padding: "4px 11px", textDecoration: "none" }}>{label} ↗</a>
+                    : <span key={p} style={{ fontSize: 12, color: G.textSecondary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 99, padding: "4px 11px" }}>{label}</span>;
+                })}
               </div>
-            </div>
-          )}
-          {deal.stipulations && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={secLabel}>Stipulations</div>
-              <div style={{ fontSize: 12.5, color: G.yellow, lineHeight: 1.5 }}>{deal.stipulations}</div>
             </div>
           )}
 
@@ -5905,7 +5957,7 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                       : dealIsNew(d) && <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#0a0a0a", background: G.green, borderRadius: 99, padding: "2px 7px", flexShrink: 0 }}>New</span>}
                   </div>
                   <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {[d.value || (d.products.length ? `${d.products.length} products` : ''), d.deliverables].filter(Boolean).join(' · ') || 'Open deal'}
+                    {[d.dealType === 'cash' ? d.value : d.products.length ? 'Gifted product' : '', d.deliverables].filter(Boolean).join(' · ') || 'Open deal'}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
                     <span style={{ fontSize: 12.5, fontWeight: 700, color: c.signed ? G.green : G.textSecondary }}>{c.signed} signed</span>

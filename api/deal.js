@@ -62,6 +62,82 @@ const cell = (row, i) => (i >= 0 ? String(row[i] ?? '').trim() : '');
 // whole final day; expiry is a soft "respond by", so plain UTC is fine).
 const isExpired = (expires) => !!expires && new Date().toISOString().slice(0, 10) > expires;
 
+// ── Gifted-product link resolution ───────────────────────────────────────────
+// The deal's products column holds pasted store links. Shopify stores (most of
+// what brands use) expose public JSON — /products/{handle}.js for one product,
+// /collections/{handle}/products.json for a whole collection — which gives us
+// real photos, names, and prices for the player page. Anything else falls back
+// to the page's og: tags. Only links stored in the sheet are ever fetched —
+// never URLs from the request — so this can't be steered at other hosts.
+const resolveCache = new Map(); // url -> {cards, ts}; survives warm invocations
+const RESOLVE_TTL = 10 * 60 * 1000;
+
+const fetchWithTimeout = async (url, ms = 6000) => {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try { return await fetch(url, { signal: ctl.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; MilkHoneyDeals/1.0)' } }); }
+  finally { clearTimeout(t); }
+};
+const money = (v) => {
+  const n = typeof v === 'number' ? v / 100 : parseFloat(v); // .js gives cents, products.json gives "45.00"
+  return isFinite(n) && n > 0 ? '$' + (Math.round(n * 100) / 100).toFixed(2).replace(/\.00$/, '') : '';
+};
+const httpsify = (u) => (typeof u === 'string' && u.startsWith('//') ? 'https:' + u : u || '');
+
+async function resolveLink(url) {
+  let u;
+  try { u = new URL(url); } catch { return [{ title: url, image: '', price: '', url: '' }]; } // plain-text product name
+  if (!/^https?:$/.test(u.protocol)) return [];
+  try {
+    const mProd = u.pathname.match(/\/products\/([A-Za-z0-9_-]+)/);
+    const mColl = u.pathname.match(/\/collections\/([A-Za-z0-9_-]+)/);
+    if (mProd && !mColl) {
+      const r = await fetchWithTimeout(`${u.origin}/products/${mProd[1]}.js`);
+      if (r.ok) {
+        const p = await r.json();
+        return [{ title: p.title || mProd[1], image: httpsify(p.featured_image || (p.images || [])[0]), price: money(p.price), url: u.origin + (p.url || u.pathname) }];
+      }
+    } else if (mColl && !mProd) {
+      const r = await fetchWithTimeout(`${u.origin}/collections/${mColl[1]}/products.json?limit=24`);
+      if (r.ok) {
+        const j = await r.json();
+        if (Array.isArray(j.products) && j.products.length) {
+          return j.products.map(p => ({
+            title: p.title || p.handle,
+            image: httpsify((p.images || [])[0]?.src),
+            price: money((p.variants || [])[0]?.price),
+            url: `${u.origin}/products/${p.handle}`,
+          }));
+        }
+      }
+    }
+    // Fallback: og tags off the page itself.
+    const r = await fetchWithTimeout(url);
+    if (r.ok) {
+      const html = (await r.text()).slice(0, 300000);
+      const og = (prop) => {
+        const m = html.match(new RegExp('<meta[^>]+(?:property|name)=["\']' + prop + '["\'][^>]+content=["\']([^"\']+)', 'i'))
+          || html.match(new RegExp('<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']' + prop + '["\']', 'i'));
+        return m ? m[1] : '';
+      };
+      return [{ title: og('og:title') || u.hostname, image: httpsify(og('og:image') || og('twitter:image')), price: '', url }];
+    }
+  } catch { /* fall through */ }
+  return [{ title: u.hostname + u.pathname, image: '', price: '', url }];
+}
+
+async function resolveProducts(links) {
+  const out = [];
+  for (const link of links.slice(0, 8)) {
+    const hit = resolveCache.get(link);
+    if (hit && Date.now() - hit.ts < RESOLVE_TTL) { out.push(...hit.cards); continue; }
+    const cards = await resolveLink(link);
+    resolveCache.set(link, { cards, ts: Date.now() });
+    out.push(...cards);
+  }
+  return out.slice(0, 40);
+}
+
 async function loadByToken(token, tok) {
   const [invD, dealD] = await Promise.all([
     sheetGet(token, `'${INV_TITLE}'!A:I`),
@@ -102,20 +178,28 @@ module.exports = async (req, res) => {
 
     const products = cell(deal.cells, dc('products')).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const expires = cell(deal.cells, dc('expires'));
+    const dealType = cell(deal.cells, dc('dealType')) || (products.length ? 'product' : 'cash');
     const info = {
       player: cell(invite.cells, ic('player')),
       company: cell(deal.cells, dc('company')),
       value: cell(deal.cells, dc('value')),
       deliverables: cell(deal.cells, dc('deliverables')),
+      dealType,
       products,
-      expires,
       expired: isExpired(expires),
       signed: /^signed$/i.test(cell(invite.cells, ic('status'))),
       product: cell(invite.cells, ic('product')),
       signedAt: cell(invite.cells, ic('signedAt')),
     };
 
-    if (req.method === 'GET') return res.json(info);
+    if (req.method === 'GET') {
+      // Resolve store links into product cards (photo/name/price) for the
+      // picker — only for a live, unsigned product deal.
+      if (dealType === 'product' && products.length && !info.signed && !info.expired) {
+        info.productCards = await resolveProducts(products);
+      }
+      return res.json(info);
+    }
 
     // POST — digital sign-up.
     if (info.expired) return res.status(410).json({ error: 'This deal has closed.' });
@@ -123,7 +207,7 @@ module.exports = async (req, res) => {
     const signature = String(req.body?.signature || '').trim().slice(0, 120);
     const product = String(req.body?.product || '').trim().slice(0, 200);
     if (!signature) return res.status(400).json({ error: 'Type your full name to sign.' });
-    if (products.length && !products.includes(product)) return res.status(400).json({ error: 'Pick a product first.' });
+    if (dealType === 'product' && products.length && !product) return res.status(400).json({ error: 'Pick a product first.' });
 
     const updates = [
       { range: `'${INV_TITLE}'!${colLetter(ic('status'))}${invite.rowNum}`, values: [['signed']] },
