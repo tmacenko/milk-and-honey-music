@@ -203,7 +203,7 @@ module.exports = async (req, res) => {
     const escH = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const t = escH(title);
     const html = PAGE_CACHE.html.replace(/<title>[^<]*<\/title>/,
-      `<title>${t}</title>\n  <meta property="og:title" content="${t}" />\n  <meta property="og:description" content="View your offer and sign in one tap." />\n  <meta property="og:image" content="https://${req.headers.host}/mh-logo.png" />\n  <meta name="twitter:card" content="summary" />`);
+      `<title>${t}</title>\n  <meta property="og:title" content="${t}" />\n  <meta property="og:description" content="View your offer and sign in one tap." />\n  <meta property="og:image" content="https://${req.headers.host}/share-image-brand-deal.jpg" />\n  <meta name="twitter:card" content="summary_large_image" />`);
     res.setHeader('content-type', 'text/html; charset=utf-8');
     res.setHeader('cache-control', 'no-store');
     return res.status(200).send(html);
