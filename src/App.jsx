@@ -3935,7 +3935,8 @@ const weekendTeamKey = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g
 
 function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
   const [events, setEvents] = useState(WEEKEND_CACHE.events || null);
-  const [scope, setScope] = useState('mine');
+  // Agents land on their own clients; admin/marketing (and house sessions) on everyone.
+  const [scope, setScope] = useState(user?.userRole === 'agent' ? 'mine' : 'all');
   useEffect(() => { let on = true; fetchWeekendEvents().then(e => { if (on) setEvents(e); }); return () => { on = false; }; }, []);
   const isMine = useCallback(a => !!user?.agentKey && agentMatch(a.agentAssigned, user.agentKey), [user]);
   const games = useMemo(() => {
