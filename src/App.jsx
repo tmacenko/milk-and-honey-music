@@ -3956,9 +3956,14 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
     return list.sort((x, y) => x.ev.date - y.ev.date);
   }, [events, athletes, isMine]);
   const mineGames = useMemo(() => games.filter(g => g.clients.some(isMine)), [games, isMine]);
+  const [expanded, setExpanded] = useState(false);
   if (!games.length) return null;
-  const canScope = !!user?.agentKey && mineGames.length > 0;
+  // Agents always get the scope toggle — even with no games of their own, so
+  // "whose games am I looking at?" is never ambiguous.
+  const canScope = !!user?.agentKey;
   const shown = canScope && scope === 'mine' ? mineGames : games;
+  const COLLAPSED = 6;
+  const visibleGames = expanded ? shown : shown.slice(0, COLLAPSED);
   const clientCount = new Set(shown.flatMap(g => g.clients.map(c => c.name))).size;
   const todayKey = new Date().toDateString();
   const gameUrl = (ev) => `https://www.espn.com/${ev.league === 'nfl' ? 'nfl' : 'college-football'}/game/_/gameId/${ev.id}`;
@@ -3981,7 +3986,13 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
           </div>
         )}
       </div>
-      {shown.map((g, gi) => {
+      {shown.length === 0 && (
+        <div style={{ fontSize: 13, color: G.textTertiary, padding: "10px 0 4px" }}>
+          None of your clients have games in the next 7 days — tap Everyone to see the full slate.
+        </div>
+      )}
+      <div style={expanded && shown.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
+      {visibleGames.map((g, gi) => {
         const ev = g.ev;
         const away = ev.teams.find(t => t.homeAway === 'away') || ev.teams[0] || {};
         const home = ev.teams.find(t => t.homeAway === 'home') || ev.teams[1] || {};
@@ -3989,7 +4000,7 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
         const done = ev.state === 'post';
         const day = ev.date.toDateString() === todayKey ? 'Today' : ev.date.toLocaleDateString('en-US', { weekday: 'short' });
         return (
-          <div key={ev.id} style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 12, padding: "10px 0", borderBottom: gi === shown.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, flexDirection: isMobile ? "column" : "row" }}>
+          <div key={ev.id} style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 12, padding: "10px 0", borderBottom: gi === visibleGames.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, flexDirection: isMobile ? "column" : "row" }}>
             <div style={{ width: 92, flexShrink: 0 }}>
               {live ? (
                 <div style={{ fontSize: 12, fontWeight: 700, color: G.yellow }}>LIVE · {ev.statusDetail}</div>
@@ -4025,6 +4036,13 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
           </div>
         );
       })}
+      </div>
+      {shown.length > COLLAPSED && (
+        <button onClick={() => setExpanded(e => !e)}
+          style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+          {expanded ? 'Show fewer' : `Show all ${shown.length} games →`}
+        </button>
+      )}
     </div>
   );
 }
