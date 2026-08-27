@@ -3886,6 +3886,147 @@ function SocialContractModules({ athlete: a, isMobile }) {
   );
 }
 
+// ── This Weekend (dashboard, in-season) ──────────────────────────────────────
+// Two scoreboard calls (all FBS + all NFL, next 7 days) matched against client
+// teams — no per-player fetching. Agents land on their own clients' games
+// (Everyone toggle); the module hides itself entirely when no client plays.
+const WEEKEND_CACHE = { events: null, ts: 0 };
+async function fetchWeekendEvents() {
+  if (WEEKEND_CACHE.events && Date.now() - WEEKEND_CACHE.ts < 30 * 60 * 1000) return WEEKEND_CACHE.events;
+  const ymd = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const range = `${ymd(new Date())}-${ymd(new Date(Date.now() + 7 * 86400000))}`;
+  const urls = [
+    `https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&limit=400&dates=${range}`,
+    `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100&dates=${range}`,
+  ];
+  const events = [];
+  await Promise.all(urls.map(async (u, i) => {
+    try {
+      const j = await (await fetch(u)).json();
+      (j.events || []).forEach(ev => {
+        const comp = (ev.competitions || [])[0];
+        if (!comp) return;
+        events.push({
+          id: ev.id,
+          league: i === 0 ? 'college' : 'nfl',
+          date: new Date(ev.date),
+          network: comp.broadcasts?.[0]?.names?.[0] || comp.geoBroadcasts?.[0]?.media?.shortName || '',
+          state: ev.status?.type?.state || 'pre',
+          statusDetail: ev.status?.type?.shortDetail || '',
+          teams: (comp.competitors || []).map(c => ({
+            homeAway: c.homeAway,
+            name: c.team?.displayName || '',
+            location: c.team?.location || '',
+            logo: c.team?.logo || (c.team?.logos || [])[0]?.href || '',
+            rank: c.curatedRank?.current && c.curatedRank.current <= 25 ? c.curatedRank.current : 0,
+            score: c.score,
+            winner: !!c.winner,
+          })),
+        });
+      });
+    } catch { /* fewer games shown; next load retries */ }
+  }));
+  WEEKEND_CACHE.events = events;
+  WEEKEND_CACHE.ts = Date.now();
+  return events;
+}
+const weekendTeamKey = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
+  const [events, setEvents] = useState(WEEKEND_CACHE.events || null);
+  const [scope, setScope] = useState('mine');
+  useEffect(() => { let on = true; fetchWeekendEvents().then(e => { if (on) setEvents(e); }); return () => { on = false; }; }, []);
+  const isMine = useCallback(a => !!user?.agentKey && agentMatch(a.agentAssigned, user.agentKey), [user]);
+  const games = useMemo(() => {
+    if (!events || !events.length) return [];
+    const byId = new Map();
+    for (const a of athletes) {
+      if (a.level !== 'NFL' && a.level !== 'College') continue;
+      const tk = weekendTeamKey(a.level === 'NFL' ? a.nflTeam : a.college);
+      if (!tk) continue;
+      const lg = a.level === 'NFL' ? 'nfl' : 'college';
+      const ev = events.find(e => e.league === lg && e.teams.some(t => weekendTeamKey(t.location) === tk || weekendTeamKey(t.name) === tk));
+      if (!ev) continue;
+      if (!byId.has(ev.id)) byId.set(ev.id, { ev, clients: [] });
+      byId.get(ev.id).clients.push(a);
+    }
+    const list = [...byId.values()];
+    list.forEach(g => g.clients.sort((a, b) => (isMine(b) ? 1 : 0) - (isMine(a) ? 1 : 0) || a.name.localeCompare(b.name)));
+    return list.sort((x, y) => x.ev.date - y.ev.date);
+  }, [events, athletes, isMine]);
+  const mineGames = useMemo(() => games.filter(g => g.clients.some(isMine)), [games, isMine]);
+  if (!games.length) return null;
+  const canScope = !!user?.agentKey && mineGames.length > 0;
+  const shown = canScope && scope === 'mine' ? mineGames : games;
+  const clientCount = new Set(shown.flatMap(g => g.clients.map(c => c.name))).size;
+  const todayKey = new Date().toDateString();
+  const gameUrl = (ev) => `https://www.espn.com/${ev.league === 'nfl' ? 'nfl' : 'college-football'}/game/_/gameId/${ev.id}`;
+  const teamLabel = (t) => (t.rank ? `#${t.rank} ` : '') + (t.location || t.name);
+  return (
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>This weekend</div>
+        <span style={{ fontSize: 12, color: G.textTertiary }}>{clientCount} client{clientCount === 1 ? '' : 's'} · {shown.length} game{shown.length === 1 ? '' : 's'}</span>
+        <div style={{ flex: 1 }} />
+        {canScope && (
+          <div style={{ display: "flex", gap: 4 }}>
+            {[['mine', 'My clients'], ['all', 'Everyone']].map(([k, label]) => (
+              <button key={k} onClick={() => setScope(k)}
+                style={{ padding: "4px 10px", borderRadius: 99, border: `1px solid ${scope === k ? G.green : G.surfaceBorder}`, background: scope === k ? G.greenSubtle : "transparent", color: scope === k ? G.green : G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {shown.map((g, gi) => {
+        const ev = g.ev;
+        const away = ev.teams.find(t => t.homeAway === 'away') || ev.teams[0] || {};
+        const home = ev.teams.find(t => t.homeAway === 'home') || ev.teams[1] || {};
+        const live = ev.state === 'in';
+        const done = ev.state === 'post';
+        const day = ev.date.toDateString() === todayKey ? 'Today' : ev.date.toLocaleDateString('en-US', { weekday: 'short' });
+        return (
+          <div key={ev.id} style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 12, padding: "10px 0", borderBottom: gi === shown.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, flexDirection: isMobile ? "column" : "row" }}>
+            <div style={{ width: 92, flexShrink: 0 }}>
+              {live ? (
+                <div style={{ fontSize: 12, fontWeight: 700, color: G.yellow }}>LIVE · {ev.statusDetail}</div>
+              ) : done ? (
+                <div style={{ fontSize: 12, fontWeight: 700, color: G.textTertiary }}>Final</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: G.text }}>{day} · {ev.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</div>
+                  {ev.network && <div style={{ fontSize: 10.5, color: G.textTertiary, marginTop: 1 }}>{ev.network}</div>}
+                </>
+              )}
+            </div>
+            <a href={gameUrl(ev)} target="_blank" rel="noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 7, textDecoration: "none", width: isMobile ? "auto" : 250, flexShrink: 0, minWidth: 0 }}>
+              {away.logo && <img src={away.logo} alt="" width={17} height={17} style={{ flexShrink: 0 }} />}
+              <span style={{ fontSize: 13, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {teamLabel(away)}{done ? ` ${away.score ?? ''}` : ''} <span style={{ color: G.textTertiary, fontWeight: 500 }}>@</span> {teamLabel(home)}{done ? ` ${home.score ?? ''}` : ''}
+              </span>
+              {home.logo && <img src={home.logo} alt="" width={17} height={17} style={{ flexShrink: 0 }} />}
+            </a>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
+              {g.clients.map(a => {
+                const my = isMine(a);
+                return (
+                  <span key={a.name} onClick={() => onOpenAthlete(a)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 9px 3px 4px", borderRadius: 99, background: G.surfaceRaised, border: `1px solid ${my ? G.green : G.surfaceBorder}`, cursor: "pointer" }}>
+                    <Avatar name={a.name} photoUrl={a.photoUrl} size={20} />
+                    <span style={{ fontSize: 12, fontWeight: my ? 700 : 500, color: my ? G.text : G.textSecondary, whiteSpace: "nowrap" }}>{a.name}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, onGoBrandDeals, user, decks }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -4094,6 +4235,8 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           </div>
         )}
       </div>
+
+      <ThisWeekendModule athletes={athletes} user={user} isMobile={isMobile} onOpenAthlete={onOpenAthlete} />
 
       {topClients.length > 0 && (
         <div style={{ marginTop: 18 }}>
