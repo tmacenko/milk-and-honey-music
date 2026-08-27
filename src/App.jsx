@@ -3895,14 +3895,17 @@ const PENDING_DEAL = { id: null }; // banner → Brand Deals page → auto-open 
 function useOpenDealAlerts(athletes, user, enabled = true) {
   const dealsTab = useAdminTab('branddeals', 'athletes', enabled);
   const invTab = useAdminTab('dealinvites', 'athletes', enabled);
-  const [dismissed, setDismissed] = useState(() => { try { return JSON.parse(localStorage.getItem('mh_deal_dismissed') || '{}'); } catch { return {}; } });
+  // Dismissals are keyed by deal AND viewer, so switching accounts in the same
+  // browser never inherits someone else's ✕.
+  const userKey = String(user?.name || 'house').toLowerCase();
+  const [dismissed, setDismissed] = useState(() => { try { return JSON.parse(localStorage.getItem('mh_deal_dismissed_v2') || '{}'); } catch { return {}; } });
   const dismiss = useCallback((dealId) => {
     setDismissed(prev => {
-      const next = { ...prev, [dealId]: Date.now() };
-      try { localStorage.setItem('mh_deal_dismissed', JSON.stringify(next)); } catch { /* per-browser convenience only */ }
+      const next = { ...prev, [dealId + '|' + userKey]: Date.now() };
+      try { localStorage.setItem('mh_deal_dismissed_v2', JSON.stringify(next)); } catch { /* per-browser convenience only */ }
       return next;
     });
-  }, []);
+  }, [userKey]);
   const alerts = useMemo(() => {
     if (!enabled) return [];
     const deals = parseDeals(dealsTab.data).filter(d => d.open && d.dealId && !dealExpired(d));
@@ -3914,7 +3917,7 @@ function useOpenDealAlerts(athletes, user, enabled = true) {
     const byName = new Map(athletes.map(a => [a.name.toLowerCase().trim(), a]));
     const out = [];
     for (const d of deals) {
-      if (dismissed[d.dealId]) continue;
+      if (dismissed[d.dealId + '|' + userKey]) continue;
       const rows = inv ? inv.rows.filter(r => r.cells[dI] === d.dealId) : [];
       const acted = user?.name
         ? rows.some(r => String(r.cells[bI] || '').toLowerCase() === user.name.toLowerCase())
@@ -3931,7 +3934,7 @@ function useOpenDealAlerts(athletes, user, enabled = true) {
       out.push({ deal: d, eligibleCount: eligible.length });
     }
     return out;
-  }, [dealsTab.data, invTab.data, athletes, user, dismissed, enabled]);
+  }, [dealsTab.data, invTab.data, athletes, user, userKey, dismissed, enabled]);
   return { alerts, dismiss };
 }
 
