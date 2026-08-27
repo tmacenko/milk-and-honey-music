@@ -3919,7 +3919,7 @@ function useOpenDealAlerts(athletes, user, enabled = true) {
       const acted = user?.name
         ? rows.some(r => String(r.cells[bI] || '').toLowerCase() === user.name.toLowerCase())
           || (isAgent && rows.some(r => { const a = byName.get(String(r.cells[pI] || '').toLowerCase().trim()); return a && agentMatch(a.agentAssigned, user.agentKey); }))
-        : rows.length > 0; // house sessions: anyone acting clears it
+        : false; // house sessions have no identity — only their own ✕ clears it
       if (acted) continue;
       const invitedNames = new Set(rows.map(r => String(r.cells[pI] || '').toLowerCase().trim()));
       const eligible = athletes.filter(a =>
