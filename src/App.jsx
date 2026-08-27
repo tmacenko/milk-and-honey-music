@@ -4097,6 +4097,9 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const personal = mineList.length > 0;
   const scoped = personal ? mineList : athletes;
   // Agents see their top 4 by reach; the house/admin view gets the roster-wide top 4.
+  const topClients = useMemo(
+    () => [...(personal ? mineList : athletes)].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 4),
+    [personal, mineList, athletes]);
   const s = useMemo(() => {
     const levels = { 'NFL': 0, 'College': 0, 'High School': 0 };
     let ig = 0, tt = 0, x = 0, starters = 0, nflStarters = 0, collegeStarters = 0;
@@ -4293,6 +4296,20 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       </div>
 
       <ThisWeekendModule athletes={athletes} user={user} isMobile={isMobile} onOpenAthlete={onOpenAthlete} />
+
+      {topClients.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
+            {topClients.map((a, i) => (
+              <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} showDepth onClick={() => onOpenAthlete(a)} />
+            ))}
+          </div>
+          <button onClick={personal ? onShowMine : onGoRoster}
+            style={{ marginTop: 10, background: "none", border: "none", color: G.green, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+            {personal ? 'View my clients →' : 'View full roster →'}
+          </button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 10, marginTop: 10 }}>
         <div style={card}>
@@ -4779,6 +4796,14 @@ function useAdminTab(key, api = 'athletes') {
       .finally(() => setLoading(false));
   }, [key, api, ck]);
   useEffect(() => { load(); }, [load]);
+  // Multi-user freshness: another agent's edit shows up when this tab regains
+  // focus, or within a few minutes if the view just stays open.
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVis);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 3 * 60 * 1000);
+    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(t); };
+  }, [load]);
   return { data, err, loading, reload: load };
 }
 
@@ -6859,6 +6884,46 @@ function DeckCard({ deck: d }) {
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
+// A deployed update makes long-lived tabs stale until someone happens to
+// refresh. Watch the served page for a new bundle hash (on tab focus + every
+// 5 minutes) and offer a one-tap refresh instead of waiting for luck.
+function useFreshBundle() {
+  const [stale, setStale] = useState(false);
+  useEffect(() => {
+    const current = (document.querySelector('script[src*="assets/index-"]') || {}).src || '';
+    if (!current) return;
+    let dead = false, checking = false;
+    const check = async () => {
+      if (checking || document.visibilityState !== 'visible') return;
+      checking = true;
+      try {
+        const html = await (await fetch('/', { cache: 'no-store' })).text();
+        const m = html.match(/assets\/index-[^"]+\.js/);
+        if (!dead && m && !current.includes(m[0])) setStale(true);
+      } catch { /* offline — try again next tick */ }
+      checking = false;
+    };
+    document.addEventListener('visibilitychange', check);
+    const t = setInterval(check, 5 * 60 * 1000);
+    return () => { dead = true; document.removeEventListener('visibilitychange', check); clearInterval(t); };
+  }, []);
+  return stale;
+}
+
+function UpdateChip() {
+  const stale = useFreshBundle();
+  if (!stale) return null;
+  return (
+    <div style={{ position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)", zIndex: 400, display: "flex", alignItems: "center", gap: 12, background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 99, padding: "9px 10px 9px 16px", boxShadow: G.shadowLg }}>
+      <span style={{ fontSize: 13, color: G.text, fontWeight: 600 }}>The site was updated</span>
+      <button onClick={() => window.location.reload()}
+        style={{ background: G.green, border: "none", borderRadius: 99, padding: "7px 14px", color: "#0a0a0a", fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>
+        Refresh
+      </button>
+    </div>
+  );
+}
+
 function App() {
   const [clients, setClients] = useState([]);
   const [logos, setLogos] = useState({});
@@ -7053,6 +7118,24 @@ function App() {
       .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); if (d.decks) setSportsDecks(d.decks); setAthletesLoaded(true); })
       .catch(() => setAthletesLoaded(true));
   }, [gateUnlocked, domain, athletesLoaded]);
+  // Keep the loaded roster fresh across users: quiet refetch when the tab
+  // regains focus and every 5 minutes while it stays visible.
+  useEffect(() => {
+    if (!athletesLoaded) return;
+    let inFlight = false;
+    const refresh = () => {
+      if (inFlight || document.visibilityState !== 'visible') return;
+      inFlight = true;
+      fetch('/api/athletes')
+        .then(r => r.json())
+        .then(d => { if (d.athletes) { setAthletes(d.athletes); setSportsStaff(d.staff || []); } })
+        .catch(() => {})
+        .finally(() => { inFlight = false; });
+    };
+    document.addEventListener('visibilitychange', refresh);
+    const t = setInterval(refresh, 5 * 60 * 1000);
+    return () => { document.removeEventListener('visibilitychange', refresh); clearInterval(t); };
+  }, [athletesLoaded]);
 
   // Cmd/Ctrl+F focuses the roster search instead of the browser's native find.
   const searchRef = useRef(null);
@@ -7706,6 +7789,7 @@ function App() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: G.bg, color: G.text, fontFamily: ff }}>
+      <UpdateChip />
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
       {onboardLinksOpen && <OnboardLinksModal onClose={() => setOnboardLinksOpen(false)} />}
       <style>{`
