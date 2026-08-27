@@ -3957,15 +3957,34 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
     return list.sort((x, y) => x.ev.date - y.ev.date);
   }, [events, athletes, isMine]);
   const mineGames = useMemo(() => games.filter(g => g.clients.some(isMine)), [games, isMine]);
+  // Birthdays inside the same 7-day window ride along, interleaved by date.
+  const bdayItems = useMemo(() => {
+    const now = new Date();
+    const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const out = [];
+    for (const a of athletes) {
+      const d = parseSheetDate(a.birthday);
+      if (!d) continue;
+      let next = new Date(t0.getFullYear(), d.month - 1, d.day);
+      if (next < t0) next = new Date(t0.getFullYear() + 1, d.month - 1, d.day);
+      if ((next - t0) / 86400000 <= 7) out.push({ kind: 'bday', a, date: next });
+    }
+    return out;
+  }, [athletes]);
   const [expanded, setExpanded] = useState(false);
-  if (!games.length) return null;
-  // Agents always get the scope toggle — even with no games of their own, so
-  // "whose games am I looking at?" is never ambiguous.
+  if (!games.length && !bdayItems.length) return null;
+  // Agents always get the scope toggle — even with nothing of their own, so
+  // "whose events am I looking at?" is never ambiguous.
   const canScope = !!user?.agentKey;
-  const shown = canScope && scope === 'mine' ? mineGames : games;
+  const shownGames = canScope && scope === 'mine' ? mineGames : games;
+  const shownBdays = canScope && scope === 'mine' ? bdayItems.filter(b => isMine(b.a)) : bdayItems;
+  const items = [...shownGames.map(g => ({ kind: 'game', date: g.ev.date, g })), ...shownBdays].sort((x, y) => x.date - y.date);
   const COLLAPSED = 6;
-  const visibleGames = expanded ? shown : shown.slice(0, COLLAPSED);
-  const clientCount = new Set(shown.flatMap(g => g.clients.map(c => c.name))).size;
+  const visibleItems = expanded ? items : items.slice(0, COLLAPSED);
+  const subParts = [
+    shownGames.length ? `${shownGames.length} game${shownGames.length === 1 ? '' : 's'}` : '',
+    shownBdays.length ? `${shownBdays.length} birthday${shownBdays.length === 1 ? '' : 's'}` : '',
+  ].filter(Boolean).join(' · ');
   const todayKey = new Date().toDateString();
   const gameUrl = (ev) => `https://www.espn.com/${ev.league === 'nfl' ? 'nfl' : 'college-football'}/game/_/gameId/${ev.id}`;
   // NFL by nickname (two LA and two NY teams share a location); college by school.
@@ -3973,8 +3992,8 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
   return (
     <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 18 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>This weekend</div>
-        <span style={{ fontSize: 12, color: G.textTertiary }}>{clientCount} client{clientCount === 1 ? '' : 's'} · {shown.length} game{shown.length === 1 ? '' : 's'}</span>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming events</div>
+        <span style={{ fontSize: 12, color: G.textTertiary }}>{subParts}</span>
         <div style={{ flex: 1 }} />
         {canScope && (
           <div style={{ display: "flex", gap: 4 }}>
@@ -3987,13 +4006,32 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
           </div>
         )}
       </div>
-      {shown.length === 0 && (
+      {items.length === 0 && (
         <div style={{ fontSize: 13, color: G.textTertiary, padding: "10px 0 4px" }}>
-          None of your clients have games in the next 7 days — tap Everyone to see the full slate.
+          None of your clients have games or birthdays in the next 7 days — tap Everyone to see the full slate.
         </div>
       )}
-      <div style={expanded && shown.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
-      {visibleGames.map((g, gi) => {
+      <div style={expanded && items.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
+      {visibleItems.map((it, gi) => {
+        const last = gi === visibleItems.length - 1;
+        if (it.kind === 'bday') {
+          const a = it.a;
+          const bday = it.date.toDateString() === todayKey ? 'Today' : it.date.toLocaleDateString('en-US', { weekday: 'short' });
+          return (
+            <div key={'b' + a.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, flexWrap: "wrap" }}>
+              <div style={{ width: 92, flexShrink: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: G.text }}>{bday} · {it.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: G.yellow, width: isMobile ? "auto" : 250, flexShrink: 0 }}>Birthday</div>
+              <span onClick={() => onOpenAthlete(a)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 9px 3px 4px", borderRadius: 99, background: G.surfaceRaised, border: `1px solid ${isMine(a) ? G.green : G.surfaceBorder}`, cursor: "pointer" }}>
+                <Avatar name={a.name} photoUrl={a.photoUrl} size={20} />
+                <span style={{ fontSize: 12, fontWeight: isMine(a) ? 700 : 500, color: isMine(a) ? G.text : G.textSecondary, whiteSpace: "nowrap" }}>{a.name}</span>
+              </span>
+            </div>
+          );
+        }
+        const g = it.g;
         const ev = g.ev;
         const away = ev.teams.find(t => t.homeAway === 'away') || ev.teams[0] || {};
         const home = ev.teams.find(t => t.homeAway === 'home') || ev.teams[1] || {};
@@ -4001,7 +4039,7 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
         const done = ev.state === 'post';
         const day = ev.date.toDateString() === todayKey ? 'Today' : ev.date.toLocaleDateString('en-US', { weekday: 'short' });
         return (
-          <div key={ev.id} style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 12, padding: "10px 0", borderBottom: gi === visibleGames.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, flexDirection: isMobile ? "column" : "row" }}>
+          <div key={ev.id} style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 12, padding: "10px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, flexDirection: isMobile ? "column" : "row" }}>
             <div style={{ width: 92, flexShrink: 0 }}>
               {live ? (
                 <div style={{ fontSize: 12, fontWeight: 700, color: G.yellow }}>LIVE · {ev.statusDetail}</div>
@@ -4038,10 +4076,10 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
         );
       })}
       </div>
-      {shown.length > COLLAPSED && (
+      {items.length > COLLAPSED && (
         <button onClick={() => setExpanded(e => !e)}
           style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-          {expanded ? 'Show fewer' : `Show all ${shown.length} games →`}
+          {expanded ? 'Show fewer' : `Show all ${items.length} events →`}
         </button>
       )}
     </div>
@@ -4059,9 +4097,6 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const personal = mineList.length > 0;
   const scoped = personal ? mineList : athletes;
   // Agents see their top 4 by reach; the house/admin view gets the roster-wide top 4.
-  const topClients = useMemo(
-    () => [...(personal ? mineList : athletes)].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 4),
-    [personal, mineList, athletes]);
   const s = useMemo(() => {
     const levels = { 'NFL': 0, 'College': 0, 'High School': 0 };
     let ig = 0, tt = 0, x = 0, starters = 0, nflStarters = 0, collegeStarters = 0;
@@ -4259,21 +4294,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 
       <ThisWeekendModule athletes={athletes} user={user} isMobile={isMobile} onOpenAthlete={onOpenAthlete} />
 
-      {topClients.length > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
-            {topClients.map((a, i) => (
-              <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} showDepth onClick={() => onOpenAthlete(a)} />
-            ))}
-          </div>
-          <button onClick={personal ? onShowMine : onGoRoster}
-            style={{ marginTop: 10, background: "none", border: "none", color: G.green, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-            {personal ? 'View my clients →' : 'View full roster →'}
-          </button>
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 10, marginTop: 10 }}>
         <div style={card}>
           {tileHead(s.hasGrowthData
             ? (() => { const d = Math.max(0, ...s.hot.map(x2 => x2.a.growthDays || 0)); return d >= 7 ? 'Social growth leaders (this week)' : d > 0 ? `Social growth leaders (last ${d} days)` : 'Social growth leaders'; })()
@@ -4288,13 +4309,6 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               View full growth board →
             </button>
           )}
-        </div>
-        <div style={card}>
-          {tileHead('Upcoming events', '')}
-          {s.upcoming.length === 0
-            ? (s.bdays.length === 0 ? empty('No birthdays on file yet.') : empty('Nothing on the calendar in the next 30 days.'))
-            : s.upcoming.slice(0, 6).map((b, i, arr) =>
-              row(b.a, 'Birthday', b.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), b.a.id || i, i === arr.length - 1))}
         </div>
         <div style={card}>
           {tileHead('To do', (
