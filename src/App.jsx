@@ -4299,28 +4299,19 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       </div>
 
       {dealAlerts.map(({ deal, eligibleCount }) => (
-        <div key={deal.dealId} style={{ marginTop: 16, background: G.greenSubtle, border: `1px solid ${G.green}`, borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.green, marginBottom: 3 }}>New brand deal</div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: G.text, letterSpacing: "-0.02em" }}>{deal.company}</div>
-            {deal.deliverables && (
-              <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 560 }}>
-                {[deal.dealType === 'cash' ? deal.value : 'Gifted product', deal.deliverables].filter(Boolean).join(' · ')}
-              </div>
-            )}
-            <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>
-              {user?.userRole === 'agent'
-                ? `${eligibleCount} of your clients eligible — none submitted yet`
-                : `${eligibleCount} eligible player${eligibleCount === 1 ? '' : 's'}`}
-              {deal.expires ? ` · closes ${new Date(deal.expires + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
-            </div>
-          </div>
+        <div key={deal.dealId} style={{ marginTop: 14, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: G.textSecondary, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            New brand deal — <b style={{ color: G.text, fontWeight: 700 }}>{deal.company}</b>
+            <span style={{ color: G.textTertiary }}> · {user?.userRole === 'agent' ? `${eligibleCount} of your clients eligible` : `${eligibleCount} eligible`}{deal.expires ? ` · closes ${new Date(deal.expires + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}</span>
+          </span>
+          <div style={{ flex: 1 }} />
           <button onClick={() => { PENDING_DEAL.id = deal.dealId; onGoBrandDeals(); }}
-            style={{ background: G.green, border: "none", borderRadius: 10, padding: "10px 16px", color: "#0a0a0a", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+            style={{ background: "none", border: "none", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff, padding: "2px 0", whiteSpace: "nowrap" }}>
             Submit players →
           </button>
           <button onClick={() => dismissDeal(deal.dealId)} title="Dismiss"
-            style={{ background: "transparent", border: "none", color: G.textTertiary, cursor: "pointer", padding: 6, fontSize: 14, fontFamily: ff, lineHeight: 1 }}>✕</button>
+            style={{ background: "transparent", border: "none", color: G.textTertiary, cursor: "pointer", padding: "2px 4px", fontSize: 13, fontFamily: ff, lineHeight: 1 }}>✕</button>
         </div>
       ))}
 
