@@ -3916,6 +3916,7 @@ async function fetchWeekendEvents() {
           teams: (comp.competitors || []).map(c => ({
             homeAway: c.homeAway,
             name: c.team?.displayName || '',
+            short: c.team?.shortDisplayName || '',
             location: c.team?.location || '',
             logo: c.team?.logo || (c.team?.logos || [])[0]?.href || '',
             rank: c.curatedRank?.current && c.curatedRank.current <= 25 ? c.curatedRank.current : 0,
@@ -3961,7 +3962,8 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
   const clientCount = new Set(shown.flatMap(g => g.clients.map(c => c.name))).size;
   const todayKey = new Date().toDateString();
   const gameUrl = (ev) => `https://www.espn.com/${ev.league === 'nfl' ? 'nfl' : 'college-football'}/game/_/gameId/${ev.id}`;
-  const teamLabel = (t) => (t.rank ? `#${t.rank} ` : '') + (t.location || t.name);
+  // NFL by nickname (two LA and two NY teams share a location); college by school.
+  const teamLabel = (ev, t) => (t.rank ? `#${t.rank} ` : '') + (ev.league === 'nfl' ? (t.short || t.name) : (t.location || t.name));
   return (
     <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 18 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
@@ -4004,7 +4006,7 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
               style={{ display: "flex", alignItems: "center", gap: 7, textDecoration: "none", width: isMobile ? "auto" : 250, flexShrink: 0, minWidth: 0 }}>
               {away.logo && <img src={away.logo} alt="" width={17} height={17} style={{ flexShrink: 0 }} />}
               <span style={{ fontSize: 13, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {teamLabel(away)}{done ? ` ${away.score ?? ''}` : ''} <span style={{ color: G.textTertiary, fontWeight: 500 }}>@</span> {teamLabel(home)}{done ? ` ${home.score ?? ''}` : ''}
+                {teamLabel(ev, away)}{done ? ` ${away.score ?? ''}` : ''} <span style={{ color: G.textTertiary, fontWeight: 500 }}>@</span> {teamLabel(ev, home)}{done ? ` ${home.score ?? ''}` : ''}
               </span>
               {home.logo && <img src={home.logo} alt="" width={17} height={17} style={{ flexShrink: 0 }} />}
             </a>
