@@ -3914,15 +3914,13 @@ function useOpenDealAlerts(athletes, user, enabled = true) {
     const hi = n => (inv ? inv.headers.findIndex(h => h.toLowerCase() === n.toLowerCase()) : -1);
     const dI = hi('dealId'), pI = hi('player'), bI = hi('invitedBy');
     const isAgent = user?.userRole === 'agent' && user?.agentKey;
-    const byName = new Map(athletes.map(a => [a.name.toLowerCase().trim(), a]));
     const out = [];
     for (const d of deals) {
       if (dismissed[d.dealId + '|' + userKey]) continue;
       const rows = inv ? inv.rows.filter(r => r.cells[dI] === d.dealId) : [];
-      const acted = user?.name
-        ? rows.some(r => String(r.cells[bI] || '').toLowerCase() === user.name.toLowerCase())
-          || (isAgent && rows.some(r => { const a = byName.get(String(r.cells[pI] || '').toLowerCase().trim()); return a && agentMatch(a.agentAssigned, user.agentKey); }))
-        : false; // house sessions have no identity — only their own ✕ clears it
+      // "Acted" means the viewer THEMSELF invited someone. A co-agent or admin
+      // inviting a shared client doesn't clear anyone else's call-to-action.
+      const acted = !!user?.name && rows.some(r => String(r.cells[bI] || '').toLowerCase() === user.name.toLowerCase());
       if (acted) continue;
       const invitedNames = new Set(rows.map(r => String(r.cells[pI] || '').toLowerCase().trim()));
       const eligible = athletes.filter(a =>
