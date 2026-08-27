@@ -3886,6 +3886,55 @@ function SocialContractModules({ athlete: a, isMobile }) {
   );
 }
 
+// ── Open-deal alerts (dashboard banner + sidebar dot) ────────────────────────
+// Live open deals the viewer hasn't acted on: not dismissed, and the viewer
+// hasn't invited anyone yet (for agents, "acted" also counts a client of
+// theirs being in). Eligibility uses the same level/follower/agent filters as
+// the deal board, so the banner's count matches what they'll find there.
+const PENDING_DEAL = { id: null }; // banner → Brand Deals page → auto-open this deal
+function useOpenDealAlerts(athletes, user, enabled = true) {
+  const dealsTab = useAdminTab('branddeals', 'athletes', enabled);
+  const invTab = useAdminTab('dealinvites', 'athletes', enabled);
+  const [dismissed, setDismissed] = useState(() => { try { return JSON.parse(localStorage.getItem('mh_deal_dismissed') || '{}'); } catch { return {}; } });
+  const dismiss = useCallback((dealId) => {
+    setDismissed(prev => {
+      const next = { ...prev, [dealId]: Date.now() };
+      try { localStorage.setItem('mh_deal_dismissed', JSON.stringify(next)); } catch { /* per-browser convenience only */ }
+      return next;
+    });
+  }, []);
+  const alerts = useMemo(() => {
+    if (!enabled) return [];
+    const deals = parseDeals(dealsTab.data).filter(d => d.open && d.dealId && !dealExpired(d));
+    if (!deals.length) return [];
+    const inv = invTab.data;
+    const hi = n => (inv ? inv.headers.findIndex(h => h.toLowerCase() === n.toLowerCase()) : -1);
+    const dI = hi('dealId'), pI = hi('player'), bI = hi('invitedBy');
+    const isAgent = user?.userRole === 'agent' && user?.agentKey;
+    const byName = new Map(athletes.map(a => [a.name.toLowerCase().trim(), a]));
+    const out = [];
+    for (const d of deals) {
+      if (dismissed[d.dealId]) continue;
+      const rows = inv ? inv.rows.filter(r => r.cells[dI] === d.dealId) : [];
+      const acted = user?.name
+        ? rows.some(r => String(r.cells[bI] || '').toLowerCase() === user.name.toLowerCase())
+          || (isAgent && rows.some(r => { const a = byName.get(String(r.cells[pI] || '').toLowerCase().trim()); return a && agentMatch(a.agentAssigned, user.agentKey); }))
+        : rows.length > 0; // house sessions: anyone acting clears it
+      if (acted) continue;
+      const invitedNames = new Set(rows.map(r => String(r.cells[pI] || '').toLowerCase().trim()));
+      const eligible = athletes.filter(a =>
+        (!d.levels.length || d.levels.includes(a.level)) &&
+        (!d.minFollowers || athleteReach(a) >= d.minFollowers) &&
+        (!isAgent || agentMatch(a.agentAssigned, user.agentKey)) &&
+        !invitedNames.has(a.name.toLowerCase().trim()));
+      if (isAgent && !eligible.length) continue; // nothing this agent could submit — stay quiet
+      out.push({ deal: d, eligibleCount: eligible.length });
+    }
+    return out;
+  }, [dealsTab.data, invTab.data, athletes, user, dismissed, enabled]);
+  return { alerts, dismiss };
+}
+
 // ── This Weekend (dashboard, in-season) ──────────────────────────────────────
 // Two scoreboard calls (all FBS + all NFL, next 7 days) matched against client
 // teams — no per-player fetching. Agents land on their own clients' games
@@ -4170,9 +4219,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const onboardTab = useAdminTab('onboarding');
   // Fresh open brand deals (≤7 days, still open) get a dashboard nudge for ALL
   // staff — agents are the ones who submit their players.
-  const dealsTab = useAdminTab('branddeals');
-  const freshOpenDeals = useMemo(() =>
-    parseDeals(dealsTab.data).filter(d => d.open && !dealExpired(d) && dealIsNew(d)), [dealsTab.data]);
+  const { alerts: dealAlerts, dismiss: dismissDeal } = useOpenDealAlerts(athletes, user);
   const [addingTodo, setAddingTodo] = useState(false);
   const [todoText, setTodoText] = useState('');
   const todoItems = useMemo(() => {
@@ -4249,6 +4296,32 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>
         {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
       </div>
+
+      {dealAlerts.map(({ deal, eligibleCount }) => (
+        <div key={deal.dealId} style={{ marginTop: 16, background: G.greenSubtle, border: `1px solid ${G.green}`, borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.green, marginBottom: 3 }}>New brand deal</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: G.text, letterSpacing: "-0.02em" }}>{deal.company}</div>
+            {deal.deliverables && (
+              <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 560 }}>
+                {[deal.dealType === 'cash' ? deal.value : 'Gifted product', deal.deliverables].filter(Boolean).join(' · ')}
+              </div>
+            )}
+            <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>
+              {user?.userRole === 'agent'
+                ? `${eligibleCount} of your clients eligible — none submitted yet`
+                : `${eligibleCount} eligible player${eligibleCount === 1 ? '' : 's'}`}
+              {deal.expires ? ` · closes ${new Date(deal.expires + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+            </div>
+          </div>
+          <button onClick={() => { PENDING_DEAL.id = deal.dealId; onGoBrandDeals(); }}
+            style={{ background: G.green, border: "none", borderRadius: 10, padding: "10px 16px", color: "#0a0a0a", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+            Submit players →
+          </button>
+          <button onClick={() => dismissDeal(deal.dealId)} title="Dismiss"
+            style={{ background: "transparent", border: "none", color: G.textTertiary, cursor: "pointer", padding: 6, fontSize: 14, fontFamily: ff, lineHeight: 1 }}>✕</button>
+        </div>
+      ))}
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
         {personal ? (
@@ -4328,7 +4401,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           )}
         </div>
         <div style={card}>
-          {tileHead('To do', (
+          {tileHead('Needs attention', (
             <button onClick={() => setAddingTodo(v => !v)} title="Add a to-do"
               style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, width: 22, height: 22, fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", fontFamily: ff, padding: 0 }}>+</button>
           ))}
@@ -4338,22 +4411,16 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               placeholder="Type and press Enter"
               style={{ ...inputBase, marginBottom: 8, padding: "8px 10px", fontSize: 13 }} />
           )}
-          {s.incomplete.length > 0 && (
-            <div onClick={() => setShowIncomplete(true)}
-              style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
-              Incomplete profiles: {s.incomplete.length} players
-            </div>
-          )}
           {adminRole && newOnboards > 0 && (
             <div onClick={() => setShowOnboards(true)}
               style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
               Check new onboarding ({newOnboards})
             </div>
           )}
-          {freshOpenDeals.length > 0 && (
-            <div onClick={onGoBrandDeals}
-              style={{ fontSize: 13, color: G.green, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
-              New open deal{freshOpenDeals.length > 1 ? `s (${freshOpenDeals.length})` : `: ${freshOpenDeals[0].company}`}
+          {s.incomplete.length > 0 && (
+            <div onClick={() => setShowIncomplete(true)}
+              style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
+              Incomplete profiles: {s.incomplete.length} players
             </div>
           )}
           {adminRole && hiddenAthletes.length > 0 && (
@@ -4369,7 +4436,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               <span style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
             </div>
           ))}
-          {s.incomplete.length === 0 && freshOpenDeals.length === 0 && (!adminRole || (newOnboards === 0 && hiddenAthletes.length === 0)) && todoItems.length === 0 && !addingTodo && (
+          {s.incomplete.length === 0 && (!adminRole || (newOnboards === 0 && hiddenAthletes.length === 0)) && todoItems.length === 0 && !addingTodo && (
             <div style={{ fontSize: 13, color: G.green, padding: "6px 0" }}>All clear ✓</div>
           )}
         </div>
@@ -4779,7 +4846,7 @@ function OnboardLinksModal({ onClose }) {
 // These render raw sheet tabs served by /api/athletes?tab=… so the UI always
 // matches whatever columns the sheet actually has.
 const adminTabCache = {};
-function useAdminTab(key, api = 'athletes') {
+function useAdminTab(key, api = 'athletes', enabled = true) {
   // Serve the last fetch instantly on remount (no loading flash when hopping
   // between pages) and refresh quietly in the background. `api` picks the
   // endpoint: 'athletes' (sports sheet tabs) or 'sheets' (music sheet tabs).
@@ -4788,13 +4855,14 @@ function useAdminTab(key, api = 'athletes') {
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(!adminTabCache[ck]);
   const load = useCallback(() => {
+    if (!enabled) return;
     if (!adminTabCache[ck]) setLoading(true);
     fetch(`/api/${api}?tab=${key}`)
       .then(r => r.json())
       .then(d => { if (d.error) throw new Error(d.error); adminTabCache[ck] = d; setData(d); setErr(null); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
-  }, [key, api, ck]);
+  }, [key, api, ck, enabled]);
   useEffect(() => { load(); }, [load]);
   // Multi-user freshness: another agent's edit shows up when this tab regains
   // focus, or within a few minutes if the view just stays open.
@@ -6165,6 +6233,12 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
     return m;
   }, [invTab.data]);
   const openDeals = useMemo(() => deals.filter(d => d.open).sort((a, b) => (Date.parse(b.dateSubmitted) || 0) - (Date.parse(a.dateSubmitted) || 0)), [deals]);
+  // The dashboard banner deep-links here: open that deal's board on arrival.
+  useEffect(() => {
+    if (!PENDING_DEAL.id || !deals.length) return;
+    const d = deals.find(x => x.dealId === PENDING_DEAL.id);
+    if (d) { setOpenDeal(d); PENDING_DEAL.id = null; }
+  }, [deals]); // eslint-disable-line
   const athleteByName = useMemo(() => {
     const m = {};
     athletes.forEach(a => { m[a.name.toLowerCase().trim()] = a; });
@@ -7609,15 +7683,17 @@ function App() {
   );
   // Employee nav (sports side): left sidebar on desktop, pill strip on mobile.
   // Per-division config so Music can get its own menu later.
+  const { alerts: navDealAlerts } = useOpenDealAlerts(athletes, currentUser, !!isAdmin && gateUnlocked);
+  const dealDot = navDealAlerts.length > 0;
   const NAV_SPORTS = [
     { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
     { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
     { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
     { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
     {
-      key: 'marketing-group', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z',
+      key: 'marketing-group', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z', dot: dealDot,
       children: [
-        { key: 'branddeals', label: 'Brand Deals', icon: 'M4 7h16v13H4zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2' },
+        { key: 'branddeals', label: 'Brand Deals', icon: 'M4 7h16v13H4zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2', dot: dealDot },
         { key: 'marketing', label: 'Social', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
         { key: 'gifting', label: 'Gifting', icon: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z' },
       ],
@@ -7669,6 +7745,7 @@ function App() {
                 style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: "transparent", border: "none", borderRadius: 9, color: childActive ? G.green : G.textSecondary, fontWeight: childActive ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={it.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 <span style={{ flex: 1 }}>{it.label}</span>
+                {it.dot && !open && <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />}
                 <span style={{ fontSize: 9, color: G.textTertiary, transform: open ? 'rotate(180deg)' : 'none', transition: `transform 0.15s ${G.ease}` }}>▼</span>
               </button>
               {open && it.children.map(c => {
@@ -7678,6 +7755,7 @@ function App() {
                     style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px 8px 27px", background: on ? G.greenSubtle : "transparent", border: "none", borderRadius: 9, color: on ? G.green : G.textSecondary, fontWeight: on ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={c.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     <span style={{ flex: 1 }}>{c.label}</span>
+                    {c.dot && <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />}
                   </button>
                 );
               })}
