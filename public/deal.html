@@ -73,7 +73,18 @@
   var m = location.pathname.match(/\/deal\/([A-Za-z0-9_-]+)/);
   var token = m ? m[1] : new URLSearchParams(location.search).get('t') || '';
   var esc = function (s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; };
-  var state = { info: null, picked: [], pickText: '', name: '', agree: false, busy: false, err: '', showAll: false };
+  var state = { info: null, picked: [], pickTexts: [''], name: '', agree: false, busy: false, err: '', showAll: false };
+  function filledTexts() { return state.pickTexts.map(function (t) { return t.trim(); }).filter(Boolean); }
+  // One paste input per remaining pick: filled slots stay, and while capacity
+  // remains one empty slot follows (another appears as each one is used).
+  function pickInputsHtml(i, placeholder) {
+    var maxN = i.pickBudget ? Infinity : (i.pickCount || 1);
+    var slots = filledTexts();
+    if (state.picked.length + slots.length < maxN) slots = slots.concat(['']);
+    return slots.map(function (v, k) {
+      return '<input type="text" class="picktext" placeholder="' + placeholder + '" value="' + esc(v) + '"' + (k > 0 ? ' style="margin-top:8px"' : '') + ' />';
+    }).join('');
+  }
 
   function message(icon, dim, title, body) {
     root.innerHTML = '<div class="card"><div class="center"><div class="big-icon' + (dim ? ' dim' : '') + '">' + icon + '</div><h2>' + esc(title) + '</h2><p>' + esc(body) + '</p></div></div>';
@@ -89,8 +100,8 @@
     var idx = state.picked.indexOf(card.title);
     if (idx >= 0) { state.picked.splice(idx, 1); render(); return; }
     var maxN = i.pickBudget ? Infinity : (i.pickCount || 1);
-    if (maxN === 1) { state.picked = [card.title]; render(); return; }
-    if (state.picked.length >= maxN) return; // at the count limit
+    if (maxN === 1) { state.picked = [card.title]; state.pickTexts = ['']; render(); return; }
+    if (state.picked.length + filledTexts().length >= maxN) return; // at the count limit
     if (i.pickBudget && pickedTotal(i.productCards || []) + priceOf(card) > i.pickBudget) {
       state.err = 'That would put you over the $' + i.pickBudget + ' limit.'; render(); return;
     }
@@ -107,7 +118,7 @@
   function render() {
     var i = state.info;
     var needsPick = i.dealType !== 'cash' && (((i.productCards || []).length) || i.products.length);
-    var hasPick = state.picked.length || state.pickText.trim();
+    var hasPick = state.picked.length || filledTexts().length;
     var canSign = state.name.trim() && state.agree && (!needsPick || hasPick) && !state.busy;
     var html = '<div class="card">' +
       '<div class="eyebrow">Brand deal</div>' +
@@ -130,7 +141,7 @@
       var sum = '';
       if (single) sum = '';
       else if (i.pickBudget) sum = 'Selected <b>$' + pickedTotal(cards) + '</b> of your $' + i.pickBudget + ' limit';
-      else if (maxN > 1) sum = 'Selected <b>' + state.picked.length + '</b> of up to ' + maxN;
+      else if (maxN > 1) sum = 'Selected <b>' + (state.picked.length + filledTexts().length) + '</b> of up to ' + maxN;
       html += '<div class="sec"><div class="sec-label">' + (i.collectionName ? esc(i.collectionName) : single ? 'Your product' : 'Products') + '</div>' +
         (sum ? '<div class="pick-sum">' + sum + '</div>' : '') +
         '<div class="pgrid">' + visible.map(function (p, j) {
@@ -144,9 +155,9 @@
         (function () {
           var site = '';
           try { site = new URL((cards[0] || {}).url || i.products[0]).origin; } catch (e) { /* no usable link */ }
+          var inputs = pickInputsHtml(i, 'Paste product link here');
           return (site ? '<a class="more-btn" href="' + esc(site) + '" target="_blank" rel="noreferrer">' + esc(i.company) + '\u2019s full catalog \u2197</a>' : '') +
-            '<div class="pick-note">Paste product link below if it\u2019s not available to select above.</div>' +
-            '<input type="text" id="picktext" placeholder="Paste product link here" value="' + esc(state.pickText) + '" />';
+            (inputs ? '<div class="pick-note">Paste product link below if it\u2019s not available to select above.</div><div id="pickinputs">' + inputs + '</div>' : '');
         })() +
         '</div>';
     }
@@ -156,7 +167,7 @@
         browseCards.map(function (c) {
           return '<a class="opt" style="text-decoration:none" href="' + esc(c.url) + '" target="_blank" rel="noreferrer"><div class="opt-name" style="color:#5BC898">' + esc(c.title) + ' \u2197</div></a>';
         }).join('') +
-        '<input type="text" id="picktext" placeholder="Type the exact product you want from the collection" value="' + esc(state.pickText) + '" style="margin-top:8px" />' +
+        '<div id="pickinputs" style="margin-top:8px">' + pickInputsHtml(i, 'Type the exact product you want from the collection') + '</div>' +
         '</div>';
     }
     if (!cards.length && !browseCards.length && i.dealType !== 'cash' && i.products.length) {
@@ -188,15 +199,33 @@
       el.onclick = function () { togglePick({ title: i.products[+el.getAttribute('data-p')], price: '' }, i); };
     });
     var sig = document.getElementById('sig');
-    var recheck = function () { document.getElementById('go').disabled = !(state.name.trim() && state.agree && (!needsPick || state.picked.length || state.pickText.trim())); };
+    var recheck = function () { document.getElementById('go').disabled = !(state.name.trim() && state.agree && (!needsPick || state.picked.length || filledTexts().length)); };
     sig.oninput = function () { state.name = sig.value; recheck(); };
-    var pt = document.getElementById('picktext');
-    if (pt) pt.oninput = function () {
-      state.pickText = pt.value;
-      var single = (i.productCards || []).filter(function (c) { return !c.browse; }).length === 1;
-      if (single) state.picked = pt.value.trim() ? [] : [(i.productCards || []).filter(function (c) { return !c.browse; })[0].title];
-      recheck();
+    var bindPicks = function () {
+      Array.prototype.forEach.call(root.querySelectorAll('.picktext'), function (el) {
+        el.oninput = function () {
+          state.pickTexts = Array.prototype.map.call(root.querySelectorAll('.picktext'), function (x) { return x.value; });
+          var realCards = (i.productCards || []).filter(function (c) { return !c.browse; });
+          var maxN = i.pickBudget ? Infinity : (i.pickCount || 1);
+          var filled = filledTexts();
+          // On 1-pick deals a pasted link replaces the card choice (and the
+          // preset card comes back if they clear the paste).
+          if (maxN === 1) state.picked = filled.length ? [] : (realCards.length === 1 ? [realCards[0].title] : state.picked);
+          recheck();
+          var inputs = root.querySelectorAll('.picktext');
+          var last = inputs[inputs.length - 1];
+          if (last === el && el.value.trim() && state.picked.length + filled.length < maxN) {
+            var ni = el.cloneNode(false);
+            ni.value = '';
+            ni.style.marginTop = '8px';
+            el.parentNode.appendChild(ni);
+            state.pickTexts.push('');
+            bindPicks();
+          }
+        };
+      });
     };
+    bindPicks();
     document.getElementById('agree').onchange = function (e) { state.agree = e.target.checked; render(); };
     document.getElementById('go').onclick = sign;
   }
@@ -205,16 +234,16 @@
     if (state.busy) return;
     var i = state.info;
     var maxN = i.pickBudget ? Infinity : (i.pickCount || 1);
-    var total = state.picked.length + (state.pickText.trim() ? 1 : 0);
+    var total = state.picked.length + filledTexts().length;
     if (i.dealType !== 'cash' && isFinite(maxN) && total > maxN) {
-      state.err = 'That\u2019s ' + total + ' picks \u2014 this deal allows up to ' + maxN + ' (your typed choice counts as one).';
+      state.err = 'That\u2019s ' + total + ' picks \u2014 this deal allows up to ' + maxN + ' (pasted links count too).';
       render();
       return;
     }
     state.busy = true; state.err = ''; render();
     fetch('/api/deal', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token, product: state.picked.concat(state.pickText.trim() ? [state.pickText.trim()] : []).join(' + '), signature: state.name.trim() }),
+      body: JSON.stringify({ token: token, product: state.picked.concat(filledTexts()).join(' + '), signature: state.name.trim() }),
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (!res.ok) { state.busy = false; state.err = res.j.error || 'Something went wrong \u2014 try again.'; render(); return; }
