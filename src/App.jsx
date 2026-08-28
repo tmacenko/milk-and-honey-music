@@ -5658,7 +5658,7 @@ const dealMoney = (v) => {
 const parseDeals = (d) => {
   if (!d) return [];
   const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget'), resolvedCards: hi('resolvedCards'), openToken: hi('openToken') };
+  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget'), resolvedCards: hi('resolvedCards'), openToken: hi('openToken'), collectionName: hi('collectionName') };
   return d.rows.map(r => ({
     _row: r._row,
     company: c.company >= 0 ? r.cells[c.company] || '' : '',
@@ -5680,6 +5680,7 @@ const parseDeals = (d) => {
     pickCount: c.pickCount >= 0 ? parseInt(String(r.cells[c.pickCount] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
     resolvedCards: (() => { try { const j = JSON.parse((c.resolvedCards >= 0 && r.cells[c.resolvedCards]) || '[]'); return Array.isArray(j) ? j : []; } catch { return []; } })(),
     openToken: c.openToken >= 0 ? r.cells[c.openToken] || '' : '',
+    collectionName: c.collectionName >= 0 ? r.cells[c.collectionName] || '' : '',
     pickBudget: c.pickBudget >= 0 ? parseInt(String(r.cells[c.pickBudget] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
     expires: c.expires >= 0 ? r.cells[c.expires] || '' : '',
   })).filter(x => x.company || x.clients.length);
@@ -5757,6 +5758,7 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
     cashAmount: initial?.dealType === 'cash' ? initial?.value || '' : '',
     productLinks: initial?.products?.length ? initial.products : [''],
     resolvedCards: initial?.resolvedCards || [],
+    collectionName: initial?.collectionName || '',
     pickMode: initial?.pickBudget ? 'budget' : 'count',
     pickCount: initial?.pickCount ? String(initial.pickCount) : '1',
     pickBudget: initial?.pickBudget ? String(initial.pickBudget) : '',
@@ -5791,6 +5793,7 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           value: form.dealType === 'cash' ? form.cashAmount.trim() : '',
           products: form.dealType === 'product' ? form.productLinks.map(s => s.trim()).filter(Boolean).join('\n') : '',
           resolvedCards: form.dealType === 'product' && form.resolvedCards.length ? JSON.stringify(form.resolvedCards) : '',
+          collectionName: form.dealType === 'product' ? form.collectionName.trim() : '',
           pickCount: form.dealType === 'product' && multiProduct && form.pickMode === 'count' ? String(form.pickCount).trim() || '1' : '',
           pickBudget: form.dealType === 'product' && multiProduct && form.pickMode === 'budget' ? String(form.pickBudget).trim() : '',
           levels: form.levels.join(', '),
@@ -5947,6 +5950,11 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
                     )}
                   </div>
                 </div>
+              </Field>
+            )}
+            {form.dealType === 'product' && (
+              <Field label="Collection name — the products title players see">
+                <Input value={form.collectionName} onChange={e => set('collectionName', e.target.value)} placeholder="e.g. Bestsellers" />
               </Field>
             )}
             {form.dealType === 'product' && (form.productLinks.filter(l => l.trim()).length > 1 || form.productLinks.some(l => /\/collections\//i.test(l))) && (
