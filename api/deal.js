@@ -119,18 +119,23 @@ async function resolveLink(url) {
         return [{ title: p.title || mProd[1], image: thumb(httpsify(p.featured_image || (p.images || [])[0])), price: money(p.price), url: u.origin + (p.url || u.pathname) }];
       }
     } else if (mColl && !mProd) {
-      const r = await fetchSmart(`${u.origin}/collections/${mColl[1]}/products.json?limit=24`);
-      if (r.ok) {
-        const j = await r.json();
-        if (Array.isArray(j.products) && j.products.length) {
-          return j.products.map(p => ({
-            title: p.title || p.handle,
-            image: thumb(httpsify((p.images || [])[0]?.src)),
-            price: money((p.variants || [])[0]?.price),
-            url: `${u.origin}/products/${p.handle}`,
-          }));
+      try {
+        const r = await fetchSmart(`${u.origin}/collections/${mColl[1]}/products.json?limit=24`);
+        if (r.ok) {
+          const j = await r.json();
+          if (Array.isArray(j.products) && j.products.length) {
+            return j.products.map(p => ({
+              title: p.title || p.handle,
+              image: thumb(httpsify((p.images || [])[0]?.src)),
+              price: money((p.variants || [])[0]?.price),
+              url: `${u.origin}/products/${p.handle}`,
+            }));
+          }
         }
-      }
+      } catch { /* fall through to the browse card */ }
+      // Collection listing unreadable (bot-protected store, or not Shopify) —
+      // hand the player the link to browse instead of faking a single product.
+      return [{ title: 'Browse the collection', image: '', price: '', url, browse: true }];
     }
     // Fallback: og tags off the page itself.
     const r = await fetchSmart(url);
