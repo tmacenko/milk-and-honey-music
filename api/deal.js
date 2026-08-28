@@ -73,11 +73,28 @@ const isExpired = (expires) => !!expires && new Date().toISOString().slice(0, 10
 const resolveCache = new Map(); // url -> {cards, ts}; survives warm invocations
 const RESOLVE_TTL = 10 * 60 * 1000;
 
-const fetchWithTimeout = async (url, ms = 6000) => {
+// Some stores (Cloudflare bot protection) 403 datacenter IPs outright — retry
+// those through the residential proxy, same as the 247 lookups.
+let PROXY = null;
+if (process.env.PROXY_URL) {
+  try { const u = require('undici'); PROXY = { agent: new u.ProxyAgent(process.env.PROXY_URL), fetch: u.fetch }; } catch { /* undici unavailable */ }
+}
+const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const fetchWithTimeout = async (url, ms = 6000, viaProxy = false) => {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
-  try { return await fetch(url, { signal: ctl.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; MilkHoneyDeals/1.0)' } }); }
-  finally { clearTimeout(t); }
+  const opts = { signal: ctl.signal, headers: { 'user-agent': BROWSER_UA, 'accept-language': 'en-US,en;q=0.9' } };
+  try {
+    if (viaProxy && PROXY) { opts.dispatcher = PROXY.agent; return await PROXY.fetch(url, opts); }
+    return await fetch(url, opts);
+  } finally { clearTimeout(t); }
+};
+const fetchSmart = async (url) => {
+  try {
+    const r = await fetchWithTimeout(url);
+    if (r.ok || !PROXY) return r;
+  } catch (e) { if (!PROXY) throw e; }
+  return fetchWithTimeout(url, 9000, true);
 };
 const money = (v) => {
   const n = typeof v === 'number' ? v / 100 : parseFloat(v); // .js gives cents, products.json gives "45.00"
@@ -96,13 +113,13 @@ async function resolveLink(url) {
     const mProd = u.pathname.match(/\/products\/([A-Za-z0-9_-]+)/);
     const mColl = u.pathname.match(/\/collections\/([A-Za-z0-9_-]+)/);
     if (mProd && !mColl) {
-      const r = await fetchWithTimeout(`${u.origin}/products/${mProd[1]}.js`);
+      const r = await fetchSmart(`${u.origin}/products/${mProd[1]}.js`);
       if (r.ok) {
         const p = await r.json();
         return [{ title: p.title || mProd[1], image: thumb(httpsify(p.featured_image || (p.images || [])[0])), price: money(p.price), url: u.origin + (p.url || u.pathname) }];
       }
     } else if (mColl && !mProd) {
-      const r = await fetchWithTimeout(`${u.origin}/collections/${mColl[1]}/products.json?limit=24`);
+      const r = await fetchSmart(`${u.origin}/collections/${mColl[1]}/products.json?limit=24`);
       if (r.ok) {
         const j = await r.json();
         if (Array.isArray(j.products) && j.products.length) {
@@ -116,7 +133,7 @@ async function resolveLink(url) {
       }
     }
     // Fallback: og tags off the page itself.
-    const r = await fetchWithTimeout(url);
+    const r = await fetchSmart(url);
     if (r.ok) {
       const html = (await r.text()).slice(0, 300000);
       const og = (prop) => {
