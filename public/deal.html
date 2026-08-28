@@ -32,6 +32,8 @@
     .pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .more-btn { width: 100%; margin-top: 10px; padding: 12px; background: transparent; border: 1.5px dashed #2a2a2a; border-radius: 12px; color: #999; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; }
     .pick-sum { font-size: 12px; color: #888; margin-bottom: 10px; }
+    .pick-note { font-size: 11px; color: #666; margin-top: 12px; margin-bottom: 6px; text-align: center; }
+    a.more-btn { display: block; text-align: center; text-decoration: none; color: #5BC898; border-color: #2b4437; }
     .pick-sum b { color: #5BC898; }
     .pcard { border: 1.5px solid #222; border-radius: 14px; overflow: hidden; cursor: pointer; background: #0d0d0d; transition: border-color .15s; position: relative; }
     .pcard.on { border-color: #5BC898; }
@@ -139,17 +141,16 @@
           '<div class="pp">' + esc(p.price || '') + '</div></div>';
       }).join('') + '</div>' +
         (cards.length > 4 && !state.showAll ? '<button class="more-btn" id="more">View more</button>' : '') +
+        (function () {
+          var site = '';
+          try { site = new URL((cards[0] || {}).url || i.products[0]).origin; } catch (e) { /* no usable link */ }
+          return (site ? '<a class="more-btn" href="' + esc(site) + '" target="_blank" rel="noreferrer">' + esc(i.company) + '\u2019s full catalog \u2197</a>' : '') +
+            '<div class="pick-note">Paste product link below if it\u2019s not available to select above.</div>' +
+            '<input type="text" id="picktext" placeholder="Paste product link here" value="' + esc(state.pickText) + '" />';
+        })() +
         '</div>';
     }
-    if (!browseCards.length && i.dealType !== 'cash' && (cards.length || i.products.length)) {
-      var site = '';
-      try { site = new URL((cards[0] || {}).url || i.products[0]).origin; } catch (e) { /* no usable link */ }
-      html += '<div class="sec"><div class="sec-label">Full catalog</div>' +
-        '<div class="sec-body" style="font-size:13px;color:#999">Use the link below to browse ' + esc(i.company) + '\u2019s full catalog. Want something that isn\u2019t shown above? Copy that product\u2019s link and paste it here \u2014 it counts as one of your picks.</div>' +
-        (site ? '<a class="opt" style="text-decoration:none;margin-top:10px" href="' + esc(site) + '" target="_blank" rel="noreferrer"><div class="opt-name" style="color:#5BC898">' + esc(i.company) + ' \u2014 full catalog \u2197</div></a>' : '') +
-        '<input type="text" id="picktext" placeholder="Paste a product link here" value="' + esc(state.pickText) + '" style="margin-top:8px" />' +
-        '</div>';
-    }
+
     if (browseCards.length) {
       html += '<div class="sec"><div class="sec-label">' + (cards.length ? 'Or pick from the collection' : 'Pick from the collection') + '</div>' +
         browseCards.map(function (c) {
@@ -166,7 +167,7 @@
     if (i.expires) html += '<div class="deadline">Respond by ' + esc(fmtDate(i.expires)) + '</div>';
     html += '<div class="sec"><div class="sec-label">Sign to accept</div>' +
       '<input type="text" id="sig" autocomplete="name" placeholder="Type your full name" value="' + esc(state.name) + '" />' +
-      '<div class="sig-note">Typing your name here counts as your digital signature.</div>' +
+
       '<label class="agree"><input type="checkbox" id="agree"' + (state.agree ? ' checked' : '') + ' /><span>By checking this box I agree to complete the deliverables outlined above in exchange for my selected goods.</span></label>' +
       '<button class="btn" id="go"' + (canSign ? '' : ' disabled') + '>' + (state.busy ? 'Signing\u2026' : 'Count me in') + '</button>' +
       (state.err ? '<div class="err">' + esc(state.err) + '</div>' : '') +
