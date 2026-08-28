@@ -71,7 +71,7 @@
   var m = location.pathname.match(/\/deal\/([A-Za-z0-9_-]+)/);
   var token = m ? m[1] : new URLSearchParams(location.search).get('t') || '';
   var esc = function (s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; };
-  var state = { info: null, picked: [], name: '', agree: false, busy: false, err: '', showAll: false };
+  var state = { info: null, picked: [], pickText: '', name: '', agree: false, busy: false, err: '', showAll: false };
 
   function message(icon, dim, title, body) {
     root.innerHTML = '<div class="card"><div class="center"><div class="big-icon' + (dim ? ' dim' : '') + '">' + icon + '</div><h2>' + esc(title) + '</h2><p>' + esc(body) + '</p></div></div>';
@@ -105,12 +105,15 @@
   function render() {
     var i = state.info;
     var needsPick = i.dealType !== 'cash' && (((i.productCards || []).length) || i.products.length);
-    var canSign = state.name.trim() && state.agree && (!needsPick || state.picked.length) && !state.busy;
+    var hasPick = state.picked.length || state.pickText.trim();
+    var canSign = state.name.trim() && state.agree && (!needsPick || hasPick) && !state.busy;
     var html = '<div class="card">' +
       '<div class="eyebrow">Open brand deal</div>' +
       '<div class="brand">' + esc(i.company) + '</div>' +
       '<div class="for">For <b>' + esc(i.player) + '</b> \u00b7 via Milk &amp; Honey Sports</div>';
-    var cards = i.productCards || [];
+    var allCards = i.productCards || [];
+    var browseCards = allCards.filter(function (c) { return c.browse; });
+    var cards = allCards.filter(function (c) { return !c.browse; });
     var maxN = i.pickBudget ? 0 : (i.pickCount || 1);
     var offer = i.dealType === 'cash' ? i.value : (i.value || (cards.length || i.products.length
       ? (cards.length === 1 ? 'Free product'
@@ -136,7 +139,16 @@
       }).join('') + '</div>' +
         (cards.length > 4 && !state.showAll ? '<button class="more-btn" id="more">View ' + (cards.length - 4) + ' more products</button>' : '') +
         '</div>';
-    } else if (i.dealType !== 'cash' && i.products.length) {
+    }
+    if (browseCards.length) {
+      html += '<div class="sec"><div class="sec-label">' + (cards.length ? 'Or pick from the collection' : 'Pick from the collection') + '</div>' +
+        browseCards.map(function (c) {
+          return '<a class="opt" style="text-decoration:none" href="' + esc(c.url) + '" target="_blank" rel="noreferrer"><div class="opt-name" style="color:#5BC898">' + esc(c.title) + ' \u2197</div></a>';
+        }).join('') +
+        '<input type="text" id="picktext" placeholder="Type the exact product you want from the collection" value="' + esc(state.pickText) + '" style="margin-top:8px" />' +
+        '</div>';
+    }
+    if (!cards.length && !browseCards.length && i.dealType !== 'cash' && i.products.length) {
       html += '<div class="sec"><div class="sec-label">Pick your product</div>' + i.products.map(function (p, j) {
         return '<div class="opt' + (state.picked.indexOf(p) >= 0 ? ' on' : '') + '" data-p="' + j + '"><div class="opt-dot"></div><div class="opt-name">' + esc(p) + '</div></div>';
       }).join('') + '</div>';
@@ -166,7 +178,10 @@
       el.onclick = function () { togglePick({ title: i.products[+el.getAttribute('data-p')], price: '' }, i); };
     });
     var sig = document.getElementById('sig');
-    sig.oninput = function () { state.name = sig.value; document.getElementById('go').disabled = !(state.name.trim() && state.agree && (!needsPick || state.picked.length)); };
+    var recheck = function () { document.getElementById('go').disabled = !(state.name.trim() && state.agree && (!needsPick || state.picked.length || state.pickText.trim())); };
+    sig.oninput = function () { state.name = sig.value; recheck(); };
+    var pt = document.getElementById('picktext');
+    if (pt) pt.oninput = function () { state.pickText = pt.value; recheck(); };
     document.getElementById('agree').onchange = function (e) { state.agree = e.target.checked; render(); };
     document.getElementById('go').onclick = sign;
   }
@@ -176,7 +191,7 @@
     state.busy = true; state.err = ''; render();
     fetch('/api/deal', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token, product: state.picked.join(' + '), signature: state.name.trim() }),
+      body: JSON.stringify({ token: token, product: state.picked.concat(state.pickText.trim() ? [state.pickText.trim()] : []).join(' + '), signature: state.name.trim() }),
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (!res.ok) { state.busy = false; state.err = res.j.error || 'Something went wrong \u2014 try again.'; render(); return; }
