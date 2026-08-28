@@ -242,6 +242,13 @@ module.exports = async (req, res) => {
     const products = cell(deal.cells, dc('products')).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const expires = cell(deal.cells, dc('expires'));
     const dealType = cell(deal.cells, dc('dealType')) || (products.length ? 'product' : 'cash');
+    // Cards imported at deal-creation time (copy-paste from bot-protected
+    // stores) beat live resolution — they're exactly what the marketer saw.
+    let storedCards = [];
+    try {
+      const rc = JSON.parse(cell(deal.cells, dc('resolvedCards')) || '[]');
+      if (Array.isArray(rc)) storedCards = rc.filter(c => c && typeof c.title === 'string' && c.title).slice(0, 60);
+    } catch { /* malformed import — fall back to live resolution */ }
     const pickCount = parseInt(cell(deal.cells, dc('pickCount')), 10) || 0;
     const pickBudget = parseInt(cell(deal.cells, dc('pickBudget')), 10) || 0;
     const info = {
@@ -262,8 +269,8 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       // Resolve store links into product cards (photo/name/price) for the
       // picker — only for a live, unsigned product deal.
-      if (dealType === 'product' && products.length && !info.signed && !info.expired) {
-        info.productCards = await resolveProducts(products);
+      if (dealType === 'product' && (products.length || storedCards.length) && !info.signed && !info.expired) {
+        info.productCards = storedCards.length ? storedCards : await resolveProducts(products);
       }
       return res.json(info);
     }
@@ -274,7 +281,7 @@ module.exports = async (req, res) => {
     const signature = String(req.body?.signature || '').trim().slice(0, 120);
     const product = String(req.body?.product || '').trim().slice(0, 500);
     if (!signature) return res.status(400).json({ error: 'Type your full name to sign.' });
-    if (dealType === 'product' && products.length && !product) return res.status(400).json({ error: 'Pick a product first.' });
+    if (dealType === 'product' && (products.length || storedCards.length) && !product) return res.status(400).json({ error: 'Pick a product first.' });
     // Multi-pick: titles arrive joined with " + " — cap at the deal's count
     // rule when one is set (budget math stays client-side; prices are dynamic).
     if (pickCount && product.split(' + ').length > pickCount) return res.status(400).json({ error: `You can pick up to ${pickCount}.` });
@@ -288,9 +295,9 @@ module.exports = async (req, res) => {
     // Record the chosen products' store links (server-resolved, so the client
     // can't forge them) — the brand export ships from these.
     const uI = ic('productUrls');
-    if (uI >= 0 && dealType === 'product' && products.length) {
+    if (uI >= 0 && dealType === 'product' && (products.length || storedCards.length)) {
       try {
-        const cards = await resolveProducts(products);
+        const cards = storedCards.length ? storedCards : await resolveProducts(products);
         const urls = product.split(' + ').map(t => (cards.find(c => c.title === t) || {}).url || '').filter(Boolean);
         if (urls.length) updates.push({ range: `'${INV_TITLE}'!${colLetter(uI)}${invite.rowNum}`, values: [[urls.join('\n')]] });
       } catch { /* links are a nice-to-have; the sign still lands */ }
