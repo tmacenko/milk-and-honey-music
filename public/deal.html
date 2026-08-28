@@ -86,6 +86,24 @@
     }).join('');
   }
 
+  // Post-sign confirmation — also what a signed personal link shows on
+  // revisit, so players can come back to double-check what they chose.
+  function confirmView(picks, deliverables) {
+    var rows = picks.map(function (t) {
+      if (/^https?:\/\//i.test(t)) {
+        var label = t;
+        try { var u = new URL(t); label = u.hostname.replace(/^www\./, '') + ' \u2014 ' + decodeURIComponent((u.pathname.split('/').filter(Boolean).pop() || '')).replace(/-/g, ' '); } catch (e) { /* show raw */ }
+        return '<a class="opt" style="text-decoration:none" href="' + esc(t) + '" target="_blank" rel="noreferrer"><div class="opt-name" style="color:#5BC898">' + esc(label) + ' \u2197</div></a>';
+      }
+      return '<div class="opt" style="cursor:default"><div class="opt-name">' + esc(t) + '</div></div>';
+    }).join('');
+    root.innerHTML = '<div class="card">' +
+      '<div class="center" style="padding-bottom:4px"><div class="big-icon">\u2713</div><h2>You\u2019re in!</h2><p>Your team at Milk &amp; Honey has been notified. They\u2019ll follow up with next steps.</p></div>' +
+      (rows ? '<div class="sec"><div class="sec-label">Your picks</div>' + rows + '</div>' : '') +
+      (deliverables ? '<div class="sec"><div class="sec-label">Deal terms</div><div class="sec-body">' + esc(deliverables) + '</div></div>' : '') +
+      '</div>';
+  }
+
   function message(icon, dim, title, body) {
     root.innerHTML = '<div class="card"><div class="center"><div class="big-icon' + (dim ? ' dim' : '') + '">' + icon + '</div><h2>' + esc(title) + '</h2><p>' + esc(body) + '</p></div></div>';
   }
@@ -249,7 +267,7 @@
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (!res.ok) { state.busy = false; state.err = res.j.error || 'Something went wrong \u2014 try again.'; render(); return; }
-        message('\u2713', false, 'You\u2019re in!', 'Your team at Milk & Honey has been notified' + (state.picked.length ? ' \u2014 you picked ' + state.picked.map(function (t) { return '\u201C' + t + '\u201D'; }).join(', ') : '') + '. They\u2019ll follow up with next steps.');
+        confirmView(state.picked.concat(filledTexts()), i.deliverables);
       })
       .catch(function () { state.busy = false; state.err = 'Network error \u2014 try again.'; render(); });
   }
@@ -260,7 +278,7 @@
     .then(function (res) {
       if (!res.ok) return message('?', true, 'Link not valid', 'This deal link doesn’t work. Ask your agent to resend it.');
       var i = res.j;
-      if (i.signed) return message('✓', false, 'Already signed', 'You signed up for the ' + i.company + ' deal' + (i.product ? ' and picked “' + i.product + '”' : '') + '. Your team will follow up with next steps.');
+      if (i.signed) return confirmView(String(i.product || '').split(' + ').map(function (t) { return t.trim(); }).filter(Boolean), i.deliverables);
       if (i.expired) return message('⏰', true, 'This deal has closed', 'The window to sign up for the ' + i.company + ' deal has passed. Ask your agent about upcoming deals.');
       if (i.player && i.company) document.title = i.player + ' \u2014 Brand Deal Offer from ' + i.company;
       if ((i.productCards || []).length === 1) state.picked = [i.productCards[0].title];
