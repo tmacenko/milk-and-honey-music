@@ -275,6 +275,7 @@ module.exports = async (req, res) => {
       player: invite ? cell(invite.cells, ic('player')) : '',
       generic,
       company: cell(deal.cells, dc('company')),
+      collectionName: cell(deal.cells, dc('collectionName')),
       value: cell(deal.cells, dc('value')),
       deliverables: cell(deal.cells, dc('deliverables')),
       dealType,
@@ -322,18 +323,29 @@ module.exports = async (req, res) => {
       // still records the signup under the exact typed name — nothing is lost,
       // the board just shows it as unmatched for staff to reconcile.
       const nk = (x) => String(x || '').toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\.?\s*$/, '').replace(/[^a-z]/g, '');
+      // first+last token key — catches middle names / extra words the exact
+      // key misses ("Anthony J Lopez" still finds "Anthony Lopez Jr.")
+      const fl = (x) => {
+        const t = String(x || '').toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\.?\s*$/, '').trim().split(/\s+/).filter(Boolean);
+        return t.length >= 2 ? (t[0] + '|' + t[t.length - 1]).replace(/[^a-z|]/g, '') : '';
+      };
       let canonical = '';
       try {
+        const allNames = [];
         const tabs = await Promise.all(['NFL', 'College', 'Highschool'].map(t => sheetGet(token, `'${t}'!A:F`)));
         for (const d of tabs) {
           const vals = d.values || [];
           const nI = (vals[0] || []).findIndex(h => String(h || '').trim().toLowerCase() === 'name');
           if (nI < 0) continue;
-          for (let i = 1; i < vals.length && !canonical; i++) {
+          for (let i = 1; i < vals.length; i++) {
             const n = cell(vals[i], nI);
-            if (n && nk(n) === nk(signature)) canonical = n;
+            if (n) allNames.push(n);
           }
-          if (canonical) break;
+        }
+        canonical = allNames.find(n => nk(n) === nk(signature)) || '';
+        if (!canonical && fl(signature)) {
+          const hits = allNames.filter(n => fl(n) === fl(signature));
+          if (hits.length === 1) canonical = hits[0]; // unique first+last match only
         }
       } catch { /* matching is best-effort */ }
       const playerName = canonical || signature;
