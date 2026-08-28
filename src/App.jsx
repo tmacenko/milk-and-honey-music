@@ -5658,7 +5658,7 @@ const dealMoney = (v) => {
 const parseDeals = (d) => {
   if (!d) return [];
   const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget') };
+  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget'), resolvedCards: hi('resolvedCards') };
   return d.rows.map(r => ({
     _row: r._row,
     company: c.company >= 0 ? r.cells[c.company] || '' : '',
@@ -5678,6 +5678,7 @@ const parseDeals = (d) => {
     levels: (c.levels >= 0 ? r.cells[c.levels] || '' : '').split(',').map(s => s.trim()).filter(Boolean),
     minFollowers: c.minFollowers >= 0 ? parseInt(String(r.cells[c.minFollowers] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
     pickCount: c.pickCount >= 0 ? parseInt(String(r.cells[c.pickCount] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
+    resolvedCards: (() => { try { const j = JSON.parse((c.resolvedCards >= 0 && r.cells[c.resolvedCards]) || '[]'); return Array.isArray(j) ? j : []; } catch { return []; } })(),
     pickBudget: c.pickBudget >= 0 ? parseInt(String(r.cells[c.pickBudget] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
     expires: c.expires >= 0 ? r.cells[c.expires] || '' : '',
   })).filter(x => x.company || x.clients.length);
@@ -5689,6 +5690,44 @@ const dealExpired = (d) => !!d.expires && new Date(d.expires + 'T23:59:59') < ne
 const newDealId = () => Array.from(crypto.getRandomValues(new Uint8Array(5))).map(b => b.toString(16).padStart(2, '0')).join('');
 const dealIsNew = (d) => (Date.parse(d.dateSubmitted) || 0) > Date.now() - 7 * 86400000;
 
+// Parse a copy-pasted store page (clipboard text/html) into product cards.
+// For stores whose bot protection blocks server-side resolution: the marketer
+// opens the collection in their own browser, selects all, copies, and pastes —
+// product links, names, images, and prices come along in the HTML flavor.
+function parsePastedProducts(html, fallbackOrigin) {
+  let doc;
+  try { doc = new DOMParser().parseFromString(html, 'text/html'); } catch { return []; }
+  const cards = new Map();
+  doc.querySelectorAll('a[href*="/products/"]').forEach(a => {
+    const href = a.getAttribute('href') || '';
+    const m = href.match(/^(https?:\/\/[^\/]+)?.*?\/products\/([A-Za-z0-9_-]+)/);
+    if (!m) return;
+    const origin = m[1] || fallbackOrigin || '';
+    const h = m[2];
+    const img = a.querySelector('img');
+    const txt = (a.textContent || '').replace(/\s+/g, ' ').trim();
+    const prev = cards.get(h) || { url: origin ? origin.replace(/\/$/, '') + '/products/' + h : '' };
+    if (!prev.image && img) {
+      const src = img.getAttribute('src') || (img.getAttribute('srcset') || '').split(/\s+/)[0] || '';
+      if (/^https?:\/\//.test(src)) prev.image = src;
+    }
+    if (!prev.title && txt && !/^save \$/i.test(txt) && txt.indexOf('$') > 3) {
+      const cut = txt.indexOf('$');
+      const t = txt.slice(0, cut).trim();
+      if (t.length > 3 && t.length < 80) {
+        prev.title = t;
+        const pm = txt.slice(cut).match(/\$\s?(\d+(?:[.,]\d{2})?)/);
+        if (pm) prev.price = '$' + pm[1];
+      }
+    }
+    cards.set(h, prev);
+  });
+  return [...cards.values()]
+    .map(c2 => ({ title: c2.title || '', image: c2.image || '', price: c2.price || '', url: c2.url || '' }))
+    .filter(c2 => c2.title && (c2.image || c2.url))
+    .slice(0, 60);
+}
+
 // Add / edit one deal. The optional file uploads straight to the FIRST tagged
 // player's Box folder, then copies land in every other tagged player's folder.
 function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
@@ -5699,6 +5738,7 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
     open: !!initial?.open, dealType: initial?.dealType || 'product',
     cashAmount: initial?.dealType === 'cash' ? initial?.value || '' : '',
     productLinks: initial?.products?.length ? initial.products : [''],
+    resolvedCards: initial?.resolvedCards || [],
     pickMode: initial?.pickBudget ? 'budget' : 'count',
     pickCount: initial?.pickCount ? String(initial.pickCount) : '1',
     pickBudget: initial?.pickBudget ? String(initial.pickBudget) : '',
@@ -5732,6 +5772,7 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           dealType: form.dealType,
           value: form.dealType === 'cash' ? form.cashAmount.trim() : '',
           products: form.dealType === 'product' ? form.productLinks.map(s => s.trim()).filter(Boolean).join('\n') : '',
+          resolvedCards: form.dealType === 'product' && form.resolvedCards.length ? JSON.stringify(form.resolvedCards) : '',
           pickCount: form.dealType === 'product' && multiProduct && form.pickMode === 'count' ? String(form.pickCount).trim() || '1' : '',
           pickBudget: form.dealType === 'product' && multiProduct && form.pickMode === 'budget' ? String(form.pickBudget).trim() : '',
           levels: form.levels.join(', '),
@@ -5861,6 +5902,32 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
                     style={{ background: "transparent", border: `1px dashed ${G.surfaceBorderLight}`, borderRadius: 9, padding: "7px 13px", color: G.textSecondary, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
                     + Add another link
                   </button>
+                  <div style={{ marginTop: 10 }}>
+                    {form.resolvedCards.length ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, color: G.green, fontWeight: 600 }}>
+                        ✓ {form.resolvedCards.length} products imported — players will see these cards
+                        <button onClick={() => set('resolvedCards', [])}
+                          style={{ background: "transparent", border: "none", color: G.textTertiary, fontSize: 12, cursor: "pointer", fontFamily: ff, textDecoration: "underline", padding: 0 }}>Clear</button>
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ fontSize: 11.5, color: G.textTertiary, marginBottom: 5 }}>
+                          Store blocks auto-loading? Open the collection page, select all (⌘A), copy (⌘C), then paste here:
+                        </div>
+                        <input readOnly placeholder="Click here and press ⌘V to import the copied page"
+                          onPaste={e => {
+                            e.preventDefault();
+                            const html = e.clipboardData.getData('text/html');
+                            let origin = '';
+                            try { origin = new URL(form.productLinks.find(l => l.trim()) || '').origin; } catch { /* no link yet */ }
+                            const cards = parsePastedProducts(html, origin);
+                            if (cards.length) set('resolvedCards', cards);
+                            else alert('No products found in the paste — make sure you copied the whole collection page (⌘A then ⌘C).');
+                          }}
+                          style={{ ...inputBase, cursor: "text", color: G.textTertiary }} />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </Field>
             )}
