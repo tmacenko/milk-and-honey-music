@@ -140,6 +140,14 @@
         (cards.length > 4 && !state.showAll ? '<button class="more-btn" id="more">View ' + (cards.length - 4) + ' more products</button>' : '') +
         '</div>';
     }
+    if (!browseCards.length && i.dealType !== 'cash' && (cards.length || i.products.length)) {
+      var site = '';
+      try { site = new URL((cards[0] || {}).url || i.products[0]).origin; } catch (e) { /* no usable link */ }
+      html += '<div class="sec"><div class="sec-label">Want something else?</div>' +
+        (site ? '<a class="opt" style="text-decoration:none" href="' + esc(site) + '" target="_blank" rel="noreferrer"><div class="opt-name" style="color:#5BC898">Browse the full store \u2197</div></a>' : '') +
+        '<input type="text" id="picktext" placeholder="Paste a product link or type exactly what you want instead" value="' + esc(state.pickText) + '" style="margin-top:8px" />' +
+        '</div>';
+    }
     if (browseCards.length) {
       html += '<div class="sec"><div class="sec-label">' + (cards.length ? 'Or pick from the collection' : 'Pick from the collection') + '</div>' +
         browseCards.map(function (c) {
@@ -181,13 +189,26 @@
     var recheck = function () { document.getElementById('go').disabled = !(state.name.trim() && state.agree && (!needsPick || state.picked.length || state.pickText.trim())); };
     sig.oninput = function () { state.name = sig.value; recheck(); };
     var pt = document.getElementById('picktext');
-    if (pt) pt.oninput = function () { state.pickText = pt.value; recheck(); };
+    if (pt) pt.oninput = function () {
+      state.pickText = pt.value;
+      var single = (i.productCards || []).filter(function (c) { return !c.browse; }).length === 1;
+      if (single) state.picked = pt.value.trim() ? [] : [(i.productCards || []).filter(function (c) { return !c.browse; })[0].title];
+      recheck();
+    };
     document.getElementById('agree').onchange = function (e) { state.agree = e.target.checked; render(); };
     document.getElementById('go').onclick = sign;
   }
 
   function sign() {
     if (state.busy) return;
+    var i = state.info;
+    var maxN = i.pickBudget ? Infinity : (i.pickCount || 1);
+    var total = state.picked.length + (state.pickText.trim() ? 1 : 0);
+    if (i.dealType !== 'cash' && isFinite(maxN) && total > maxN) {
+      state.err = 'That\u2019s ' + total + ' picks \u2014 this deal allows up to ' + maxN + ' (your typed choice counts as one).';
+      render();
+      return;
+    }
     state.busy = true; state.err = ''; render();
     fetch('/api/deal', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

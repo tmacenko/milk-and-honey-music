@@ -5722,10 +5722,27 @@ function parsePastedProducts(html, fallbackOrigin) {
     }
     cards.set(h, prev);
   });
+  // Colorway maps (data-product-url/-title/-image spans) ride along in copied
+  // HTML on stores that use them — pull every colorway in as its own card.
+  doc.querySelectorAll('[data-product-url][data-product-title]').forEach(sp => {
+    const url = sp.getAttribute('data-product-url') || '';
+    const m = url.match(/^(https?:\/\/[^\/]+)?.*?\/products\/([A-Za-z0-9_-]+)/);
+    if (!m) return;
+    const h = m[2];
+    if (cards.has(h)) return;
+    const origin = m[1] || fallbackOrigin || '';
+    const img = sp.getAttribute('data-image') || '';
+    cards.set(h, {
+      title: sp.getAttribute('data-product-title') || '',
+      image: /^https?:\/\//.test(img) ? img : '',
+      price: '',
+      url: origin ? origin.replace(/\/$/, '') + '/products/' + h : '',
+    });
+  });
   return [...cards.values()]
     .map(c2 => ({ title: c2.title || '', image: c2.image || '', price: c2.price || '', url: c2.url || '' }))
     .filter(c2 => c2.title && (c2.image || c2.url))
-    .slice(0, 60);
+    .slice(0, 80);
 }
 
 // Add / edit one deal. The optional file uploads straight to the FIRST tagged
