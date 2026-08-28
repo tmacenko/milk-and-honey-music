@@ -5658,7 +5658,7 @@ const dealMoney = (v) => {
 const parseDeals = (d) => {
   if (!d) return [];
   const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget'), resolvedCards: hi('resolvedCards') };
+  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget'), resolvedCards: hi('resolvedCards'), openToken: hi('openToken') };
   return d.rows.map(r => ({
     _row: r._row,
     company: c.company >= 0 ? r.cells[c.company] || '' : '',
@@ -5679,6 +5679,7 @@ const parseDeals = (d) => {
     minFollowers: c.minFollowers >= 0 ? parseInt(String(r.cells[c.minFollowers] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
     pickCount: c.pickCount >= 0 ? parseInt(String(r.cells[c.pickCount] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
     resolvedCards: (() => { try { const j = JSON.parse((c.resolvedCards >= 0 && r.cells[c.resolvedCards]) || '[]'); return Array.isArray(j) ? j : []; } catch { return []; } })(),
+    openToken: c.openToken >= 0 ? r.cells[c.openToken] || '' : '',
     pickBudget: c.pickBudget >= 0 ? parseInt(String(r.cells[c.pickBudget] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
     expires: c.expires >= 0 ? r.cells[c.expires] || '' : '',
   })).filter(x => x.company || x.clients.length);
@@ -6117,6 +6118,17 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
     el.remove();
     URL.revokeObjectURL(url);
   };
+  // One shareable link for the whole deal — minted on first use, then stable.
+  const copyOpenLink = async () => {
+    let t = deal.openToken;
+    if (!t) {
+      t = newDealId() + newDealId();
+      const resp = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'tab-update', tab: 'branddeals', row: deal._row, values: { openToken: t } }) }).then(r => r.json()).catch(() => ({ error: 'network' }));
+      if (resp.error) { alert('Could not create the open link: ' + resp.error); return; }
+      deal.openToken = t;
+    }
+    copy(`${window.location.origin}/deal/${t}`, 'open');
+  };
   const removeInvite = async (i) => {
     if (!window.confirm(`Remove ${i.player} from this deal? Their link stops working.`)) return;
     try {
@@ -6195,6 +6207,10 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
                   Export for brand
                 </button>
               )}
+              <button onClick={copyOpenLink} title="One link for everyone — players sign by typing their name"
+                style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: copied === 'open' ? G.green : G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 12, fontWeight: 600, fontFamily: ff }}>
+                {copied === 'open' ? 'Copied ✓' : 'Copy open link'}
+              </button>
               {invites.length > 0 && (
                 <button onClick={() => copy(invites.map(i => `${i.player} — ${linkFor(i.token)}`).join('\n'), 'all')}
                   style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, color: copied === 'all' ? G.green : G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 12, fontWeight: 600, fontFamily: ff }}>
@@ -6212,7 +6228,10 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
                 <div key={i._row} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: idx === invites.length - 1 ? "none" : `1px solid ${G.surfaceBorder}` }}>
                   <Avatar name={i.player} photoUrl={a?.photoUrl} size={30} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.player}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {i.player}
+                      {!a && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: G.yellow }}>not matched to roster</span>}
+                    </div>
                     <div style={{ fontSize: 11, color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {i.signed
                         ? [i.product, a && deal.products.length ? [a.shirtSize && `Shirt ${a.shirtSize}`, a.shoeSize && `Shoe ${a.shoeSize}`].filter(Boolean).join(' · ') : '', i.signedAt && new Date(i.signedAt).toLocaleDateString()].filter(Boolean).join(' · ')

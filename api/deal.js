@@ -34,6 +34,14 @@ async function sheetGet(token, range) {
   if (data.error) throw new Error(`Sheets error on "${range}": ${data.error.code} ${data.error.message}`);
   return data;
 }
+async function sheetAppend(token, range, values) {
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values }),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(`Sheets append error: ${d.error.code} ${d.error.message}`);
+}
 async function sheetBatchUpdate(token, data) {
   if (!data.length) return;
   const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`, {
@@ -176,7 +184,18 @@ async function loadByToken(token, tok) {
   for (let i = 1; i < iv.length; i++) {
     if (cell(iv[i], tI) === tok) { invite = { rowNum: i + 1, cells: iv[i] }; break; }
   }
-  if (!invite) return null;
+  if (!invite) {
+    // No personal invite with this token — is it a deal-level open link?
+    const oI = dc('openToken');
+    if (oI >= 0) {
+      for (let i = 1; i < dv.length; i++) {
+        if (cell(dv[i], oI) === tok && /^true$/i.test(cell(dv[i], dc('open')))) {
+          return { invite: null, deal: { rowNum: i + 1, cells: dv[i] }, ic, dc, iv };
+        }
+      }
+    }
+    return null;
+  }
   const dealId = cell(invite.cells, ic('dealId'));
   let deal = null;
   const dIdI = dc('dealId');
@@ -184,7 +203,7 @@ async function loadByToken(token, tok) {
     if (dealId && cell(dv[i], dIdI) === dealId) { deal = { rowNum: i + 1, cells: dv[i] }; break; }
   }
   if (!deal || !/^true$/i.test(cell(deal.cells, dc('open')))) return null;
-  return { invite, deal, ic, dc };
+  return { invite, deal, ic, dc, iv };
 }
 
 module.exports = async (req, res) => {
@@ -216,9 +235,9 @@ module.exports = async (req, res) => {
         const token = await getToken();
         const found = await loadByToken(token, tok);
         if (found) {
-          const player = cell(found.invite.cells, found.ic('player'));
+          const player = found.invite ? cell(found.invite.cells, found.ic('player')) : '';
           const company = cell(found.deal.cells, found.dc('company'));
-          if (player && company) title = `${player} — Brand Deal Offer from ${company}`;
+          if (company) title = player ? `${player} — Brand Deal Offer from ${company}` : `Brand Deal Offer from ${company}`;
         }
       } catch { /* generic title is fine */ }
     }
@@ -237,7 +256,7 @@ module.exports = async (req, res) => {
     const token = await getToken();
     const found = await loadByToken(token, tok);
     if (!found) return res.status(404).json({ error: 'Invalid link' });
-    const { invite, deal, ic, dc } = found;
+    const { invite, deal, ic, dc, iv } = found;
 
     const products = cell(deal.cells, dc('products')).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const expires = cell(deal.cells, dc('expires'));
@@ -251,8 +270,10 @@ module.exports = async (req, res) => {
     } catch { /* malformed import — fall back to live resolution */ }
     const pickCount = parseInt(cell(deal.cells, dc('pickCount')), 10) || 0;
     const pickBudget = parseInt(cell(deal.cells, dc('pickBudget')), 10) || 0;
+    const generic = !invite; // deal-level open link: anyone on the roster signs by name
     const info = {
-      player: cell(invite.cells, ic('player')),
+      player: invite ? cell(invite.cells, ic('player')) : '',
+      generic,
       company: cell(deal.cells, dc('company')),
       value: cell(deal.cells, dc('value')),
       deliverables: cell(deal.cells, dc('deliverables')),
@@ -261,9 +282,9 @@ module.exports = async (req, res) => {
       pickBudget,
       products,
       expired: isExpired(expires),
-      signed: /^signed$/i.test(cell(invite.cells, ic('status'))),
-      product: cell(invite.cells, ic('product')),
-      signedAt: cell(invite.cells, ic('signedAt')),
+      signed: invite ? /^signed$/i.test(cell(invite.cells, ic('status'))) : false,
+      product: invite ? cell(invite.cells, ic('product')) : '',
+      signedAt: invite ? cell(invite.cells, ic('signedAt')) : '',
     };
 
     if (req.method === 'GET') {
@@ -286,6 +307,84 @@ module.exports = async (req, res) => {
     // rule when one is set (budget math stays client-side; prices are dynamic).
     if (pickCount && product.split(' + ').length > pickCount) return res.status(400).json({ error: `You can pick up to ${pickCount}.` });
 
+    // Chosen products' store links (server-resolved) — shared by both paths.
+    let urlsStr = '';
+    if (dealType === 'product' && (products.length || storedCards.length)) {
+      try {
+        const cards = storedCards.length ? storedCards : await resolveProducts(products);
+        urlsStr = product.split(' + ').map(t => (cards.find(c => c.title === t) || {}).url || '').filter(Boolean).join('\n');
+      } catch { /* links are a nice-to-have; the sign still lands */ }
+    }
+
+    if (generic) {
+      // Open-link signing: identify the roster player from the typed name with
+      // the suffix/punctuation-proof key the onboarding merge uses. A miss
+      // still records the signup under the exact typed name — nothing is lost,
+      // the board just shows it as unmatched for staff to reconcile.
+      const nk = (x) => String(x || '').toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\.?\s*$/, '').replace(/[^a-z]/g, '');
+      let canonical = '';
+      try {
+        const tabs = await Promise.all(['NFL', 'College', 'Highschool'].map(t => sheetGet(token, `'${t}'!A:F`)));
+        for (const d of tabs) {
+          const vals = d.values || [];
+          const nI = (vals[0] || []).findIndex(h => String(h || '').trim().toLowerCase() === 'name');
+          if (nI < 0) continue;
+          for (let i = 1; i < vals.length && !canonical; i++) {
+            const n = cell(vals[i], nI);
+            if (n && nk(n) === nk(signature)) canonical = n;
+          }
+          if (canonical) break;
+        }
+      } catch { /* matching is best-effort */ }
+      const playerName = canonical || signature;
+      const dealId = cell(deal.cells, dc('dealId'));
+      // Fold into this person's existing row (pending personal invite, or a
+      // repeat open-link signup) instead of duplicating.
+      let target = null;
+      for (let i = 1; i < iv.length; i++) {
+        if (cell(iv[i], ic('dealId')) === dealId && nk(cell(iv[i], ic('player'))) === nk(playerName)) {
+          if (/^signed$/i.test(cell(iv[i], ic('status')))) return res.status(409).json({ error: 'Looks like you already signed up for this deal.' });
+          target = { rowNum: i + 1 };
+          break;
+        }
+      }
+      const nowIso = new Date().toISOString();
+      if (target) {
+        const up = [
+          { range: `'${INV_TITLE}'!${colLetter(ic('status'))}${target.rowNum}`, values: [['signed']] },
+          { range: `'${INV_TITLE}'!${colLetter(ic('product'))}${target.rowNum}`, values: [[product]] },
+          { range: `'${INV_TITLE}'!${colLetter(ic('signature'))}${target.rowNum}`, values: [[signature]] },
+          { range: `'${INV_TITLE}'!${colLetter(ic('signedAt'))}${target.rowNum}`, values: [[nowIso]] },
+        ];
+        if (ic('productUrls') >= 0 && urlsStr) up.push({ range: `'${INV_TITLE}'!${colLetter(ic('productUrls'))}${target.rowNum}`, values: [[urlsStr]] });
+        await sheetBatchUpdate(token, up);
+      } else {
+        const headers = (iv[0] || []);
+        const row = headers.map(() => '');
+        const put = (name, v) => { const i2 = ic(name); if (i2 >= 0) row[i2] = v; };
+        put('dealId', dealId);
+        put('player', playerName);
+        put('token', 'open-' + crypto.randomBytes(6).toString('base64url'));
+        put('invitedBy', 'Open link');
+        put('invitedAt', nowIso);
+        put('status', 'signed');
+        put('product', product);
+        put('signature', signature);
+        put('signedAt', nowIso);
+        put('productUrls', urlsStr);
+        await sheetAppend(token, `'${INV_TITLE}'!A:L`, [row]);
+      }
+      // Tag the deal's clients only with verified roster names.
+      const clI2 = dc('clients');
+      if (canonical && clI2 >= 0) {
+        const names = cell(deal.cells, clI2).split(',').map(s2 => s2.trim()).filter(Boolean);
+        if (!names.some(n => n.toLowerCase() === canonical.toLowerCase())) {
+          await sheetBatchUpdate(token, [{ range: `'${DEALS_TITLE}'!${colLetter(clI2)}${deal.rowNum}`, values: [[[...names, canonical].join(', ')]] }]);
+        }
+      }
+      return res.json({ success: true, matched: !!canonical });
+    }
+
     const updates = [
       { range: `'${INV_TITLE}'!${colLetter(ic('status'))}${invite.rowNum}`, values: [['signed']] },
       { range: `'${INV_TITLE}'!${colLetter(ic('product'))}${invite.rowNum}`, values: [[product]] },
@@ -295,13 +394,7 @@ module.exports = async (req, res) => {
     // Record the chosen products' store links (server-resolved, so the client
     // can't forge them) — the brand export ships from these.
     const uI = ic('productUrls');
-    if (uI >= 0 && dealType === 'product' && (products.length || storedCards.length)) {
-      try {
-        const cards = storedCards.length ? storedCards : await resolveProducts(products);
-        const urls = product.split(' + ').map(t => (cards.find(c => c.title === t) || {}).url || '').filter(Boolean);
-        if (urls.length) updates.push({ range: `'${INV_TITLE}'!${colLetter(uI)}${invite.rowNum}`, values: [[urls.join('\n')]] });
-      } catch { /* links are a nice-to-have; the sign still lands */ }
-    }
+    if (uI >= 0 && urlsStr) updates.push({ range: `'${INV_TITLE}'!${colLetter(uI)}${invite.rowNum}`, values: [[urlsStr]] });
     // Signing also tags the player on the deal row itself, so the deal shows
     // up on their profile's Brand Deals card like any other deal.
     const clI = dc('clients');

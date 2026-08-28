@@ -608,7 +608,7 @@ const ADMIN_TABS = {
     // open=TRUE flags one, dealId joins DealInvites rows, products is a
     // newline list players pick from, levels/minFollowers gate eligibility,
     // expires closes the links.
-    ensureCols: ['open', 'dealId', 'products', 'stipulations', 'levels', 'minFollowers', 'expires', 'dealType', 'pickCount', 'pickBudget', 'resolvedCards'] },
+    ensureCols: ['open', 'dealId', 'products', 'stipulations', 'levels', 'minFollowers', 'expires', 'dealType', 'pickCount', 'pickBudget', 'resolvedCards', 'openToken'] },
   // One row per invited player per open deal; token is the signing link's
   // credential. Written by the deal-invite action + the public /api/deal sign.
   dealinvites: { title: 'DealInvites', writable: true, autoCreate: ['dealId', 'player', 'token', 'invitedBy', 'invitedAt', 'status', 'product', 'signature', 'signedAt', 'productUrls'],

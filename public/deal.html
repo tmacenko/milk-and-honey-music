@@ -110,7 +110,7 @@
     var html = '<div class="card">' +
       '<div class="eyebrow">Open brand deal</div>' +
       '<div class="brand">' + esc(i.company) + '</div>' +
-      '<div class="for">For <b>' + esc(i.player) + '</b> \u00b7 via Milk &amp; Honey Sports</div>';
+      (i.generic ? '<div class="for">For Milk &amp; Honey clients</div>' : '<div class="for">For <b>' + esc(i.player) + '</b> \u00b7 via Milk &amp; Honey Sports</div>');
     var allCards = i.productCards || [];
     var browseCards = allCards.filter(function (c) { return c.browse; });
     var cards = allCards.filter(function (c) { return !c.browse; });
@@ -165,7 +165,7 @@
     if (i.expires) html += '<div class="deadline">Respond by ' + esc(fmtDate(i.expires)) + '</div>';
     html += '<div class="sec"><div class="sec-label">Sign to accept</div>' +
       '<input type="text" id="sig" autocomplete="name" placeholder="Type your full name" value="' + esc(state.name) + '" />' +
-      '<div class="sig-note">Typing your name here counts as your digital signature.</div>' +
+      '<div class="sig-note">' + (i.generic ? 'Use your full name exactly as your team knows it \u2014 that\u2019s how we match you to your profile. ' : '') + 'Typing your name here counts as your digital signature.</div>' +
       '<label class="agree"><input type="checkbox" id="agree"' + (state.agree ? ' checked' : '') + ' /><span>By checking this box I agree to complete the deliverables outlined above in exchange for my selected goods.</span></label>' +
       '<button class="btn" id="go"' + (canSign ? '' : ' disabled') + '>' + (state.busy ? 'Signing\u2026' : 'Count me in') + '</button>' +
       (state.err ? '<div class="err">' + esc(state.err) + '</div>' : '') +
