@@ -212,6 +212,8 @@
           // preset card comes back if they clear the paste).
           if (maxN === 1) state.picked = filled.length ? [] : (realCards.length === 1 ? [realCards[0].title] : state.picked);
           recheck();
+          var sumEl = root.querySelector('.pick-sum');
+          if (sumEl && !i.pickBudget && maxN > 1) sumEl.innerHTML = 'Selected <b>' + (state.picked.length + filled.length) + '</b> of up to ' + maxN;
           var inputs = root.querySelectorAll('.picktext');
           var last = inputs[inputs.length - 1];
           if (last === el && el.value.trim() && state.picked.length + filled.length < maxN) {
