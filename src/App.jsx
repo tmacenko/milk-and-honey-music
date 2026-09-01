@@ -2911,6 +2911,8 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
     // Company view only — the API already strips address for public/b2b
     // sessions, this guard just makes the intent explicit.
     companyView && a.address && ['Address', a.address],
+    companyView && a.email && ['Email', a.email],
+    companyView && a.phone && ['Phone', a.phone],
     a.hometown && ['Hometown', a.hometown],
     companyView && a.positionCoach && ['Position coach', a.positionCoach],
     a.classOf && ['Class of', a.classOf],

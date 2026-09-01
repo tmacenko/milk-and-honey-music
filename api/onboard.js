@@ -75,15 +75,29 @@ async function ensureTab(token, title, headers) {
   const d = await r.json();
   if (d.error && !/already exists/i.test(d.error.message || '')) throw new Error(d.error.message);
   const head = await sheetGet(token, `'${title}'!1:1`);
-  if (!(head.values && head.values[0] && head.values[0].some(c => String(c).trim()))) {
+  const existing = (head.values && head.values[0]) || [];
+  if (!existing.some(c => String(c).trim())) {
     await sheetBatchUpdate(token, [{ range: `'${title}'!A1`, values: [headers] }]);
+    return;
+  }
+  // Append any headers the tab predates (e.g. email/phone added later) so
+  // positional log rows keep lining up with ONBOARDING_HEADERS.
+  const have = new Set(existing.map(c => String(c).trim().toLowerCase()));
+  const missing = headers.filter(h => !have.has(h.toLowerCase()));
+  if (missing.length) {
+    const startCol = existing.length;
+    await sheetBatchUpdate(token, missing.map((h, i) => {
+      let n = startCol + i + 1, col = '';
+      while (n > 0) { const r2 = (n - 1) % 26; col = String.fromCharCode(65 + r2) + col; n = Math.floor((n - 1) / 26); }
+      return { range: `'${title}'!${col}1`, values: [[h]] };
+    }));
   }
 }
 
 const ONBOARDING_HEADERS = ['submittedAt', 'type', 'name', 'level', 'position', 'schoolOrTeam', 'classOf',
   'jerseyNumber', 'birthday', 'hometown', 'address', 'instagram', 'twitter', 'tiktok',
   'shirt', 'hoodie', 'shorts', 'pants', 'shoes', 'gloves', 'gamingSystem',
-  'musicArtists', 'interests', 'brandTargets'];
+  'musicArtists', 'interests', 'brandTargets', 'email', 'phone'];
 
 const normName = raw => String(raw || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 const hasSuffix = raw => /\b(jr|sr|ii|iii|iv)$/.test(String(raw || '').toLowerCase().trim());
@@ -170,6 +184,7 @@ module.exports = async (req, res) => {
     const appVals = {
       'name': matchedName || sub.name.trim(), 'level': level,
       'hometown': sub.hometown, 'jerseyNumber': sub.jerseyNumber,
+      'email': sub.email, 'phone': sub.phone,
       'musicArtists': joinList(sub.musicArtists), 'interests': joinList(sub.interests),
       'brandTargets': joinList(sub.brands), 'tiktok': sub.tiktok,
       'college': level !== 'NFL' ? sub.schoolOrTeam : undefined,

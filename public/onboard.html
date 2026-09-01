@@ -173,6 +173,14 @@
       <input type="text" id="birthday" placeholder="MM/DD/YYYY" inputmode="numeric" maxlength="10" />
     </div>
     <div class="field">
+      <label>Email</label>
+      <input type="email" id="email" placeholder="you@example.com" autocomplete="email" autocapitalize="none" autocorrect="off" inputmode="email" />
+    </div>
+    <div class="field">
+      <label>Phone</label>
+      <input type="tel" id="phone" placeholder="(555) 123-4567" autocomplete="tel" inputmode="tel" />
+    </div>
+    <div class="field">
       <label>Hometown</label>
       <input type="text" id="hometown" placeholder="City, State" autocomplete="address-level2" autocapitalize="words" />
     </div>
@@ -520,6 +528,8 @@ function buildReview() {
     ['Birthday', d.birthday],
     ['Hometown', d.hometown],
     ['Address', d.address],
+    ['Email', d.email],
+    ['Phone', d.phone],
     ['Instagram', d.instagram ? '@' + d.instagram : ''],
     ['X', d.twitter ? '@' + d.twitter : ''],
     ['TikTok', d.tiktok ? '@' + d.tiktok : ''],
@@ -556,6 +566,8 @@ function getData() {
     schoolOrTeam: document.getElementById('schoolOrTeam').value.trim(),
     classOf: document.getElementById('classOf').value.trim(),
     birthday,
+    email: document.getElementById('email').value.trim(),
+    phone: document.getElementById('phone').value.trim(),
     hometown: document.getElementById('hometown').value.trim(),
     address: buildAddress(),
     instagram: document.getElementById('instagram').value.trim().replace(/^@/, ''),
