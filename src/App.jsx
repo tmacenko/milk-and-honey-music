@@ -6141,6 +6141,28 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
     }
     copy(`${window.location.origin}/deal/${t}`, 'open');
   };
+  // Reconcile an unmatched open-link signup with the roster: staff picks the
+  // right player, the record moves under the canonical name (the typed
+  // signature stays on file untouched), and signed deals join their profile.
+  const matchInvite = async (i, name) => {
+    if (!name) return;
+    if (!window.confirm(`Record this signup under ${name}? The typed name ("${i.player}") stays on file as their signature.`)) return;
+    try {
+      const r = await fetch('/api/athletes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'tab-update', tab: 'dealinvites', row: i._row, values: { player: name } }),
+      }).then(x => x.json());
+      if (r.error) throw new Error(r.error);
+      if (i.signed && !(deal.clients || []).some(n => n.toLowerCase() === name.toLowerCase())) {
+        await fetch('/api/athletes', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'tab-update', tab: 'branddeals', row: deal._row, values: { clients: [...(deal.clients || []), name].join(', ') } }),
+        });
+        deal.clients = [...(deal.clients || []), name];
+      }
+      inv.reload();
+    } catch (e) { alert('Could not match: ' + e.message); }
+  };
   const removeInvite = async (i) => {
     if (!window.confirm(`Remove ${i.player} from this deal? Their link stops working.`)) return;
     try {
@@ -6243,6 +6265,13 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
                     <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {i.player}
                       {!a && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: G.yellow }}>not matched to roster</span>}
+                      {!a && (
+                        <select value="" onChange={e => matchInvite(i, e.target.value)} onClick={e => e.stopPropagation()}
+                          style={{ marginLeft: 8, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, fontSize: 11, fontWeight: 600, fontFamily: ff, padding: "2px 5px", cursor: "pointer", maxWidth: 110 }}>
+                          <option value="">Match to…</option>
+                          {[...athletes].sort((x, y) => x.name.localeCompare(y.name)).map(x => <option key={x.name} value={x.name}>{x.name}</option>)}
+                        </select>
+                      )}
                     </div>
                     <div style={{ fontSize: 11, color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {i.signed
