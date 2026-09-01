@@ -4798,7 +4798,9 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
 // ── Onboarding link chooser ───────────────────────────────────────────────────
 // One link for signed clients (merges into the roster), one for recruits
 // (data collected in the Onboarding tab only). Copy or open either.
-const ONBOARD_URL = 'https://www.milkhoneysports.app/onboard';
+// The unified app owns onboarding now — the old milkhoneysports.app deploy
+// still serves a stale form, so links must hand out this domain.
+const ONBOARD_URL = 'https://www.milkandhoneyfamily.com/onboard';
 function OnboardLinksModal({ onClose }) {
   const [copied, setCopied] = useState('');
   const options = [
