@@ -1369,10 +1369,15 @@ module.exports = async (req, res) => {
       catch (e) {
         if (!tab.autoCreate) throw e;
         // First use — create the tab with its headers and return empty.
-        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+        // CRITICAL: a transient read error must not fall through here — if the
+        // tab already exists, the header append below would land the header
+        // names as a data row (this happened to BrandDeals). Only proceed when
+        // the tab was genuinely just created.
+        const created = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
           method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ requests: [{ addSheet: { properties: { title: tab.title, gridProperties: { rowCount: 1000, columnCount: tab.autoCreate.length } } } }] }),
-        });
+        })).json();
+        if (created.error) throw e; // tab exists (or create failed) — surface the original read error
         await sheetAppend(token, tabRange(tab.title), tab.autoCreate);
         out = { headers: tab.autoCreate, rows: [] };
       }
