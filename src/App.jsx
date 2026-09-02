@@ -4245,11 +4245,12 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     const d = onboardTab.data;
     if (!d) return [];
     const hi = (n) => d.headers.indexOf(n);
-    const si = hi('submittedAt'), ni = hi('name'), ti = hi('type'), li = hi('level');
+    const si = hi('submittedAt'), ni = hi('name'), ti = hi('type'), li = hi('level'), ri = hi('reviewed');
     if (si < 0 || ni < 0) return [];
     const cutoff = Date.now() - 7 * 86400000;
     return d.rows
-      .map(r => ({ name: String(r.cells[ni] || '').trim(), type: String((ti >= 0 && r.cells[ti]) || 'client'), level: li >= 0 ? (r.cells[li] || '') : '', at: new Date(r.cells[si] || 0) }))
+      .filter(r => !(ri >= 0 && /^true$/i.test(String(r.cells[ri] || ''))))
+      .map(r => ({ _row: r._row, name: String(r.cells[ni] || '').trim(), type: String((ti >= 0 && r.cells[ti]) || 'client'), level: li >= 0 ? (r.cells[li] || '') : '', at: new Date(r.cells[si] || 0) }))
       .filter(x => x.name && !isNaN(x.at) && x.at.getTime() > cutoff)
       .sort((a, b) => b.at - a.at);
   }, [onboardTab.data]);
@@ -4443,7 +4444,8 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               <div style={{ fontWeight: 800, fontSize: 17, color: G.text, letterSpacing: "-0.02em" }}>New onboarding</div>
               <button onClick={() => setShowOnboards(false)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 11px", fontSize: 14, fontFamily: ff }}>✕</button>
             </div>
-            <div style={{ fontSize: 12, color: G.textTertiary, marginBottom: 10 }}>Submitted in the last 7 days</div>
+            <div style={{ fontSize: 12, color: G.textTertiary, marginBottom: 10 }}>Submitted in the last 7 days — check one off once it looks good</div>
+            {recentOnboards.length === 0 && <div style={{ fontSize: 13, color: G.green, padding: "8px 0" }}>All caught up ✓</div>}
             {recentOnboards.map((o, i, arr) => {
               const match = athletes.find(a => a.name.toLowerCase().trim() === o.name.toLowerCase());
               return (
@@ -4456,7 +4458,18 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
                       <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[/recruit/i.test(o.type) ? 'Recruit' : 'Client', o.level || (match && match.level)].filter(Boolean).join(' · ')}</div>
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{o.at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                    <span style={{ fontSize: 12, color: G.textSecondary }}>{o.at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    <button title="Looks good — mark reviewed"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'tab-update', tab: 'onboarding', row: o._row, values: { reviewed: 'TRUE' } }) });
+                          onboardTab.reload();
+                        } catch { /* next reload shows the truth */ }
+                      }}
+                      style={{ width: 18, height: 18, borderRadius: "50%", border: `1.5px solid ${G.textTertiary}`, background: "transparent", cursor: "pointer", flexShrink: 0, padding: 0 }} />
+                  </div>
                 </div>
               );
             })}

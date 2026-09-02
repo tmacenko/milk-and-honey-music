@@ -596,7 +596,7 @@ const ADMIN_TABS = {
   appdata: { title: 'AppData', writable: false },
   stafflegacy: { title: 'Staff', writable: false },
   readme: { title: 'README', writable: true },
-  onboarding: { title: 'Onboarding', writable: true }, // form-fed log — writable so staff can janitor junk submissions
+  onboarding: { title: 'Onboarding', writable: true, ensureCols: ['reviewed'] }, // form-fed log — writable so staff can janitor junk submissions and check off reviewed ones
   socialhistory: { title: 'SocialHistory', writable: false }, // robot snapshots — growth board + sparklines
   stathistory: { title: 'StatHistory', writable: false },     // robot snapshots — depth/rank trend tracking
   todos: { title: 'Todos', writable: true, autoCreate: ['text', 'createdBy', 'createdAt', 'done'] }, // dashboard to-do list
