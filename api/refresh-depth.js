@@ -243,7 +243,7 @@ module.exports = async (req, res) => {
     // for the ESPN/247 sync are appended to its header row on first run.
     const autoRows = auto.values || [];
     let autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
-    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach'];
+    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus'];
     const missingAuto = AUTO_EXTRA.filter(h => !autoHeaders.some(x => x.toLowerCase() === h.toLowerCase()));
     if (missingAuto.length && !dryRun) {
       // Widen the grid first if the tab is at its column limit.
@@ -386,7 +386,11 @@ module.exports = async (req, res) => {
     const espn = { updated: 0, idsFound: 0, errors: [] };
     if (wants('espn')) {
       const espnTeamCol = autoIdx('espnTeam'), espnHCol = autoIdx('espnHeight'),
-        espnWCol = autoIdx('espnWeight'), espnJCol = autoIdx('espnJersey');
+        espnWCol = autoIdx('espnWeight'), espnJCol = autoIdx('espnJersey'),
+        espnStatusCol = autoIdx('espnStatus');
+      const appStatusCol = appHeaders.findIndex(h => String(h || '').trim().toLowerCase() === 'status');
+      espn.statusChanges = [];
+      const appStatusUpdates = [];
       const targets = [
         ...nflPlayers.map(p => ({ name: p['Name'], league: 'nfl' })),
         ...colPlayers.map(p => ({ name: p['Name'], league: 'college-football' })),
@@ -430,6 +434,23 @@ module.exports = async (req, res) => {
           const stType = String((a.status || {}).type || (a.status || {}).name || '').toLowerCase().replace(/\s+/g, '-');
           if (t.league === 'nfl' && stType === 'free-agent') teamVal = 'Free Agent';
           if (t.league === 'nfl' && stType === 'retired') teamVal = 'Retired';
+          const stName = String((a.status || {}).name || '');
+          // Reconcile the manual AppData status with what ESPN reports (NFL
+          // only): cuts and retirements land automatically, and a re-signed
+          // free agent flips back to Active. A deliberate 'Inactive' is never
+          // touched, and Practice Squad players stay Active on the sheet —
+          // AutoSync.espnStatus carries the PS distinction for display.
+          if (t.league === 'nfl' && rec && appStatusCol >= 0 && !dryRun) {
+            const cur = String(rec.cells[appStatusCol] || '').trim();
+            let next = '';
+            if (stType === 'free-agent' && ['', 'Active', 'Rookie'].includes(cur)) next = 'Free Agent';
+            else if (stType === 'retired' && ['', 'Active', 'Rookie', 'Free Agent'].includes(cur)) next = 'Retired';
+            else if ((stType === 'active' || stType === 'practice-squad') && cur === 'Free Agent') next = 'Active';
+            if (next && next !== cur) {
+              appStatusUpdates.push({ range: `AppData!${colLetter(appStatusCol)}${rec.row}`, values: [[next]] });
+              espn.statusChanges.push(`${t.name}: ${cur || '(blank)'} → ${next}`);
+            }
+          }
           const height = String(a.displayHeight || '').replace(/\s+/g, '');
           const weight = String(a.displayWeight || '').replace(/\s*lbs.*$/i, '');
           const jersey = String(a.jersey || '');
@@ -437,11 +458,13 @@ module.exports = async (req, res) => {
           if (!rowNum) return;
           const put = (colI, v) => { if (colI >= 0 && String(v).trim()) espnUpdates.push({ range: `'AutoSync'!${colLetter(colI)}${rowNum}`, values: [[String(v)]] }); };
           put(espnTeamCol, teamVal); put(espnHCol, height); put(espnWCol, weight); put(espnJCol, jersey);
+          put(espnStatusCol, stName);
           espn.updated++;
         } catch (e) { espn.errors.push(`${t.name}: ${e.message}`); }
       });
       await runTasks(espnTasks, 8, deadline);
       if (!dryRun) for (let i = 0; i < espnUpdates.length; i += 100) await sheetBatchUpdate(token, espnUpdates.slice(i, i + 100));
+      if (!dryRun && appStatusUpdates.length) await sheetBatchUpdate(token, appStatusUpdates);
     }
 
     // ── Module 3: 247 profile photos (High School) ───────────────────────────

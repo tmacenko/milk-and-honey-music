@@ -355,6 +355,8 @@ function mergeAthlete(row, ext, level) {
     depthPos: ext['depthPos'] || '',
     // Position coach (Wikipedia team-staff sync) — internal-only.
     positionCoach: ext['positionCoach'] || '',
+    // ESPN roster status (Active / Practice Squad / Free Agent…) — internal-only.
+    rosterStatus: ext['espnStatus'] || '',
     // ── internal-only (stripped for anonymous visitors) ──
     // 7-day follower growth, computed by the daily socials job from the
     // SocialHistory snapshots (dashboard "Hot this week" tile).
@@ -1405,7 +1407,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;
