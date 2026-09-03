@@ -2140,6 +2140,15 @@ function TeamLogo({ url, size = 38 }) {
   );
 }
 
+// Yellow corner light on staff roster cards: this athlete is hidden from the
+// public roster (public=FALSE — typically unsigned). Hover shows why. Public
+// sessions never receive hidden athletes, so this can only render for staff.
+const unsignedDot = (a, abs) => a.public === false ? (
+  <span title="UNSIGNED" style={abs
+    ? { position: "absolute", top: 10, right: 10, width: 9, height: 9, borderRadius: "50%", background: G.yellow, boxShadow: `0 0 0 2px ${G.surface}`, cursor: "help" }
+    : { width: 9, height: 9, borderRadius: "50%", background: G.yellow, flexShrink: 0, cursor: "help" }} />
+) : null;
+
 function SportsCard({ athlete: a, isMobile, onClick, showDepth }) {
   const [hov, setHov] = useState(false);
   const team = a.nflTeam || a.college || '';
@@ -2159,12 +2168,14 @@ function SportsCard({ athlete: a, isMobile, onClick, showDepth }) {
         <div style={{ fontSize: 13, color: G.textSecondary }}>{meta}{depthTag}</div>
       </div>
       <TeamLogo url={a.teamLogo} size={30} />
+      {unsignedDot(a)}
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
     </div>
   );
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow }}>
+      style={{ position: "relative", background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow }}>
+      {unsignedDot(a, true)}
       <div style={{ padding: "18px 18px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <Avatar name={a.name} photoUrl={a.photoUrl} size={80} />
@@ -2201,7 +2212,8 @@ function DetailedAthleteCard({ athlete: a, isMobile, onClick }) {
   const hasBody = a.bio || a.brands?.length > 0 || a.interests?.length > 0;
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, padding: isMobile ? 16 : 20, cursor: "pointer", transition: `all 0.18s ${G.ease}`, boxShadow: hov ? G.shadowLg : G.shadow }}>
+      style={{ position: "relative", background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, padding: isMobile ? 16 : 20, cursor: "pointer", transition: `all 0.18s ${G.ease}`, boxShadow: hov ? G.shadowLg : G.shadow }}>
+      {unsignedDot(a, true)}
       <div style={{ display: "flex", gap: isMobile ? 14 : 18, alignItems: "flex-start" }}>
         <Avatar name={a.name} photoUrl={a.photoUrl} size={av} />
         <div style={{ flex: 1, minWidth: 0 }}>
