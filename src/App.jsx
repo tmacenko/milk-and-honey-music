@@ -6182,6 +6182,15 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
         body: JSON.stringify({ action: 'tab-update', tab: 'dealinvites', row: i._row, values: { player: name } }),
       }).then(x => x.json());
       if (r.error) throw new Error(r.error);
+      // If the matched player already had a pending personal invite on this
+      // deal, the signed record supersedes it — absorb the duplicate.
+      const dup = invites.find(x => x !== i && !x.signed && x.player.toLowerCase().trim() === name.toLowerCase().trim());
+      if (dup) {
+        await fetch('/api/athletes', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'tab-delete', tab: 'dealinvites', row: dup._row }),
+        }).catch(() => {});
+      }
       if (i.signed && !(deal.clients || []).some(n => n.toLowerCase() === name.toLowerCase())) {
         await fetch('/api/athletes', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
