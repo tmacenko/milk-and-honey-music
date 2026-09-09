@@ -434,7 +434,14 @@ module.exports = async (req, res) => {
           const stType = String((a.status || {}).type || (a.status || {}).name || '').toLowerCase().replace(/\s+/g, '-');
           if (t.league === 'nfl' && stType === 'free-agent') teamVal = 'Free Agent';
           if (t.league === 'nfl' && stType === 'retired') teamVal = 'Retired';
-          const stName = String((a.status || {}).name || '');
+          // ESPN's status field reports game-day injury tags (Day-To-Day etc)
+          // for rostered players, while season designations (IR/PUP/NFI) live
+          // in injuries[0].status — prefer the designation, and treat pure
+          // game-day tags as Active so depth still shows for healthy-ish guys.
+          let stName = String((a.status || {}).name || '');
+          const injStatus = String(((a.injuries || [])[0] || {}).status || '');
+          if (/injured reserve|physically unable|non-football/i.test(injStatus)) stName = injStatus;
+          else if (/day-to-day|questionable|doubtful|^out$/i.test(stName)) stName = 'Active';
           // Reconcile the manual AppData status with what ESPN reports (NFL
           // only): cuts and retirements land automatically, and a re-signed
           // free agent flips back to Active. A deliberate 'Inactive' is never

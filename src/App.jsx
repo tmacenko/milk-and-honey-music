@@ -2154,9 +2154,9 @@ function SportsCard({ athlete: a, isMobile, onClick, showDepth }) {
   const team = a.nflTeam || a.college || '';
   const meta = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join(' · ');
   // Employee-only depth tag ("RT1" = starting right tackle, per Ourlads).
-  const depthTag = showDepth && !isFreeAgent(a) && (isPracticeSquad(a) || a.depthRank > 0) ? (
-    <span style={{ fontSize: 10, fontWeight: 700, color: !isPracticeSquad(a) && a.depthRank === 1 ? G.green : G.textSecondary, background: !isPracticeSquad(a) && a.depthRank === 1 ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${!isPracticeSquad(a) && a.depthRank === 1 ? G.greenBorder : G.surfaceBorder}`, borderRadius: 6, padding: "1px 6px", marginLeft: 7, whiteSpace: "nowrap", verticalAlign: "middle" }}>
-      {isPracticeSquad(a) ? 'PS' : `${a.depthPos}${a.depthRank}`}
+  const depthTag = showDepth && !isFreeAgent(a) && (rosterTagFor(a) || a.depthRank > 0) ? (
+    <span style={{ fontSize: 10, fontWeight: 700, color: rosterTagFor(a) ? (rosterTagFor(a).warn ? G.yellow : G.textSecondary) : a.depthRank === 1 ? G.green : G.textSecondary, background: !rosterTagFor(a) && a.depthRank === 1 ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${!rosterTagFor(a) && a.depthRank === 1 ? G.greenBorder : G.surfaceBorder}`, borderRadius: 6, padding: "1px 6px", marginLeft: 7, whiteSpace: "nowrap", verticalAlign: "middle" }}>
+      {rosterTagFor(a) ? rosterTagFor(a).short : `${a.depthPos}${a.depthRank}`}
     </span>
   ) : null;
   if (isMobile) return (
@@ -2968,9 +2968,9 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
                 <TeamLogo url={a.teamLogo} size={26} />
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: banner ? "#fff" : G.text, fontWeight: 500 }}>{typeLine}</span>}
-                {companyView && !isFreeAgent(a) && (isPracticeSquad(a) || a.depthRank > 0) && (
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: !isPracticeSquad(a) && a.depthRank === 1 ? G.green : G.textSecondary, background: !isPracticeSquad(a) && a.depthRank === 1 ? G.greenSubtle : (banner ? "rgba(255,255,255,0.07)" : G.surfaceRaised), border: `1px solid ${!isPracticeSquad(a) && a.depthRank === 1 ? G.greenBorder : (banner ? "rgba(255,255,255,0.18)" : G.surfaceBorder)}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
-                    {isPracticeSquad(a) ? 'Practice squad' : `${a.depthRank === 1 ? 'Starter' : a.depthRank === 2 ? '2nd string' : a.depthRank === 3 ? '3rd string' : `${a.depthRank}th string`}${a.depthPos ? ` · ${a.depthPos}` : ''}`}
+                {companyView && !isFreeAgent(a) && (rosterTagFor(a) || a.depthRank > 0) && (
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: rosterTagFor(a) ? (rosterTagFor(a).warn ? G.yellow : G.textSecondary) : a.depthRank === 1 ? G.green : G.textSecondary, background: !rosterTagFor(a) && a.depthRank === 1 ? G.greenSubtle : (banner ? "rgba(255,255,255,0.07)" : G.surfaceRaised), border: `1px solid ${!rosterTagFor(a) && a.depthRank === 1 ? G.greenBorder : (banner ? "rgba(255,255,255,0.18)" : G.surfaceBorder)}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
+                    {rosterTagFor(a) ? rosterTagFor(a).full : `${a.depthRank === 1 ? 'Starter' : a.depthRank === 2 ? '2nd string' : a.depthRank === 3 ? '3rd string' : `${a.depthRank}th string`}${a.depthPos ? ` · ${a.depthPos}` : ''}`}
                   </span>
                 )}
                 {companyView && a.level === 'High School' && <Rank247Chip name={a.name} position={a.position} />}
@@ -3481,6 +3481,17 @@ const shortDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'n
 // position coach, jersey) until the syncs catch up — hide those everywhere.
 const isFreeAgent = (a) => /free agent|retired/i.test(String(a?.status || '')) || /free agent/i.test(String(a?.nflTeam || ''));
 const isPracticeSquad = (a) => /practice/i.test(String(a?.rosterStatus || ''));
+// Roster designations that supersede a depth rank (depth is stale or
+// meaningless while they hold). PS reads neutral; injury/suspension read amber.
+const rosterTagFor = (a) => {
+  const st = String(a?.rosterStatus || '');
+  if (/practice/i.test(st)) return { full: 'Practice squad', short: 'PS', warn: false };
+  if (/injured reserve/i.test(st)) return { full: 'Injured reserve', short: 'IR', warn: true };
+  if (/physically unable/i.test(st)) return { full: 'PUP', short: 'PUP', warn: true };
+  if (/non-football/i.test(st)) return { full: 'NFI', short: 'NFI', warn: true };
+  if (/suspend/i.test(st)) return { full: 'Suspended', short: 'SUSP', warn: true };
+  return null;
+};
 const agentMatch = (agent, key) => {
   const a = String(agent || '').toLowerCase().trim(), k = String(key || '').toLowerCase().trim();
   return !!a && !!k && (a === k || a.includes(k) || k.includes(a));
@@ -4174,7 +4185,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     for (const a of scoped) {
       if (levels[a.level] != null) levels[a.level]++;
       ig += countFrom(a.igFollowers); tt += countFrom(a.tiktokFollowers); x += countFrom(a.twitterFollowers);
-      if (a.depthRank === 1 && !isFreeAgent(a) && !isPracticeSquad(a)) { starters++; if (a.level === 'NFL') nflStarters++; else if (a.level === 'College') collegeStarters++; }
+      if (a.depthRank === 1 && !isFreeAgent(a) && !rosterTagFor(a)) { starters++; if (a.level === 'NFL') nflStarters++; else if (a.level === 'College') collegeStarters++; }
     }
     const reach = ig + tt + x;
     const pct = (n) => reach ? Math.round((n / reach) * 100) : 0;
