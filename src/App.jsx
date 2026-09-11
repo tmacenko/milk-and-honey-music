@@ -4255,12 +4255,16 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const todoItems = useMemo(() => {
     const d = todosTab.data;
     if (!d) return [];
-    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done');
+    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done'), ci = d.headers.indexOf('createdBy');
     if (ti < 0) return [];
+    // Notes are personal: each login sees only what they wrote (house-password
+    // sessions share the 'Team' bucket).
+    const me = String(user?.name || 'Team').trim().toLowerCase();
     return d.rows
       .filter(r => String(r.cells[ti] || '').trim() && !/true/i.test(String(di >= 0 ? r.cells[di] : '')))
+      .filter(r => String((ci >= 0 && r.cells[ci]) || 'Team').trim().toLowerCase() === me)
       .map(r => ({ row: r._row, text: r.cells[ti] }));
-  }, [todosTab.data]);
+  }, [todosTab.data, user]);
   const [showOnboards, setShowOnboards] = useState(false);
   // Review nudges (new onboarding, hidden athletes) are management chores —
   // agents' to-do tiles stay personal. House-password sessions count as admin.
@@ -4424,7 +4428,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         </div>
         <div style={card}>
           {tileHead('Needs attention', (
-            <button onClick={() => setAddingTodo(v => !v)} title="Add a to-do"
+            <button onClick={() => setAddingTodo(v => !v)} title="Add a note"
               style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, width: 22, height: 22, fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", fontFamily: ff, padding: 0 }}>+</button>
           ))}
           {addingTodo && (
@@ -4616,12 +4620,16 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
   const todoItems = useMemo(() => {
     const d = todosTab.data;
     if (!d) return [];
-    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done');
+    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done'), ci = d.headers.indexOf('createdBy');
     if (ti < 0) return [];
+    // Notes are personal: each login sees only what they wrote (house-password
+    // sessions share the 'Team' bucket).
+    const me = String(user?.name || 'Team').trim().toLowerCase();
     return d.rows
       .filter(r => String(r.cells[ti] || '').trim() && !/true/i.test(String(di >= 0 ? r.cells[di] : '')))
+      .filter(r => String((ci >= 0 && r.cells[ci]) || 'Team').trim().toLowerCase() === me)
       .map(r => ({ row: r._row, text: r.cells[ti] }));
-  }, [todosTab.data]);
+  }, [todosTab.data, user]);
   const postTodos = async (body) => {
     try {
       await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -4751,8 +4759,8 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
             : s.releases.map((x, i, arr) => row(x.c, x.r.name, relDate(x.at), `${x.c.id || x.c.name}-${i}`, i === arr.length - 1))}
         </div>
         <div style={card}>
-          {tileHead('To do', (
-            <button onClick={() => setAddingTodo(v => !v)} title="Add a to-do"
+          {tileHead('Notes', (
+            <button onClick={() => setAddingTodo(v => !v)} title="Add a note"
               style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, width: 22, height: 22, fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", fontFamily: ff, padding: 0 }}>+</button>
           ))}
           {addingTodo && (
