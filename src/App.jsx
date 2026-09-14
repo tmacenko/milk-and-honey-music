@@ -4186,7 +4186,7 @@ function TodoNotesList({ items, onComplete, onReorder }) {
   };
   return items.map(t => (
     <div key={t.row} draggable={items.length > 1}
-      onDragStart={e => { setDrag(t.row); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'note'); // Firefox/Safari need non-empty data for the drag to start }}
+      onDragStart={e => { setDrag(t.row); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'note'); /* Firefox/Safari need non-empty data */ }}
       onDragEnd={finish}
       onDragOver={e => {
         if (drag == null || drag === t.row) return;
