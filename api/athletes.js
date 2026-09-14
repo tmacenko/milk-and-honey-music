@@ -601,7 +601,8 @@ const ADMIN_TABS = {
   onboarding: { title: 'Onboarding', writable: true, ensureCols: ['reviewed'] }, // form-fed log — writable so staff can janitor junk submissions and check off reviewed ones
   socialhistory: { title: 'SocialHistory', writable: false }, // robot snapshots — growth board + sparklines
   stathistory: { title: 'StatHistory', writable: false },     // robot snapshots — depth/rank trend tracking
-  todos: { title: 'Todos', writable: true, autoCreate: ['text', 'createdBy', 'createdAt', 'done'] }, // dashboard to-do list
+  todos: { title: 'Todos', writable: true, autoCreate: ['text', 'createdBy', 'createdAt', 'done'],
+    ensureCols: ['sortOrder'] }, // dashboard notes; sortOrder = drag-reorder position (fractional; blank sorts by row = creation order)
   // Brand deal tracker — one row per deal; clients is a comma list of roster
   // names; fileId/fileName point at the deal file in Box (copied into each
   // tagged player's folder at upload time).

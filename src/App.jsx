@@ -4165,6 +4165,47 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
   );
 }
 
+// Drag-to-reorder notes list shared by both dashboards. Items carry a
+// fractional `ord`; a drop writes ONE sortOrder cell (midpoint between the
+// new neighbors) via onReorder(row, ord).
+function TodoNotesList({ items, onComplete, onReorder }) {
+  const [drag, setDrag] = useState(null);          // sheet row being dragged
+  const [over, setOver] = useState(null);          // { row, after } — insertion target
+  const finish = () => { setDrag(null); setOver(null); };
+  const drop = () => {
+    if (drag == null || !over) return finish();
+    const rest = items.filter(t => t.row !== drag);
+    let idx = rest.findIndex(t => t.row === over.row);
+    if (idx < 0) return finish();
+    if (over.after) idx += 1;
+    if (idx === items.findIndex(t => t.row === drag)) return finish(); // dropped back in place
+    const prev = rest[idx - 1], next = rest[idx];
+    const ord = !prev ? next.ord - 1 : !next ? prev.ord + 1 : (prev.ord + next.ord) / 2;
+    finish();
+    onReorder(drag, ord);
+  };
+  return items.map(t => (
+    <div key={t.row} draggable={items.length > 1}
+      onDragStart={e => { setDrag(t.row); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'note'); // Firefox/Safari need non-empty data for the drag to start }}
+      onDragEnd={finish}
+      onDragOver={e => {
+        if (drag == null || drag === t.row) return;
+        e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+        const r = e.currentTarget.getBoundingClientRect();
+        setOver({ row: t.row, after: e.clientY > r.top + r.height / 2 });
+      }}
+      onDrop={e => { e.preventDefault(); drop(); }}
+      style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0",
+        opacity: drag === t.row ? 0.4 : 1, cursor: items.length > 1 ? "grab" : "default",
+        borderTop: `2px solid ${over && over.row === t.row && !over.after ? G.green : 'transparent'}`,
+        borderBottom: `2px solid ${over && over.row === t.row && over.after ? G.green : 'transparent'}` }}>
+      <button onClick={() => onComplete(t.row)} title="Mark complete"
+        style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${G.textTertiary}`, background: "transparent", cursor: "pointer", flexShrink: 0, padding: 0 }} />
+      <span style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
+    </div>
+  ));
+}
+
 function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, onGoBrandDeals, user, decks }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -4252,10 +4293,11 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const { alerts: dealAlerts, dismiss: dismissDeal } = useOpenDealAlerts(athletes, user);
   const [addingTodo, setAddingTodo] = useState(false);
   const [todoText, setTodoText] = useState('');
+  const [todoOrd, setTodoOrd] = useState({}); // optimistic drag order until the sheet write lands
   const todoItems = useMemo(() => {
     const d = todosTab.data;
     if (!d) return [];
-    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done'), ci = d.headers.indexOf('createdBy');
+    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done'), ci = d.headers.indexOf('createdBy'), oi = d.headers.indexOf('sortOrder');
     if (ti < 0) return [];
     // Notes are personal: each login sees only what they wrote (house-password
     // sessions share the 'Team' bucket).
@@ -4263,8 +4305,12 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     return d.rows
       .filter(r => String(r.cells[ti] || '').trim() && !/true/i.test(String(di >= 0 ? r.cells[di] : '')))
       .filter(r => String((ci >= 0 && r.cells[ci]) || 'Team').trim().toLowerCase() === me)
-      .map(r => ({ row: r._row, text: r.cells[ti] }));
-  }, [todosTab.data, user]);
+      .map(r => {
+        const saved = todoOrd[r._row] !== undefined ? todoOrd[r._row] : parseFloat(oi >= 0 ? r.cells[oi] : '');
+        return { row: r._row, text: r.cells[ti], ord: isNaN(saved) ? r._row : saved };
+      })
+      .sort((a, b) => a.ord - b.ord);
+  }, [todosTab.data, user, todoOrd]);
   const [showOnboards, setShowOnboards] = useState(false);
   // Review nudges (new onboarding, hidden athletes) are management chores —
   // agents' to-do tiles stay personal. House-password sessions count as admin.
@@ -4299,6 +4345,10 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     postTodos({ action: 'tab-append', tab: 'todos', values: { text: t, createdBy: (user?.name || 'Team'), createdAt: new Date().toISOString().slice(0, 10), done: '' } });
   };
   const completeTodo = (row) => postTodos({ action: 'tab-update', tab: 'todos', row, values: { done: 'TRUE' } });
+  const reorderTodo = (row, ord) => {
+    setTodoOrd(p => ({ ...p, [row]: ord })); // show the new order immediately
+    postTodos({ action: 'tab-update', tab: 'todos', row, values: { sortOrder: String(ord) } });
+  };
   const fmtMoney = (n) => n >= 1e6 ? `$${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`
     : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
   const seasonLabel = `${now.getFullYear()}/${String((now.getFullYear() + 1) % 100).padStart(2, '0')} season`;
@@ -4455,13 +4505,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               Hidden athletes ({hiddenAthletes.length})
             </div>
           )}
-          {todoItems.map(t => (
-            <div key={t.row} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
-              <button onClick={() => completeTodo(t.row)} title="Mark complete"
-                style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${G.textTertiary}`, background: "transparent", cursor: "pointer", flexShrink: 0, padding: 0 }} />
-              <span style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
-            </div>
-          ))}
+          <TodoNotesList items={todoItems} onComplete={completeTodo} onReorder={reorderTodo} />
           {s.incomplete.length === 0 && (!adminRole || (newOnboards === 0 && hiddenAthletes.length === 0)) && todoItems.length === 0 && !addingTodo && (
             <div style={{ fontSize: 13, color: G.green, padding: "6px 0" }}>All clear ✓</div>
           )}
@@ -4617,10 +4661,11 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
   const todosTab = useAdminTab('todos');
   const [addingTodo, setAddingTodo] = useState(false);
   const [todoText, setTodoText] = useState('');
+  const [todoOrd, setTodoOrd] = useState({}); // optimistic drag order until the sheet write lands
   const todoItems = useMemo(() => {
     const d = todosTab.data;
     if (!d) return [];
-    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done'), ci = d.headers.indexOf('createdBy');
+    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done'), ci = d.headers.indexOf('createdBy'), oi = d.headers.indexOf('sortOrder');
     if (ti < 0) return [];
     // Notes are personal: each login sees only what they wrote (house-password
     // sessions share the 'Team' bucket).
@@ -4628,8 +4673,12 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
     return d.rows
       .filter(r => String(r.cells[ti] || '').trim() && !/true/i.test(String(di >= 0 ? r.cells[di] : '')))
       .filter(r => String((ci >= 0 && r.cells[ci]) || 'Team').trim().toLowerCase() === me)
-      .map(r => ({ row: r._row, text: r.cells[ti] }));
-  }, [todosTab.data, user]);
+      .map(r => {
+        const saved = todoOrd[r._row] !== undefined ? todoOrd[r._row] : parseFloat(oi >= 0 ? r.cells[oi] : '');
+        return { row: r._row, text: r.cells[ti], ord: isNaN(saved) ? r._row : saved };
+      })
+      .sort((a, b) => a.ord - b.ord);
+  }, [todosTab.data, user, todoOrd]);
   const postTodos = async (body) => {
     try {
       await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -4643,6 +4692,10 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
     postTodos({ action: 'tab-append', tab: 'todos', values: { text: t, createdBy: (user?.name || 'Team'), createdAt: new Date().toISOString().slice(0, 10), done: '' } });
   };
   const completeTodo = (row) => postTodos({ action: 'tab-update', tab: 'todos', row, values: { done: 'TRUE' } });
+  const reorderTodo = (row, ord) => {
+    setTodoOrd(p => ({ ...p, [row]: ord })); // show the new order immediately
+    postTodos({ action: 'tab-update', tab: 'todos', row, values: { sortOrder: String(ord) } });
+  };
 
   const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
@@ -4775,13 +4828,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
               Incomplete profiles: {s.incomplete.length} clients
             </div>
           )}
-          {todoItems.map(t => (
-            <div key={t.row} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
-              <button onClick={() => completeTodo(t.row)} title="Mark complete"
-                style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${G.textTertiary}`, background: "transparent", cursor: "pointer", flexShrink: 0, padding: 0 }} />
-              <span style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
-            </div>
-          ))}
+          <TodoNotesList items={todoItems} onComplete={completeTodo} onReorder={reorderTodo} />
           {s.incomplete.length === 0 && todoItems.length === 0 && !addingTodo && (
             <div style={{ fontSize: 13, color: G.green, padding: "6px 0" }}>All clear ✓</div>
           )}
