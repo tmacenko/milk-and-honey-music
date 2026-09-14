@@ -4165,6 +4165,20 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
   );
 }
 
+// Homepage-style Google search shared by both dashboards — Enter opens
+// results in this tab; the input grabs focus on load so typing starts a
+// search immediately.
+function GoogleSearchBox() {
+  return (
+    <form onSubmit={e => { e.preventDefault(); const q = e.currentTarget.q.value.trim(); if (q) window.location.href = `https://www.google.com/search?q=${encodeURIComponent(q)}`; }}
+      style={{ display: "flex", alignItems: "center", gap: 8, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 22, padding: "9px 16px", width: 300, marginTop: 4 }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
+      <input name="q" placeholder="Search Google..." autoComplete="off" autoFocus
+        style={{ background: "transparent", border: "none", outline: "none", color: G.text, fontSize: 13, fontFamily: ff, flex: 1, minWidth: 0 }} />
+    </form>
+  );
+}
+
 // Drag-to-reorder notes list shared by both dashboards. Items carry a
 // fractional `ord`; a drop writes ONE sortOrder cell (midpoint between the
 // new neighbors) via onReorder(row, ord).
@@ -4377,9 +4391,14 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 
   return (
     <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
-      <div style={{ fontSize: isMobile ? 21 : 25, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{greeting}</div>
-      <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>
-        {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: isMobile ? 21 : 25, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{greeting}</div>
+          <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>
+            {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </div>
+        </div>
+        {!isMobile && <GoogleSearchBox />}
       </div>
 
       {dealAlerts.map(({ deal, eligibleCount }) => (
@@ -4731,15 +4750,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
             {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </div>
         </div>
-        {/* Homepage-style Google search — Enter opens results in this tab; input is focused on load so typing starts a search immediately. */}
-        {!isMobile && (
-          <form onSubmit={e => { e.preventDefault(); const q = e.currentTarget.q.value.trim(); if (q) window.location.href = `https://www.google.com/search?q=${encodeURIComponent(q)}`; }}
-            style={{ display: "flex", alignItems: "center", gap: 8, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 22, padding: "9px 16px", width: 300, marginTop: 4 }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
-            <input name="q" placeholder="Search Google..." autoComplete="off" autoFocus
-              style={{ background: "transparent", border: "none", outline: "none", color: G.text, fontSize: 13, fontFamily: ff, flex: 1, minWidth: 0 }} />
-          </form>
-        )}
+        {!isMobile && <GoogleSearchBox />}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
