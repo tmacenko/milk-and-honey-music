@@ -4678,12 +4678,12 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
             {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </div>
         </div>
-        {/* Homepage-style Google search — Enter opens results in a new tab. */}
+        {/* Homepage-style Google search — Enter opens results in this tab; input is focused on load so typing starts a search immediately. */}
         {!isMobile && (
-          <form onSubmit={e => { e.preventDefault(); const q = e.currentTarget.q.value.trim(); if (q) window.open(`https://www.google.com/search?q=${encodeURIComponent(q)}`, '_blank', 'noopener'); e.currentTarget.q.value = ''; }}
+          <form onSubmit={e => { e.preventDefault(); const q = e.currentTarget.q.value.trim(); if (q) window.location.href = `https://www.google.com/search?q=${encodeURIComponent(q)}`; }}
             style={{ display: "flex", alignItems: "center", gap: 8, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 22, padding: "9px 16px", width: 300, marginTop: 4 }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><circle cx="11" cy="11" r="8" stroke={G.textTertiary} strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round"/></svg>
-            <input name="q" placeholder="Search Google..." autoComplete="off"
+            <input name="q" placeholder="Search Google..." autoComplete="off" autoFocus
               style={{ background: "transparent", border: "none", outline: "none", color: G.text, fontSize: 13, fontFamily: ff, flex: 1, minWidth: 0 }} />
           </form>
         )}
