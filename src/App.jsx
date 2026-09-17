@@ -3972,12 +3972,15 @@ function useOpenDealAlerts(athletes, user, enabled = true) {
 const WEEKEND_CACHE = { events: null, ts: 0 };
 async function fetchWeekendEvents() {
   if (WEEKEND_CACHE.events && Date.now() - WEEKEND_CACHE.ts < 30 * 60 * 1000) return WEEKEND_CACHE.events;
-  const ymd = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  const range = `${ymd(new Date())}-${ymd(new Date(Date.now() + 7 * 86400000))}`;
+  // No dates param: ESPN quietly stopped honoring YYYYMMDD-YYYYMMDD ranges
+  // (returned 0 events), while the bare scoreboard reliably serves the current
+  // week for both leagues. We window to today→+7 days ourselves below.
   const urls = [
-    `https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&limit=400&dates=${range}`,
-    `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100&dates=${range}`,
+    `https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&limit=400`,
+    `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100`,
   ];
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const tEnd = t0.getTime() + 8 * 86400000;
   const events = [];
   await Promise.all(urls.map(async (u, i) => {
     try {
@@ -3985,10 +3988,12 @@ async function fetchWeekendEvents() {
       (j.events || []).forEach(ev => {
         const comp = (ev.competitions || [])[0];
         if (!comp) return;
+        const when = new Date(ev.date);
+        if (isNaN(when) || when < t0 || when.getTime() > tEnd) return;
         events.push({
           id: ev.id,
           league: i === 0 ? 'college' : 'nfl',
-          date: new Date(ev.date),
+          date: when,
           network: comp.broadcasts?.[0]?.names?.[0] || comp.geoBroadcasts?.[0]?.media?.shortName || '',
           state: ev.status?.type?.state || 'pre',
           statusDetail: ev.status?.type?.shortDetail || '',
