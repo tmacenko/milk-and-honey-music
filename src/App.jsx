@@ -19,7 +19,8 @@ const THEME_CSS = `
   --mh-border:#1e1e22; --mh-border-light:#28282d;
   --mh-text:#f4f4f5; --mh-text-2:#b4b4be; --mh-text-3:#8a8a98;
   --mh-shadow:0 1px 2px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.35);
-  --mh-card-border:transparent; --mh-card-shadow:0 1px 2px rgba(0,0,0,0.02), 0 4px 14px rgba(0,0,0,0.02);
+  --mh-card-border:transparent; --mh-card-shadow:0 2px 6px rgba(0,0,0,0.03), 0 10px 28px rgba(0,0,0,0.03);
+  --mh-card-shadow-hover:0 3px 8px rgba(0,0,0,0.45), 0 14px 36px rgba(0,0,0,0.3);
   --mh-shadow-lg:0 4px 12px rgba(0,0,0,0.7), 0 20px 60px rgba(0,0,0,0.5);
   --mh-tile-shadow:0 1px 4px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.12);
   --mh-yellow:#d97706; --mh-red:#dc2626;
@@ -32,7 +33,8 @@ const THEME_CSS = `
   --mh-border:#e3e3e6; --mh-border-light:#d2d2d8;
   --mh-text:#141417; --mh-text-2:#4c4c56; --mh-text-3:#71717c;
   --mh-shadow:0 1px 2px rgba(20,20,25,0.01), 0 4px 16px rgba(20,20,25,0.01);
-  --mh-card-border:transparent; --mh-card-shadow:0 1px 2px rgba(20,20,25,0.02), 0 4px 14px rgba(20,20,25,0.02);
+  --mh-card-border:transparent; --mh-card-shadow:0 2px 6px rgba(20,20,25,0.03), 0 10px 28px rgba(20,20,25,0.03);
+  --mh-card-shadow-hover:0 3px 8px rgba(20,20,25,0.06), 0 14px 36px rgba(20,20,25,0.06);
   --mh-shadow-lg:0 4px 12px rgba(20,20,25,0.01), 0 20px 60px rgba(20,20,25,0.01);
   --mh-tile-shadow:0 1px 3px rgba(20,20,25,0.06), inset 0 0 0 1px rgba(20,20,25,0.08);
   --mh-yellow:#b45309; --mh-red:#dc2626;
@@ -57,7 +59,7 @@ const G = {
   shadow: "var(--mh-shadow)",
   // Card treatment (containers): flip these two CSS vars to revert to the
   // grey-outline look — every card reads them.
-  cardBorder: "var(--mh-card-border)", cardShadow: "var(--mh-card-shadow)",
+  cardBorder: "var(--mh-card-border)", cardShadow: "var(--mh-card-shadow)", cardShadowHover: "var(--mh-card-shadow-hover)",
   shadowLg: "var(--mh-shadow-lg)",
   ease: "cubic-bezier(0.4,0,0.2,1)",
   yellow: "var(--mh-yellow)", red: "var(--mh-red)",
@@ -2317,9 +2319,11 @@ function SportsCard({ athlete: a, isMobile, onClick, showDepth, compact }) {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
     </div>
   );
+  const [pressed, setPressed] = useState(false);
   return (
-    <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ position: "relative", background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow }}>
+    <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => { setHov(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)} onMouseUp={() => setPressed(false)}
+      style={{ position: "relative", background: G.surface, border: `1px solid ${G.cardBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.18s ${G.ease}`, transform: pressed ? "translateY(0) scale(0.985)" : hov ? "translateY(-2px)" : "none", boxShadow: pressed ? G.cardShadow : hov ? G.cardShadowHover : G.cardShadow }}>
       {unsignedDot(a, true)}
       <div style={{ padding: compact ? "14px 14px 13px" : "18px 18px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: compact ? 11 : 14 }}>
@@ -4753,9 +4757,18 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
-  const tileHead = (label, range) => (
+  const tileHead = (label, range, onClick) => (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
+      {onClick ? (
+        <button onClick={onClick} title="View all"
+          onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
+          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
+          <span>{label}</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
+        </button>
+      ) : (
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
+      )}
       <div style={{ fontSize: 11, color: G.textTertiary }}>{range}</div>
     </div>
   );
@@ -5079,9 +5092,18 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
-  const tileHead = (label, range) => (
+  const tileHead = (label, range, onClick) => (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
+      {onClick ? (
+        <button onClick={onClick} title="View all"
+          onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
+          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
+          <span>{label}</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
+        </button>
+      ) : (
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
+      )}
       <div style={{ fontSize: 11, color: G.textTertiary }}>{range}</div>
     </div>
   );
@@ -5134,9 +5156,11 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
           <CarouselRow>
             {featured.map((c, i) => (
               <div key={`${c._rowIndex ?? ''}-${c.id || i}`} onClick={() => onOpenClient(c)}
-                onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
-                onMouseLeave={e => { e.currentTarget.style.background = G.surface; }}
-                style={{ flex: isMobile ? "0 0 calc(50% - 6px)" : "0 0 calc((100% - 48px) / 5)", minWidth: 0, scrollSnapAlign: "start", boxSizing: "border-box", background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 16, padding: "14px 14px 13px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
+                onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; e.currentTarget.style.transform = "none"; }}
+                onMouseDown={e => { e.currentTarget.style.boxShadow = G.cardShadow; e.currentTarget.style.transform = "translateY(0) scale(0.985)"; }}
+                onMouseUp={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                style={{ flex: isMobile ? "0 0 calc(50% - 6px)" : "0 0 calc((100% - 48px) / 5)", minWidth: 0, scrollSnapAlign: "start", boxSizing: "border-box", background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 16, padding: "14px 14px 13px", cursor: "pointer", transition: `all 0.18s ${G.ease}` }}>
                 <Avatar name={c.name} photoUrl={c.photoUrl} size={48} />
                 <div style={{ fontWeight: 800, fontSize: 16.5, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, margin: "11px 0 5px" }}>{c.name}</div>
                 <div style={{ fontSize: 11.5, color: G.textSecondary, fontWeight: 500 }}>
