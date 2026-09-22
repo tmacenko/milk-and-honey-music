@@ -4196,6 +4196,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user }) {
   const items = useMemo(() => {
     if (!data) return [];
     const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const tEnd = t0.getTime() + 15 * 86400000; // today + 14 days, like the sports 7-day window
     const out = [];
     for (const c of artistClients) {
       for (const e of data[c.name] || []) {
@@ -4204,7 +4205,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user }) {
         const m = String(e.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
         if (!m) continue;
         const d = new Date(+m[1], +m[2] - 1, +m[3]);
-        if (d < t0) continue;
+        if (d < t0 || d.getTime() >= tEnd) continue;
         out.push({ c, e, d });
       }
     }
