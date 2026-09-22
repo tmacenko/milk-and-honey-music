@@ -19,6 +19,7 @@ const THEME_CSS = `
   --mh-border:#1e1e22; --mh-border-light:#28282d;
   --mh-text:#f4f4f5; --mh-text-2:#b4b4be; --mh-text-3:#8a8a98;
   --mh-shadow:0 1px 2px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.35);
+  --mh-card-border:transparent; --mh-card-shadow:0 1px 2px rgba(0,0,0,0.02), 0 4px 14px rgba(0,0,0,0.02);
   --mh-shadow-lg:0 4px 12px rgba(0,0,0,0.7), 0 20px 60px rgba(0,0,0,0.5);
   --mh-tile-shadow:0 1px 4px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.12);
   --mh-yellow:#d97706; --mh-red:#dc2626;
@@ -31,6 +32,7 @@ const THEME_CSS = `
   --mh-border:#e3e3e6; --mh-border-light:#d2d2d8;
   --mh-text:#141417; --mh-text-2:#4c4c56; --mh-text-3:#71717c;
   --mh-shadow:0 1px 2px rgba(20,20,25,0.01), 0 4px 16px rgba(20,20,25,0.01);
+  --mh-card-border:transparent; --mh-card-shadow:0 1px 2px rgba(20,20,25,0.02), 0 4px 14px rgba(20,20,25,0.02);
   --mh-shadow-lg:0 4px 12px rgba(20,20,25,0.01), 0 20px 60px rgba(20,20,25,0.01);
   --mh-tile-shadow:0 1px 3px rgba(20,20,25,0.06), inset 0 0 0 1px rgba(20,20,25,0.08);
   --mh-yellow:#b45309; --mh-red:#dc2626;
@@ -53,6 +55,9 @@ const G = {
   surfaceBorder: "var(--mh-border)", surfaceBorderLight: "var(--mh-border-light)",
   text: "var(--mh-text)", textSecondary: "var(--mh-text-2)", textTertiary: "var(--mh-text-3)",
   shadow: "var(--mh-shadow)",
+  // Card treatment (containers): flip these two CSS vars to revert to the
+  // grey-outline look — every card reads them.
+  cardBorder: "var(--mh-card-border)", cardShadow: "var(--mh-card-shadow)",
   shadowLg: "var(--mh-shadow-lg)",
   ease: "cubic-bezier(0.4,0,0.2,1)",
   yellow: "var(--mh-yellow)", red: "var(--mh-red)",
@@ -250,7 +255,7 @@ function IR({ label, value }) {
 // ── Section ───────────────────────────────────────────────────────────────────
 function Sec({ title, children }) {
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "18px 20px" }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 16, padding: "18px 20px" }}>
       {title && <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 14 }}>{title}</div>}
       {children}
     </div>
@@ -1353,7 +1358,7 @@ function MusicMarketingTab({ client: c, isMobile, pad }) {
     return base !== last && base.total > 0 ? (last.total - base.total) / base.total * 100 : null;
   }, [series]);
   const card = (title, right, body) => (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{title}</div>
         {right}
@@ -1477,7 +1482,7 @@ function MusicSocialsModule({ client: c }) {
   const totReach = rows.reduce((s, r) => s + countFrom(r.count), 0);
   const totD = pd ? (pd.ig + pd.x + pd.tk) : null;
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Social media</div>
         {pd ? <div style={{ fontSize: 11, color: G.textTertiary }}>{days}-day change</div> : null}
@@ -1676,7 +1681,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
         {supportersEl}
         {keyShowsEl}
         {logoItems.length > 0 && (
-          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, display: "grid", gridTemplateColumns: `repeat(${Math.min(logoItems.length, 3)}, 1fr)`, overflow: "hidden" }}>
+          <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 16, display: "grid", gridTemplateColumns: `repeat(${Math.min(logoItems.length, 3)}, 1fr)`, overflow: "hidden" }}>
             {logoItems.map((item, i) => (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 12px", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none" }}>
                 {item.logo && <LogoBadge url={item.logo} label={item.name} size={44} />}
@@ -1787,7 +1792,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
         {supportersEl}
         {keyShowsEl}
         {logoItems.length > 0 && (
-          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, display: "flex", overflow: "hidden" }}>
+          <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 16, display: "flex", overflow: "hidden" }}>
             {logoItems.map((item, i) => (
               <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "20px 16px", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none" }}>
                 {item.logo && <LogoBadge url={item.logo} label={item.name} size={40} />}
@@ -2153,7 +2158,7 @@ function LoginModal({ onClose }) {
   };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 20 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: 28, width: "100%", maxWidth: 360, boxShadow: G.shadowLg }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 16, padding: 28, width: "100%", maxWidth: 360, boxShadow: G.shadowLg }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: G.text, marginBottom: 6 }}>Internal login</div>
         <div style={{ fontSize: 13, color: G.textSecondary, marginBottom: 18 }}>Enter the team password to manage the roster.</div>
         <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="Password"
@@ -2679,7 +2684,7 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
     return score - pastScore;
   }, [series, a, s247, score]);
   const card = (title, right, body) => (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{title}</div>
         {right}
@@ -2895,7 +2900,7 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
   const thStyle = { textAlign: "right", padding: "9px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" };
   const tdStyle = { textAlign: "right", padding: "8px 10px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
   const sectionCard = (title, table, note, maxH) => (
-    <div key={title} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+    <div key={title} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "14px 16px 0" }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{title}</div>
         {note && <div style={{ fontSize: 11, color: G.textTertiary }}>{note}</div>}
@@ -3005,7 +3010,7 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
       </div>
     );
     gameCard = (
-      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: "14px 16px" }}>
+      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: "14px 16px" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{ng.displayName || 'Game'}</div>
           <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[gameEv.weekText, when].filter(Boolean).join(' · ')}</div>
@@ -3177,7 +3182,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             // one-pager keeps its partner-visible pair here.
             if (companyView) return null;
             const chipCard = (title, items) => (items?.length > 0 ? (
-              <div key={title} style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+              <div key={title} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>{title}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {items.map((v, i) => <span key={i} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 500, color: G.text, whiteSpace: "nowrap" }}>{v}</span>)}
@@ -3201,7 +3206,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             const sizes = [['Shirt', a.shirtSize], ['Hoodie', a.hoodieSize], ['Shorts', a.shortsSize], ['Pants', a.sweatpantsSize], ['Shoes', a.shoeSize], ['Gloves', a.glovesSize], ['Gaming', a.gamingSystem]]
               .filter(([, v]) => String(v || '').trim());
             return (
-              <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+              <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Apparel & gear</div>
                 {sizes.length === 0
                   ? <div style={{ fontSize: 13, color: G.textTertiary }}>No sizes on file yet.</div>
@@ -3867,7 +3872,7 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
           </div>
         </div>
       )}
-      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
         {sorted.length === 0 ? (
           <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No follower data matches these filters.</div>
         ) : (
@@ -3963,7 +3968,7 @@ function SocialContractModules({ athlete: a, isMobile }) {
           a.contractGuaranteed && ['Guaranteed', money(a.contractGuaranteed)],
         ].filter(Boolean) }
       : null;
-  const mod = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const mod = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 };
   const head = (label, right) => (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
@@ -4227,7 +4232,7 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
   // NFL by nickname (two LA and two NY teams share a location); college by school.
   const teamLabel = (ev, t) => (t.rank ? `#${t.rank} ` : '') + (ev.league === 'nfl' ? (t.short || t.name) : (t.location || t.name));
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 12 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming events</div>
         <span style={{ fontSize: 12, color: G.textTertiary }}>{subParts}</span>
@@ -4398,7 +4403,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
     return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 12 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
         <span style={{ fontSize: 12, color: G.textTertiary }}>{shownItems.length} show{shownItems.length === 1 ? '' : 's'}</span>
@@ -4745,7 +4750,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
   const seasonLabel = `${now.getFullYear()}/${String((now.getFullYear() + 1) % 100).padStart(2, '0')} season`;
 
-  const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
   const tileHead = (label, range) => (
@@ -5071,7 +5076,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
     postTodos({ action: 'tab-update', tab: 'todos', row, values: { sortOrder: String(ord) } });
   };
 
-  const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
   const tileHead = (label, range) => (
@@ -5131,7 +5136,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
               <div key={`${c._rowIndex ?? ''}-${c.id || i}`} onClick={() => onOpenClient(c)}
                 onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
                 onMouseLeave={e => { e.currentTarget.style.background = G.surface; }}
-                style={{ flex: isMobile ? "0 0 calc(50% - 6px)" : "0 0 calc((100% - 48px) / 5)", minWidth: 0, scrollSnapAlign: "start", boxSizing: "border-box", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "14px 14px 13px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
+                style={{ flex: isMobile ? "0 0 calc(50% - 6px)" : "0 0 calc((100% - 48px) / 5)", minWidth: 0, scrollSnapAlign: "start", boxSizing: "border-box", background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 16, padding: "14px 14px 13px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
                 <Avatar name={c.name} photoUrl={c.photoUrl} size={48} />
                 <div style={{ fontWeight: 800, fontSize: 16.5, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, margin: "11px 0 5px" }}>{c.name}</div>
                 <div style={{ fontSize: 11.5, color: G.textSecondary, fontWeight: 500 }}>
@@ -5865,7 +5870,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
         <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
           onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); setStageF('All'); }} />
       </div>
-      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
         {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
           : err ? <div style={{ padding: 40, textAlign: "center", color: G.red, fontSize: 13 }}>{err}</div>
           : rows.length === 0 ? <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{q || filterActive ? 'No recruits match these filters.' : 'No recruits yet — add the first one.'}</div>
@@ -5936,7 +5941,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Recruit submissions</div>
             <div style={{ fontSize: 11, color: G.textTertiary }}>From the recruit onboarding link</div>
           </div>
-          <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+          <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
             {recruitSubs.map((r, idx) => {
               const h = sub.data.headers;
               const cell = (n) => { const i = h.indexOf(n); return i >= 0 ? (r.cells[i] || '') : ''; };
@@ -6070,7 +6075,7 @@ function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients..."
           style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
-      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
         {sorted.length === 0 ? (
           <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No follower data yet.</div>
         ) : (
@@ -6921,7 +6926,7 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                 <div key={d._row} onClick={() => setOpenDeal(d)}
                   onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                   onMouseLeave={e => e.currentTarget.style.background = G.surface}
-                  style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, cursor: "pointer" }}>
+                  style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, cursor: "pointer" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 15, fontWeight: 700, color: G.text, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</span>
                     {closed
@@ -6943,7 +6948,7 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
           </div>
         </div>
       )}
-      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
         {tab.loading && !tab.data ? (
           <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
         ) : sorted.length === 0 ? (
@@ -7022,7 +7027,7 @@ function BrandDealsModule({ athlete: a, canAdd }) {
   const [previewFile, setPreviewFile] = useState(null);
   const [adding, setAdding] = useState(false);
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 }}>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 11 }}>Brand deals</div>
       {deals.length === 0 ? (
         canAdd ? (
@@ -7156,7 +7161,7 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
   ].filter(Boolean);
   const filterActive = agent !== 'All' || side !== 'All' || team !== 'All';
   const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, team !== 'All' ? team : null].filter(Boolean).join(', ') || 'All';
-  const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   return (
     <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
@@ -7186,7 +7191,7 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search contracts..."
           style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
-      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
         {sorted.length === 0 ? (
           <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>
             No contracts match these filters.
@@ -7420,7 +7425,7 @@ function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
           </div>
         </div>
       )}
-      <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
         {sorted.length === 0 ? (
           <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No athletes match these filters.</div>
         ) : (
@@ -7488,7 +7493,7 @@ function ResourcesPage({ isMobile, decks }) {
   const teams = useMemo(() => parseNflTeams(nfl.data), [nfl.data]);
   const qq = q.toLowerCase();
   const matches = teams.filter(t => !qq || t.team.toLowerCase().includes(qq) || t.contacts.some(c => c.name.toLowerCase().includes(qq)));
-  const shell = (node) => <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden" }}>{node}</div>;
+  const shell = (node) => <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>{node}</div>;
   const stateOf = (t) => t.loading ? <div style={{ padding: 32, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
     : t.err ? <div style={{ padding: 32, textAlign: "center", color: G.red, fontSize: 13 }}>{t.err}</div> : null;
   const heading = (txt) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{txt}</div>;
@@ -7559,7 +7564,7 @@ const DECKS = [
 function DeckCard({ deck: d }) {
   return (
     <a href={d.url} target="_blank" rel="noopener noreferrer"
-      style={{ display: "block", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, overflow: "hidden", textDecoration: "none" }}>
+      style={{ display: "block", background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden", textDecoration: "none" }}>
       {d.thumb && (
         <div style={{ height: 150, background: "#0a0a0a", overflow: "hidden" }}>
           <img src={d.thumb} alt={`${d.title} cover`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
