@@ -199,13 +199,17 @@ async function getToken() {
 }
 
 // ── Sheets helpers ────────────────────────────────────────────────────────────
-async function sheetGet(token, range) {
+async function sheetGetRaw(token, range) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}`;
   const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await r.json();
   if (data.error) throw new Error(`Sheets API error on "${range}": ${data.error.code} ${data.error.message}`);
   return data;
 }
+// All reads go through the 60s in-memory cache (see lib/sheetcache.js) so
+// concurrent staff don't multiply Google quota usage; writes clear it.
+const { makeCachedGet, clearSheetCache } = require('../lib/sheetcache');
+const sheetGet = makeCachedGet(sheetGetRaw, 'music');
 
 async function sheetUpdate(token, range, values) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
@@ -384,6 +388,8 @@ module.exports = async (req, res) => {
 
     // ── GET: load clients + logos ────────────────────────────────────────────
     if (req.method === 'GET') {
+      // Read-after-write escape hatch (see lib/sheetcache.js).
+      if ((req.query || {}).fresh) clearSheetCache();
       const [clientData, logoData, staffData] = await Promise.all([
         sheetGet(token, 'Clients!A:AZ'),
         sheetGet(token, 'Logos!A:F').catch(() => ({ values: [] })),
@@ -614,6 +620,10 @@ module.exports = async (req, res) => {
 
     // ── POST ─────────────────────────────────────────────────────────────────
     if (req.method === 'POST') {
+      // Mutating actions drop this instance's sheet-read cache; the listed
+      // actions are read-only (or write only to Blob) and run frequently.
+      const RO_ACTIONS = ['chat', 'artist-shows', 'artist-shows-store', 'tool-secret', 'tool-secrets-store'];
+      if (!RO_ACTIONS.includes(req.body?.action)) clearSheetCache();
       // Weekly Bandsintown harvest drop-off (runs headless on Tyler's Mac —
       // Bandsintown only serves real browsers, so the server can't fetch it).
       // Authenticated by HARVEST_SECRET instead of a login cookie; stores

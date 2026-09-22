@@ -136,13 +136,17 @@ async function getToken(scope = 'https://www.googleapis.com/auth/spreadsheets.re
   return data.access_token;
 }
 
-async function sheetGet(token, range) {
+async function sheetGetRaw(token, range) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}`;
   const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await r.json();
   if (data.error) throw new Error(`Sheets API error on "${range}": ${data.error.code} ${data.error.message}`);
   return data;
 }
+// All reads go through the 60s in-memory cache (see lib/sheetcache.js) so
+// concurrent staff don't multiply Google quota usage; writes clear it below.
+const { makeCachedGet, clearSheetCache } = require('../lib/sheetcache');
+const sheetGet = makeCachedGet(sheetGetRaw, 'sports');
 
 // Column index (0-based) → A1 letter, e.g. 0→A, 27→AB.
 function colLetter(n) {
@@ -709,6 +713,9 @@ module.exports = async (req, res) => {
   if (req.method === 'POST') {
     const { configured, admin } = authState(req);
     if (configured && !admin) return res.status(403).json({ error: 'Log in to edit athletes.' });
+    // Any POST here can mutate the sheet — drop this instance's read cache so
+    // follow-up reads (including the handler's own) see current data.
+    if ((req.body || {}).action !== 'recruit-search') clearSheetCache();
     try {
       const token = await getToken('https://www.googleapis.com/auth/spreadsheets');
 
@@ -1324,6 +1331,11 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: err.message });
     }
   }
+
+  // Read-after-write escape hatch: the client sends ?fresh=1 when reloading
+  // right after an edit, guaranteeing it sees its own change even if the
+  // request lands on an instance that didn't handle the write.
+  if ((req.query || {}).fresh) clearSheetCache();
 
   // Admin tab reads (?tab=recruiting|nflteams|stateregs) — never for public sessions.
   const tabKey = (req.query || {}).tab;

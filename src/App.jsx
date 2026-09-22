@@ -5116,10 +5116,12 @@ function useAdminTab(key, api = 'athletes', enabled = true) {
   const [data, setData] = useState(() => adminTabCache[ck] || null);
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(!adminTabCache[ck]);
-  const load = useCallback(() => {
+  const load = useCallback((fresh) => {
     if (!enabled) return;
     if (!adminTabCache[ck]) setLoading(true);
-    fetch(`/api/${api}?tab=${key}`)
+    // fresh=1 bypasses the server's 60s sheet cache — used for the reload
+    // right after a write so the writer always sees their own change.
+    fetch(`/api/${api}?tab=${key}${fresh ? '&fresh=1' : ''}`)
       .then(r => r.json())
       .then(d => { if (d.error) throw new Error(d.error); adminTabCache[ck] = d; setData(d); setErr(null); })
       .catch(e => setErr(e.message))
@@ -5134,7 +5136,7 @@ function useAdminTab(key, api = 'athletes', enabled = true) {
     const t = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 3 * 60 * 1000);
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(t); };
   }, [load]);
-  return { data, err, loading, reload: load };
+  return { data, err, loading, reload: () => load(true) };
 }
 
 function SheetTable({ headers, rows, onRowClick, emptyMsg, renderCell }) {
@@ -7619,10 +7621,14 @@ function App() {
   useEffect(() => {
     if (authKnown && !isAdmin && domain === 'all') setDomain('music');
   }, [authKnown, isAdmin, domain]); // eslint-disable-line
+  // Set before a structural roster refetch (create/delete/level move) so the
+  // reload bypasses the server's 60s sheet cache and sees the write.
+  const rosterFreshRef = useRef(false);
   // Lazily load the Sports roster the first time Sports (or All) is shown.
   useEffect(() => {
     if (!gateUnlocked || (domain !== 'sports' && domain !== 'all') || athletesLoaded) return;
-    fetch('/api/athletes')
+    const fresh = rosterFreshRef.current; rosterFreshRef.current = false;
+    fetch(fresh ? '/api/athletes?fresh=1' : '/api/athletes')
       .then(r => r.json())
       .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); if (d.decks) setSportsDecks(d.decks); setAthletesLoaded(true); })
       .catch(() => setAthletesLoaded(true));
@@ -8037,7 +8043,7 @@ function App() {
       if (opts.created && updatedClient?.name) {
         fetch(`/api/refresh-music-socials?name=${encodeURIComponent(updatedClient.name.trim())}&platforms=ig,x,tiktok`).catch(() => {});
       }
-      fetch('/api/sheets')
+      fetch('/api/sheets?fresh=1')
         .then(r => r.json())
         .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); })
         .catch(() => { /* next full load will catch up */ });
@@ -8059,6 +8065,7 @@ function App() {
       // stale — close out and refetch the roster.
       setEditingAthlete(null);
       if (view === 'detail') setView('roster');
+      rosterFreshRef.current = true;
       setAthletesLoaded(false);
       // A brand-new athlete gets the same one-player enrichment pass the
       // onboarding flow runs (ESPN id, 247 link, contracts, follower counts)
@@ -8068,7 +8075,7 @@ function App() {
         Promise.allSettled([
           fetch(`/api/refresh-depth?task=all&name=${nm}`),
           fetch(`/api/refresh-socials?name=${nm}&platforms=ig,x,tiktok`),
-        ]).then(() => setAthletesLoaded(false));
+        ]).then(() => { rosterFreshRef.current = true; setAthletesLoaded(false); });
       }
       return;
     }
@@ -8573,7 +8580,7 @@ function App() {
               )}
               {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
-              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => setAthletesLoaded(false)} />}
+              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => { rosterFreshRef.current = true; setAthletesLoaded(false); }} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'gifting' && <GiftingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
