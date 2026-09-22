@@ -4277,7 +4277,10 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
               <span style={{ fontSize: 12.5, fontWeight: 600, color: G.text, whiteSpace: "nowrap" }}>{c.name}</span>
             </button>
             <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {e.venue}{e.city ? <span style={{ color: G.textTertiary }}> · {e.city}</span> : null}
+              {e.venue}
+            </div>
+            <div style={{ width: isMobile ? "auto" : 180, flexShrink: 0, minWidth: 0, fontSize: 13, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {e.city}
             </div>
             {e.url && (
               <a href={e.url} target="_blank" rel="noopener noreferrer"
