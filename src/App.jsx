@@ -1318,6 +1318,126 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
   );
 }
 
+// ── Marketing tab (music client profile, company view) ───────────────────────
+// The music twin of SportsMarketingTab: follower-growth chart from the music
+// SocialHistory tab plus an audience breakdown with Spotify listeners.
+function MusicMarketingTab({ client: c, isMobile, pad }) {
+  const hist = useAdminTab('socialhistory', 'sheets');
+  const key = String(c.name || '').toLowerCase().trim();
+  const series = useMemo(() => seriesFromHistory(hist.data?.rows)[key] || [], [hist.data, key]);
+  const [metric, setMetric] = useState('total');
+  const [range, setRange] = useState('30');
+  const platforms = [
+    ['total', 'Total reach'],
+    c.instagram && ['ig', 'Instagram'],
+    c.twitter && ['x', 'X'],
+    c.tiktok && ['tk', 'TikTok'],
+  ].filter(Boolean);
+  const points = useMemo(() => {
+    if (!series.length || range === 'all') return series;
+    const cutoff = series[series.length - 1].dt.getTime() - (+range) * 86400000;
+    return series.filter(p2 => p2.dt.getTime() >= cutoff);
+  }, [series, range]);
+  const rangeChange = useMemo(() => {
+    if (points.length < 2) return null;
+    const first = points[0][metric] || 0, last = points[points.length - 1][metric] || 0;
+    if (!(first > 0)) return null;
+    return (last - first) / first * 100;
+  }, [points, metric]);
+  const move30 = useMemo(() => {
+    if (series.length < 2) return null;
+    const last = series[series.length - 1];
+    const target = last.dt.getTime() - 30 * 86400000;
+    let base = series[0];
+    for (const p2 of series) if (p2 !== last && Math.abs(p2.dt - target) < Math.abs(base.dt - target)) base = p2;
+    return base !== last && base.total > 0 ? (last.total - base.total) / base.total * 100 : null;
+  }, [series]);
+  const card = (title, right, body) => (
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{title}</div>
+        {right}
+      </div>
+      {body}
+    </div>
+  );
+  const segGroup = (items) => (
+    <div style={{ display: "flex", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: 2, gap: 2 }}>
+      {items.map(([on, label, onClick]) => (
+        <button key={label} onClick={onClick}
+          style={{ background: on ? G.surface : "transparent", border: `1px solid ${on ? G.green : 'transparent'}`, borderRadius: 7, padding: "3px 9px", color: on ? G.green : G.textTertiary, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  const rangeLabel = range === 'all' ? 'overall' : `over last ${range} days`;
+  const chartCard = card('Reach growth', (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      {segGroup(platforms.map(([k, l]) => [metric === k, l, () => setMetric(k)]))}
+      {segGroup([['7', '7D'], ['30', '30D'], ['90', '90D'], ['all', 'ALL']].map(([k, l]) => [range === k, l, () => setRange(k)]))}
+    </div>
+  ), (
+    <>
+      {hist.loading && !series.length
+        ? <div style={{ padding: "36px 0", textAlign: "center", color: G.textTertiary, fontSize: 12.5 }}>Loading history…</div>
+        : <GrowthChart points={points} metric={metric} isMobile={isMobile} />}
+      {rangeChange != null && (
+        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: rangeChange >= 0 ? G.green : G.red }}>
+          {rangeChange >= 0 ? '↑' : '↓'} {Math.abs(rangeChange).toFixed(1)}% <span style={{ color: G.textTertiary, fontWeight: 500 }}>{rangeLabel}</span>
+        </div>
+      )}
+    </>
+  ));
+  const audiencePlatforms = [
+    c.instagram && ['Instagram', parseReach(c.igFollowers)],
+    c.twitter && ['X', parseReach(c.twitterFollowers)],
+    c.tiktok && ['TikTok', parseReach(c.tiktokFollowers)],
+  ].filter(Boolean);
+  const totalReach = audiencePlatforms.reduce((t, [, n]) => t + n, 0);
+  const listeners = parseListeners(c.spotifyMonthly);
+  const audienceCard = card('Audience', null, (
+    <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
+      <div style={{ flexShrink: 0 }}>
+        <div style={{ fontSize: 28, fontWeight: 800, color: G.text, letterSpacing: "-0.02em", lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{fmtCount(totalReach)}</div>
+        <div style={{ fontSize: 11.5, color: G.textTertiary, fontWeight: 600, marginTop: 2 }}>Total followers</div>
+        {move30 != null && Math.abs(move30) >= 0.05 && (
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: move30 > 0 ? G.green : G.red, marginTop: 4 }}>
+            {move30 > 0 ? '↑' : '↓'} {Math.abs(move30).toFixed(1)}% <span style={{ color: G.textTertiary, fontWeight: 500 }}>over last 30 days</span>
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+        {audiencePlatforms.map(([label, n]) => {
+          const pct = totalReach > 0 ? Math.round((n / totalReach) * 100) : 0;
+          return (
+            <div key={label} style={{ minWidth: 92 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{fmtCount(n)}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: G.green, marginTop: 3 }}>{pct}%</div>
+              <div style={{ height: 4, borderRadius: 3, background: G.surfaceRaised, overflow: "hidden", marginTop: 3 }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: G.green, borderRadius: 3 }} />
+              </div>
+            </div>
+          );
+        })}
+        {listeners > 0 && (
+          <div style={{ minWidth: 110 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Monthly listeners</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{fmtCount(listeners)}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  ));
+  return (
+    <div style={{ padding: `24px ${pad}px`, display: "grid", gap: 14, background: G.bg }}>
+      {chartCard}
+      {audienceCard}
+    </div>
+  );
+}
+
 // ── Client detail view ────────────────────────────────────────────────────────
 // ── Socials module (music client profile, company view) ──────────────────────
 // Same card as the sports profile: per-platform follower rows with an up/down
@@ -1439,6 +1559,18 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
   ) : null;
 
   const [bioExpanded, setBioExpanded] = useState(false);
+  // About | Marketing tabs (staff only), mirroring the sports profile.
+  const [tab, setTab] = useState('about');
+  const tabBar = (padX) => isAdmin ? (
+    <div style={{ display: "flex", gap: 26, padding: `0 ${padX}px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>
+      {[['about', 'About'], ['marketing', 'Marketing']].map(([k, l]) => (
+        <button key={k} onClick={() => setTab(k)}
+          style={{ background: "none", border: "none", padding: "13px 2px 11px", fontFamily: ff, fontSize: 13.5, fontWeight: tab === k ? 700 : 500, color: tab === k ? G.text : G.textTertiary, borderBottom: `2px solid ${tab === k ? G.green : 'transparent'}`, marginBottom: -1, cursor: "pointer", transition: "color 0.12s" }}>
+          {l}
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   // Resolve contact name(s) to email(s)
   const contactEmails = (() => {
@@ -1521,7 +1653,9 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
           </div>
         )}
         </div>
-        <div style={{ padding: "18px 16px", display: "flex", flexDirection: "column", gap: 18, background: G.bg }}>
+        {tabBar(16)}
+        {isAdmin && tab === 'marketing' && <MusicMarketingTab client={c} isMobile pad={16} />}
+        <div style={{ padding: "18px 16px", display: (!isAdmin || tab === 'about') ? "flex" : "none", flexDirection: "column", gap: 18, background: G.bg }}>
         {c.bio && (
           <div>
             <p style={{ fontSize: 15, color: G.textSecondary, lineHeight: 1.65, margin: 0 }}>{bioText}</p>
@@ -1641,7 +1775,9 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
           </div>
         </div>
         </div>
-        <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
+        {tabBar(32)}
+        {isAdmin && tab === 'marketing' && <MusicMarketingTab client={c} isMobile={false} pad={32} />}
+        <div style={{ padding: "24px 32px", display: (!isAdmin || tab === 'about') ? "flex" : "none", flexDirection: "column", gap: 20, background: G.bg }}>
         {c.bio && <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{c.bio}</p>}
         {supportersEl}
         {keyShowsEl}
@@ -4438,7 +4574,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const scoped = personal ? mineList : athletes;
   // Agents see their top 4 by reach; the house/admin view gets the roster-wide top 4.
   const topClients = useMemo(
-    () => [...(personal ? mineList : athletes)].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 5),
+    () => [...(personal ? mineList : athletes)].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, personal ? 15 : 10),
     [personal, mineList, athletes]);
   const s = useMemo(() => {
     const levels = { 'NFL': 0, 'College': 0, 'High School': 0 };
@@ -4652,9 +4788,13 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 
       {topClients.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 12 }}>
+          {/* 5 visible, scroll left for the rest; snap keeps cards locked to
+              fixed positions instead of resting mid-scroll. */}
+          <div className="mh-hscroll" style={{ display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 2 }}>
             {topClients.map((a, i) => (
-              <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} compact onClick={() => onOpenAthlete(a)} />
+              <div key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} style={{ flex: isMobile ? "0 0 calc(50% - 6px)" : "0 0 calc((100% - 48px) / 5)", minWidth: 0, scrollSnapAlign: "start" }}>
+                <SportsCard athlete={a} isMobile={false} compact onClick={() => onOpenAthlete(a)} />
+              </div>
             ))}
           </div>
         </div>
@@ -4846,8 +4986,8 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
     // Key clients: ranked by Spotify listeners when that column has data;
     // until then the sheet's own order leads with the marquee names.
     const top = listenerProfiles > 0
-      ? [...clients].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly)).slice(0, 5)
-      : clients.slice(0, 5);
+      ? [...clients].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly)).slice(0, 10)
+      : clients.slice(0, 10);
     // 7-day movers, from the music socials job's growth columns.
     const hasGrowthData = clients.some(c => c.growth7dPct !== '' && c.growth7dPct != null);
     const hot = clients.filter(c => (c.growth7d || 0) > 0)
@@ -4919,6 +5059,15 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
   const relDate = (d) => d.getFullYear() === now.getFullYear()
     ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  // Managers land on THEIR clients in the featured row (Contact column holds
+  // manager names, same matching as the schedule scope); admins see the
+  // roster-wide top by listeners.
+  const mineClients = useMemo(() => (user?.agentKey ? clients.filter(c => agentMatch(c.contact, user.agentKey)) : []), [clients, user]);
+  const featured = useMemo(() => {
+    const base = mineClients.length ? mineClients : (s.top || []);
+    if (!mineClients.length) return base;
+    return [...mineClients].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly)).slice(0, 15);
+  }, [mineClients, s.top]);
   const firstName = (user?.name || '').split(' ')[0];
   const greeting = (now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening') + (firstName ? `, ${firstName}` : '');
 
@@ -4936,14 +5085,16 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
 
       <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={onOpenClient} user={user} onShowAll={onGoSchedule} />
 
-      {s.top.length > 0 && (
+      {featured.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 12 }}>
-            {s.top.map((c, i) => (
+          {/* 5 visible, scroll left for the rest; snap keeps cards locked to
+              fixed positions instead of resting mid-scroll. */}
+          <div className="mh-hscroll" style={{ display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 2 }}>
+            {featured.map((c, i) => (
               <div key={`${c._rowIndex ?? ''}-${c.id || i}`} onClick={() => onOpenClient(c)}
                 onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
                 onMouseLeave={e => { e.currentTarget.style.background = G.surface; }}
-                style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "14px 14px 13px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
+                style={{ flex: isMobile ? "0 0 calc(50% - 6px)" : "0 0 calc((100% - 48px) / 5)", minWidth: 0, scrollSnapAlign: "start", boxSizing: "border-box", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "14px 14px 13px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
                 <Avatar name={c.name} photoUrl={c.photoUrl} size={48} />
                 <div style={{ fontWeight: 800, fontSize: 16.5, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, margin: "11px 0 5px" }}>{c.name}</div>
                 <div style={{ fontSize: 11.5, color: G.textSecondary, fontWeight: 500 }}>
@@ -8116,10 +8267,12 @@ function App() {
 
   // Music / Sports domain toggle (header).
   const domainToggle = (
-    <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+    <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
       {['music', 'sports', ...(isAdmin ? ['all'] : [])].map(d => (
         <button key={d} onClick={() => setDomain(d)}
-          style={{ padding: "8px 10px", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
+          onMouseEnter={e => { if (domain !== d) e.currentTarget.style.background = G.surfaceRaised; }}
+          onMouseLeave={e => { if (domain !== d) e.currentTarget.style.background = domain === d ? G.greenSubtle : "transparent"; }}
+          style={{ padding: "8px 12px", border: "none", borderRadius: 9, background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 12.5, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
           {d}
         </button>
       ))}
@@ -8297,18 +8450,6 @@ function App() {
           <span style={{ flex: 1 }}>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
         </button>
       </div>
-      {/* Music/Sports/All lives at the bottom of the sidebar on desktop —
-          the header keeps it only where there is no sidebar. */}
-      <div style={{ marginTop: "auto", borderTop: `1px solid ${G.surfaceBorder}`, paddingTop: 8, display: "flex", gap: 2 }}>
-        {['music', 'sports', ...(isAdmin ? ['all'] : [])].map(d => (
-          <button key={d} onClick={() => setDomain(d)}
-            onMouseEnter={e => { if (domain !== d) e.currentTarget.style.background = G.surfaceRaised; }}
-            onMouseLeave={e => { if (domain !== d) e.currentTarget.style.background = "transparent"; }}
-            style={{ flex: 1, padding: "8px 0", border: "none", borderRadius: 9, background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 12.5, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
-            {d}
-          </button>
-        ))}
-      </div>
     </div>
   ) : null;
   const mobileNavStrip = (
@@ -8475,13 +8616,15 @@ function App() {
           )
         ) : (
           // ── Desktop header ────────────────────────────────────────────────
-          <div style={{ padding: "12px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0, position: view === 'detail' ? "static" : "sticky", top: 0, zIndex: 40, background: G.bg }}>
-            <img src="/mh-logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
-            {/* Targa mark: staff sessions only — never on b2b/public views */}
-            {isAdmin && <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />}
-            {isAdmin && <img src="/targa-logo.png" alt="Targa" style={{ height: 18, objectFit: "contain", flexShrink: 0 }} />}
-            {!isAdmin && <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />}
-            {!sidebarOn && domainToggle}
+          <div style={{ padding: "12px 24px 12px 0", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0, position: view === 'detail' ? "static" : "sticky", top: 0, zIndex: 40, background: G.bg }}>
+            {/* Logo block sized to the sidebar column so the header reads as
+                its continuation; Targa is staff-only (never b2b/public). */}
+            <div style={{ width: 177, flexShrink: 0, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 7, padding: "0 10px", borderRight: `1px solid ${G.surfaceBorder}`, alignSelf: "stretch" }}>
+              <img src="/mh-logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 26, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
+              {isAdmin && <div style={{ width: 1, height: 16, background: G.surfaceBorder, flexShrink: 0 }} />}
+              {isAdmin && <img src="/targa-logo.png" alt="Targa" style={{ height: 11, minWidth: 0, objectFit: "contain" }} />}
+            </div>
+            {domainToggle}
             {view === 'detail' ? (
               <>
                 <div style={{ flex: 1 }} />
