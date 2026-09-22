@@ -4227,13 +4227,20 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
   }, [data, artistClients]);
   const [expanded, setExpanded] = useState(false);
   // Full-page mode (the Schedule page): everything visible + search across
-  // artist, venue, and city.
+  // artist, venue, and city + sortable table columns (marketing-page pattern).
   const [q, setQ] = useState('');
+  const [sortCol, setSortCol] = useState('date');
+  const [sortDir, setSortDir] = useState('asc');
   if (!items.length) return null;
   const canScope = !!user?.agentKey;
   let shownItems = canScope && scope === 'mine' ? items.filter(x => isMine(x.c)) : items;
   const qn = fullPage ? q.trim().toLowerCase() : '';
   if (qn) shownItems = shownItems.filter(({ c, e }) => `${c.name} ${e.venue} ${e.city}`.toLowerCase().includes(qn));
+  if (fullPage && sortCol !== 'date') {
+    const val = (x) => sortCol === 'artist' ? x.c.name : sortCol === 'venue' ? x.e.venue : x.e.city;
+    shownItems = [...shownItems].sort((a, b) => String(val(a)).localeCompare(String(val(b))) || a.d - b.d);
+  }
+  if (fullPage && sortDir === 'desc') shownItems = [...shownItems].reverse();
   const COLLAPSED = 6;
   const shown = fullPage || expanded ? shownItems : shownItems.slice(0, COLLAPSED);
   const dayLabel = (d) => {
@@ -4267,15 +4274,57 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
           {qn ? 'Nothing matches that search.' : 'None of your clients have shows on the calendar — tap Everyone to see the full slate.'}
         </div>
       )}
-      <div style={!fullPage && expanded && shownItems.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
+      {fullPage ? (
+        <div className="mh-hscroll" style={{ overflowX: "auto", marginTop: 8 }}>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead><tr>
+              {[['date', 'Date'], ['artist', 'Artist'], ['venue', 'Venue'], ['city', 'City'], ['', '']].map(([key, h], hi) => (
+                <th key={key || 'tix'}
+                  onClick={key ? () => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir('asc'); } } : undefined}
+                  style={{ textAlign: "left", padding: hi === 0 ? "10px 16px 10px 0" : "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: key ? "pointer" : "default", userSelect: "none" }}>
+                  {h}{key && sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                </th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {shown.map(({ c, e, d }, i) => {
+                const zebra = i % 2 === 1 ? G.surfaceRaised : "transparent";
+                const td = { padding: "9px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < shown.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+                return (
+                  <tr key={`${c.name}-${e.date}-${i}`} onClick={() => onOpenClient(c)} style={{ cursor: "pointer", background: zebra }}
+                    onMouseEnter={ev => ev.currentTarget.style.background = G.surfaceRaised}
+                    onMouseLeave={ev => ev.currentTarget.style.background = zebra}>
+                    <td style={{ ...td, padding: "9px 16px 9px 0", fontSize: 12.5, fontWeight: 700, color: G.text }}>{dayLabel(d)}</td>
+                    <td style={td}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                        <Avatar name={c.name} photoUrl={c.photoUrl} size={20} />
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: G.text }}>{c.name}</span>
+                      </span>
+                    </td>
+                    <td style={{ ...td, color: G.text }}>{e.venue}</td>
+                    <td style={td}>{e.city}</td>
+                    <td style={{ ...td, textAlign: "right" }}>
+                      {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()}
+                        style={{ fontSize: 12, fontWeight: 600, color: G.green, textDecoration: "none" }}>Tickets ↗</a>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+      <div style={expanded && shownItems.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
         {shown.map(({ c, e, d }, i) => (
           <div key={`${c.name}-${e.date}-${i}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i === shown.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, flexWrap: isMobile ? "wrap" : "nowrap" }}>
             <div style={{ width: 92, flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: G.text }}>{dayLabel(d)}</div>
-            <button onClick={() => onOpenClient(c)}
-              style={{ display: "flex", alignItems: "center", gap: 7, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 999, padding: "3px 10px 3px 4px", cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>
-              <Avatar name={c.name} photoUrl={c.photoUrl} size={20} />
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: G.text, whiteSpace: "nowrap" }}>{c.name}</span>
-            </button>
+            <div style={{ width: isMobile ? "auto" : 175, flexShrink: 0, minWidth: 0 }}>
+              <button onClick={() => onOpenClient(c)}
+                style={{ display: "flex", alignItems: "center", gap: 7, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 999, padding: "3px 10px 3px 4px", cursor: "pointer", fontFamily: ff, maxWidth: "100%" }}>
+                <Avatar name={c.name} photoUrl={c.photoUrl} size={20} />
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
+              </button>
+            </div>
             <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {e.venue}
             </div>
@@ -4289,6 +4338,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
           </div>
         ))}
       </div>
+      )}
       {!fullPage && shownItems.length > COLLAPSED && (
         <button onClick={() => onShowAll ? onShowAll() : setExpanded(x => !x)}
           style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
