@@ -4288,12 +4288,11 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
             </tr></thead>
             <tbody>
               {shown.map(({ c, e, d }, i) => {
-                const zebra = i % 2 === 1 ? G.surfaceRaised : "transparent";
                 const td = { padding: "9px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < shown.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
                 return (
-                  <tr key={`${c.name}-${e.date}-${i}`} onClick={() => onOpenClient(c)} style={{ cursor: "pointer", background: zebra }}
+                  <tr key={`${c.name}-${e.date}-${i}`} onClick={() => onOpenClient(c)} style={{ cursor: "pointer" }}
                     onMouseEnter={ev => ev.currentTarget.style.background = G.surfaceRaised}
-                    onMouseLeave={ev => ev.currentTarget.style.background = zebra}>
+                    onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
                     <td style={{ ...td, padding: "9px 16px 9px 0", fontSize: 12.5, fontWeight: 700, color: G.text }}>{dayLabel(d)}</td>
                     <td style={td}>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
