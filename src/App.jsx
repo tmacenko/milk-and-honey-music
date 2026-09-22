@@ -1390,9 +1390,9 @@ function MusicMarketingTab({ client: c, isMobile, pad }) {
     </>
   ));
   const audiencePlatforms = [
-    c.instagram && ['Instagram', parseReach(c.igFollowers)],
-    c.twitter && ['X', parseReach(c.twitterFollowers)],
-    c.tiktok && ['TikTok', parseReach(c.tiktokFollowers)],
+    c.instagram && ['Instagram', parseReach(c.igFollowers), <IgIcon size={15} />],
+    c.twitter && ['X', parseReach(c.twitterFollowers), <TwIcon size={15} />],
+    c.tiktok && ['TikTok', parseReach(c.tiktokFollowers), <TkIcon size={15} />],
   ].filter(Boolean);
   const totalReach = audiencePlatforms.reduce((t, [, n]) => t + n, 0);
   const listeners = parseListeners(c.spotifyMonthly);
@@ -1408,23 +1408,28 @@ function MusicMarketingTab({ client: c, isMobile, pad }) {
         )}
       </div>
       <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
-        {audiencePlatforms.map(([label, n]) => {
+        {audiencePlatforms.map(([label, n, icon]) => {
           const pct = totalReach > 0 ? Math.round((n / totalReach) * 100) : 0;
           return (
-            <div key={label} style={{ minWidth: 92 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{fmtCount(n)}</div>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: G.green, marginTop: 3 }}>{pct}%</div>
-              <div style={{ height: 4, borderRadius: 3, background: G.surfaceRaised, overflow: "hidden", marginTop: 3 }}>
+            <div key={label} title={label} style={{ minWidth: 92 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, color: G.textSecondary }}>
+                {icon}
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: G.green }}>{pct}%</span>
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{fmtCount(n)}</div>
+              <div style={{ height: 4, borderRadius: 3, background: G.surfaceRaised, overflow: "hidden", marginTop: 5 }}>
                 <div style={{ width: `${pct}%`, height: "100%", background: G.green, borderRadius: 3 }} />
               </div>
             </div>
           );
         })}
         {listeners > 0 && (
-          <div style={{ minWidth: 110 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Monthly listeners</div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{fmtCount(listeners)}</div>
+          <div title="Spotify monthly listeners" style={{ minWidth: 92 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, color: G.textSecondary }}>
+              <SpotifyIcon size={15} />
+              <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>Listeners</span>
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{fmtCount(listeners)}</div>
           </div>
         )}
       </div>
@@ -1835,7 +1840,6 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
             </div>
           </div>
         )}
-        {isAdmin && <MusicSocialsModule client={c} />}
 
         {((isAdmin && c.spotifyMonthly) || c.spotifyFollowers > 0 || c.spotifyPopularity != null) && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -2752,9 +2756,9 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
     return base !== last && base.total > 0 ? (last.total - base.total) / base.total * 100 : null;
   }, [series]);
   const audiencePlatforms = [
-    a.instagram && ['Instagram', parseReach(a.igFollowers)],
-    a.twitter && ['X', parseReach(a.twitterFollowers)],
-    a.tiktok && ['TikTok', parseReach(a.tiktokFollowers)],
+    a.instagram && ['Instagram', parseReach(a.igFollowers), <IgIcon size={15} />],
+    a.twitter && ['X', parseReach(a.twitterFollowers), <TwIcon size={15} />],
+    a.tiktok && ['TikTok', parseReach(a.tiktokFollowers), <TkIcon size={15} />],
   ].filter(Boolean);
   const audienceCard = card('Audience', a.igEngagement ? <div style={{ fontSize: 11, color: G.textTertiary }}>IG engagement {String(a.igEngagement).replace(/%$/, '')}%</div> : null, (
     <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -2768,14 +2772,16 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
         )}
       </div>
       <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
-        {audiencePlatforms.map(([label, n]) => {
+        {audiencePlatforms.map(([label, n, icon]) => {
           const pct = totalReach > 0 ? Math.round((n / totalReach) * 100) : 0;
           return (
-            <div key={label} style={{ minWidth: 92 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{fmtCount(n)}</div>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: G.green, marginTop: 3 }}>{pct}%</div>
-              <div style={{ height: 4, borderRadius: 3, background: G.surfaceRaised, overflow: "hidden", marginTop: 3 }}>
+            <div key={label} title={label} style={{ minWidth: 92 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, color: G.textSecondary }}>
+                {icon}
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: G.green }}>{pct}%</span>
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{fmtCount(n)}</div>
+              <div style={{ height: 4, borderRadius: 3, background: G.surfaceRaised, overflow: "hidden", marginTop: 5 }}>
                 <div style={{ width: `${pct}%`, height: "100%", background: G.green, borderRadius: 3 }} />
               </div>
             </div>
@@ -4145,7 +4151,11 @@ const weekendTeamKey = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g
 function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, onShowAll }) {
   const [events, setEvents] = useState(WEEKEND_CACHE.events || null);
   // Agents land on their own clients; admin/marketing (and house sessions) on everyone.
-  const [scope, setScope] = useState(['agent', 'manager'].includes(user?.userRole) ? 'mine' : 'all');
+  // Sports agents land on their own clients; music managers (and admins)
+  // start on Everyone here — a music login usually has no sports clients and
+  // the module should never open on an empty list.
+  const [scope, setScope] = useState(user?.userRole === 'agent' ? 'mine' : 'all');
+  const scopeTouched = useRef(false);
   useEffect(() => { let on = true; fetchWeekendEvents().then(e => { if (on) setEvents(e); }); return () => { on = false; }; }, []);
   const isMine = useCallback(a => !!user?.agentKey && agentMatch(a.agentAssigned, user.agentKey), [user]);
   const games = useMemo(() => {
@@ -4184,6 +4194,14 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
   // Full-page mode (the Schedule page): everything visible + a search box
   // that matches athletes, teams/schools, and networks.
   const [q, setQ] = useState('');
+  // Safety net: if "My clients" turns out empty once data lands (and the user
+  // hasn't touched the toggle), fall back to Everyone.
+  useEffect(() => {
+    if (scopeTouched.current || scope !== 'mine') return;
+    const total = games.length + bdayItems.length;
+    const mine = mineGames.length + bdayItems.filter(b => isMine(b.a)).length;
+    if (total > 0 && mine === 0) setScope('all');
+  }, [scope, games, mineGames, bdayItems, isMine]);
   if (!games.length && !bdayItems.length) return null;
   // Agents always get the scope toggle — even with nothing of their own, so
   // "whose events am I looking at?" is never ambiguous.
@@ -4221,7 +4239,7 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
         {canScope && (
           <div style={{ display: "flex", gap: 4 }}>
             {[['mine', 'My clients'], ['all', 'Everyone']].map(([k, label]) => (
-              <button key={k} onClick={() => setScope(k)}
+              <button key={k} onClick={() => { scopeTouched.current = true; setScope(k); }}
                 style={{ padding: "4px 10px", borderRadius: 99, border: `1px solid ${scope === k ? G.green : G.surfaceBorder}`, background: scope === k ? G.greenSubtle : "transparent", color: scope === k ? G.green : G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
                 {label}
               </button>
@@ -4321,6 +4339,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
   // their own clients (Contact column holds the manager names), admin and
   // house sessions on everyone; the toggle shows for anyone with an agentKey.
   const [scope, setScope] = useState(['agent', 'manager'].includes(user?.userRole) ? 'mine' : 'all');
+  const scopeTouched = useRef(false);
   const isMine = useCallback(c => !!user?.agentKey && agentMatch(c.contact, user.agentKey), [user]);
   useEffect(() => {
     if (!artistClients.length) return;
@@ -4356,6 +4375,11 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
   const [q, setQ] = useState('');
   const [sortCol, setSortCol] = useState('date');
   const [sortDir, setSortDir] = useState('asc');
+  // Safety net: fall back to Everyone when the user has no shows of their own.
+  useEffect(() => {
+    if (scopeTouched.current || scope !== 'mine' || !items.length) return;
+    if (!items.some(x => isMine(x.c))) setScope('all');
+  }, [scope, items, isMine]);
   if (!items.length) return null;
   const canScope = !!user?.agentKey;
   let shownItems = canScope && scope === 'mine' ? items.filter(x => isMine(x.c)) : items;
@@ -4386,7 +4410,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
         {canScope && (
           <div style={{ display: "flex", gap: 4 }}>
             {[['mine', 'My clients'], ['all', 'Everyone']].map(([k, label]) => (
-              <button key={k} onClick={() => setScope(k)}
+              <button key={k} onClick={() => { scopeTouched.current = true; setScope(k); }}
                 style={{ padding: "4px 10px", borderRadius: 99, border: `1px solid ${scope === k ? G.green : G.surfaceBorder}`, background: scope === k ? G.greenSubtle : "transparent", color: scope === k ? G.green : G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
                 {label}
               </button>
@@ -4525,29 +4549,9 @@ function GoogleSearchBox() {
 // chevron floats at the right edge while more cards wait off-screen (click
 // advances one screenful; it disappears at the end).
 function CarouselRow({ children }) {
-  const ref = useRef(null);
-  const [more, setMore] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const check = () => setMore(el.scrollWidth - el.scrollLeft - el.clientWidth > 8);
-    check();
-    el.addEventListener('scroll', check, { passive: true });
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(check) : null;
-    if (ro) ro.observe(el);
-    return () => { el.removeEventListener('scroll', check); if (ro) ro.disconnect(); };
-  }, [children]);
   return (
-    <div style={{ position: "relative" }}>
-      <div ref={ref} className="mh-hscroll" style={{ display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 2 }}>
-        {children}
-      </div>
-      {more && (
-        <button onClick={() => ref.current && ref.current.scrollBy({ left: ref.current.clientWidth, behavior: "smooth" })} title="Scroll for more"
-          style={{ position: "absolute", right: -4, top: "50%", transform: "translateY(-50%)", width: 32, height: 32, borderRadius: "50%", border: `1px solid ${G.surfaceBorderLight}`, background: G.surfaceGlass, backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", opacity: 0.92, color: G.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: G.shadowLg, padding: 0 }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </button>
-      )}
+    <div className="mh-hscroll" style={{ display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 2 }}>
+      {children}
     </div>
   );
 }
@@ -4752,8 +4756,9 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   );
   const row = (a, sub, right, key, last) => (
     <div key={key} onClick={() => onOpenAthlete(a)}
-      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
-      <div style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+      <Avatar name={a.name} photoUrl={a.photoUrl} size={22} />
+      <div style={{ flex: 1, fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {a.name} <span style={{ color: G.textTertiary, fontSize: 12 }}>· {sub}</span>
       </div>
       <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{right}</div>
@@ -5075,10 +5080,15 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
       <div style={{ fontSize: 11, color: G.textTertiary }}>{range}</div>
     </div>
   );
-  const row = (c, sub, right, key, last) => (
+  const row = (c, sub, right, key, last, img) => (
     <div key={key} onClick={() => onOpenClient(c)}
-      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
-      <div style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, cursor: "pointer" }}>
+      {img !== undefined
+        ? (img
+          ? <img src={img} alt="" width={22} height={22} style={{ borderRadius: 5, objectFit: "cover", flexShrink: 0 }} />
+          : <div style={{ width: 22, height: 22, borderRadius: 5, background: G.surfaceRaised, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: G.textTertiary }}>♪</div>)
+        : <Avatar name={c.name} photoUrl={c.photoUrl} size={22} />}
+      <div style={{ flex: 1, fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {c.name} {sub && <span style={{ color: G.textTertiary, fontSize: 12 }}>· {sub}</span>}
       </div>
       <div style={{ fontSize: 12, color: G.textSecondary, flexShrink: 0 }}>{right}</div>
@@ -5152,7 +5162,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
         <div style={card}>
           {tileHead('Artist recent releases', '')}
           {s.releases.length === 0 ? empty('No releases synced yet.')
-            : s.releases.map((x, i, arr) => row(x.c, x.r.name, relDate(x.at), `${x.c.id || x.c.name}-${i}`, i === arr.length - 1))}
+            : s.releases.map((x, i, arr) => row(x.c, x.r.name, relDate(x.at), `${x.c.id || x.c.name}-${i}`, i === arr.length - 1, x.r.artwork || ''))}
           {s.releases.length > 0 && (
             <button onClick={() => setShowReleases(true)}
               style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
@@ -5996,6 +6006,16 @@ function MarketingPage({ isMobile, athletes, staff, onOpenAthlete }) {
 function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
   const hist = useAdminTab('socialhistory', 'sheets');
   const [q, setQ] = useCachedState('mgrowth.q', '');
+  // Filters, mirroring the sports Social board: artist-type chips
+  // (multi-select, none = all) and a manager dropdown from the Contact column.
+  const [types, setTypes] = useCachedState('mgrowth.types', []);
+  const toggleType = (t) => setTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+  const [mgr, setMgr] = useCachedState('mgrowth.mgr', 'All');
+  const managers = useMemo(() => {
+    const set = new Set();
+    for (const c of clients) for (const n of String(c.contact || '').split(',')) { const t = n.trim(); if (t) set.add(t); }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [clients]);
   const [sortCol, setSortCol] = useCachedState('mgrowth.sortCol', 'total');
   const [sortDir, setSortDir] = useCachedState('mgrowth.sortDir', 'desc');
   const seriesByName = useMemo(() => seriesFromHistory(hist.data?.rows), [hist.data]);
@@ -6022,6 +6042,8 @@ function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
   const ql = q.trim().toLowerCase();
   const sorted = clients
     .filter(c => clientReach(c) > 0 || (c.growth7d || 0) !== 0)
+    .filter(c => !types.length || (c.types || []).some(t => types.includes(t)))
+    .filter(c => mgr === 'All' || agentMatch(c.contact, mgr))
     .filter(c => !ql || c.name.toLowerCase().includes(ql) || (c.types || []).join(' ').toLowerCase().includes(ql) || String(c.contact || '').toLowerCase().includes(ql))
     .sort((a, b) => {
       const cmp = (valOf[sortCol] ? valOf[sortCol](a) - valOf[sortCol](b) : a.name.localeCompare(b.name)) || a.name.localeCompare(b.name);
@@ -6037,6 +6059,13 @@ function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
     <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Marketing</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        {['Artist', 'Producer', 'Songwriter'].map(t => levelChipBtn(types.includes(t), t, () => toggleType(t)))}
+        <div style={{ width: 10 }} />
+        <select value={mgr} onChange={e => setMgr(e.target.value)}
+          style={{ ...inputBase, width: "auto", padding: "7px 10px", fontSize: 12, cursor: "pointer" }}>
+          <option value="All">All managers</option>
+          {managers.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
         <div style={{ flex: 1 }} />
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients..."
           style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
@@ -8643,7 +8672,7 @@ function App() {
           )
         ) : (
           // ── Desktop header ────────────────────────────────────────────────
-          <div style={{ padding: "12px 24px 12px 0", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0, position: view === 'detail' ? "static" : "sticky", top: 0, zIndex: 40, background: G.bg }}>
+          <div style={{ padding: "12px 24px 12px 0", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0, position: "sticky", top: 0, zIndex: 40, background: G.bg }}>
             {/* Logo block sized to the sidebar column so the header reads as
                 its continuation; Targa is staff-only (never b2b/public). */}
             <div style={{ width: 177, flexShrink: 0, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 7, padding: "0 10px", borderRight: `1px solid ${G.surfaceBorder}`, alignSelf: "stretch" }}>
