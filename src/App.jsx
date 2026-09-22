@@ -4177,30 +4177,30 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
 // stored or filled anywhere.
 const MUSIC_TOOLS = [
   { key: 'tools-data', label: 'Data / Tools', icon: 'M18 20V10M12 20V4M6 20v-6', items: [
-    { label: 'ChartMetric', url: 'https://www.chartmetric.com', email: 'chartmetric' },
+    { label: 'ChartMetric', url: 'https://app.chartmetric.com/login', email: 'chartmetric' },
     { label: 'Co:Brand', url: 'https://cobrand.com/' },
     { label: 'Doctrine', url: 'https://doctrine.social/portal', email: 'doctrine' },
-    { label: 'RocketReach', url: 'https://rocketreach.co', email: 'rocketreach' },
+    { label: 'RocketReach', url: 'https://rocketreach.co/login', email: 'rocketreach' },
     { label: 'Song Calculator', url: 'https://calc.milkhoneyrecs.com/#/' },
-    { label: 'Song Stats', url: 'https://songstats.com/', email: 'me' },
-    { label: 'Sound Deal', url: 'https://www.sound-deal.com', email: 'me' },
+    { label: 'Song Stats', url: 'https://songstats.com/login', email: 'me' },
+    { label: 'Sound Deal', url: 'https://www.sounddeal.com/sign-in', email: 'me' },
     { label: 'Sponsor United', url: 'https://www.sponsorunited.com/' },
-    { label: 'Spot On Track', url: 'https://www.spotontrack.com', email: 'spotontrack' },
+    { label: 'Spot On Track', url: 'https://www.spotontrack.com/login', email: 'spotontrack' },
   ] },
   { key: 'tools-charts', label: 'Charts', icon: 'M23 6l-9.5 9.5-5-5L1 18', items: [
-    { label: 'All Access', url: 'https://www.allaccess.com', email: 'allaccess' },
+    { label: 'All Access', url: 'https://www.allaccess.com/login', email: 'allaccess' },
     { label: 'Mediabase', url: 'https://www.hitsdailydouble.com/mediabase_building_charts' },
     { label: 'Pollstar', url: 'https://www.pollstar.com' },
   ] },
   { key: 'tools-cloud', label: 'Cloud', icon: 'M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z', items: [
-    { label: 'Airtable', url: 'https://www.airtable.com', email: 'airtable' },
-    { label: 'Box', url: 'https://www.box.com', email: 'box' },
-    { label: 'Disco', url: 'https://disco.co', email: 'me' },
+    { label: 'Airtable', url: 'https://airtable.com/login', email: 'airtable' },
+    { label: 'Box', url: 'https://account.box.com/login', email: 'box' },
+    { label: 'Disco', url: 'https://login.disco.co', email: 'me' },
   ] },
   { key: 'tools-news', label: 'News', icon: 'M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9a2 2 0 012-2h2M18 14h-8M15 18h-5M10 6h8v4h-8V6z', items: [
-    { label: 'Billboard Pro', url: 'https://www.billboard.com/pro/', email: 'billboardpro' },
-    { label: 'ROSTR', url: 'https://www.rostr.com', email: 'rostr' },
-    { label: 'MBW+', url: 'https://www.musicbusinessworldwide.com', email: 'mbw' },
+    { label: 'Billboard Pro', url: 'https://www.billboard.com/wp-login.php?action=pmc_sso_email_prompt&redirect_to=https%3A%2F%2Fwww.billboard.com%2Fpro%2F', email: 'billboardpro' },
+    { label: 'ROSTR', url: 'https://www.rostr.cc/login', email: 'rostr' },
+    { label: 'MBW+', url: 'https://www.musicbusinessworldwide.com/login', email: 'mbw' },
   ] },
 ];
 
