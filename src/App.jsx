@@ -4170,6 +4170,40 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
   );
 }
 
+// External tools on the music sidebar. `email` is either a key into the
+// server-provided toolEmails map (login emails stay OUT of the public bundle)
+// or 'me' — the signed-in person's own email from the Staff tab. Items with an
+// email copy it to the clipboard as the site opens; passwords are never
+// stored or filled anywhere.
+const MUSIC_TOOLS = [
+  { key: 'tools-data', label: 'Data / Tools', icon: 'M18 20V10M12 20V4M6 20v-6', items: [
+    { label: 'ChartMetric', url: 'https://www.chartmetric.com', email: 'chartmetric' },
+    { label: 'Co:Brand', url: 'https://cobrand.com/' },
+    { label: 'Doctrine', url: 'https://doctrine.social/portal', email: 'doctrine' },
+    { label: 'RocketReach', url: 'https://rocketreach.co', email: 'rocketreach' },
+    { label: 'Song Calculator', url: 'https://calc.milkhoneyrecs.com/#/' },
+    { label: 'Song Stats', url: 'https://songstats.com/', email: 'me' },
+    { label: 'Sound Deal', url: 'https://www.sound-deal.com', email: 'me' },
+    { label: 'Sponsor United', url: 'https://www.sponsorunited.com/' },
+    { label: 'Spot On Track', url: 'https://www.spotontrack.com', email: 'spotontrack' },
+  ] },
+  { key: 'tools-charts', label: 'Charts', icon: 'M23 6l-9.5 9.5-5-5L1 18', items: [
+    { label: 'All Access', url: 'https://www.allaccess.com', email: 'allaccess' },
+    { label: 'Mediabase', url: 'https://www.hitsdailydouble.com/mediabase_building_charts' },
+    { label: 'Pollstar', url: 'https://www.pollstar.com' },
+  ] },
+  { key: 'tools-cloud', label: 'Cloud', icon: 'M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z', items: [
+    { label: 'Airtable', url: 'https://www.airtable.com', email: 'airtable' },
+    { label: 'Box', url: 'https://www.box.com', email: 'box' },
+    { label: 'Disco', url: 'https://disco.co', email: 'me' },
+  ] },
+  { key: 'tools-news', label: 'News', icon: 'M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9a2 2 0 012-2h2M18 14h-8M15 18h-5M10 6h8v4h-8V6z', items: [
+    { label: 'Billboard Pro', url: 'https://www.billboard.com/pro/', email: 'billboardpro' },
+    { label: 'ROSTR', url: 'https://www.rostr.com', email: 'rostr' },
+    { label: 'MBW+', url: 'https://www.musicbusinessworldwide.com', email: 'mbw' },
+  ] },
+];
+
 // Homepage-style Google search shared by both dashboards — Enter opens
 // results in this tab; the input grabs focus on load so typing starts a
 // search immediately.
@@ -7264,6 +7298,7 @@ function App() {
   // Individual identity for per-person logins ({ name, agentKey, userRole })
   // — null for the house admin password and for public sessions.
   const [currentUser, setCurrentUser] = useState(null);
+  const [toolEmails, setToolEmails] = useState({}); // staff-only login emails for the music Tools sidebar
   // True once /api/sheets has answered who this session is. Sports rendering
   // waits on it so employees never see a roster flash before the dashboard.
   const [authKnown, setAuthKnown] = useState(false);
@@ -7510,7 +7545,7 @@ function App() {
     if (!gateUnlocked) return;
     fetch('/api/sheets')
       .then(r => r.json())
-      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setCurrentUser(d.user || null); setAuthConfigured(!!d.authConfigured); setLoading(false); setAuthKnown(true); })
+      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setCurrentUser(d.user || null); setToolEmails(d.toolEmails || {}); setAuthConfigured(!!d.authConfigured); setLoading(false); setAuthKnown(true); })
       .catch(e => { setError(e.message); setLoading(false); setAuthKnown(true); });
   }, [gateUnlocked]);
 
@@ -7966,6 +8001,16 @@ function App() {
   // Expand/collapse state for sidebar groups; a group with the active page
   // inside starts open.
   const [openNavGroups, setOpenNavGroups] = useState({});
+  // Music Tools links: copy the login email (if we have one) as the site
+  // opens in a new tab, and confirm the copy in place for a moment.
+  const [toolCopied, setToolCopied] = useState('');
+  const openTool = async (t) => {
+    const em = t.email === 'me' ? (currentUser?.email || '') : t.email ? (toolEmails[t.email] || '') : '';
+    if (em) {
+      try { await navigator.clipboard.writeText(em); setToolCopied(t.label); setTimeout(() => setToolCopied(''), 2600); } catch { /* still open the site */ }
+    }
+    window.open(t.url, '_blank', 'noopener');
+  };
   const navClick = (it) => {
     if (it.modal) { setOnboardLinksOpen(true); return; }
     if (domain === 'music') { goMusicPage(it.key); return; }
@@ -8028,6 +8073,36 @@ function App() {
           </button>
         );
       })}
+      {domain === 'music' && (
+        <div style={{ marginTop: 8, borderTop: `1px solid ${G.surfaceBorder}`, paddingTop: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, padding: "2px 11px 6px" }}>Tools</div>
+          {MUSIC_TOOLS.map(gr => {
+            const open = !!openNavGroups[gr.key];
+            return (
+              <div key={gr.key}>
+                <button onClick={() => setOpenNavGroups(o => ({ ...o, [gr.key]: !open }))}
+                  style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: "transparent", border: "none", borderRadius: 9, color: G.textSecondary, fontWeight: 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={gr.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span style={{ flex: 1 }}>{gr.label}</span>
+                  <span style={{ fontSize: 9, color: G.textTertiary, transform: open ? 'rotate(180deg)' : 'none', transition: `transform 0.15s ${G.ease}` }}>▼</span>
+                </button>
+                {open && gr.items.map(t => {
+                  const em = t.email === 'me' ? (currentUser?.email || '') : t.email ? (toolEmails[t.email] || '') : '';
+                  const justCopied = toolCopied === t.label;
+                  return (
+                    <button key={t.label} onClick={() => openTool(t)}
+                      title={em ? `Opens in a new tab — copies the login email (${em})` : 'Opens in a new tab'}
+                      style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px 8px 27px", background: "transparent", border: "none", borderRadius: 9, color: justCopied ? G.green : G.textSecondary, fontWeight: justCopied ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{justCopied ? '✓ Email copied' : t.label}</span>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.55 }}><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div style={{ marginTop: 8, borderTop: `1px solid ${G.surfaceBorder}`, paddingTop: 8 }}>
         <button onClick={toggleTheme}
           style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: "transparent", border: "none", borderRadius: 9, color: G.textSecondary, fontWeight: 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>

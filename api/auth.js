@@ -53,7 +53,7 @@ async function findUser(pw) {
     if (rows.length < 2) return null;
     const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
     const col = (name) => headers.findIndex(h => h === name);
-    const nameC = col('name'), passC = col('password'), roleC = col('role');
+    const nameC = col('name'), passC = col('password'), roleC = col('role'), emailC = col('email');
     if (nameC < 0 || passC < 0) return null;
     for (const row of rows.slice(1)) {
       const rowPw = String(row[passC] || '').trim();
@@ -65,6 +65,9 @@ async function findUser(pw) {
           // "My clients" matching keys off the canonical staff name — agent
           // cells hold the same names, so no separate key is needed.
           agentKey: name,
+          // Work email (optional column) — the music Tools sidebar copies it
+          // for sites that log in via a code sent to your own address.
+          email: String(emailC >= 0 ? row[emailC] || '' : '').trim(),
         };
       }
     }
@@ -103,14 +106,14 @@ module.exports = async (req, res) => {
       payload = { role: 'admin' };
     } else {
       user = await findUser(String(pw || '').trim());
-      if (user && user.name) payload = { role: 'admin', name: user.name, userRole: user.userRole, agentKey: user.agentKey };
+      if (user && user.name) payload = { role: 'admin', name: user.name, userRole: user.userRole, agentKey: user.agentKey, email: user.email };
     }
     if (!payload) return res.status(401).json({ error: 'Incorrect password.' });
 
     payload.exp = Math.floor(Date.now() / 1000) + THIRTY_DAYS;
     const token = sign(payload, secret);
     res.setHeader('Set-Cookie', cookie(token, THIRTY_DAYS));
-    return res.json({ ok: true, isAdmin: true, user: user ? { name: user.name, agentKey: user.agentKey, userRole: user.userRole } : null });
+    return res.json({ ok: true, isAdmin: true, user: user ? { name: user.name, agentKey: user.agentKey, userRole: user.userRole, email: user.email } : null });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

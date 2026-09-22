@@ -2,6 +2,21 @@ const crypto = require('crypto');
 const { authState } = require('../lib/auth');
 
 const SHEET_ID = process.env.MUSIC_SHEET_ID;
+// Login emails for the music Tools sidebar, served ONLY to signed-in staff so
+// they never ship in the public bundle or an anonymous payload. Usernames
+// only — passwords are never stored here or anywhere else in the app.
+const TOOL_EMAILS = {
+  chartmetric: 'chartmetricmilkandhoneyemailrd@gmail.com',
+  doctrine: 'keller@milkhoneyla.com',
+  rocketreach: 'jared@milkhoneyla.com',
+  spotontrack: 'nic@milkhoneyla.com',
+  allaccess: 'keller@milkhoneyla.com',
+  airtable: 'info@milkhoneyla.com',
+  box: 'info@milkhoneyla.com',
+  billboardpro: 'keller@milkhoneyla.com',
+  rostr: 'jared@milkhoneyla.com',
+  mbw: 'keller@milkhoneyla.com',
+};
 const BLOB_API = 'https://blob.vercel-storage.com';
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const RELEASES_CACHE_PATH = 'spotify-releases-cache.json';
@@ -589,7 +604,8 @@ module.exports = async (req, res) => {
       const outClients = (configured && !admin && publicColumnExists)
         ? clients.filter(c => c.public)
         : clients;
-      return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists, user: authState(req).user });
+      return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists, user: authState(req).user,
+        toolEmails: (!configured || admin) ? TOOL_EMAILS : undefined });
     }
 
     // ── POST ─────────────────────────────────────────────────────────────────
