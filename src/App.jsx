@@ -3591,8 +3591,7 @@ function NotesPage({ isMobile, user }) {
   };
   return (
     <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
-      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Notes</div>
-      <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4, marginBottom: 18 }}>Personal to you — nobody else sees these</div>
+      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Notes</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         {[['open', `Open (${openCount})`], ['done', `Completed (${rows.length - openCount})`], ['all', 'All']].map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)}
@@ -3601,10 +3600,19 @@ function NotesPage({ isMobile, user }) {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()}
-          placeholder="Add a note — press Enter" style={{ ...inputBase, width: isMobile ? 180 : 300, padding: "8px 11px", fontSize: 13 }} />
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <div style={{ width: 17, height: 17, borderRadius: "50%", border: `1.5px dashed ${G.textTertiary}`, flexShrink: 0, opacity: 0.7 }} />
+          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()}
+            placeholder="Add a note..." style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: G.text, fontFamily: ff }} />
+          {text.trim() && (
+            <button onClick={add}
+              style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 8, padding: "6px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>
+              Add
+            </button>
+          )}
+        </div>
         {todosTab.loading && !rows.length ? (
           <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
         ) : shown.length === 0 ? (
@@ -3614,8 +3622,8 @@ function NotesPage({ isMobile, user }) {
         ) : (
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead><tr>
-              {['', 'Note', 'Created', 'Status'].map((h, i) => (
-                <th key={i} style={{ textAlign: "left", padding: i === 0 ? "10px 6px 10px 16px" : "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", width: i === 0 ? 30 : i === 2 ? 110 : i === 3 ? 110 : undefined }}>{h}</th>
+              {['', 'Note', 'Created', 'Status', ''].map((h, i) => (
+                <th key={i} style={{ textAlign: "left", padding: i === 0 ? "10px 6px 10px 16px" : "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", width: i === 0 ? 30 : i === 2 ? 110 : i === 3 ? 110 : i === 4 ? 46 : undefined }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
@@ -3636,6 +3644,12 @@ function NotesPage({ isMobile, user }) {
                       <span style={{ fontSize: 11, fontWeight: 700, color: r.done ? G.textTertiary : G.green, background: r.done ? G.surfaceRaised : G.greenSubtle, borderRadius: 6, padding: "3px 9px" }}>
                         {r.done ? 'Completed' : 'Open'}
                       </span>
+                    </td>
+                    <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button onClick={() => { if (window.confirm('Delete this note for good?')) post({ action: 'tab-delete', tab: 'todos', row: r.row }); }}
+                        title="Delete note"
+                        onMouseEnter={e => e.currentTarget.style.color = G.red} onMouseLeave={e => e.currentTarget.style.color = G.textTertiary}
+                        style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 4px", fontFamily: ff, transition: "color 0.12s" }}>✕</button>
                     </td>
                   </tr>
                 );
@@ -4339,9 +4353,9 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
         {onShowAll && !fullPage ? (
           <button onClick={onShowAll} title="View all"
             onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0.45; }}
             style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
-            <span>Upcoming events</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
+            <span>Upcoming events</span><span style={{ opacity: 0.45, transition: "opacity 0.15s" }}>→</span>
           </button>
         ) : (
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming events</div>
@@ -4514,9 +4528,9 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
         {onShowAll && !fullPage ? (
           <button onClick={onShowAll} title="View all"
             onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0.45; }}
             style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
-            <span>Upcoming shows</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
+            <span>Upcoming shows</span><span style={{ opacity: 0.45, transition: "opacity 0.15s" }}>→</span>
           </button>
         ) : (
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
@@ -4867,9 +4881,9 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       {onClick ? (
         <button onClick={onClick} title="View all"
           onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0.45; }}
           style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
-          <span>{label}</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
+          <span>{label}</span><span style={{ opacity: 0.45, transition: "opacity 0.15s" }}>→</span>
         </button>
       ) : (
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
@@ -5197,9 +5211,9 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
       {onClick ? (
         <button onClick={onClick} title="View all"
           onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0.45; }}
           style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
-          <span>{label}</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
+          <span>{label}</span><span style={{ opacity: 0.45, transition: "opacity 0.15s" }}>→</span>
         </button>
       ) : (
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
