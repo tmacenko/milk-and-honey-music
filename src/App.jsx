@@ -7528,11 +7528,22 @@ function App() {
   };
   const setDomain = (d) => {
     if (d === domain) return;
+    // Keep your place when flipping sides: marketing stays marketing, roster
+    // stays roster, etc. Pages the other side doesn't have land on home.
+    const SHARED_PAGES = ['home', 'roster', 'marketing', 'schedule'];
+    let carried = null;
+    if (d !== 'all' && domain !== 'all') {
+      const cur = domain === 'music' ? musicPage : sportsPage;
+      carried = SHARED_PAGES.includes(cur) ? cur : 'home';
+      if (d === 'music') setMusicPage(carried); else setSportsPage(carried);
+    }
     setDomainState(d);
     setSelected(null);
     setViewState('roster');
     setSearch('');
-    window.history.pushState({ view: 'roster', domain: d }, '', pathFor(d));
+    const base = pathFor(d);
+    const url = carried && carried !== 'home' ? `${base === '/' ? '' : base}/?page=${carried}`.replace('//', '/') : base;
+    window.history.pushState({ view: 'roster', domain: d, page: carried || undefined }, '', d === 'sports' && carried && carried !== 'home' ? `/sports?page=${carried}` : url);
   };
   // Opening a profile from the All view: push the person's real music/sports
   // URL (so refresh/share works) and flip the domain to match — the browser
@@ -8133,8 +8144,6 @@ function App() {
   const NAV_SPORTS = [
     { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
     { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
-    { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
-    { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
     {
       key: 'marketing-group', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z', dot: dealDot,
       children: [
@@ -8143,6 +8152,8 @@ function App() {
         { key: 'gifting', label: 'Gifting', icon: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z' },
       ],
     },
+    { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
+    { key: 'recruiting', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6' },
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
   ];
