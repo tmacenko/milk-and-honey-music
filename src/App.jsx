@@ -3342,6 +3342,7 @@ function Landing({ onEnter }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
+  const unameRef = useRef(null);
   useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
 
   const submit = async () => {
@@ -3356,7 +3357,13 @@ function Landing({ onEnter }) {
       const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
       if (r.ok) {
         const d = await r.json();
+        // Stamp the person's email into the (hidden) username field before
+        // navigating, so the browser saves the login under THEIR address
+        // instead of a generic label.
+        const uname = d.user?.email || d.user?.name || 'Milk & Honey';
+        if (unameRef.current) unameRef.current.value = uname;
         try { localStorage.setItem('mh_gate', '1'); } catch { /* ignore */ }
+        await new Promise(res => setTimeout(res, 60)); // let the DOM settle so the password manager sees it
         window.location.href = defaultSideFor(d.user) === 'sports' ? '/sports' : '/';
         return;
       }
@@ -3375,7 +3382,7 @@ function Landing({ onEnter }) {
         <form onSubmit={e => { e.preventDefault(); submit(); }}
           style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, width: 300, maxWidth: "82vw" }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>Login</div>
-          <input type="text" name="username" autoComplete="username" defaultValue="Milk & Honey" readOnly aria-hidden="true" tabIndex={-1}
+          <input ref={unameRef} type="text" name="username" autoComplete="username" defaultValue="Milk & Honey" readOnly aria-hidden="true" tabIndex={-1}
             style={{ position: "absolute", left: -9999, top: -9999, width: 1, height: 1, opacity: 0 }} />
           <input ref={inputRef} type="password" name="password" autoComplete="current-password" value={password}
             onChange={e => { setPassword(e.target.value); setError(''); }}
