@@ -4084,7 +4084,7 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
   // NFL by nickname (two LA and two NY teams share a location); college by school.
   const teamLabel = (ev, t) => (t.rank ? `#${t.rank} ` : '') + (ev.league === 'nfl' ? (t.short || t.name) : (t.location || t.name));
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 18 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming events</div>
         <span style={{ fontSize: 12, color: G.textTertiary }}>{subParts}</span>
@@ -4249,7 +4249,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
     return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 18 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
         <span style={{ fontSize: 12, color: G.textTertiary }}>{shownItems.length} show{shownItems.length === 1 ? '' : 's'}</span>
@@ -4324,10 +4324,10 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
               </button>
             </div>
-            <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ width: isMobile ? "auto" : 260, flexShrink: 0, minWidth: 0, fontSize: 13, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {e.venue}
             </div>
-            <div style={{ width: isMobile ? "auto" : 180, flexShrink: 0, minWidth: 0, fontSize: 13, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {e.city}
             </div>
             {e.url && (
@@ -4623,7 +4623,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           shows inline as before. */}
       {dealAlerts.length > 1 && !alertsOpen ? (
         <div onClick={() => setAlertsOpen(true)}
-          style={{ marginTop: 14, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          style={{ marginTop: 12, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />
           <span style={{ fontSize: 13, color: G.textSecondary }}>
             <b style={{ color: G.text, fontWeight: 700 }}>{dealAlerts.length} pending notifications</b>
@@ -4635,7 +4635,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       ) : (
         <>
           {dealAlerts.map(({ deal, eligibleCount }) => (
-            <div key={deal.dealId} style={{ marginTop: 14, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div key={deal.dealId} style={{ marginTop: 12, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: G.textSecondary, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 New brand deal — <b style={{ color: G.text, fontWeight: 700 }}>{deal.company}</b>
@@ -4662,8 +4662,8 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       <ThisWeekendModule athletes={athletes} user={user} isMobile={isMobile} onOpenAthlete={onOpenAthlete} onShowAll={onGoSchedule} />
 
       {topClients.length > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10 }}>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 12 }}>
             {topClients.map((a, i) => (
               <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} compact onClick={() => onOpenAthlete(a)} />
             ))}
@@ -4671,7 +4671,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 10, marginTop: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 12, marginTop: 12 }}>
         <div style={card}>
           {tileHead(s.hasGrowthData
             ? (() => { const d = Math.max(0, ...s.hot.map(x2 => x2.a.growthDays || 0)); return d >= 7 ? 'Social growth leaders (this week)' : d > 0 ? `Social growth leaders (last ${d} days)` : 'Social growth leaders'; })()
@@ -4948,8 +4948,8 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
       <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={onOpenClient} user={user} onShowAll={onGoSchedule} />
 
       {s.top.length > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10 }}>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 12 }}>
             {s.top.map((c, i) => (
               <div key={`${c._rowIndex ?? ''}-${c.id || i}`} onClick={() => onOpenClient(c)}
                 onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
@@ -4966,7 +4966,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
         <div style={card}>
           {tileHead(s.hasGrowthData
             ? (() => { const d = Math.max(0, ...s.hot.map(x => x.growthDays || 0)); return d >= 7 ? 'Social growth leaders (this week)' : d > 0 ? `Social growth leaders (last ${d} days)` : 'Social growth leaders'; })()
