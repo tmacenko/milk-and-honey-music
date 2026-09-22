@@ -610,31 +610,35 @@ module.exports = async (req, res) => {
 
     // ── POST ─────────────────────────────────────────────────────────────────
     if (req.method === 'POST') {
+      // Weekly Bandsintown harvest drop-off (runs headless on Tyler's Mac —
+      // Bandsintown only serves real browsers, so the server can't fetch it).
+      // Authenticated by HARVEST_SECRET instead of a login cookie; stores
+      // per-artist events into the same cache the artist-shows action reads,
+      // tagged src:'bit' with a longer shelf life than live Ticketmaster pulls.
+      if (req.body?.action === 'artist-shows-store') {
+        const secret = process.env.HARVEST_SECRET;
+        if (!secret || String(req.body.secret || '') !== secret) return res.status(401).json({ error: 'Bad harvest secret' });
+        const incoming = req.body.shows || {};
+        const SHOWS_CACHE_PATH = 'artist-shows-cache.json';
+        const cache = await loadBlobCache(SHOWS_CACHE_PATH);
+        let stored = 0;
+        for (const [name, events] of Object.entries(incoming)) {
+          if (!Array.isArray(events)) continue;
+          cache[String(name)] = {
+            ts: Date.now(), src: 'bit',
+            events: events.slice(0, 25).map(e => ({
+              date: String(e.date || ''), venue: String(e.venue || ''), city: String(e.city || ''), url: String(e.url || ''),
+            })).filter(e => e.date),
+          };
+          stored++;
+        }
+        if (stored) await saveBlobCache(SHOWS_CACHE_PATH, cache);
+        return res.json({ ok: true, stored });
+      }
+
       // Writes require an authenticated admin once auth is configured.
       const { configured, admin } = authState(req);
       if (configured && !admin) return res.status(401).json({ error: 'Not authorized' });
-
-      // TEMP probe: can the server (via the residential proxy) read a
-      // Bandsintown page? Admin-gated; removed once the answer is known.
-      if (req.body?.action === 'bit-probe') {
-        const url = String(req.body.url || 'https://www.bandsintown.com/a/45465-oliver-heldens');
-        const out = { url };
-        try {
-          const u = require('undici');
-          const agent = process.env.PROXY_URL && req.body.direct !== true ? new u.ProxyAgent(process.env.PROXY_URL) : null;
-          const opts = { redirect: 'follow', headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9',
-          } };
-          if (agent) opts.dispatcher = agent;
-          const r = await (agent ? u.fetch : fetch)(url, opts);
-          const body = await r.text();
-          const ld = body.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g) || [];
-          out.status = r.status; out.finalUrl = r.url; out.bytes = body.length; out.ldBlocks = ld.length; out.viaProxy = !!agent;
-          out.sample = ld.length ? ld.map(b => b.slice(34, 434)) : [body.slice(0, 300)];
-        } catch (e) { out.error = e.message; }
-        return res.json(out);
-      }
 
       // Upcoming shows for Artist-type clients (music dashboard module).
       // Provider is env-configured: BANDSINTOWN_APP_ID preferred (best niche
@@ -643,8 +647,8 @@ module.exports = async (req, res) => {
       // no key configured answers { unconfigured: true } and the module hides.
       if (req.body?.action === 'artist-shows') {
         const names = [...new Set((req.body.artists || []).map(n => String(n || '').trim()).filter(Boolean))].slice(0, 80);
+        if (!names.length) return res.json({ shows: {} });
         const bit = process.env.BANDSINTOWN_APP_ID, tm = process.env.TICKETMASTER_API_KEY;
-        if (!names.length || (!bit && !tm)) return res.json({ shows: {}, unconfigured: !bit && !tm });
         const source = bit ? 'bandsintown' : 'ticketmaster';
         const norm = (events) => (events || [])
           .filter(e => e && e.date)
@@ -685,17 +689,21 @@ module.exports = async (req, res) => {
         let dirty = false, fetched = 0;
         for (const name of names) {
           const hit = cache[name];
-          if (hit && Date.now() - hit.ts < DAY) { shows[name] = hit.events; continue; }
+          // Bandsintown harvests are weekly, so they get 8 days of shelf life
+          // (and beat live Ticketmaster lookups while fresh); TM entries 24h.
+          const ttl = hit && hit.src === 'bit' ? 8 * DAY : DAY;
+          if (hit && Date.now() - hit.ts < ttl) { shows[name] = hit.events; continue; }
           // Cap live lookups per call (Ticketmaster is 2 requests/artist and
-          // rate-limited) — misses fill in on the next dashboard load.
-          if (fetched >= 12) continue;
+          // rate-limited) — misses fill in on the next dashboard load. With no
+          // provider key we serve harvested cache entries only.
+          if (fetched >= 12 || (!bit && !tm)) continue;
           fetched++;
           const events = await fetchOne(name);
           if (events !== null) { cache[name] = { ts: Date.now(), events }; shows[name] = events; dirty = true; }
           else if (hit) shows[name] = hit.events; // stale beats nothing on provider hiccups
         }
         if (dirty) await saveBlobCache(SHOWS_CACHE_PATH, cache);
-        return res.json({ shows, source });
+        return res.json({ shows, source, unconfigured: !bit && !tm && !Object.values(shows).some(v => v && v.length) });
       }
 
       // Chat proxy. The data context is assembled SERVER-side (fullContext mode)
