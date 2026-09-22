@@ -49,16 +49,16 @@ function chromeDump(url, budget = 15000) {
 }
 
 function parseArtistPage(html) {
-  const events = []; let artist = null;
+  let artist = null;
+  // The JSON-LD MusicGroup block is the artist-identity check.
+  const ldEvents = [];
   for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
     let d; try { d = JSON.parse(m[1]); } catch { continue; }
     for (const x of Array.isArray(d) ? d : [d]) {
       if (x['@type'] === 'MusicGroup') artist = x.name || null;
       if (x['@type'] !== 'MusicEvent') continue;
-      // City isn't in the JSON-LD address block; the description reads
-      // "Venue, City" — take the tail as a best-effort city label.
       const desc = String(x.description || '');
-      events.push({
+      ldEvents.push({
         date: x.startDate || '',
         venue: (x.location || {}).name || '',
         city: desc.includes(',') ? desc.slice(desc.lastIndexOf(',') + 1).trim() : '',
@@ -66,7 +66,32 @@ function parseArtistPage(html) {
       });
     }
   }
-  return { artist, events };
+  // Preferred source: the page's state blob — unlike the JSON-LD it carries a
+  // clean "City, Country" location per event. Bracket-match the events array
+  // (string-aware: event titles legally contain [ and ]).
+  const events = [];
+  const j = html.indexOf('"upcomingEvents"');
+  const k = j >= 0 ? html.indexOf('"events":[', j) : -1;
+  if (k >= 0) {
+    const start = html.indexOf('[', k);
+    let depth = 0, inStr = false, esc = false, end = -1;
+    for (let p = start; p < html.length; p++) {
+      const ch = html[p];
+      if (esc) { esc = false; continue; }
+      if (inStr) { if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+      else if (ch === '[') depth++;
+      else if (ch === ']' && --depth === 0) { end = p; break; }
+    }
+    if (end > 0) {
+      try {
+        for (const e of JSON.parse(html.slice(start, end + 1))) {
+          events.push({ date: e.startsAt || '', venue: e.venueName || '', city: e.location || '', url: e.eventUrl || '' });
+        }
+      } catch { /* malformed blob — the JSON-LD fallback below still works */ }
+    }
+  }
+  return { artist, events: events.length ? events : ldEvents };
 }
 
 const shows = {}; const skipped = [];

@@ -4175,9 +4175,14 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
 // (server-side provider + 24h per-artist cache); the module hides itself until
 // a provider key is configured on the server AND someone has a show coming up.
 const SHOWS_CACHE = { data: null, ts: 0 };
-function MusicShowsModule({ clients, isMobile, onOpenClient }) {
+function MusicShowsModule({ clients, isMobile, onOpenClient, user }) {
   const artistClients = useMemo(() => (clients || []).filter(c => c.name && (c.types || []).includes('Artist')), [clients]);
   const [data, setData] = useState(SHOWS_CACHE.data);
+  // Same scope rules as the sports Upcoming events module: agents land on
+  // their own clients (Contact column holds the manager names), admin and
+  // house sessions on everyone; the toggle shows for anyone with an agentKey.
+  const [scope, setScope] = useState(user?.userRole === 'agent' ? 'mine' : 'all');
+  const isMine = useCallback(c => !!user?.agentKey && agentMatch(c.contact, user.agentKey), [user]);
   useEffect(() => {
     if (!artistClients.length) return;
     if (SHOWS_CACHE.data && Date.now() - SHOWS_CACHE.ts < 30 * 60 * 1000) { setData(SHOWS_CACHE.data); return; }
@@ -4207,23 +4212,41 @@ function MusicShowsModule({ clients, isMobile, onOpenClient }) {
   }, [data, artistClients]);
   const [expanded, setExpanded] = useState(false);
   if (!items.length) return null;
+  const canScope = !!user?.agentKey;
+  const shownItems = canScope && scope === 'mine' ? items.filter(x => isMine(x.c)) : items;
   const COLLAPSED = 6;
-  const shown = expanded ? items : items.slice(0, COLLAPSED);
+  const shown = expanded ? shownItems : shownItems.slice(0, COLLAPSED);
   const dayLabel = (d) => {
     const t0 = new Date(); t0.setHours(0, 0, 0, 0);
     const diff = Math.round((d - t0) / 86400000);
     return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 10 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
-        <div style={{ fontSize: 11, color: G.textTertiary }}>{items.length} show{items.length === 1 ? '' : 's'}</div>
+        <span style={{ fontSize: 12, color: G.textTertiary }}>{shownItems.length} show{shownItems.length === 1 ? '' : 's'}</span>
+        <div style={{ flex: 1 }} />
+        {canScope && (
+          <div style={{ display: "flex", gap: 4 }}>
+            {[['mine', 'My clients'], ['all', 'Everyone']].map(([k, label]) => (
+              <button key={k} onClick={() => setScope(k)}
+                style={{ padding: "4px 10px", borderRadius: 99, border: `1px solid ${scope === k ? G.green : G.surfaceBorder}`, background: scope === k ? G.greenSubtle : "transparent", color: scope === k ? G.green : G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      <div style={expanded ? { maxHeight: 400, overflowY: "auto" } : undefined}>
+      {shownItems.length === 0 && (
+        <div style={{ fontSize: 13, color: G.textTertiary, padding: "10px 0 4px" }}>
+          None of your clients have shows on the calendar — tap Everyone to see the full slate.
+        </div>
+      )}
+      <div style={expanded && shownItems.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
         {shown.map(({ c, e, d }, i) => (
-          <div key={`${c.name}-${e.date}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: i === shown.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, flexWrap: isMobile ? "wrap" : "nowrap" }}>
-            <div style={{ width: 92, flexShrink: 0, fontSize: 12, fontWeight: 600, color: G.textSecondary }}>{dayLabel(d)}</div>
+          <div key={`${c.name}-${e.date}-${i}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i === shown.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+            <div style={{ width: 92, flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: G.text }}>{dayLabel(d)}</div>
             <button onClick={() => onOpenClient(c)}
               style={{ display: "flex", alignItems: "center", gap: 7, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 999, padding: "3px 10px 3px 4px", cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>
               <Avatar name={c.name} photoUrl={c.photoUrl} size={20} />
@@ -4239,10 +4262,10 @@ function MusicShowsModule({ clients, isMobile, onOpenClient }) {
           </div>
         ))}
       </div>
-      {items.length > COLLAPSED && (
+      {shownItems.length > COLLAPSED && (
         <button onClick={() => setExpanded(x => !x)}
           style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-          {expanded ? 'Show fewer' : `Show all ${items.length} shows →`}
+          {expanded ? 'Show fewer' : `Show all ${shownItems.length} shows →`}
         </button>
       )}
     </div>
@@ -4894,7 +4917,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
         </div>
       </div>
 
-      <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={onOpenClient} />
+      <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={onOpenClient} user={user} />
 
       {s.top.length > 0 && (
         <div style={{ marginTop: 18 }}>
