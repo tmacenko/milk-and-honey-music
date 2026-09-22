@@ -4665,13 +4665,9 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         <div style={{ marginTop: 18 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10 }}>
             {topClients.map((a, i) => (
-              <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} showDepth compact onClick={() => onOpenAthlete(a)} />
+              <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} compact onClick={() => onOpenAthlete(a)} />
             ))}
           </div>
-          <button onClick={personal ? onShowMine : onGoRoster}
-            style={{ marginTop: 10, background: "none", border: "none", color: G.green, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-            {personal ? 'View my clients →' : 'View full roster →'}
-          </button>
         </div>
       )}
 
@@ -4967,10 +4963,6 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
               </div>
             ))}
           </div>
-          <button onClick={onGoRoster}
-            style={{ marginTop: 10, background: "none", border: "none", color: G.green, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-            View full roster →
-          </button>
         </div>
       )}
 
