@@ -24,9 +24,9 @@ console.log(new Date().toISOString(), '— harvesting', artists.length, 'artists
 
 // Chrome dumps the rendered DOM, then lingers on ad-network connections —
 // kill it as soon as stdout closes (the dump is complete by then).
-function chromeDump(url) {
+function chromeDump(url, budget = 15000) {
   return new Promise((resolve) => {
-    const p = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-first-run', '--virtual-time-budget=15000',
+    const p = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-first-run', `--virtual-time-budget=${budget}`,
       '--dump-dom', `--user-data-dir=${os.tmpdir()}/mh-harvest-profile`, `--user-agent=${UA}`, url]);
     let out = '', done = false;
     const finish = () => { if (!done) { done = true; try { p.kill('SIGKILL'); } catch { /* already gone */ } resolve(out); } };
@@ -59,16 +59,27 @@ function parseArtistPage(html) {
 }
 
 const shows = {}; const skipped = [];
-for (const name of artists) {
+const harvestOne = async (name, budget) => {
   const slug = name.replace(/[^A-Za-z0-9]/g, '');
-  if (!slug) continue;
-  const html = await chromeDump(`https://www.bandsintown.com/${slug}`);
+  if (!slug) return 'skip';
+  const html = await chromeDump(`https://www.bandsintown.com/${slug}`, budget);
   const { artist, events } = parseArtistPage(html);
-  if (!artist) { skipped.push(`${name} (no artist page)`); continue; }
-  if (norm(artist) !== norm(name)) { skipped.push(`${name} (landed on "${artist}")`); continue; } // never store another act's tour
+  if (!artist) return 'nopage'; // page didn't finish rendering (or doesn't exist) — retry pass decides
+  if (norm(artist) !== norm(name)) { skipped.push(`${name} (landed on "${artist}")`); return 'skip'; } // never store another act's tour
   shows[name] = events; // empty array is a valid answer: no upcoming shows
   console.log(`  ${name}: ${events.length} shows`);
+  return 'ok';
+};
+const retry = [];
+for (const name of artists) {
+  if (await harvestOne(name, 15000) === 'nopage') retry.push(name);
   await new Promise(r => setTimeout(r, 3000)); // polite pacing
+}
+// Second pass with a longer render budget — heavy pages sometimes miss the
+// first window; a miss here means the artist genuinely has no page.
+for (const name of retry) {
+  if (await harvestOne(name, 40000) === 'nopage') skipped.push(`${name} (no artist page)`);
+  await new Promise(r => setTimeout(r, 3000));
 }
 
 const resp = await (await fetch(`${SITE}/api/sheets`, {
