@@ -4301,7 +4301,7 @@ const MUSIC_TOOLS = [
     { label: 'Disco', url: 'https://login.disco.co', email: 'me' },
   ] },
   { key: 'tools-news', label: 'News', icon: 'M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9a2 2 0 012-2h2M18 14h-8M15 18h-5M10 6h8v4h-8V6z', items: [
-    { label: 'Billboard Pro', url: 'https://www.billboard.com/wp-login.php?action=pmc_sso_email_prompt&redirect_to=https%3A%2F%2Fwww.billboard.com%2Fpro%2F', email: 'billboardpro', pw: true },
+    { label: 'Billboard Pro', url: 'https://www.billboard.com/my-account/', email: 'billboardpro', pw: true },
     { label: 'ROSTR', url: 'https://www.rostr.cc/login', email: 'rostr', pw: true },
     { label: 'MBW+', url: 'https://www.musicbusinessworldwide.com/login', email: 'mbw', pw: true },
   ] },
