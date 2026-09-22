@@ -4238,7 +4238,16 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
   return (
     <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming events</div>
+        {onShowAll && !fullPage ? (
+          <button onClick={onShowAll} title="View all"
+            onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
+            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
+            <span>Upcoming events</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
+          </button>
+        ) : (
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming events</div>
+        )}
         <span style={{ fontSize: 12, color: G.textTertiary }}>{subParts}</span>
         <div style={{ flex: 1 }} />
         {fullPage && (
@@ -4326,12 +4335,6 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
         );
       })}
       </div>
-      {!fullPage && items.length > COLLAPSED && (
-        <button onClick={() => onShowAll ? onShowAll() : setExpanded(e => !e)}
-          style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-          {!onShowAll && expanded ? 'Show fewer' : 'View all →'}
-        </button>
-      )}
     </div>
   );
 }
@@ -4409,7 +4412,16 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
   return (
     <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
+        {onShowAll && !fullPage ? (
+          <button onClick={onShowAll} title="View all"
+            onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
+            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
+            <span>Upcoming shows</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
+          </button>
+        ) : (
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
+        )}
         <span style={{ fontSize: 12, color: G.textTertiary }}>{shownItems.length} show{shownItems.length === 1 ? '' : 's'}</span>
         <div style={{ flex: 1 }} />
         {fullPage && (
@@ -4495,12 +4507,6 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
           </div>
         ))}
       </div>
-      )}
-      {!fullPage && shownItems.length > COLLAPSED && (
-        <button onClick={() => onShowAll ? onShowAll() : setExpanded(x => !x)}
-          style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-          {!onShowAll && expanded ? 'Show fewer' : 'View all →'}
-        </button>
       )}
     </div>
   );
@@ -4856,17 +4862,12 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         <div style={card}>
           {tileHead(s.hasGrowthData
             ? (() => { const d = Math.max(0, ...s.hot.map(x2 => x2.a.growthDays || 0)); return d >= 7 ? 'Social growth leaders (this week)' : d > 0 ? `Social growth leaders (last ${d} days)` : 'Social growth leaders'; })()
-            : 'Social growth leaders', s.hasGrowthData ? '' : 'Sample preview')}
+            : 'Social growth leaders', s.hasGrowthData ? '' : 'Sample preview', s.hasGrowthData ? onGoMarketing : undefined)}
           {s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
             : s.hot.map((x2, i, arr) => row(x2.a, x2.a.level,
               <span style={{ color: G.green, fontWeight: 700 }}>+{bigNum(x2.delta)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>· {x2.pct}%</span></span>,
               x2.a.id || i, i === arr.length - 1))}
           {!s.hasGrowthData && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>Sample numbers — daily snapshots start tonight; real growth appears within a week.</div>}
-          {s.hasGrowthData && (
-            <button onClick={onGoMarketing} style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-              View all →
-            </button>
-          )}
         </div>
         <div style={card}>
           {tileHead('Needs attention', (
@@ -5176,28 +5177,17 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
         <div style={card}>
           {tileHead(s.hasGrowthData
             ? (() => { const d = Math.max(0, ...s.hot.map(x => x.growthDays || 0)); return d >= 7 ? 'Social growth leaders (this week)' : d > 0 ? `Social growth leaders (last ${d} days)` : 'Social growth leaders'; })()
-            : 'Social growth leaders', '')}
+            : 'Social growth leaders', '', s.hasGrowthData ? onGoMarketing : undefined)}
           {!s.hasGrowthData ? empty('First follower snapshots land tonight.')
             : s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
             : s.hot.map((c, i, arr) => row(c, (c.types || [])[0] || 'Client',
                 <span style={{ color: G.green, fontWeight: 700 }}>+{bigNum(c.growth7d)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>· {c.growth7dPct}%</span></span>,
                 c.id || i, i === arr.length - 1))}
-          {s.hasGrowthData && (
-            <button onClick={onGoMarketing} style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-              View all →
-            </button>
-          )}
         </div>
         <div style={card}>
-          {tileHead('Artist recent releases', '')}
+          {tileHead('Artist recent releases', '', s.releases.length ? () => setShowReleases(true) : undefined)}
           {s.releases.length === 0 ? empty('No releases synced yet.')
             : s.releases.map((x, i, arr) => row(x.c, x.r.name, relDate(x.at), `${x.c.id || x.c.name}-${i}`, i === arr.length - 1, x.r.artwork || ''))}
-          {s.releases.length > 0 && (
-            <button onClick={() => setShowReleases(true)}
-              style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-              View all →
-            </button>
-          )}
         </div>
         <div style={card}>
           {tileHead('Notes', (
