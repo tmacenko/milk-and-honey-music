@@ -4236,7 +4236,7 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
   // NFL by nickname (two LA and two NY teams share a location); college by school.
   const teamLabel = (ev, t) => (t.rank ? `#${t.rank} ` : '') + (ev.league === 'nfl' ? (t.short || t.name) : (t.location || t.name));
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 12 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 12, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
         {onShowAll && !fullPage ? (
           <button onClick={onShowAll} title="View all"
@@ -4409,7 +4409,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
     return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 12 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 12, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         {onShowAll && !fullPage ? (
           <button onClick={onShowAll} title="View all"
@@ -4806,7 +4806,9 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           shows inline as before. */}
       {dealAlerts.length > 1 && !alertsOpen ? (
         <div onClick={() => setAlertsOpen(true)}
-          style={{ marginTop: 12, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; e.currentTarget.style.transform = "translateY(-1px)"; }}
+          onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; e.currentTarget.style.transform = "none"; }}
+          style={{ marginTop: 12, background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", transition: `all 0.18s ${G.ease}` }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />
           <span style={{ fontSize: 13, color: G.textSecondary }}>
             <b style={{ color: G.text, fontWeight: 700 }}>{dealAlerts.length} pending notifications</b>
@@ -4818,7 +4820,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       ) : (
         <>
           {dealAlerts.map(({ deal, eligibleCount }) => (
-            <div key={deal.dealId} style={{ marginTop: 12, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div key={deal.dealId} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }} style={{ marginTop: 12, background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", transition: `box-shadow 0.18s ${G.ease}` }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: G.textSecondary, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 New brand deal — <b style={{ color: G.text, fontWeight: 700 }}>{deal.company}</b>
@@ -4857,7 +4859,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 12, marginTop: 12 }}>
-        <div style={card}>
+        <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
           {tileHead('Social growth leaders', s.hasGrowthData ? '' : 'Sample preview', s.hasGrowthData ? onGoMarketing : undefined)}
           {s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
             : s.hot.map((x2, i, arr) => row(x2.a, x2.a.level,
@@ -4865,7 +4867,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               x2.a.id || i, i === arr.length - 1))}
           {!s.hasGrowthData && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>Sample numbers — daily snapshots start tonight; real growth appears within a week.</div>}
         </div>
-        <div style={card}>
+        <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
           {tileHead('Needs attention', (
             <button onClick={() => setAddingTodo(v => !v)} title="Add a note"
               style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, width: 22, height: 22, fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", fontFamily: ff, padding: 0 }}>+</button>
@@ -5170,7 +5172,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
-        <div style={card}>
+        <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
           {tileHead('Social growth leaders', '', s.hasGrowthData ? onGoMarketing : undefined)}
           {!s.hasGrowthData ? empty('First follower snapshots land tonight.')
             : s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
@@ -5178,12 +5180,12 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
                 <span style={{ color: G.green, fontWeight: 700 }}>+{bigNum(c.growth7d)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>· {c.growth7dPct}%</span></span>,
                 c.id || i, i === arr.length - 1))}
         </div>
-        <div style={card}>
+        <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
           {tileHead('Artist recent releases', '', s.releases.length ? () => setShowReleases(true) : undefined)}
           {s.releases.length === 0 ? empty('No releases synced yet.')
             : s.releases.map((x, i, arr) => row(x.c, x.r.name, relDate(x.at), `${x.c.id || x.c.name}-${i}`, i === arr.length - 1, x.r.artwork || ''))}
         </div>
-        <div style={card}>
+        <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
           {tileHead('Notes', (
             <button onClick={() => setAddingTodo(v => !v)} title="Add a note"
               style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, width: 22, height: 22, fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", fontFamily: ff, padding: 0 }}>+</button>
@@ -7175,16 +7177,16 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
     <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Contracts</div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-        <div style={card}>
+        <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
           <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{sum ? `${fmt(sum)}` : '—'}</div>
           <div style={statLabel}>Total / year</div>
         </div>
-        <div style={card}>
+        <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
           <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{list.length}</div>
           <div style={statLabel}>Deals</div>
         </div>
         {!isMobile && (
-          <div style={card}>
+          <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
             <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{list.length ? fmt(sum / list.length) : '—'}</div>
             <div style={statLabel}>Average / year</div>
           </div>
@@ -8339,9 +8341,9 @@ function App() {
     <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
       {['music', 'sports', ...(isAdmin ? ['all'] : [])].map(d => (
         <button key={d} onClick={() => setDomain(d)}
-          onMouseEnter={e => { if (domain !== d) e.currentTarget.style.background = G.surfaceRaised; }}
-          onMouseLeave={e => { if (domain !== d) e.currentTarget.style.background = domain === d ? G.greenSubtle : "transparent"; }}
-          style={{ padding: "8px 12px", border: "none", borderRadius: 9, background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 12.5, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
+          onMouseEnter={e => { if (domain !== d) { e.currentTarget.style.background = G.surface; e.currentTarget.style.boxShadow = G.cardShadowHover; } }}
+          onMouseLeave={e => { if (domain !== d) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; } }}
+          style={{ padding: "8px 12px", border: "none", borderRadius: 9, background: domain === d ? G.surface : "transparent", boxShadow: domain === d ? G.cardShadow : "none", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 12.5, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap", transition: `box-shadow 0.15s ${G.ease}` }}>
           {d}
         </button>
       ))}
@@ -8445,7 +8447,9 @@ function App() {
           return (
             <div key={it.key}>
               <button onClick={() => setOpenNavGroups(o => ({ ...o, [it.key]: !open }))}
-                style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: "transparent", border: "none", borderRadius: 9, color: childActive ? G.green : G.textSecondary, fontWeight: childActive ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+                onMouseEnter={e => { e.currentTarget.style.background = G.surface; e.currentTarget.style.boxShadow = G.cardShadowHover; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; }}
+                style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: "transparent", border: "none", borderRadius: 9, color: childActive ? G.green : G.textSecondary, fontWeight: childActive ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%", transition: `box-shadow 0.15s ${G.ease}` }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={it.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 <span style={{ flex: 1 }}>{it.label}</span>
                 {it.dot && !open && <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />}
@@ -8455,7 +8459,9 @@ function App() {
                 const on = navPage === c.key;
                 return (
                   <button key={c.key} onClick={() => navClick(c)}
-                    style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px 8px 27px", background: on ? G.greenSubtle : "transparent", border: "none", borderRadius: 9, color: on ? G.green : G.textSecondary, fontWeight: on ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+                    onMouseEnter={e => { if (!on) { e.currentTarget.style.background = G.surface; e.currentTarget.style.boxShadow = G.cardShadowHover; } }}
+                    onMouseLeave={e => { if (!on) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; } }}
+                    style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px 8px 27px", background: on ? G.surface : "transparent", boxShadow: on ? G.cardShadow : "none", border: "none", borderRadius: 9, color: on ? G.green : G.textSecondary, fontWeight: on ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%", transition: `box-shadow 0.15s ${G.ease}` }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={c.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     <span style={{ flex: 1 }}>{c.label}</span>
                     {c.dot && <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />}
@@ -8468,7 +8474,9 @@ function App() {
         const on = navPage === it.key;
         return (
           <button key={it.key} onClick={() => navClick(it)}
-            style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: on ? G.greenSubtle : "transparent", border: "none", borderRadius: 9, color: on ? G.green : G.textSecondary, fontWeight: on ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+            onMouseEnter={e => { if (!on) { e.currentTarget.style.background = G.surface; e.currentTarget.style.boxShadow = G.cardShadowHover; } }}
+            onMouseLeave={e => { if (!on) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; } }}
+            style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: on ? G.surface : "transparent", boxShadow: on ? G.cardShadow : "none", border: "none", borderRadius: 9, color: on ? G.green : G.textSecondary, fontWeight: on ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%", transition: `box-shadow 0.15s ${G.ease}` }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d={it.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             <span style={{ flex: 1 }}>{it.label}</span>
             {it.soon && <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: G.textTertiary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 6, padding: "2px 5px" }}>Soon</span>}
