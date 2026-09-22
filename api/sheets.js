@@ -449,7 +449,11 @@ module.exports = async (req, res) => {
         const isCredit = /artists\.spotify\.com\/(songwriter|producer)\//.test(url);
         if (!isArtist && !isCredit) continue;
         const hit = mediaCache[url];
-        if (hit && now - hit.fetchedAt < MEDIA_CACHE_TTL_MS) { applyHit(c, hit); continue; }
+        // A failed resolution (no photo, no tracks) only sticks for 2 hours —
+        // caching a transient Spotify hiccup for the full week left artists
+        // photoless until the cache expired (Adam Beyer / Kyle Watson, Sep 2026).
+        const hitTtl = hit && (hit.photoUrl || hit.songs?.length || hit.topTracks?.length) ? MEDIA_CACHE_TTL_MS : 2 * 60 * 60 * 1000;
+        if (hit && now - hit.fetchedAt < hitTtl) { applyHit(c, hit); continue; }
         toResolve.push({ c, url, isArtist });
       }
 
