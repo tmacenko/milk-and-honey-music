@@ -4608,7 +4608,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const greeting = (now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening') + (firstName ? `, ${firstName}` : '');
 
   return (
-    <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: isMobile ? 21 : 25, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{greeting}</div>
@@ -4934,7 +4934,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
   const greeting = (now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening') + (firstName ? `, ${firstName}` : '');
 
   return (
-    <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: isMobile ? 21 : 25, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{greeting}</div>
@@ -8551,7 +8551,7 @@ function App() {
                   onGoSchedule={() => goSportsPage('schedule')} />
               )}
               {view === 'roster' && navActive && sportsPage === 'schedule' && (
-                <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
+                <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
                   <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Schedule</div>
                   <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>Every game and birthday in the next 7 days</div>
                   <ThisWeekendModule athletes={athletes} user={currentUser} isMobile={isMobile} onOpenAthlete={(a) => setView('detail', a)} fullPage />
@@ -8600,7 +8600,7 @@ function App() {
                   onGoSchedule={() => goMusicPage('schedule')} />
               )}
               {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'schedule' && (
-                <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
+                <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
                   <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Schedule</div>
                   <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>Every artist show in the next 14 days</div>
                   <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={(c) => setView('detail', c)} user={currentUser} fullPage />
