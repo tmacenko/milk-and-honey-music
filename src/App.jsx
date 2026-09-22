@@ -4170,6 +4170,85 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
   );
 }
 
+// Upcoming shows for Artist-type clients — the music twin of the sports
+// Upcoming events module. Data comes from /api/sheets {action:'artist-shows'}
+// (server-side provider + 24h per-artist cache); the module hides itself until
+// a provider key is configured on the server AND someone has a show coming up.
+const SHOWS_CACHE = { data: null, ts: 0 };
+function MusicShowsModule({ clients, isMobile, onOpenClient }) {
+  const artistClients = useMemo(() => (clients || []).filter(c => c.name && (c.types || []).includes('Artist')), [clients]);
+  const [data, setData] = useState(SHOWS_CACHE.data);
+  useEffect(() => {
+    if (!artistClients.length) return;
+    if (SHOWS_CACHE.data && Date.now() - SHOWS_CACHE.ts < 30 * 60 * 1000) { setData(SHOWS_CACHE.data); return; }
+    let on = true;
+    fetch('/api/sheets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'artist-shows', artists: artistClients.map(c => c.name) }) })
+      .then(r => r.json())
+      .then(d => { if (!d || d.unconfigured) return; SHOWS_CACHE.data = d.shows || {}; SHOWS_CACHE.ts = Date.now(); if (on) setData(SHOWS_CACHE.data); })
+      .catch(() => { /* module stays hidden; next load retries */ });
+    return () => { on = false; };
+  }, [artistClients]);
+  const items = useMemo(() => {
+    if (!data) return [];
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const out = [];
+    for (const c of artistClients) {
+      for (const e of data[c.name] || []) {
+        // Show dates are venue-local strings — compare on the date part only
+        // so timezones can't shift a show across days.
+        const m = String(e.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) continue;
+        const d = new Date(+m[1], +m[2] - 1, +m[3]);
+        if (d < t0) continue;
+        out.push({ c, e, d });
+      }
+    }
+    return out.sort((a, b) => a.d - b.d || a.c.name.localeCompare(b.c.name));
+  }, [data, artistClients]);
+  const [expanded, setExpanded] = useState(false);
+  if (!items.length) return null;
+  const COLLAPSED = 6;
+  const shown = expanded ? items : items.slice(0, COLLAPSED);
+  const dayLabel = (d) => {
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const diff = Math.round((d - t0) / 86400000);
+    return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+  return (
+    <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
+        <div style={{ fontSize: 11, color: G.textTertiary }}>{items.length} show{items.length === 1 ? '' : 's'}</div>
+      </div>
+      <div style={expanded ? { maxHeight: 400, overflowY: "auto" } : undefined}>
+        {shown.map(({ c, e, d }, i) => (
+          <div key={`${c.name}-${e.date}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: i === shown.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+            <div style={{ width: 92, flexShrink: 0, fontSize: 12, fontWeight: 600, color: G.textSecondary }}>{dayLabel(d)}</div>
+            <button onClick={() => onOpenClient(c)}
+              style={{ display: "flex", alignItems: "center", gap: 7, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 999, padding: "3px 10px 3px 4px", cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>
+              <Avatar name={c.name} photoUrl={c.photoUrl} size={20} />
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: G.text, whiteSpace: "nowrap" }}>{c.name}</span>
+            </button>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {e.venue}{e.city ? <span style={{ color: G.textTertiary }}> · {e.city}</span> : null}
+            </div>
+            {e.url && (
+              <a href={e.url} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 12, fontWeight: 600, color: G.green, textDecoration: "none", flexShrink: 0 }}>Tickets ↗</a>
+            )}
+          </div>
+        ))}
+      </div>
+      {items.length > COLLAPSED && (
+        <button onClick={() => setExpanded(x => !x)}
+          style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+          {expanded ? 'Show fewer' : `Show all ${items.length} shows →`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // External tools on the music sidebar. `email` is either a key into the
 // server-provided toolEmails map (login emails stay OUT of the public bundle)
 // or 'me' — the signed-in person's own email from the Staff tab. Items with an
@@ -4814,6 +4893,8 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
           <div style={statSub}>Based in the United Kingdom</div>
         </div>
       </div>
+
+      <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={onOpenClient} />
 
       {s.top.length > 0 && (
         <div style={{ marginTop: 18 }}>

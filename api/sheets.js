@@ -614,6 +614,68 @@ module.exports = async (req, res) => {
       const { configured, admin } = authState(req);
       if (configured && !admin) return res.status(401).json({ error: 'Not authorized' });
 
+      // Upcoming shows for Artist-type clients (music dashboard module).
+      // Provider is env-configured: BANDSINTOWN_APP_ID preferred (best niche
+      // coverage), TICKETMASTER_API_KEY as fallback. Per-artist results are
+      // cached in Blob for 24h so provider traffic stays polite; a call with
+      // no key configured answers { unconfigured: true } and the module hides.
+      if (req.body?.action === 'artist-shows') {
+        const names = [...new Set((req.body.artists || []).map(n => String(n || '').trim()).filter(Boolean))].slice(0, 80);
+        const bit = process.env.BANDSINTOWN_APP_ID, tm = process.env.TICKETMASTER_API_KEY;
+        if (!names.length || (!bit && !tm)) return res.json({ shows: {}, unconfigured: !bit && !tm });
+        const source = bit ? 'bandsintown' : 'ticketmaster';
+        const norm = (events) => (events || [])
+          .filter(e => e && e.date)
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .slice(0, 20);
+        const fetchOne = async (name) => {
+          try {
+            if (bit) {
+              const r = await fetch(`https://rest.bandsintown.com/artists/${encodeURIComponent(name)}/events?app_id=${encodeURIComponent(bit)}`);
+              const d = await r.json();
+              if (!Array.isArray(d)) return null; // unknown artist / API error — retry next refresh
+              return norm(d.map(e => ({
+                date: e.datetime || '',
+                venue: e.venue?.name || '',
+                city: [e.venue?.city, e.venue?.region || e.venue?.country].filter(Boolean).join(', '),
+                url: (e.offers || [])[0]?.url || e.url || '',
+              })));
+            }
+            const a = await (await fetch(`https://app.ticketmaster.com/discovery/v2/attractions.json?keyword=${encodeURIComponent(name)}&size=3&apikey=${tm}`)).json();
+            const att = (a._embedded?.attractions || []).find(x => String(x.name || '').trim().toLowerCase() === name.toLowerCase());
+            if (!att) return []; // no exact-name attraction — treat as "no shows" rather than risk the wrong act
+            const ev = await (await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?attractionId=${att.id}&size=60&sort=date,asc&apikey=${tm}`)).json();
+            return norm((ev._embedded?.events || []).map(e => {
+              const v = e._embedded?.venues?.[0] || {};
+              return {
+                date: e.dates?.start?.dateTime || e.dates?.start?.localDate || '',
+                venue: v.name || '',
+                city: [v.city?.name, v.state?.stateCode || v.country?.countryCode].filter(Boolean).join(', '),
+                url: e.url || '',
+              };
+            }));
+          } catch { return null; }
+        };
+        const SHOWS_CACHE_PATH = 'artist-shows-cache.json';
+        const cache = await loadBlobCache(SHOWS_CACHE_PATH);
+        const DAY = 24 * 60 * 60 * 1000;
+        const shows = {};
+        let dirty = false, fetched = 0;
+        for (const name of names) {
+          const hit = cache[name];
+          if (hit && Date.now() - hit.ts < DAY) { shows[name] = hit.events; continue; }
+          // Cap live lookups per call (Ticketmaster is 2 requests/artist and
+          // rate-limited) — misses fill in on the next dashboard load.
+          if (fetched >= 12) continue;
+          fetched++;
+          const events = await fetchOne(name);
+          if (events !== null) { cache[name] = { ts: Date.now(), events }; shows[name] = events; dirty = true; }
+          else if (hit) shows[name] = hit.events; // stale beats nothing on provider hiccups
+        }
+        if (dirty) await saveBlobCache(SHOWS_CACHE_PATH, cache);
+        return res.json({ shows, source });
+      }
+
       // Chat proxy. The data context is assembled SERVER-side (fullContext mode)
       // by re-fetching our own APIs with the caller's cookie, so the model sees
       // everything the logged-in team sees: both rosters with all synced fields,
