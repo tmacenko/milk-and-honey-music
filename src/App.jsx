@@ -4017,7 +4017,7 @@ async function fetchWeekendEvents() {
 }
 const weekendTeamKey = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
+function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, onShowAll }) {
   const [events, setEvents] = useState(WEEKEND_CACHE.events || null);
   // Agents land on their own clients; admin/marketing (and house sessions) on everyone.
   const [scope, setScope] = useState(user?.userRole === 'agent' ? 'mine' : 'all');
@@ -4056,15 +4056,25 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
     return out;
   }, [athletes]);
   const [expanded, setExpanded] = useState(false);
+  // Full-page mode (the Schedule page): everything visible + a search box
+  // that matches athletes, teams/schools, and networks.
+  const [q, setQ] = useState('');
   if (!games.length && !bdayItems.length) return null;
   // Agents always get the scope toggle — even with nothing of their own, so
   // "whose events am I looking at?" is never ambiguous.
   const canScope = !!user?.agentKey;
   const shownGames = canScope && scope === 'mine' ? mineGames : games;
   const shownBdays = canScope && scope === 'mine' ? bdayItems.filter(b => isMine(b.a)) : bdayItems;
-  const items = [...shownGames.map(g => ({ kind: 'game', date: g.ev.date, g })), ...shownBdays].sort((x, y) => x.date - y.date);
+  let items = [...shownGames.map(g => ({ kind: 'game', date: g.ev.date, g })), ...shownBdays].sort((x, y) => x.date - y.date);
+  const qn = fullPage ? q.trim().toLowerCase() : '';
+  if (qn) {
+    const hay = (it) => it.kind === 'bday'
+      ? `${it.a.name} birthday ${it.a.nflTeam || ''} ${it.a.college || ''}`
+      : `${it.g.clients.map(a => `${a.name} ${a.nflTeam || ''} ${a.college || ''}`).join(' ')} ${it.g.ev.teams.map(t => `${t.name} ${t.location} ${t.short}`).join(' ')} ${it.g.ev.network}`;
+    items = items.filter(it => hay(it).toLowerCase().includes(qn));
+  }
   const COLLAPSED = 6;
-  const visibleItems = expanded ? items : items.slice(0, COLLAPSED);
+  const visibleItems = fullPage || expanded ? items : items.slice(0, COLLAPSED);
   const subParts = [
     shownGames.length ? `${shownGames.length} game${shownGames.length === 1 ? '' : 's'}` : '',
     shownBdays.length ? `${shownBdays.length} birthday${shownBdays.length === 1 ? '' : 's'}` : '',
@@ -4075,10 +4085,14 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
   const teamLabel = (ev, t) => (t.rank ? `#${t.rank} ` : '') + (ev.league === 'nfl' ? (t.short || t.name) : (t.location || t.name));
   return (
     <div style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16, marginTop: 18 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming events</div>
         <span style={{ fontSize: 12, color: G.textTertiary }}>{subParts}</span>
         <div style={{ flex: 1 }} />
+        {fullPage && (
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search athlete, team, network..."
+            style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 10px", color: G.text, fontSize: 12.5, fontFamily: ff, outline: "none", width: isMobile ? "100%" : 230 }} />
+        )}
         {canScope && (
           <div style={{ display: "flex", gap: 4 }}>
             {[['mine', 'My clients'], ['all', 'Everyone']].map(([k, label]) => (
@@ -4092,10 +4106,10 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
       </div>
       {items.length === 0 && (
         <div style={{ fontSize: 13, color: G.textTertiary, padding: "10px 0 4px" }}>
-          None of your clients have games or birthdays in the next 7 days — tap Everyone to see the full slate.
+          {qn ? 'Nothing matches that search.' : 'None of your clients have games or birthdays in the next 7 days — tap Everyone to see the full slate.'}
         </div>
       )}
-      <div style={expanded && items.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
+      <div style={!fullPage && expanded && items.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
       {visibleItems.map((it, gi) => {
         const last = gi === visibleItems.length - 1;
         if (it.kind === 'bday') {
@@ -4160,10 +4174,10 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
         );
       })}
       </div>
-      {items.length > COLLAPSED && (
-        <button onClick={() => setExpanded(e => !e)}
+      {!fullPage && items.length > COLLAPSED && (
+        <button onClick={() => onShowAll ? onShowAll() : setExpanded(e => !e)}
           style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-          {expanded ? 'Show fewer' : `Show all ${items.length} events →`}
+          {!onShowAll && expanded ? 'Show fewer' : `Show all ${items.length} events →`}
         </button>
       )}
     </div>
@@ -4175,7 +4189,7 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete }) {
 // (server-side provider + 24h per-artist cache); the module hides itself until
 // a provider key is configured on the server AND someone has a show coming up.
 const SHOWS_CACHE = { data: null, ts: 0 };
-function MusicShowsModule({ clients, isMobile, onOpenClient, user }) {
+function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onShowAll }) {
   const artistClients = useMemo(() => (clients || []).filter(c => c.name && (c.types || []).includes('Artist')), [clients]);
   const [data, setData] = useState(SHOWS_CACHE.data);
   // Same scope rules as the sports Upcoming events module: agents land on
@@ -4212,11 +4226,16 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user }) {
     return out.sort((a, b) => a.d - b.d || a.c.name.localeCompare(b.c.name));
   }, [data, artistClients]);
   const [expanded, setExpanded] = useState(false);
+  // Full-page mode (the Schedule page): everything visible + search across
+  // artist, venue, and city.
+  const [q, setQ] = useState('');
   if (!items.length) return null;
   const canScope = !!user?.agentKey;
-  const shownItems = canScope && scope === 'mine' ? items.filter(x => isMine(x.c)) : items;
+  let shownItems = canScope && scope === 'mine' ? items.filter(x => isMine(x.c)) : items;
+  const qn = fullPage ? q.trim().toLowerCase() : '';
+  if (qn) shownItems = shownItems.filter(({ c, e }) => `${c.name} ${e.venue} ${e.city}`.toLowerCase().includes(qn));
   const COLLAPSED = 6;
-  const shown = expanded ? shownItems : shownItems.slice(0, COLLAPSED);
+  const shown = fullPage || expanded ? shownItems : shownItems.slice(0, COLLAPSED);
   const dayLabel = (d) => {
     const t0 = new Date(); t0.setHours(0, 0, 0, 0);
     const diff = Math.round((d - t0) / 86400000);
@@ -4228,6 +4247,10 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user }) {
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
         <span style={{ fontSize: 12, color: G.textTertiary }}>{shownItems.length} show{shownItems.length === 1 ? '' : 's'}</span>
         <div style={{ flex: 1 }} />
+        {fullPage && (
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search artist, venue, city..."
+            style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 10px", color: G.text, fontSize: 12.5, fontFamily: ff, outline: "none", width: isMobile ? "100%" : 230 }} />
+        )}
         {canScope && (
           <div style={{ display: "flex", gap: 4 }}>
             {[['mine', 'My clients'], ['all', 'Everyone']].map(([k, label]) => (
@@ -4241,10 +4264,10 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user }) {
       </div>
       {shownItems.length === 0 && (
         <div style={{ fontSize: 13, color: G.textTertiary, padding: "10px 0 4px" }}>
-          None of your clients have shows on the calendar — tap Everyone to see the full slate.
+          {qn ? 'Nothing matches that search.' : 'None of your clients have shows on the calendar — tap Everyone to see the full slate.'}
         </div>
       )}
-      <div style={expanded && shownItems.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
+      <div style={!fullPage && expanded && shownItems.length > COLLAPSED ? { maxHeight: 400, overflowY: "auto" } : undefined}>
         {shown.map(({ c, e, d }, i) => (
           <div key={`${c.name}-${e.date}-${i}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i === shown.length - 1 ? "none" : `1px solid ${G.surfaceBorder}`, flexWrap: isMobile ? "wrap" : "nowrap" }}>
             <div style={{ width: 92, flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: G.text }}>{dayLabel(d)}</div>
@@ -4263,10 +4286,10 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user }) {
           </div>
         ))}
       </div>
-      {shownItems.length > COLLAPSED && (
-        <button onClick={() => setExpanded(x => !x)}
+      {!fullPage && shownItems.length > COLLAPSED && (
+        <button onClick={() => onShowAll ? onShowAll() : setExpanded(x => !x)}
           style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-          {expanded ? 'Show fewer' : `Show all ${shownItems.length} shows →`}
+          {!onShowAll && expanded ? 'Show fewer' : `Show all ${shownItems.length} shows →`}
         </button>
       )}
     </div>
@@ -4362,7 +4385,7 @@ function TodoNotesList({ items, onComplete, onReorder }) {
   ));
 }
 
-function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, onGoBrandDeals, user, decks }) {
+function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, onGoBrandDeals, onGoSchedule, user, decks }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Agents see THEIR book everywhere: every stat and tile computes over their
@@ -4447,6 +4470,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   // Fresh open brand deals (≤7 days, still open) get a dashboard nudge for ALL
   // staff — agents are the ones who submit their players.
   const { alerts: dealAlerts, dismiss: dismissDeal } = useOpenDealAlerts(athletes, user);
+  const [alertsOpen, setAlertsOpen] = useState(false); // >1 notification collapses to one row until opened
   const [addingTodo, setAddingTodo] = useState(false);
   const [todoText, setTodoText] = useState('');
   const [todoOrd, setTodoOrd] = useState({}); // optimistic drag order until the sheet write lands
@@ -4543,22 +4567,45 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         {!isMobile && <GoogleSearchBox />}
       </div>
 
-      {dealAlerts.map(({ deal, eligibleCount }) => (
-        <div key={deal.dealId} style={{ marginTop: 14, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      {/* Multiple notifications collapse into one container row; a single one
+          shows inline as before. */}
+      {dealAlerts.length > 1 && !alertsOpen ? (
+        <div onClick={() => setAlertsOpen(true)}
+          style={{ marginTop: 14, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />
-          <span style={{ fontSize: 13, color: G.textSecondary, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            New brand deal — <b style={{ color: G.text, fontWeight: 700 }}>{deal.company}</b>
-            <span style={{ color: G.textTertiary }}> · {user?.userRole === 'agent' ? `${eligibleCount} of your clients eligible` : `${eligibleCount} eligible`}{deal.expires ? ` · closes ${new Date(deal.expires + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}</span>
+          <span style={{ fontSize: 13, color: G.textSecondary }}>
+            <b style={{ color: G.text, fontWeight: 700 }}>{dealAlerts.length} pending notifications</b>
+            <span style={{ color: G.textTertiary }}> · new brand deals</span>
           </span>
           <div style={{ flex: 1 }} />
-          <button onClick={() => { PENDING_DEAL.id = deal.dealId; onGoBrandDeals(); }}
-            style={{ background: "none", border: "none", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff, padding: "2px 0", whiteSpace: "nowrap" }}>
-            Submit players →
-          </button>
-          <button onClick={() => dismissDeal(deal.dealId)} title="Dismiss"
-            style={{ background: "transparent", border: "none", color: G.textTertiary, cursor: "pointer", padding: "2px 4px", fontSize: 13, fontFamily: ff, lineHeight: 1 }}>✕</button>
+          <span style={{ color: G.green, fontWeight: 700, fontSize: 12.5, whiteSpace: "nowrap" }}>View →</span>
         </div>
-      ))}
+      ) : (
+        <>
+          {dealAlerts.map(({ deal, eligibleCount }) => (
+            <div key={deal.dealId} style={{ marginTop: 14, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: G.green, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: G.textSecondary, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                New brand deal — <b style={{ color: G.text, fontWeight: 700 }}>{deal.company}</b>
+                <span style={{ color: G.textTertiary }}> · {user?.userRole === 'agent' ? `${eligibleCount} of your clients eligible` : `${eligibleCount} eligible`}{deal.expires ? ` · closes ${new Date(deal.expires + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}</span>
+              </span>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => { PENDING_DEAL.id = deal.dealId; onGoBrandDeals(); }}
+                style={{ background: "none", border: "none", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff, padding: "2px 0", whiteSpace: "nowrap" }}>
+                Submit players →
+              </button>
+              <button onClick={() => dismissDeal(deal.dealId)} title="Dismiss"
+                style={{ background: "transparent", border: "none", color: G.textTertiary, cursor: "pointer", padding: "2px 4px", fontSize: 13, fontFamily: ff, lineHeight: 1 }}>✕</button>
+            </div>
+          ))}
+          {dealAlerts.length > 1 && (
+            <button onClick={() => setAlertsOpen(false)}
+              style={{ marginTop: 6, background: "none", border: "none", color: G.textTertiary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+              Collapse notifications ↑
+            </button>
+          )}
+        </>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
         {personal ? (
@@ -4605,7 +4652,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         )}
       </div>
 
-      <ThisWeekendModule athletes={athletes} user={user} isMobile={isMobile} onOpenAthlete={onOpenAthlete} />
+      <ThisWeekendModule athletes={athletes} user={user} isMobile={isMobile} onOpenAthlete={onOpenAthlete} onShowAll={onGoSchedule} />
 
       {topClients.length > 0 && (
         <div style={{ marginTop: 18 }}>
@@ -4770,7 +4817,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 // tiles — built from what the music sheet actually tracks (types, reps,
 // countries, Spotify listeners/releases). Gated to Tyler's login while it's
 // broken in.
-function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onFilterType, onGoMarketing }) {
+function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onFilterType, onGoMarketing, onGoSchedule }) {
   const now = new Date();
   const s = useMemo(() => {
     const typeCounts = {};
@@ -4918,7 +4965,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
         </div>
       </div>
 
-      <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={onOpenClient} user={user} />
+      <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={onOpenClient} user={user} onShowAll={onGoSchedule} />
 
       {s.top.length > 0 && (
         <div style={{ marginTop: 18 }}>
@@ -8488,7 +8535,15 @@ function App() {
                   onShowMine={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setAgentFilter(currentUser?.name || 'All'); goSportsPage('roster'); }}
                   onGoBrandDeals={() => goSportsPage('branddeals')}
                   onGoMarketing={() => goSportsPage('marketing')}
-                  onGoRecruiting={() => goSportsPage('recruiting')} />
+                  onGoRecruiting={() => goSportsPage('recruiting')}
+                  onGoSchedule={() => goSportsPage('schedule')} />
+              )}
+              {view === 'roster' && navActive && sportsPage === 'schedule' && (
+                <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
+                  <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Schedule</div>
+                  <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>Every game and birthday in the next 7 days</div>
+                  <ThisWeekendModule athletes={athletes} user={currentUser} isMobile={isMobile} onOpenAthlete={(a) => setView('detail', a)} fullPage />
+                </div>
               )}
               {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
@@ -8529,7 +8584,15 @@ function App() {
                   onOpenClient={(c) => setView('detail', c)}
                   onGoRoster={() => { clearCustomGroup(); setFilterTypes([]); goMusicPage('roster'); }}
                   onFilterType={(t) => { clearCustomGroup(); setFilterTypes([t]); goMusicPage('roster'); }}
-                  onGoMarketing={() => goMusicPage('marketing')} />
+                  onGoMarketing={() => goMusicPage('marketing')}
+                  onGoSchedule={() => goMusicPage('schedule')} />
+              )}
+              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'schedule' && (
+                <div style={{ maxWidth: 1060, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 24px 60px" }}>
+                  <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Schedule</div>
+                  <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>Every artist show in the next 14 days</div>
+                  <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={(c) => setView('detail', c)} user={currentUser} fullPage />
+                </div>
               )}
               {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'marketing' && (
                 <MusicMarketingPage isMobile={isMobile} clients={clients} onOpenClient={(c) => setView('detail', c)} />
