@@ -3369,18 +3369,24 @@ function Landing({ onEnter }) {
       <style>{`@keyframes mhLandIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}`}</style>
       <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", padding: 24, animation: `mhLandIn 0.6s ${G.ease}` }}>
         <img src="/mh-logo.png" alt="Milk & Honey" style={{ height: 96, maxWidth: "80vw", objectFit: "contain", marginBottom: 44 }} />
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, width: 300, maxWidth: "82vw" }}>
+        {/* A real <form> with username + current-password hints so Safari and
+            Chrome offer to save the login (the password IS the identity here,
+            so the username field is a hidden constant). */}
+        <form onSubmit={e => { e.preventDefault(); submit(); }}
+          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, width: 300, maxWidth: "82vw" }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>Login</div>
-          <input ref={inputRef} type="password" value={password}
+          <input type="text" name="username" autoComplete="username" defaultValue="Milk & Honey" readOnly aria-hidden="true" tabIndex={-1}
+            style={{ position: "absolute", left: -9999, top: -9999, width: 1, height: 1, opacity: 0 }} />
+          <input ref={inputRef} type="password" name="password" autoComplete="current-password" value={password}
             onChange={e => { setPassword(e.target.value); setError(''); }}
-            onKeyDown={e => e.key === 'Enter' && submit()} placeholder="Password"
+            placeholder="Password"
             style={{ width: "100%", boxSizing: "border-box", textAlign: "center", background: "rgba(30,32,34,0.72)", border: `1px solid ${error ? G.red : "rgba(255,255,255,0.16)"}`, borderRadius: 12, padding: "13px 16px", fontSize: 15, color: "#fff", fontFamily: ff, outline: "none" }} />
           {error && <div style={{ fontSize: 12, color: G.red }}>{error}</div>}
-          <button onClick={submit} disabled={!password || busy}
+          <button type="submit" disabled={!password || busy}
             style={{ width: "100%", background: password && !busy ? G.green : "rgba(255,255,255,0.08)", color: password && !busy ? "#0a0a0a" : "rgba(255,255,255,0.4)", border: "none", borderRadius: 12, padding: "13px", fontWeight: 700, fontSize: 14, cursor: password && !busy ? "pointer" : "not-allowed", fontFamily: ff, transition: `all 0.2s ${G.ease}` }}>
             {busy ? 'Entering…' : 'Enter'}
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );
