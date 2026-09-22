@@ -4020,7 +4020,7 @@ const weekendTeamKey = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g
 function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, onShowAll }) {
   const [events, setEvents] = useState(WEEKEND_CACHE.events || null);
   // Agents land on their own clients; admin/marketing (and house sessions) on everyone.
-  const [scope, setScope] = useState(user?.userRole === 'agent' ? 'mine' : 'all');
+  const [scope, setScope] = useState(['agent', 'manager'].includes(user?.userRole) ? 'mine' : 'all');
   useEffect(() => { let on = true; fetchWeekendEvents().then(e => { if (on) setEvents(e); }); return () => { on = false; }; }, []);
   const isMine = useCallback(a => !!user?.agentKey && agentMatch(a.agentAssigned, user.agentKey), [user]);
   const games = useMemo(() => {
@@ -4177,7 +4177,7 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
       {!fullPage && items.length > COLLAPSED && (
         <button onClick={() => onShowAll ? onShowAll() : setExpanded(e => !e)}
           style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-          {!onShowAll && expanded ? 'Show fewer' : `Show all ${items.length} events →`}
+          {!onShowAll && expanded ? 'Show fewer' : 'View all →'}
         </button>
       )}
     </div>
@@ -4195,7 +4195,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
   // Same scope rules as the sports Upcoming events module: agents land on
   // their own clients (Contact column holds the manager names), admin and
   // house sessions on everyone; the toggle shows for anyone with an agentKey.
-  const [scope, setScope] = useState(user?.userRole === 'agent' ? 'mine' : 'all');
+  const [scope, setScope] = useState(['agent', 'manager'].includes(user?.userRole) ? 'mine' : 'all');
   const isMine = useCallback(c => !!user?.agentKey && agentMatch(c.contact, user.agentKey), [user]);
   useEffect(() => {
     if (!artistClients.length) return;
@@ -4341,7 +4341,7 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
       {!fullPage && shownItems.length > COLLAPSED && (
         <button onClick={() => onShowAll ? onShowAll() : setExpanded(x => !x)}
           style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-          {!onShowAll && expanded ? 'Show fewer' : `Show all ${shownItems.length} shows →`}
+          {!onShowAll && expanded ? 'Show fewer' : 'View all →'}
         </button>
       )}
     </div>
@@ -4683,7 +4683,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           {!s.hasGrowthData && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>Sample numbers — daily snapshots start tonight; real growth appears within a week.</div>}
           {s.hasGrowthData && (
             <button onClick={onGoMarketing} style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-              View full growth board →
+              View all →
             </button>
           )}
         </div>
@@ -4978,16 +4978,20 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
                 c.id || i, i === arr.length - 1))}
           {s.hasGrowthData && (
             <button onClick={onGoMarketing} style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
-              View full growth board →
+              View all →
             </button>
           )}
         </div>
         <div style={card}>
-          {tileHead('Artist recent releases', (
-            <span onClick={() => setShowReleases(true)} style={{ color: G.green, fontWeight: 600, cursor: "pointer" }}>This week →</span>
-          ))}
+          {tileHead('Artist recent releases', '')}
           {s.releases.length === 0 ? empty('No releases synced yet.')
             : s.releases.map((x, i, arr) => row(x.c, x.r.name, relDate(x.at), `${x.c.id || x.c.name}-${i}`, i === arr.length - 1))}
+          {s.releases.length > 0 && (
+            <button onClick={() => setShowReleases(true)}
+              style={{ marginTop: 8, background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>
+              View all →
+            </button>
+          )}
         </div>
         <div style={card}>
           {tileHead('Notes', (
