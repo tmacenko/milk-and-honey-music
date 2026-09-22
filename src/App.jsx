@@ -4449,7 +4449,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const scoped = personal ? mineList : athletes;
   // Agents see their top 4 by reach; the house/admin view gets the roster-wide top 4.
   const topClients = useMemo(
-    () => [...(personal ? mineList : athletes)].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 4),
+    () => [...(personal ? mineList : athletes)].sort((a, b) => athleteReach(b) - athleteReach(a)).slice(0, 5),
     [personal, mineList, athletes]);
   const s = useMemo(() => {
     const levels = { 'NFL': 0, 'College': 0, 'High School': 0 };
@@ -4659,56 +4659,11 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         </>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
-        {personal ? (
-          <div style={{ ...card, cursor: "pointer" }} onClick={onShowMine}>
-            <div style={{ fontSize: 26, fontWeight: 700, color: G.green, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.mine}</div>
-            <div style={statLabel}>My clients</div>
-            <div style={statSub}>of {athletes.length} on the roster</div>
-          </div>
-        ) : (
-          <div style={{ ...card, cursor: "pointer" }} onClick={onGoRoster}>
-            <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{athletes.length}</div>
-            <div style={statLabel}>Total athletes</div>
-            <div style={statSub}>{s.levels['NFL']} NFL · {s.levels['College']} College · {s.levels['High School']} HS</div>
-          </div>
-        )}
-        <div style={card}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.contractSum ? fmtMoney(s.contractSum) : '—'}</div>
-          <div style={statLabel}>Total contract value</div>
-          <div style={statSub}>{s.contractSum ? seasonLabel : 'No contract data yet'}</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{bigNum(s.reach)}</div>
-          <div style={statLabel}>{personal ? "My clients' social reach" : 'Combined social reach'}</div>
-          <div style={statSub}>{s.reach ? `IG ${s.splits.ig}% · TikTok ${s.splits.tt}% · X ${s.splits.x}%` : 'No follower data yet'}</div>
-        </div>
-        {(decks || []).length > 0 ? (
-          <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "center", gap: 34 }}>
-            {decks.slice(0, 2).map(d => (
-              <a key={d.title} href={d.url} target="_blank" rel="noopener noreferrer"
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textDecoration: "none", width: 62 }}>
-                <svg width="38" height="31" viewBox="0 0 36 30" aria-hidden="true">
-                  <path d="M2 6c0-1.7 1.3-3 3-3h8l3 3h15c1.7 0 3 1.3 3 3v15c0 1.7-1.3 3-3 3H5c-1.7 0-3-1.3-3-3V6z" fill={G.surfaceRaised} stroke={G.textTertiary} strokeWidth="1.5" />
-                </svg>
-                <div style={{ ...statLabel, marginTop: 0, textAlign: "center", lineHeight: 1.5 }}>{d.title.split(' ').map((w, i) => <div key={i}>{w}</div>)}</div>
-              </a>
-            ))}
-          </div>
-        ) : (
-          <div style={{ ...card, cursor: "pointer" }} onClick={onShowStarters}>
-            <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.starters}</div>
-            <div style={statLabel}>{personal ? 'My starters' : 'Starters'}</div>
-            <div style={statSub}>{s.nflStarters} NFL · {s.collegeStarters} College</div>
-          </div>
-        )}
-      </div>
-
       <ThisWeekendModule athletes={athletes} user={user} isMobile={isMobile} onOpenAthlete={onOpenAthlete} onShowAll={onGoSchedule} />
 
       {topClients.length > 0 && (
         <div style={{ marginTop: 18 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10 }}>
             {topClients.map((a, i) => (
               <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} showDepth onClick={() => onOpenAthlete(a)} />
             ))}
@@ -4906,8 +4861,8 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
     // Key clients: ranked by Spotify listeners when that column has data;
     // until then the sheet's own order leads with the marquee names.
     const top = listenerProfiles > 0
-      ? [...clients].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly)).slice(0, 4)
-      : clients.slice(0, 4);
+      ? [...clients].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly)).slice(0, 5)
+      : clients.slice(0, 5);
     // 7-day movers, from the music socials job's growth columns.
     const hasGrowthData = clients.some(c => c.growth7dPct !== '' && c.growth7dPct != null);
     const hot = clients.filter(c => (c.growth7d || 0) > 0)
@@ -4994,42 +4949,19 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
         {!isMobile && <GoogleSearchBox />}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
-        <div style={{ ...card, cursor: "pointer" }} onClick={onGoRoster}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{clients.length}</div>
-          <div style={statLabel}>Total clients</div>
-          <div style={statSub}>{['Songwriter', 'Producer', 'Artist'].map(t => `${s.typeCounts[t] || 0} ${t}s`).join(' · ')}</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.listeners ? bigNum(Math.round(s.listeners)) : '—'}</div>
-          <div style={statLabel}>Monthly listeners</div>
-          <div style={statSub}>{s.listeners ? `Spotify · ${s.listenerProfiles} artist profiles` : 'No listener data yet'}</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.collaborators || '—'}</div>
-          <div style={statLabel}>Artists worked with</div>
-          <div style={statSub}>Unique collaborators on file</div>
-        </div>
-        <div style={{ ...card, cursor: "pointer" }} onClick={() => onFilterType('UK Client')}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{s.uk}</div>
-          <div style={statLabel}>UK clients</div>
-          <div style={statSub}>Based in the United Kingdom</div>
-        </div>
-      </div>
-
       <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={onOpenClient} user={user} onShowAll={onGoSchedule} />
 
       {s.top.length > 0 && (
         <div style={{ marginTop: 18 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10 }}>
             {s.top.map((c, i) => (
               <div key={`${c._rowIndex ?? ''}-${c.id || i}`} onClick={() => onOpenClient(c)}
                 onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
                 onMouseLeave={e => { e.currentTarget.style.background = G.surface; }}
-                style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 18, padding: "18px 18px 16px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
-                <Avatar name={c.name} photoUrl={c.photoUrl} size={80} />
-                <div style={{ fontWeight: 800, fontSize: 20, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, margin: "14px 0 6px" }}>{c.name}</div>
-                <div style={{ fontSize: 13, color: G.textSecondary, fontWeight: 500 }}>
+                style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "14px 14px 13px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
+                <Avatar name={c.name} photoUrl={c.photoUrl} size={60} />
+                <div style={{ fontWeight: 800, fontSize: 16.5, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, margin: "11px 0 5px" }}>{c.name}</div>
+                <div style={{ fontSize: 12, color: G.textSecondary, fontWeight: 500 }}>
                   {[...(c.types || [])].sort((a, b) => a === 'Artist' ? -1 : b === 'Artist' ? 1 : a.localeCompare(b)).join(' · ')}
                 </div>
               </div>
