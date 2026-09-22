@@ -7498,15 +7498,23 @@ function App() {
   const [staff, setStaff] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Last-known auth identity, remembered locally so repeat visits paint the
+  // right chrome (staff logos, All toggle, dashboard) on the FIRST frame
+  // instead of popping in when the network answers. Purely cosmetic trust:
+  // every API still enforces the cookie, and the fast /api/auth check below
+  // corrects this within a moment if the session actually expired.
+  const cachedAuth = (() => {
+    try { return JSON.parse(localStorage.getItem('mh_auth_v1') || 'null'); } catch { return null; }
+  })();
+  const [isAdmin, setIsAdmin] = useState(!!cachedAuth?.isAdmin);
   // Individual identity for per-person logins ({ name, agentKey, userRole })
   // — null for the house admin password and for public sessions.
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(cachedAuth?.user || null);
   const [toolEmails, setToolEmails] = useState({}); // staff-only login emails for the music Tools sidebar
-  // True once /api/sheets has answered who this session is. Sports rendering
-  // waits on it so employees never see a roster flash before the dashboard.
-  const [authKnown, setAuthKnown] = useState(false);
-  const [authConfigured, setAuthConfigured] = useState(false);
+  // True once we know who this session is. Sports rendering waits on it so
+  // employees never see a roster flash before the dashboard.
+  const [authKnown, setAuthKnown] = useState(!!cachedAuth);
+  const [authConfigured, setAuthConfigured] = useState(cachedAuth ? !!cachedAuth.configured : false);
   const [loginOpen, setLoginOpen] = useState(false);
   // Front-door gate (shared site password). No URL bypasses it — typing
   // /{anything} lands on the gate like everywhere else. External sharing goes
@@ -7747,11 +7755,25 @@ function App() {
     // Don't fetch/parse the (large) roster JSON until the visitor is past the
     // landing gate — otherwise that main-thread work makes the gate feel laggy.
     if (!gateUnlocked) return;
+    // Fast identity check (cookie only, no sheet reads): answers in a fraction
+    // of the roster fetch's time, so staff chrome (Targa logo, All toggle,
+    // dashboard) is correct almost immediately even on a cold cache.
+    fetch('/api/auth')
+      .then(r => r.json())
+      .then(d => { setIsAdmin(!!d.isAdmin); setCurrentUser(d.user || null); setAuthConfigured(!!d.authConfigured); setAuthKnown(true); })
+      .catch(() => { /* the roster fetch below still answers auth */ });
     fetch('/api/sheets')
       .then(r => r.json())
       .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setCurrentUser(d.user || null); setToolEmails(d.toolEmails || {}); setAuthConfigured(!!d.authConfigured); setLoading(false); setAuthKnown(true); })
       .catch(e => { setError(e.message); setLoading(false); setAuthKnown(true); });
   }, [gateUnlocked]);
+
+  // Keep the locally remembered auth identity in sync so the next page load
+  // paints the right chrome on the first frame.
+  useEffect(() => {
+    if (!authKnown) return;
+    try { localStorage.setItem('mh_auth_v1', JSON.stringify({ isAdmin, user: currentUser, configured: authConfigured })); } catch { /* private mode etc. */ }
+  }, [authKnown, isAdmin, currentUser, authConfigured]);
 
   // Log out / exit → back to the landing gate. Ends the admin session when
   // signed in, and always clears the front-door gate so both viewers (public)
@@ -7760,7 +7782,7 @@ function App() {
     if (isAdmin && authConfigured) {
       try { await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
     }
-    try { localStorage.removeItem('mh_gate'); } catch {}
+    try { localStorage.removeItem('mh_gate'); localStorage.removeItem('mh_auth_v1'); } catch {}
     window.location.href = '/';
   };
 
@@ -8330,6 +8352,18 @@ function App() {
           <span style={{ flex: 1 }}>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
         </button>
       </div>
+      {/* Music/Sports/All lives at the bottom of the sidebar on desktop —
+          the header keeps it only where there is no sidebar. */}
+      <div style={{ marginTop: "auto", borderTop: `1px solid ${G.surfaceBorder}`, paddingTop: 10 }}>
+        <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
+          {['music', 'sports', ...(isAdmin ? ['all'] : [])].map(d => (
+            <button key={d} onClick={() => setDomain(d)}
+              style={{ flex: 1, padding: "7px 0", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
+              {d}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   ) : null;
   const mobileNavStrip = (
@@ -8502,7 +8536,7 @@ function App() {
             {isAdmin && <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />}
             {isAdmin && <img src="/targa-logo.png" alt="Targa" style={{ height: 18, objectFit: "contain", flexShrink: 0 }} />}
             {!isAdmin && <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />}
-            {domainToggle}
+            {!sidebarOn && domainToggle}
             {view === 'detail' ? (
               <>
                 <div style={{ flex: 1 }} />
