@@ -7526,17 +7526,20 @@ function App() {
       }
     }
   };
-  const setDomain = (d) => {
-    if (d === domain) return;
+  // The side (music/sports) whose sidebar stays up while viewing All.
+  const [lastSide, setLastSide] = useState(() => (domain === 'all' ? 'music' : domain));
+  const setDomain = (d, page) => {
+    if (d === domain && !page) return;
+    if (d !== 'all') setLastSide(d);
     // Keep your place when flipping sides: marketing stays marketing, roster
     // stays roster, etc. Pages the other side doesn't have land on home.
     const SHARED_PAGES = ['home', 'roster', 'marketing', 'schedule'];
-    let carried = null;
-    if (d !== 'all' && domain !== 'all') {
+    let carried = page || null;
+    if (!carried && d !== 'all' && domain !== 'all') {
       const cur = domain === 'music' ? musicPage : sportsPage;
       carried = SHARED_PAGES.includes(cur) ? cur : 'home';
-      if (d === 'music') setMusicPage(carried); else setSportsPage(carried);
     }
+    if (carried) { if (d === 'music') setMusicPage(carried); else if (d === 'sports') setSportsPage(carried); }
     setDomainState(d);
     setSelected(null);
     setViewState('roster');
@@ -7551,6 +7554,7 @@ function App() {
   const openFromAll = (item, side) => {
     window.history.pushState({ view: 'detail', slug: slugOf(item.name), domain: side }, '', pathFor(side, slugOf(item.name)));
     setDomainState(side);
+    setLastSide(side);
     setSelected(item);
     setViewState('detail');
   };
@@ -8189,6 +8193,11 @@ function App() {
   };
   const navClick = (it) => {
     if (it.modal) { setOnboardLinksOpen(true); return; }
+    if (domain === 'all') {
+      if (it.key === 'roster' && lastSide === 'sports') setAgentFilter('All');
+      setDomain(lastSide, it.key);
+      return;
+    }
     if (domain === 'music') { goMusicPage(it.key); return; }
     // Clicking Roster in the nav always shows the full roster — the "my
     // clients" scope only applies via the dashboard link.
@@ -8199,15 +8208,16 @@ function App() {
   // Music dashboard/sidebar: all staff (the Tyler+Lucas break-in gate was
   // removed 2026-09-22 once the music home matured).
   const musicNavActive = domain === 'music' && isAdmin && view !== 'detail';
-  const navItems = domain === 'sports' ? NAV_SPORTS : NAV_MUSIC;
-  const navPage = domain === 'sports' ? sportsPage : musicPage;
+  const navSide = domain === 'all' ? lastSide : domain;
+  const navItems = navSide === 'sports' ? NAV_SPORTS : NAV_MUSIC;
+  const navPage = domain === 'all' ? null : (navSide === 'sports' ? sportsPage : musicPage);
   // Roster search/filter/export controls only make sense on the roster itself
   // (and always for public sessions). Both domains wait for the auth answer so
   // employees land straight on the dashboard with no roster flash.
   const rosterControlsOn = authKnown && (!navActive || sportsPage === 'roster') && (!musicNavActive || musicPage === 'roster');
   // The sidebar stays up on player pages too (desktop staff view) — only the
   // page-content gating uses the view-aware navActive flags.
-  const sidebarOn = !isMobile && isAdmin && domain !== 'all';
+  const sidebarOn = !isMobile && isAdmin;
   const sidebar = sidebarOn ? (
     <div style={{ width: 176, flexShrink: 0, borderRight: `1px solid ${G.surfaceBorder}`, padding: "18px 10px", position: "sticky", top: 62, alignSelf: "flex-start", maxHeight: "calc(100vh - 62px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
       {navItems.map(it => {
