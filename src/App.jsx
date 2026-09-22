@@ -8456,6 +8456,7 @@ function App() {
               {/* Row 1: logo (left) + export + profile (right) — always just these three */}
               <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
                 <img src="/mh-logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
+                {isAdmin && <img src="/targa-logo.png" alt="Targa" style={{ height: 15, objectFit: "contain", flexShrink: 0 }} />}
                 <div style={{ flex: 1 }} />
                 {rosterControlsOn && exportControl(true)}
                 {authBtnMobile}
@@ -8497,6 +8498,8 @@ function App() {
           // ── Desktop header ────────────────────────────────────────────────
           <div style={{ padding: "12px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0, position: view === 'detail' ? "static" : "sticky", top: 0, zIndex: 40, background: G.bg }}>
             <img src="/mh-logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
+            {/* Targa mark: staff sessions only — never on b2b/public views */}
+            {isAdmin && <img src="/targa-logo.png" alt="Targa" style={{ height: 18, objectFit: "contain", flexShrink: 0 }} />}
             <div style={{ width: 1, height: 18, background: G.surfaceBorder, flexShrink: 0 }} />
             {domainToggle}
             {view === 'detail' ? (
