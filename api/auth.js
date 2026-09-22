@@ -172,7 +172,9 @@ module.exports = async (req, res) => {
       return res.json({ ok: true, isAdmin: false });
     }
 
-    if (!secret || !password) return res.status(500).json({ error: 'Auth is not configured on the server.' });
+    // ADMIN_PASSWORD (the shared house login) is optional and being retired —
+    // staff log in with individual passwords; the b2b gate stays separate.
+    if (!secret) return res.status(500).json({ error: 'Auth is not configured on the server.' });
 
     // Replace the hashed-credentials store (migration / password resets).
     // House sessions and admin-role users only — a plain agent session must
@@ -186,10 +188,11 @@ module.exports = async (req, res) => {
       return res.json({ ok: true, count: Object.keys(users).length });
     }
 
-    // Master (house) password first, then individual staff passwords.
+    // House password only while the env var still exists, then individual
+    // staff passwords.
     let payload = null;
     let user = null;
-    if (safeEqual(pw, password)) {
+    if (password && safeEqual(pw, password)) {
       payload = { role: 'admin' };
     } else {
       user = await findUser(String(pw || '').trim(), secret);
