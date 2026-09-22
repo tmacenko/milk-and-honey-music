@@ -3550,6 +3550,104 @@ function Landing({ onEnter }) {
   );
 }
 
+// ── Notes page ────────────────────────────────────────────────────────────────
+// Full view of the personal notes list (shared Todos tab, per-user rows):
+// add, complete, and reopen — completed notes stay visible as history instead
+// of disappearing the way they do on the dashboard tile.
+function NotesPage({ isMobile, user }) {
+  const todosTab = useAdminTab('todos');
+  const [filter, setFilter] = useState('open');
+  const [text, setText] = useState('');
+  const me = String(user?.name || 'Team').trim().toLowerCase();
+  const rows = useMemo(() => {
+    const d = todosTab.data;
+    if (!d) return [];
+    const ti = d.headers.indexOf('text'), di = d.headers.indexOf('done'), ci = d.headers.indexOf('createdBy'), ai = d.headers.indexOf('createdAt');
+    if (ti < 0) return [];
+    return d.rows
+      .filter(r => String(r.cells[ti] || '').trim())
+      .filter(r => String((ci >= 0 && r.cells[ci]) || 'Team').trim().toLowerCase() === me)
+      .map(r => ({ row: r._row, text: r.cells[ti], done: /true/i.test(String(di >= 0 ? r.cells[di] : '')), at: String(ai >= 0 ? r.cells[ai] || '' : '') }))
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)) || b.row - a.row);
+  }, [todosTab.data, me]);
+  const post = async (body) => {
+    try {
+      await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      todosTab.reload();
+    } catch { /* next reload shows the truth */ }
+  };
+  const add = () => {
+    const t = text.trim();
+    if (!t) return;
+    setText('');
+    post({ action: 'tab-append', tab: 'todos', values: { text: t, createdBy: user?.name || 'Team', createdAt: new Date().toISOString().slice(0, 10), done: '' } });
+  };
+  const openCount = rows.filter(r => !r.done).length;
+  const shown = rows.filter(r => filter === 'all' ? true : filter === 'done' ? r.done : !r.done);
+  const fmtDay = (v) => {
+    const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return v || '—';
+    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: +m[1] === new Date().getFullYear() ? undefined : 'numeric' });
+  };
+  return (
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
+      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Notes</div>
+      <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4, marginBottom: 18 }}>Personal to you — nobody else sees these</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        {[['open', `Open (${openCount})`], ['done', `Completed (${rows.length - openCount})`], ['all', 'All']].map(([k, l]) => (
+          <button key={k} onClick={() => setFilter(k)}
+            style={{ padding: "6px 13px", borderRadius: 99, border: `1px solid ${filter === k ? G.green : G.surfaceBorder}`, background: filter === k ? G.greenSubtle : "transparent", color: filter === k ? G.green : G.textSecondary, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+            {l}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()}
+          placeholder="Add a note — press Enter" style={{ ...inputBase, width: isMobile ? 180 : 300, padding: "8px 11px", fontSize: 13 }} />
+      </div>
+      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
+        {todosTab.loading && !rows.length ? (
+          <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
+        ) : shown.length === 0 ? (
+          <div style={{ padding: "34px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>
+            {filter === 'done' ? 'Nothing completed yet.' : filter === 'open' ? 'All clear — nothing open.' : 'No notes yet.'}
+          </div>
+        ) : (
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead><tr>
+              {['', 'Note', 'Created', 'Status'].map((h, i) => (
+                <th key={i} style={{ textAlign: "left", padding: i === 0 ? "10px 6px 10px 16px" : "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", width: i === 0 ? 30 : i === 2 ? 110 : i === 3 ? 110 : undefined }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {shown.map((r, i) => {
+                const td = { padding: "11px 16px", fontSize: 13, borderBottom: i < shown.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", verticalAlign: "middle" };
+                return (
+                  <tr key={r.row}>
+                    <td style={{ ...td, padding: "11px 6px 11px 16px" }}>
+                      <button onClick={() => post({ action: 'tab-update', tab: 'todos', row: r.row, values: { done: r.done ? '' : 'TRUE' } })}
+                        title={r.done ? 'Reopen' : 'Mark complete'}
+                        style={{ width: 17, height: 17, borderRadius: "50%", border: `1.5px solid ${r.done ? G.green : G.textTertiary}`, background: r.done ? G.green : "transparent", color: "#fff", fontSize: 10, lineHeight: 1, cursor: "pointer", flexShrink: 0, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {r.done ? '✓' : ''}
+                      </button>
+                    </td>
+                    <td style={{ ...td, color: r.done ? G.textTertiary : G.text, textDecoration: r.done ? "line-through" : "none" }}>{r.text}</td>
+                    <td style={{ ...td, color: G.textSecondary, whiteSpace: "nowrap" }}>{fmtDay(r.at)}</td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: r.done ? G.textTertiary : G.green, background: r.done ? G.surfaceRaised : G.greenSubtle, borderRadius: 6, padding: "3px 9px" }}>
+                        {r.done ? 'Completed' : 'Open'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Sports employee dashboard ─────────────────────────────────────────────────
 // Admin-only landing page for the Sports side: headline numbers plus recent
 // signings and this week's birthdays, computed from the roster the app already
@@ -4613,7 +4711,7 @@ function TodoNotesList({ items, onComplete, onReorder }) {
   ));
 }
 
-function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, onGoBrandDeals, onGoSchedule, user, decks }) {
+function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, onGoBrandDeals, onGoSchedule, onGoNotes, user, decks }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Agents see THEIR book everywhere: every stat and tile computes over their
@@ -4871,10 +4969,10 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           {!s.hasGrowthData && <div style={{ fontSize: 11, color: G.textTertiary, paddingTop: 8 }}>Sample numbers — daily snapshots start tonight; real growth appears within a week.</div>}
         </div>
         <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
-          {tileHead('Needs attention', (
+          {tileHead('Notes', (
             <button onClick={() => setAddingTodo(v => !v)} title="Add a note"
               style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, width: 22, height: 22, fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", fontFamily: ff, padding: 0 }}>+</button>
-          ))}
+          ), onGoNotes)}
           {addingTodo && (
             <input autoFocus value={todoText} onChange={e => setTodoText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') addTodo(); if (e.key === 'Escape') { setAddingTodo(false); setTodoText(''); } }}
@@ -5003,7 +5101,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 // tiles — built from what the music sheet actually tracks (types, reps,
 // countries, Spotify listeners/releases). Gated to Tyler's login while it's
 // broken in.
-function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onFilterType, onGoMarketing, onGoSchedule }) {
+function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onFilterType, onGoMarketing, onGoSchedule, onGoNotes }) {
   const now = new Date();
   const s = useMemo(() => {
     const typeCounts = {};
@@ -5023,7 +5121,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
       if (!(c.types || []).length) m.push('Type');
       if (!c.contact) m.push('Rep');
       if (!c.country) m.push('Location');
-      if (!c.spotifyUrl) m.push('Spotify link');
+      if (!c.spotifyUrl && (c.types || []).includes('Artist')) m.push('Spotify link');
       if (!c.instagram && !c.twitter && !c.tiktok) m.push('Socials');
       return m;
     };
@@ -5192,7 +5290,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
           {tileHead('Notes', (
             <button onClick={() => setAddingTodo(v => !v)} title="Add a note"
               style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, color: G.green, width: 22, height: 22, fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", fontFamily: ff, padding: 0 }}>+</button>
-          ))}
+          ), onGoNotes)}
           {addingTodo && (
             <input autoFocus value={todoText} onChange={e => setTodoText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') addTodo(); if (e.key === 'Escape') { setAddingTodo(false); setTodoText(''); } }}
@@ -8792,8 +8890,10 @@ function App() {
                   onGoBrandDeals={() => goSportsPage('branddeals')}
                   onGoMarketing={() => goSportsPage('marketing')}
                   onGoRecruiting={() => goSportsPage('recruiting')}
-                  onGoSchedule={() => goSportsPage('schedule')} />
+                  onGoSchedule={() => goSportsPage('schedule')}
+                  onGoNotes={() => goSportsPage('notes')} />
               )}
+              {view === 'roster' && navActive && sportsPage === 'notes' && <NotesPage isMobile={isMobile} user={currentUser} />}
               {view === 'roster' && navActive && sportsPage === 'schedule' && (
                 <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
                   <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Schedule</div>
@@ -8841,8 +8941,10 @@ function App() {
                   onGoRoster={() => { clearCustomGroup(); setFilterTypes([]); goMusicPage('roster'); }}
                   onFilterType={(t) => { clearCustomGroup(); setFilterTypes([t]); goMusicPage('roster'); }}
                   onGoMarketing={() => goMusicPage('marketing')}
-                  onGoSchedule={() => goMusicPage('schedule')} />
+                  onGoSchedule={() => goMusicPage('schedule')}
+                  onGoNotes={() => goMusicPage('notes')} />
               )}
+              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'notes' && <NotesPage isMobile={isMobile} user={currentUser} />}
               {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'schedule' && (
                 <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
                   <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Schedule</div>
