@@ -17,9 +17,20 @@ const secret = fs.readFileSync(os.homedir() + '/.mh-harvest-secret', 'utf8').tri
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+// Exact page URLs for names the slug guess lands wrong on (verified by hand).
+const BIT_URLS = {
+  'JØRD': 'https://www.bandsintown.com/a/14022619-jord',
+  'KAS:ST': 'https://www.bandsintown.com/a/13530466-kas:st',
+  'Joel Corry': 'https://www.bandsintown.com/a/4269020-joel-corry',
+  'J. Worra': 'https://www.bandsintown.com/a/5248787-j.-worra',
+};
+
 // Artist list from the public roster payload (Artist-type clients).
+// Pass names as CLI args to re-harvest just those (e.g. after adding a URL override).
 const data = await (await fetch(`${SITE}/api/sheets`)).json();
-const artists = (data.clients || []).filter(c => c.name && (c.types || []).includes('Artist')).map(c => c.name);
+let artists = (data.clients || []).filter(c => c.name && (c.types || []).includes('Artist')).map(c => c.name);
+const only = process.argv.slice(2);
+if (only.length) artists = artists.filter(n => only.some(o => norm(o) === norm(n)));
 console.log(new Date().toISOString(), '— harvesting', artists.length, 'artists');
 
 // Chrome dumps the rendered DOM, then lingers on ad-network connections —
@@ -61,8 +72,9 @@ function parseArtistPage(html) {
 const shows = {}; const skipped = [];
 const harvestOne = async (name, budget) => {
   const slug = name.replace(/[^A-Za-z0-9]/g, '');
-  if (!slug) return 'skip';
-  const html = await chromeDump(`https://www.bandsintown.com/${slug}`, budget);
+  const url = BIT_URLS[name] || (slug && `https://www.bandsintown.com/${slug}`);
+  if (!url) return 'skip';
+  const html = await chromeDump(url, budget);
   const { artist, events } = parseArtistPage(html);
   if (!artist) return 'nopage'; // page didn't finish rendering (or doesn't exist) — retry pass decides
   if (norm(artist) !== norm(name)) { skipped.push(`${name} (landed on "${artist}")`); return 'skip'; } // never store another act's tour
