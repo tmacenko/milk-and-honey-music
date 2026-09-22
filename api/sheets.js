@@ -614,6 +614,28 @@ module.exports = async (req, res) => {
       const { configured, admin } = authState(req);
       if (configured && !admin) return res.status(401).json({ error: 'Not authorized' });
 
+      // TEMP probe: can the server (via the residential proxy) read a
+      // Bandsintown page? Admin-gated; removed once the answer is known.
+      if (req.body?.action === 'bit-probe') {
+        const url = String(req.body.url || 'https://www.bandsintown.com/a/45465-oliver-heldens');
+        const out = { url };
+        try {
+          const u = require('undici');
+          const agent = process.env.PROXY_URL && req.body.direct !== true ? new u.ProxyAgent(process.env.PROXY_URL) : null;
+          const opts = { redirect: 'follow', headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9',
+          } };
+          if (agent) opts.dispatcher = agent;
+          const r = await (agent ? u.fetch : fetch)(url, opts);
+          const body = await r.text();
+          const ld = body.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g) || [];
+          out.status = r.status; out.finalUrl = r.url; out.bytes = body.length; out.ldBlocks = ld.length; out.viaProxy = !!agent;
+          out.sample = ld.length ? ld.map(b => b.slice(34, 434)) : [body.slice(0, 300)];
+        } catch (e) { out.error = e.message; }
+        return res.json(out);
+      }
+
       // Upcoming shows for Artist-type clients (music dashboard module).
       // Provider is env-configured: BANDSINTOWN_APP_ID preferred (best niche
       // coverage), TICKETMASTER_API_KEY as fallback. Per-artist results are
