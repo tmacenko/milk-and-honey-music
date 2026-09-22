@@ -8278,15 +8278,15 @@ function App() {
       </div>
       {/* Music/Sports/All lives at the bottom of the sidebar on desktop —
           the header keeps it only where there is no sidebar. */}
-      <div style={{ marginTop: "auto", borderTop: `1px solid ${G.surfaceBorder}`, paddingTop: 10 }}>
-        <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
-          {['music', 'sports', ...(isAdmin ? ['all'] : [])].map(d => (
-            <button key={d} onClick={() => setDomain(d)}
-              style={{ flex: 1, padding: "7px 0", border: "none", background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
-              {d}
-            </button>
-          ))}
-        </div>
+      <div style={{ marginTop: "auto", borderTop: `1px solid ${G.surfaceBorder}`, paddingTop: 8, display: "flex", gap: 2 }}>
+        {['music', 'sports', ...(isAdmin ? ['all'] : [])].map(d => (
+          <button key={d} onClick={() => setDomain(d)}
+            onMouseEnter={e => { if (domain !== d) e.currentTarget.style.background = G.surfaceRaised; }}
+            onMouseLeave={e => { if (domain !== d) e.currentTarget.style.background = "transparent"; }}
+            style={{ flex: 1, padding: "8px 0", border: "none", borderRadius: 9, background: domain === d ? G.greenSubtle : "transparent", color: domain === d ? G.green : G.textSecondary, fontWeight: domain === d ? 700 : 500, fontSize: 12.5, cursor: "pointer", fontFamily: ff, textTransform: "capitalize", whiteSpace: "nowrap" }}>
+            {d}
+          </button>
+        ))}
       </div>
     </div>
   ) : null;
