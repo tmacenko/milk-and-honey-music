@@ -2182,7 +2182,7 @@ function SportsCard({ athlete: a, isMobile, onClick, showDepth, compact }) {
           <TeamLogo url={a.teamLogo} size={compact ? 30 : 38} />
         </div>
         <div style={{ fontWeight: 800, fontSize: compact ? 16 : 20, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: compact ? 4 : 6 }}>{a.name}</div>
-        <div style={{ fontSize: compact ? 12.5 : 14, color: G.textSecondary }}>{meta}{depthTag}</div>
+        <div style={{ fontSize: compact ? 11.5 : 14, color: G.textSecondary }}>{meta}{depthTag}</div>
       </div>
     </div>
   );
@@ -4961,7 +4961,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
                 style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "14px 14px 13px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
                 <Avatar name={c.name} photoUrl={c.photoUrl} size={48} />
                 <div style={{ fontWeight: 800, fontSize: 16.5, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, margin: "11px 0 5px" }}>{c.name}</div>
-                <div style={{ fontSize: 12, color: G.textSecondary, fontWeight: 500 }}>
+                <div style={{ fontSize: 11.5, color: G.textSecondary, fontWeight: 500 }}>
                   {[...(c.types || [])].sort((a, b) => a === 'Artist' ? -1 : b === 'Artist' ? 1 : a.localeCompare(b)).join(' · ')}
                 </div>
               </div>
