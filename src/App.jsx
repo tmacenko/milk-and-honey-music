@@ -8235,11 +8235,9 @@ function App() {
     goSportsPage(it.key);
   };
   const navActive = domain === 'sports' && isAdmin && view !== 'detail';
-  // The music home is Tyler-only while it's broken in — everyone else lands on
-  // the roster exactly as before.
-  // Music dashboard access while it's rolling out: Tyler + Lucas Keller.
-  const isTyler = /^(tyler\b|lucas kel)/i.test(currentUser?.name || '');
-  const musicNavActive = domain === 'music' && isAdmin && isTyler && view !== 'detail';
+  // Music dashboard/sidebar: all staff (the Tyler+Lucas break-in gate was
+  // removed 2026-09-22 once the music home matured).
+  const musicNavActive = domain === 'music' && isAdmin && view !== 'detail';
   const navItems = domain === 'sports' ? NAV_SPORTS : NAV_MUSIC;
   const navPage = domain === 'sports' ? sportsPage : musicPage;
   // Roster search/filter/export controls only make sense on the roster itself
@@ -8248,7 +8246,7 @@ function App() {
   const rosterControlsOn = authKnown && (!navActive || sportsPage === 'roster') && (!musicNavActive || musicPage === 'roster');
   // The sidebar stays up on player pages too (desktop staff view) — only the
   // page-content gating uses the view-aware navActive flags.
-  const sidebarOn = !isMobile && isAdmin && (domain === 'sports' || (domain === 'music' && isTyler));
+  const sidebarOn = !isMobile && isAdmin && domain !== 'all';
   const sidebar = sidebarOn ? (
     <div style={{ width: 176, flexShrink: 0, borderRight: `1px solid ${G.surfaceBorder}`, padding: "18px 10px", position: "sticky", top: 62, alignSelf: "flex-start", maxHeight: "calc(100vh - 62px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
       {navItems.map(it => {
@@ -8474,7 +8472,7 @@ function App() {
                 ) : (
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                     {domainToggle}
-                    {isAdmin && domain !== 'all' && (domain === 'sports' || isTyler) && (
+                    {isAdmin && domain !== 'all' && (
                       <button onClick={() => domain === 'sports' ? goSportsPage('home') : goMusicPage('home')} title="Home"
                         style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 9px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
