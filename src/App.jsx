@@ -2149,7 +2149,7 @@ const unsignedDot = (a, abs) => a.public === false ? (
     : { width: 9, height: 9, borderRadius: "50%", background: G.yellow, flexShrink: 0, cursor: "help" }} />
 ) : null;
 
-function SportsCard({ athlete: a, isMobile, onClick, showDepth }) {
+function SportsCard({ athlete: a, isMobile, onClick, showDepth, compact }) {
   const [hov, setHov] = useState(false);
   const team = a.nflTeam || a.college || '';
   const meta = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join(' · ');
@@ -2176,13 +2176,13 @@ function SportsCard({ athlete: a, isMobile, onClick, showDepth }) {
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ position: "relative", background: hov ? G.surfaceRaised : G.surface, border: `1px solid ${hov ? G.surfaceBorderLight : G.surfaceBorder}`, borderRadius: 18, overflow: "hidden", cursor: "pointer", transition: `all 0.2s ${G.ease}`, transform: hov ? "translateY(-2px)" : "none", boxShadow: hov ? G.shadowLg : G.shadow }}>
       {unsignedDot(a, true)}
-      <div style={{ padding: "18px 18px 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <Avatar name={a.name} photoUrl={a.photoUrl} size={80} />
-          <TeamLogo url={a.teamLogo} size={38} />
+      <div style={{ padding: compact ? "14px 14px 13px" : "18px 18px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: compact ? 11 : 14 }}>
+          <Avatar name={a.name} photoUrl={a.photoUrl} size={compact ? 52 : 80} />
+          <TeamLogo url={a.teamLogo} size={compact ? 30 : 38} />
         </div>
-        <div style={{ fontWeight: 800, fontSize: 20, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: 6 }}>{a.name}</div>
-        <div style={{ fontSize: 14, color: G.textSecondary }}>{meta}{depthTag}</div>
+        <div style={{ fontWeight: 800, fontSize: compact ? 16 : 20, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: compact ? 4 : 6 }}>{a.name}</div>
+        <div style={{ fontSize: compact ? 12.5 : 14, color: G.textSecondary }}>{meta}{depthTag}</div>
       </div>
     </div>
   );
@@ -4665,7 +4665,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
         <div style={{ marginTop: 18 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10 }}>
             {topClients.map((a, i) => (
-              <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} showDepth onClick={() => onOpenAthlete(a)} />
+              <SportsCard key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} athlete={a} isMobile={false} showDepth compact onClick={() => onOpenAthlete(a)} />
             ))}
           </div>
           <button onClick={personal ? onShowMine : onGoRoster}
@@ -4959,7 +4959,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
                 onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
                 onMouseLeave={e => { e.currentTarget.style.background = G.surface; }}
                 style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 16, padding: "14px 14px 13px", cursor: "pointer", transition: `background 0.2s ${G.ease}` }}>
-                <Avatar name={c.name} photoUrl={c.photoUrl} size={60} />
+                <Avatar name={c.name} photoUrl={c.photoUrl} size={48} />
                 <div style={{ fontWeight: 800, fontSize: 16.5, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, margin: "11px 0 5px" }}>{c.name}</div>
                 <div style={{ fontSize: 12, color: G.textSecondary, fontWeight: 500 }}>
                   {[...(c.types || [])].sort((a, b) => a === 'Artist' ? -1 : b === 'Artist' ? 1 : a.localeCompare(b)).join(' · ')}
