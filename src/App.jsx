@@ -26,7 +26,7 @@ const THEME_CSS = `
 [data-theme="light"]{
   --mh-green:#1f8a5c; --mh-green-subtle:rgba(31,138,92,0.10); --mh-green-border:rgba(31,138,92,0.35);
   --mh-green-shadow:0 0 20px rgba(31,138,92,0.14);
-  --mh-bg:#f3f3f5; --mh-surface:#ffffff; --mh-surface-raised:#efeff0;
+  --mh-bg:#ffffff; --mh-surface:#ffffff; --mh-surface-raised:#efeff0;
   --mh-surface-glass:rgba(255,255,255,0.9);
   --mh-border:#e3e3e6; --mh-border-light:#d2d2d8;
   --mh-text:#141417; --mh-text-2:#4c4c56; --mh-text-3:#71717c;
@@ -4521,6 +4521,37 @@ function GoogleSearchBox() {
   );
 }
 
+// Snap carousel for the featured rows: five fixed positions, a translucent
+// chevron floats at the right edge while more cards wait off-screen (click
+// advances one screenful; it disappears at the end).
+function CarouselRow({ children }) {
+  const ref = useRef(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setMore(el.scrollWidth - el.scrollLeft - el.clientWidth > 8);
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(check) : null;
+    if (ro) ro.observe(el);
+    return () => { el.removeEventListener('scroll', check); if (ro) ro.disconnect(); };
+  }, [children]);
+  return (
+    <div style={{ position: "relative" }}>
+      <div ref={ref} className="mh-hscroll" style={{ display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 2 }}>
+        {children}
+      </div>
+      {more && (
+        <button onClick={() => ref.current && ref.current.scrollBy({ left: ref.current.clientWidth, behavior: "smooth" })} title="Scroll for more"
+          style={{ position: "absolute", right: -4, top: "50%", transform: "translateY(-50%)", width: 32, height: 32, borderRadius: "50%", border: `1px solid ${G.surfaceBorderLight}`, background: G.surfaceGlass, backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", opacity: 0.92, color: G.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: G.shadowLg, padding: 0 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Drag-to-reorder notes list shared by both dashboards. Items carry a
 // fractional `ord`; a drop writes ONE sortOrder cell (midpoint between the
 // new neighbors) via onReorder(row, ord).
@@ -4788,15 +4819,13 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 
       {topClients.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          {/* 5 visible, scroll left for the rest; snap keeps cards locked to
-              fixed positions instead of resting mid-scroll. */}
-          <div className="mh-hscroll" style={{ display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 2 }}>
+          <CarouselRow>
             {topClients.map((a, i) => (
               <div key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} style={{ flex: isMobile ? "0 0 calc(50% - 6px)" : "0 0 calc((100% - 48px) / 5)", minWidth: 0, scrollSnapAlign: "start" }}>
                 <SportsCard athlete={a} isMobile={false} compact onClick={() => onOpenAthlete(a)} />
               </div>
             ))}
-          </div>
+          </CarouselRow>
         </div>
       )}
 
@@ -5087,9 +5116,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
 
       {featured.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          {/* 5 visible, scroll left for the rest; snap keeps cards locked to
-              fixed positions instead of resting mid-scroll. */}
-          <div className="mh-hscroll" style={{ display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 2 }}>
+          <CarouselRow>
             {featured.map((c, i) => (
               <div key={`${c._rowIndex ?? ''}-${c.id || i}`} onClick={() => onOpenClient(c)}
                 onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
@@ -5102,7 +5129,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
                 </div>
               </div>
             ))}
-          </div>
+          </CarouselRow>
         </div>
       )}
 
@@ -5815,7 +5842,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const filterActive = agent !== 'All' || side !== 'All' || klass !== 'All' || stageF !== 'All';
   const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, klass !== 'All' ? klass : null, stageF !== 'All' ? stageF : null].filter(Boolean).join(', ') || 'All';
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
         <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Recruiting</div>
         <div style={{ flex: 1 }} />
@@ -5956,7 +5983,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
 
 function MarketingPage({ isMobile, athletes, staff, onOpenAthlete }) {
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Social</div>
       <GrowthBoardSection athletes={athletes} staff={staff} onOpenAthlete={onOpenAthlete} isMobile={isMobile} />
     </div>
@@ -6007,7 +6034,7 @@ function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
     </td>
   );
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Marketing</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         <div style={{ flex: 1 }} />
@@ -6840,7 +6867,7 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
     },
   ].filter(Boolean);
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Brand Deals</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         <FilterMenu compact={isMobile} sections={sections} active={cat !== 'All' || agent !== 'All'}
@@ -7103,7 +7130,7 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
   const card = { background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Contracts</div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
         <div style={card}>
@@ -7292,7 +7319,7 @@ function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
     </button>
   );
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Gifting</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         {ALL_LEVELS.map(l => levelChipBtn(levels.includes(l), l, () => toggleLevel(l)))}
@@ -7444,7 +7471,7 @@ function ResourcesPage({ isMobile, decks }) {
     return c;
   };
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Resources</div>
       <div style={{ marginBottom: 10 }}>{heading('Decks')}</div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 24 }}>
@@ -8359,7 +8386,7 @@ function App() {
   const musicNavActive = domain === 'music' && isAdmin && view !== 'detail';
   const navSide = domain === 'all' ? lastSide : domain;
   const navItems = navSide === 'sports' ? NAV_SPORTS : NAV_MUSIC;
-  const navPage = domain === 'all' ? null : (navSide === 'sports' ? sportsPage : musicPage);
+  const navPage = domain === 'all' ? 'roster' : (navSide === 'sports' ? sportsPage : musicPage);
   // Roster search/filter/export controls only make sense on the roster itself
   // (and always for public sessions). Both domains wait for the auth answer so
   // employees land straight on the dashboard with no roster flash.
