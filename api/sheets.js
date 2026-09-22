@@ -654,8 +654,11 @@ module.exports = async (req, res) => {
         if (!names.length) return res.json({ shows: {} });
         const bit = process.env.BANDSINTOWN_APP_ID, tm = process.env.TICKETMASTER_API_KEY;
         const source = bit ? 'bandsintown' : 'ticketmaster';
+        // 30 days of runway max — the dashboard renders 14 days; beyond ~30
+        // nothing would ever display before fresher data replaces it.
+        const cutoff = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
         const norm = (events) => (events || [])
-          .filter(e => e && e.date)
+          .filter(e => e && e.date && String(e.date).slice(0, 10) <= cutoff)
           .sort((a, b) => String(a.date).localeCompare(String(b.date)))
           .slice(0, 20);
         const fetchOne = async (name) => {

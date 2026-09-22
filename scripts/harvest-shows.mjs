@@ -91,7 +91,12 @@ function parseArtistPage(html) {
       } catch { /* malformed blob — the JSON-LD fallback below still works */ }
     }
   }
-  return { artist, events: events.length ? events : ldEvents };
+  // Keep only ~30 days of runway: the dashboard shows 14 days and harvests
+  // are weekly with an 8-day shelf life, so anything further out is dead
+  // weight that would never render before the next harvest replaces it.
+  const cutoff = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const within = (list) => list.filter(e => String(e.date || '').slice(0, 10) <= cutoff);
+  return { artist, events: within(events.length ? events : ldEvents) };
 }
 
 const shows = {}; const skipped = [];
