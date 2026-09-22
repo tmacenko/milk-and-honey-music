@@ -19,7 +19,7 @@ const THEME_CSS = `
   --mh-border:#1e1e22; --mh-border-light:#28282d;
   --mh-text:#f4f4f5; --mh-text-2:#b4b4be; --mh-text-3:#8a8a98;
   --mh-shadow:0 1px 2px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.35);
-  --mh-card-border:transparent; --mh-card-shadow:0 2px 6px rgba(0,0,0,0.03), 0 10px 28px rgba(0,0,0,0.03);
+  --mh-card-border:transparent; --mh-card-shadow:0 2px 6px rgba(0,0,0,0.04), 0 10px 28px rgba(0,0,0,0.04);
   --mh-card-shadow-hover:0 3px 8px rgba(0,0,0,0.45), 0 14px 36px rgba(0,0,0,0.3);
   --mh-shadow-lg:0 4px 12px rgba(0,0,0,0.7), 0 20px 60px rgba(0,0,0,0.5);
   --mh-tile-shadow:0 1px 4px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.12);
@@ -33,7 +33,7 @@ const THEME_CSS = `
   --mh-border:#e3e3e6; --mh-border-light:#d2d2d8;
   --mh-text:#141417; --mh-text-2:#4c4c56; --mh-text-3:#71717c;
   --mh-shadow:0 1px 2px rgba(20,20,25,0.01), 0 4px 16px rgba(20,20,25,0.01);
-  --mh-card-border:transparent; --mh-card-shadow:0 2px 6px rgba(20,20,25,0.03), 0 10px 28px rgba(20,20,25,0.03);
+  --mh-card-border:transparent; --mh-card-shadow:0 2px 6px rgba(20,20,25,0.04), 0 10px 28px rgba(20,20,25,0.04);
   --mh-card-shadow-hover:0 3px 8px rgba(20,20,25,0.06), 0 14px 36px rgba(20,20,25,0.06);
   --mh-shadow-lg:0 4px 12px rgba(20,20,25,0.01), 0 20px 60px rgba(20,20,25,0.01);
   --mh-tile-shadow:0 1px 3px rgba(20,20,25,0.06), inset 0 0 0 1px rgba(20,20,25,0.08);
@@ -4241,14 +4241,13 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
         {onShowAll && !fullPage ? (
           <button onClick={onShowAll} title="View all"
             onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
-            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
+            onMouseLeave={e => { e.currentTarget.style.color = G.text; e.currentTarget.lastChild.style.opacity = 0; }}
+            style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", padding: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, cursor: "pointer", fontFamily: ff, transition: "color 0.15s", lineHeight: 1.2 }}>
             <span>Upcoming events</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
           </button>
         ) : (
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming events</div>
+          <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.2 }}>Upcoming events</div>
         )}
-        <span style={{ fontSize: 12, color: G.textTertiary }}>{subParts}</span>
         <div style={{ flex: 1 }} />
         {fullPage && (
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search athlete, team, network..."
@@ -4415,14 +4414,13 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
         {onShowAll && !fullPage ? (
           <button onClick={onShowAll} title="View all"
             onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
-            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
+            onMouseLeave={e => { e.currentTarget.style.color = G.text; e.currentTarget.lastChild.style.opacity = 0; }}
+            style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", padding: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, cursor: "pointer", fontFamily: ff, transition: "color 0.15s", lineHeight: 1.2 }}>
             <span>Upcoming shows</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
           </button>
         ) : (
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
+          <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.2 }}>Upcoming shows</div>
         )}
-        <span style={{ fontSize: 12, color: G.textTertiary }}>{shownItems.length} show{shownItems.length === 1 ? '' : 's'}</span>
         <div style={{ flex: 1 }} />
         {fullPage && (
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search artist, venue, city..."
@@ -4764,16 +4762,16 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
   const tileHead = (label, range, onClick) => (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
       {onClick ? (
         <button onClick={onClick} title="View all"
           onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
-          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
+          onMouseLeave={e => { e.currentTarget.style.color = G.text; e.currentTarget.lastChild.style.opacity = 0; }}
+          style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", padding: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, cursor: "pointer", fontFamily: ff, transition: "color 0.15s", lineHeight: 1.2 }}>
           <span>{label}</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
         </button>
       ) : (
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
+        <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.2 }}>{label}</div>
       )}
       <div style={{ fontSize: 11, color: G.textTertiary }}>{range}</div>
     </div>
@@ -4860,9 +4858,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 12, marginTop: 12 }}>
         <div style={card}>
-          {tileHead(s.hasGrowthData
-            ? (() => { const d = Math.max(0, ...s.hot.map(x2 => x2.a.growthDays || 0)); return d >= 7 ? 'Social growth leaders (this week)' : d > 0 ? `Social growth leaders (last ${d} days)` : 'Social growth leaders'; })()
-            : 'Social growth leaders', s.hasGrowthData ? '' : 'Sample preview', s.hasGrowthData ? onGoMarketing : undefined)}
+          {tileHead('Social growth leaders', s.hasGrowthData ? '' : 'Sample preview', s.hasGrowthData ? onGoMarketing : undefined)}
           {s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
             : s.hot.map((x2, i, arr) => row(x2.a, x2.a.level,
               <span style={{ color: G.green, fontWeight: 700 }}>+{bigNum(x2.delta)} <span style={{ color: G.textTertiary, fontWeight: 500 }}>· {x2.pct}%</span></span>,
@@ -5094,16 +5090,16 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
   const statSub = { fontSize: 11, color: G.textSecondary, marginTop: 4 };
   const tileHead = (label, range, onClick) => (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
       {onClick ? (
         <button onClick={onClick} title="View all"
           onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
-          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
+          onMouseLeave={e => { e.currentTarget.style.color = G.text; e.currentTarget.lastChild.style.opacity = 0; }}
+          style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", padding: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, cursor: "pointer", fontFamily: ff, transition: "color 0.15s", lineHeight: 1.2 }}>
           <span>{label}</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
         </button>
       ) : (
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
+        <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.2 }}>{label}</div>
       )}
       <div style={{ fontSize: 11, color: G.textTertiary }}>{range}</div>
     </div>
@@ -5175,9 +5171,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
         <div style={card}>
-          {tileHead(s.hasGrowthData
-            ? (() => { const d = Math.max(0, ...s.hot.map(x => x.growthDays || 0)); return d >= 7 ? 'Social growth leaders (this week)' : d > 0 ? `Social growth leaders (last ${d} days)` : 'Social growth leaders'; })()
-            : 'Social growth leaders', '', s.hasGrowthData ? onGoMarketing : undefined)}
+          {tileHead('Social growth leaders', '', s.hasGrowthData ? onGoMarketing : undefined)}
           {!s.hasGrowthData ? empty('First follower snapshots land tonight.')
             : s.hot.length === 0 ? empty('Quiet week — no gains to show yet.')
             : s.hot.map((c, i, arr) => row(c, (c.types || [])[0] || 'Client',
