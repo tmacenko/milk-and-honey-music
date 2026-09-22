@@ -4241,12 +4241,12 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
         {onShowAll && !fullPage ? (
           <button onClick={onShowAll} title="View all"
             onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-            onMouseLeave={e => { e.currentTarget.style.color = G.text; e.currentTarget.lastChild.style.opacity = 0; }}
-            style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", padding: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, cursor: "pointer", fontFamily: ff, transition: "color 0.15s", lineHeight: 1.2 }}>
+            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
             <span>Upcoming events</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
           </button>
         ) : (
-          <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.2 }}>Upcoming events</div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming events</div>
         )}
         <div style={{ flex: 1 }} />
         {fullPage && (
@@ -4282,7 +4282,8 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
               </div>
               <div style={{ fontSize: 13, fontWeight: 600, color: G.yellow, width: isMobile ? "auto" : 250, flexShrink: 0 }}>Birthday</div>
               <span onClick={() => onOpenAthlete(a)}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 9px 3px 4px", borderRadius: 99, background: G.surfaceRaised, border: `1px solid ${isMine(a) ? G.green : G.surfaceBorder}`, cursor: "pointer" }}>
+                onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 9px 3px 4px", borderRadius: 99, background: G.surface, border: `1px solid ${isMine(a) ? G.green : G.cardBorder}`, boxShadow: G.cardShadow, cursor: "pointer", transition: `box-shadow 0.15s ${G.ease}` }}>
                 <Avatar name={a.name} photoUrl={a.photoUrl} size={20} />
                 <span style={{ fontSize: 12, fontWeight: isMine(a) ? 700 : 500, color: isMine(a) ? G.text : G.textSecondary, whiteSpace: "nowrap" }}>{a.name}</span>
               </span>
@@ -4323,7 +4324,8 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
                 const my = isMine(a);
                 return (
                   <span key={a.name} onClick={() => onOpenAthlete(a)}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 9px 3px 4px", borderRadius: 99, background: G.surfaceRaised, border: `1px solid ${my ? G.green : G.surfaceBorder}`, cursor: "pointer" }}>
+                    onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 9px 3px 4px", borderRadius: 99, background: G.surface, border: `1px solid ${my ? G.green : G.cardBorder}`, boxShadow: G.cardShadow, cursor: "pointer", transition: `box-shadow 0.15s ${G.ease}` }}>
                     <Avatar name={a.name} photoUrl={a.photoUrl} size={20} />
                     <span style={{ fontSize: 12, fontWeight: my ? 700 : 500, color: my ? G.text : G.textSecondary, whiteSpace: "nowrap" }}>{a.name}</span>
                   </span>
@@ -4414,12 +4416,12 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
         {onShowAll && !fullPage ? (
           <button onClick={onShowAll} title="View all"
             onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-            onMouseLeave={e => { e.currentTarget.style.color = G.text; e.currentTarget.lastChild.style.opacity = 0; }}
-            style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", padding: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, cursor: "pointer", fontFamily: ff, transition: "color 0.15s", lineHeight: 1.2 }}>
+            onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
             <span>Upcoming shows</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
           </button>
         ) : (
-          <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.2 }}>Upcoming shows</div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>Upcoming shows</div>
         )}
         <div style={{ flex: 1 }} />
         {fullPage && (
@@ -4487,7 +4489,8 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
             <div style={{ width: 92, flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: G.text }}>{dayLabel(d)}</div>
             <div style={{ width: isMobile ? "auto" : 175, flexShrink: 0, minWidth: 0 }}>
               <button onClick={() => onOpenClient(c)}
-                style={{ display: "flex", alignItems: "center", gap: 7, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 999, padding: "3px 10px 3px 4px", cursor: "pointer", fontFamily: ff, maxWidth: "100%" }}>
+                onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}
+                style={{ display: "flex", alignItems: "center", gap: 7, background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 999, padding: "3px 10px 3px 4px", cursor: "pointer", fontFamily: ff, maxWidth: "100%", transition: `box-shadow 0.15s ${G.ease}` }}>
                 <Avatar name={c.name} photoUrl={c.photoUrl} size={20} />
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
               </button>
@@ -4766,12 +4769,12 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       {onClick ? (
         <button onClick={onClick} title="View all"
           onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-          onMouseLeave={e => { e.currentTarget.style.color = G.text; e.currentTarget.lastChild.style.opacity = 0; }}
-          style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", padding: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, cursor: "pointer", fontFamily: ff, transition: "color 0.15s", lineHeight: 1.2 }}>
+          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
           <span>{label}</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
         </button>
       ) : (
-        <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.2 }}>{label}</div>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
       )}
       <div style={{ fontSize: 11, color: G.textTertiary }}>{range}</div>
     </div>
@@ -5096,12 +5099,12 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
       {onClick ? (
         <button onClick={onClick} title="View all"
           onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
-          onMouseLeave={e => { e.currentTarget.style.color = G.text; e.currentTarget.lastChild.style.opacity = 0; }}
-          style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", padding: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, cursor: "pointer", fontFamily: ff, transition: "color 0.15s", lineHeight: 1.2 }}>
+          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0; }}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
           <span>{label}</span><span style={{ opacity: 0, transition: "opacity 0.15s" }}>→</span>
         </button>
       ) : (
-        <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.2 }}>{label}</div>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{label}</div>
       )}
       <div style={{ fontSize: 11, color: G.textTertiary }}>{range}</div>
     </div>
