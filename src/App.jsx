@@ -4282,16 +4282,16 @@ const MUSIC_TOOLS = [
   { key: 'tools-data', label: 'Data / Tools', icon: 'M18 20V10M12 20V4M6 20v-6', items: [
     { label: 'ChartMetric', url: 'https://app.chartmetric.com/login', email: 'chartmetric' },
     { label: 'Co:Brand', url: 'https://cobrand.com/' },
-    { label: 'Doctrine', url: 'https://doctrine.social/portal', email: 'doctrine' },
-    { label: 'RocketReach', url: 'https://rocketreach.co/login', email: 'rocketreach' },
+    { label: 'Doctrine', url: 'https://doctrine.social/portal', email: 'doctrine', pw: true },
+    { label: 'RocketReach', url: 'https://rocketreach.co/login', email: 'rocketreach', pw: true },
     { label: 'Song Calculator', url: 'https://calc.milkhoneyrecs.com/#/' },
     { label: 'Song Stats', url: 'https://songstats.com/login', email: 'me' },
     { label: 'Sound Deal', url: 'https://www.sounddeal.com/sign-in', email: 'me' },
     { label: 'Sponsor United', url: 'https://www.sponsorunited.com/' },
-    { label: 'Spot On Track', url: 'https://www.spotontrack.com/login', email: 'spotontrack' },
+    { label: 'Spot On Track', url: 'https://www.spotontrack.com/login', email: 'spotontrack', pw: true },
   ] },
   { key: 'tools-charts', label: 'Charts', icon: 'M23 6l-9.5 9.5-5-5L1 18', items: [
-    { label: 'All Access', url: 'https://www.allaccess.com/login', email: 'allaccess' },
+    { label: 'All Access', url: 'https://www.allaccess.com/login', email: 'allaccess', pw: true },
     { label: 'Mediabase', url: 'https://www.hitsdailydouble.com/mediabase_building_charts' },
     { label: 'Pollstar', url: 'https://www.pollstar.com' },
   ] },
@@ -4301,9 +4301,9 @@ const MUSIC_TOOLS = [
     { label: 'Disco', url: 'https://login.disco.co', email: 'me' },
   ] },
   { key: 'tools-news', label: 'News', icon: 'M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9a2 2 0 012-2h2M18 14h-8M15 18h-5M10 6h8v4h-8V6z', items: [
-    { label: 'Billboard Pro', url: 'https://www.billboard.com/wp-login.php?action=pmc_sso_email_prompt&redirect_to=https%3A%2F%2Fwww.billboard.com%2Fpro%2F', email: 'billboardpro' },
-    { label: 'ROSTR', url: 'https://www.rostr.cc/login', email: 'rostr' },
-    { label: 'MBW+', url: 'https://www.musicbusinessworldwide.com/login', email: 'mbw' },
+    { label: 'Billboard Pro', url: 'https://www.billboard.com/wp-login.php?action=pmc_sso_email_prompt&redirect_to=https%3A%2F%2Fwww.billboard.com%2Fpro%2F', email: 'billboardpro', pw: true },
+    { label: 'ROSTR', url: 'https://www.rostr.cc/login', email: 'rostr', pw: true },
+    { label: 'MBW+', url: 'https://www.musicbusinessworldwide.com/login', email: 'mbw', pw: true },
   ] },
 ];
 
@@ -8116,6 +8116,17 @@ function App() {
     }
     window.open(t.url, '_blank', 'noopener');
   };
+  // Key button: fetch the shared tool password from the encrypted server
+  // store and put it on the clipboard — it is never rendered on screen.
+  const copyToolPw = async (t) => {
+    try {
+      const r = await fetch('/api/sheets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'tool-secret', tool: t.email }) });
+      const d = await r.json();
+      if (!d.password) return;
+      try { await navigator.clipboard.writeText(d.password); } catch { window.prompt('Copy the password:', d.password); return; }
+      setToolCopied(t.label + '#pw'); setTimeout(() => setToolCopied(''), 2600);
+    } catch { /* quiet — the tooltip still explains the button */ }
+  };
   const navClick = (it) => {
     if (it.modal) { setOnboardLinksOpen(true); return; }
     if (domain === 'music') { goMusicPage(it.key); return; }
@@ -8193,12 +8204,18 @@ function App() {
                 </button>
                 {open && gr.items.map(t => {
                   const em = t.email === 'me' ? (currentUser?.email || '') : t.email ? (toolEmails[t.email] || '') : '';
-                  const justCopied = toolCopied === t.label;
+                  const copiedEm = toolCopied === t.label, copiedPw = toolCopied === t.label + '#pw';
                   return (
                     <button key={t.label} onClick={() => openTool(t)}
                       title={em ? `Opens in a new tab — copies the login email (${em})` : 'Opens in a new tab'}
-                      style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px 8px 27px", background: "transparent", border: "none", borderRadius: 9, color: justCopied ? G.green : G.textSecondary, fontWeight: justCopied ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
-                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{justCopied ? '✓ Email copied' : t.label}</span>
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px 8px 27px", background: "transparent", border: "none", borderRadius: 9, color: copiedEm || copiedPw ? G.green : G.textSecondary, fontWeight: copiedEm || copiedPw ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{copiedPw ? '✓ Password copied' : copiedEm ? '✓ Email copied' : t.label}</span>
+                      {t.pw && (
+                        <span onClick={e => { e.stopPropagation(); copyToolPw(t); }} title="Copy the shared password"
+                          style={{ display: "flex", flexShrink: 0, opacity: 0.55, padding: 2 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </span>
+                      )}
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.55 }}><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </button>
                   );

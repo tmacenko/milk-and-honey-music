@@ -644,6 +644,26 @@ module.exports = async (req, res) => {
       const { configured, admin } = authState(req);
       if (configured && !admin) return res.status(401).json({ error: 'Not authorized' });
 
+      // Shared tool credentials (music Tools sidebar). Stored ONLY in the
+      // encrypted blob store — never in the repo, sheet, or client bundle.
+      // Reveal: any staff session, one password at a time (they're shared
+      // company logins). Replace: admin-role sessions only.
+      if (req.body?.action === 'tool-secret') {
+        const secret = process.env.AUTH_SECRET;
+        const creds = await require('../lib/encstore').loadEnc('tool-creds.enc.json', secret);
+        const pw = creds && creds.passwords && creds.passwords[String(req.body.tool || '')];
+        if (!pw) return res.status(404).json({ error: 'No stored password for that tool' });
+        return res.json({ password: pw });
+      }
+      if (req.body?.action === 'tool-secrets-store') {
+        const st = authState(req);
+        if (st.user && st.user.userRole !== 'admin') return res.status(403).json({ error: 'Admins only' });
+        const passwords = req.body.passwords;
+        if (!passwords || typeof passwords !== 'object' || Array.isArray(passwords)) return res.status(400).json({ error: 'Missing passwords map' });
+        await require('../lib/encstore').saveEnc('tool-creds.enc.json', { passwords, updatedAt: new Date().toISOString() }, process.env.AUTH_SECRET);
+        return res.json({ ok: true, count: Object.keys(passwords).length });
+      }
+
       // Upcoming shows for Artist-type clients (music dashboard module).
       // Provider is env-configured: BANDSINTOWN_APP_ID preferred (best niche
       // coverage), TICKETMASTER_API_KEY as fallback. Per-artist results are
