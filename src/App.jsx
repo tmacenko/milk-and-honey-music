@@ -126,18 +126,29 @@ function LogoBadge({ url, label, size = 32 }) {
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
-function Avatar({ name, photoUrl, size = 44 }) {
+function Avatar({ name, photoUrl, size = 44, faceZoom }) {
   const [err, setErr] = useState(false);
   const initials = (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const hash = (name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const hue = (hash * 47) % 360;
   const grad = `linear-gradient(135deg,hsl(${hue},55%,38%),hsl(${hue},55%,52%))`;
 
-  if (photoUrl && !err) return (
-    <img src={photoUrl} alt={name} onError={() => setErr(true)}
-      referrerPolicy="no-referrer" crossOrigin="anonymous" loading="lazy" decoding="async"
-      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0 }} />
-  );
+  if (photoUrl && !err) {
+    // faceZoom: ESPN headshots carry lots of shoulder/background — zoom the
+    // crop toward the face for tight contexts like table rows.
+    if (faceZoom) return (
+      <span style={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0, display: "block" }}>
+        <img src={photoUrl} alt={name} onError={() => setErr(true)}
+          referrerPolicy="no-referrer" crossOrigin="anonymous" loading="lazy" decoding="async"
+          style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 10%", transform: "scale(1.4)", transformOrigin: "50% 20%", display: "block" }} />
+      </span>
+    );
+    return (
+      <img src={photoUrl} alt={name} onError={() => setErr(true)}
+        referrerPolicy="no-referrer" crossOrigin="anonymous" loading="lazy" decoding="async"
+        style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0 }} />
+    );
+  }
   return (
     <div style={{ width: size, height: size, borderRadius: "50%", background: grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.38, fontWeight: 700, color: "#fff", flexShrink: 0, border: `1.5px solid hsl(${hue},55%,58%)` }}>
       {initials}
@@ -3403,9 +3414,11 @@ function RosterTable({ athletes, isAdmin, onOpen }) {
   const [sortCol, setSortCol] = useState(null); // null = keep the page's sort order
   const [sortDir, setSortDir] = useState('asc');
   const teamOf = a => a.nflTeam || a.college || '';
+  const classOf = a => a.level === 'College' ? (a.espnClass || a.yearInSchool || '')
+    : a.level === 'High School' ? String(a.classOf || '') : '';
   const rows = useMemo(() => {
     if (!sortCol) return athletes;
-    const get = { name: a => a.name, position: a => a.position || '', team: teamOf, level: a => a.level || '', agent: a => a.agentAssigned || '', reach: athleteReach }[sortCol];
+    const get = { name: a => a.name, position: a => a.position || '', class: classOf, team: teamOf, level: a => a.level || '', agent: a => a.agentAssigned || '', reach: athleteReach }[sortCol];
     if (!get) return athletes;
     return [...athletes].sort((a, b) => {
       const va = get(a), vb = get(b);
@@ -3414,7 +3427,7 @@ function RosterTable({ athletes, isAdmin, onOpen }) {
     });
   }, [athletes, sortCol, sortDir]);
   const headers = [
-    ['name', 'Player'], ['position', 'Pos'], ['team', 'Team / School'], ['level', 'Level'],
+    ['name', 'Player'], ['position', 'Pos'], ['class', 'Class'], ['team', 'Team / School'], ['level', 'Level'],
     ...(isAdmin ? [['agent', 'Agent(s)']] : []), ['reach', 'Reach'],
   ];
   const clickHead = (key) => {
@@ -3442,12 +3455,18 @@ function RosterTable({ athletes, isAdmin, onOpen }) {
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   <td style={{ ...td, color: G.text, fontWeight: 700 }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                      <Avatar name={a.name} photoUrl={a.photoUrl} size={26} />
+                      <Avatar name={a.name} photoUrl={a.photoUrl} size={26} faceZoom />
                       {a.name}{unsignedDot(a) && <span style={{ display: "inline-flex" }}>{unsignedDot(a)}</span>}
                     </span>
                   </td>
                   <td style={td}>{a.position || '—'}</td>
-                  <td style={td}>{teamOf(a) || '—'}</td>
+                  <td style={td}>{classOf(a) || '—'}</td>
+                  <td style={td}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      {a.teamLogo && <TeamLogo url={a.teamLogo} size={18} />}
+                      {teamOf(a) || '—'}
+                    </span>
+                  </td>
                   <td style={td}>{a.level || '—'}</td>
                   {isAdmin && <td style={{ ...td, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{a.agentAssigned || '—'}</td>}
                   <td style={{ ...td, textAlign: "right", color: G.text, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{athleteReach(a) ? bigNum(athleteReach(a)) : '—'}</td>
@@ -3504,7 +3523,7 @@ function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading
           {view === 'table' && tableCols && (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>PDF columns</div>
-              {[['position', 'Position'], ['team', 'Team / School'], ['level', 'Level'], ...(isAdmin ? [['agent', 'Agent(s)']] : []), ['reach', 'Social reach']].map(([k, l]) => (
+              {[['position', 'Position'], ['class', 'Class'], ['team', 'Team / School'], ['level', 'Level'], ...(isAdmin ? [['agent', 'Agent(s)']] : []), ['reach', 'Social reach']].map(([k, l]) => (
                 <label key={k} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 2px", fontSize: 13, color: G.text, cursor: "pointer" }}>
                   <input type="checkbox" checked={tableCols[k] !== false} onChange={() => onToggleCol(k)}
                     style={{ accentColor: G.green, width: 14, height: 14, cursor: "pointer", margin: 0 }} />
@@ -8312,10 +8331,11 @@ function App() {
         const subtitle = [levelLabel, agentFilter !== 'All' ? agentFilter : null, posValue !== 'All' ? posValue : null, depthFilter !== 'All' ? depthFilter : null].filter(Boolean).join(' · ');
         return downloadPdf({
           action: 'roster-table-pdf', title: rosterTitle(), subtitle,
-          include: { position: inc('position'), team: inc('team'), level: inc('level'), agent: isAdmin && inc('agent'), reach: inc('reach') },
+          include: { position: inc('position'), class: inc('class'), team: inc('team'), level: inc('level'), agent: isAdmin && inc('agent'), reach: inc('reach') },
           rows: filteredAthletes.map(a => ({
             name: a.name, photoUrl: a.photoUrl || '', level: a.level || '', position: a.position || '',
-            team: a.nflTeam || a.college || '', agent: a.agentAssigned || '', reach: athleteReach(a),
+            class: a.level === 'College' ? (a.espnClass || a.yearInSchool || '') : a.level === 'High School' ? String(a.classOf || '') : '',
+            team: a.nflTeam || a.college || '', teamLogo: a.teamLogo || '', agent: a.agentAssigned || '', reach: athleteReach(a),
           })),
         }, `${base}-roster.pdf`);
       }

@@ -545,11 +545,12 @@ async function buildRosterTablePdf(data) {
     return a >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'
       : a >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K' : String(Math.round(n)); };
   const cols = [
-    { key: 'name', label: 'PLAYER', w: 0.26 },
-    ...(on('position') ? [{ key: 'position', label: 'POS', w: 0.08 }] : []),
+    { key: 'name', label: 'PLAYER', w: 0.25 },
+    ...(on('position') ? [{ key: 'position', label: 'POS', w: 0.07 }] : []),
+    ...(on('class') ? [{ key: 'class', label: 'CLASS', w: 0.10 }] : []),
     ...(on('team') ? [{ key: 'team', label: 'TEAM / SCHOOL', w: 0.24 }] : []),
-    ...(on('agent') ? [{ key: 'agent', label: 'AGENT', w: 0.22 }] : []),
-    ...(on('reach') ? [{ key: 'reach', label: 'SOCIAL REACH', w: 0.12 }] : []),
+    ...(on('agent') ? [{ key: 'agent', label: 'AGENT', w: 0.21 }] : []),
+    ...(on('reach') ? [{ key: 'reach', label: 'SOCIAL REACH', w: 0.11 }] : []),
   ];
   const wsum = cols.reduce((t, c) => t + c.w, 0);
   cols.forEach(c => { c.w = c.w / wsum * CW; });
@@ -560,7 +561,7 @@ async function buildRosterTablePdf(data) {
   if (!pages.length) pages.push([]);
   const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const photoCache = new Map();
-  const photoUrls = [...new Set(rows.map(r => r.photoUrl).filter(Boolean))];
+  const photoUrls = [...new Set(rows.flatMap(r => [r.photoUrl, r.teamLogo]).filter(Boolean))];
   for (let i = 0; i < photoUrls.length; i += 40) {
     await Promise.all(photoUrls.slice(i, i + 40).map(async u => { photoCache.set(u, await pdfFetchImageBuffer(u)); }));
   }
@@ -590,8 +591,11 @@ async function buildRosterTablePdf(data) {
           if (buf) {
             doc.save();
             try {
+              // Zoomed cover crop — ESPN headshots put the face in the upper
+              // middle, so the window sits high on an oversized square.
+              const S = avR * 2 * 1.4;
               doc.circle(avCx, avCy, avR).clip();
-              doc.image(buf, avCx - avR, avCy - avR, { fit: [avR * 2, avR * 2], align: 'center', valign: 'center' });
+              doc.image(buf, avCx - S / 2, avCy - S / 2 + avR * 0.45, { cover: [S, S], align: 'center', valign: 'center' });
               drew = true;
             } catch { drew = false; }
             doc.restore();
@@ -604,6 +608,17 @@ async function buildRosterTablePdf(data) {
           const nx = cx + pad + avR * 2 + 7, nw = c.w - pad * 2 - avR * 2 - 7;
           doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(9.5).text(r.name || '', nx, y + (showLevel ? 5 : 10), { width: nw, height: 12, ellipsis: true });
           if (showLevel) doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(7.5).text(String(r.level), nx, y + 17, { width: nw, lineBreak: false });
+        } else if (c.key === 'team') {
+          const lbuf = r.teamLogo ? photoCache.get(r.teamLogo) : null;
+          let tx = cx + pad;
+          if (lbuf) {
+            try {
+              doc.roundedRect(tx, y + rowH / 2 - 7.5, 15, 15, 3.5).fill('#ffffff');
+              doc.image(lbuf, tx + 1.5, y + rowH / 2 - 6, { fit: [12, 12], align: 'center', valign: 'center' });
+              tx += 21;
+            } catch { /* text-only cell */ }
+          }
+          doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(9).text(r.team || '—', tx, y + 10, { width: c.w - pad - (tx - cx), height: 11, ellipsis: true });
         } else if (c.key === 'reach') {
           const n = Number(r.reach) || 0;
           doc.fillColor(n ? PDF_TEXT : PDF_TEXT3).font('Helvetica-Bold').fontSize(9.5).text(n ? fmt(n) : '—', cx + pad, y + 10, { width: tw, lineBreak: false });

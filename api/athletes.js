@@ -339,6 +339,7 @@ function mergeAthlete(row, ext, level) {
     classOf: level === 'High School' ? (row['ClassOf'] || row['Class Of'] || '') : '',
     committedTo: (level === 'High School' ? (row['Committed'] || row['Commitment'] || '') : '') || ext['committedTo'] || '',
     yearInSchool: ext['yearInSchool'] || '',
+    espnClass: ext['espnClass'] || '',
     draftYear: ext['draftYear'] || '',
     draftRound: ext['draftRound'] || '',
     draftPick: ext['draftPick'] || '',
@@ -400,7 +401,7 @@ function mergeAthlete(row, ext, level) {
 const PUBLIC_FIELDS = new Set([
   '_rowIndex', 'id', 'slug', 'name', 'level', 'public', 'position', 'nflTeam', 'college', 'status',
   'instagram', 'twitter', 'tiktok', 'igFollowers', 'twitterFollowers', 'tiktokFollowers', 'igEngagement',
-  'bio', 'hometown', 'height', 'weight', 'jerseyNumber', 'classOf', 'committedTo', 'yearInSchool',
+  'bio', 'hometown', 'height', 'weight', 'jerseyNumber', 'classOf', 'committedTo', 'yearInSchool', 'espnClass',
   'draftYear', 'draftRound', 'draftPick', 'espnId', 'espnSport', 'teamLogo', 'photoUrl', 'heroImageUrl', 'profileUrl247',
   // Brand-facing marketing content (the "beyond ESPN" value):
   'brands', 'interests',
@@ -1408,7 +1409,7 @@ module.exports = async (req, res) => {
       sheetGet(token, 'College!A:Q'),
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
-      sheetGet(token, "'AutoSync'!A:V").catch(() => ({ values: [] })), // pre-migration tolerance
+      sheetGet(token, "'AutoSync'!A:AZ").catch(() => ({ values: [] })), // pre-migration tolerance
       sheetGet(token, "'Staff'!A:B").catch(() => ({ values: [] })),    // name + role only — never the password/email columns
       getDecks().catch(() => null),
     ]);
@@ -1430,7 +1431,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;

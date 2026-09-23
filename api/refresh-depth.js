@@ -235,7 +235,7 @@ module.exports = async (req, res) => {
     const token = await getToken();
     const [nfl, col, hs, app, auto] = await Promise.all([
       sheetGet(token, 'NFL!A:P'), sheetGet(token, 'College!A:Q'), sheetGet(token, 'Highschool!A:S'),
-      sheetGet(token, 'AppData!A:AZ'), sheetGet(token, "'AutoSync'!A:V"),
+      sheetGet(token, 'AppData!A:AZ'), sheetGet(token, "'AutoSync'!A:AZ"),
     ]);
 
     // Write target is the AutoSync tab (robot-owned; created by the sheet
@@ -243,7 +243,7 @@ module.exports = async (req, res) => {
     // for the ESPN/247 sync are appended to its header row on first run.
     const autoRows = auto.values || [];
     let autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
-    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus'];
+    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass'];
     const missingAuto = AUTO_EXTRA.filter(h => !autoHeaders.some(x => x.toLowerCase() === h.toLowerCase()));
     if (missingAuto.length && !dryRun) {
       // Widen the grid first if the tab is at its column limit.
@@ -387,7 +387,7 @@ module.exports = async (req, res) => {
     if (wants('espn')) {
       const espnTeamCol = autoIdx('espnTeam'), espnHCol = autoIdx('espnHeight'),
         espnWCol = autoIdx('espnWeight'), espnJCol = autoIdx('espnJersey'),
-        espnStatusCol = autoIdx('espnStatus');
+        espnStatusCol = autoIdx('espnStatus'), espnClassCol = autoIdx('espnClass');
       const appStatusCol = appHeaders.findIndex(h => String(h || '').trim().toLowerCase() === 'status');
       espn.statusChanges = [];
       const appStatusUpdates = [];
@@ -466,6 +466,8 @@ module.exports = async (req, res) => {
           const put = (colI, v) => { if (colI >= 0 && String(v).trim()) espnUpdates.push({ range: `'AutoSync'!${colLetter(colI)}${rowNum}`, values: [[String(v)]] }); };
           put(espnTeamCol, teamVal); put(espnHCol, height); put(espnWCol, weight); put(espnJCol, jersey);
           put(espnStatusCol, stName);
+          // Class year (Freshman…Senior) only exists for college players.
+          if (t.league === 'college-football') put(espnClassCol, String(a.displayExperience || ''));
           espn.updated++;
         } catch (e) { espn.errors.push(`${t.name}: ${e.message}`); }
       });
