@@ -1057,12 +1057,8 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
                 </>
               )}
             </div>
-            <Field label="Lead Agent">
-              <select value={form.agentAssigned || ''} onChange={e => set('agentAssigned', e.target.value)} style={{ ...inputBase, cursor: "pointer" }}>
-                <option value="">—</option>
-                {form.agentAssigned && !(staffNames || []).includes(form.agentAssigned) && <option value={form.agentAssigned}>{form.agentAssigned}</option>}
-                {(staffNames || []).map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
+            <Field label="Agent(s)">
+              <MultiSelectCombo value={form.agentAssigned} onChange={v => set('agentAssigned', v)} options={staffNames || []} placeholder="Select agent(s)..." />
             </Field>
             <Field label="Birthday"><Input value={form.birthday} onChange={e => set('birthday', e.target.value)} placeholder="6/14/2007" /></Field>
             {isHS && <Field label="Class Of"><Input value={form.classOf} onChange={e => set('classOf', e.target.value)} placeholder="2027" /></Field>}
@@ -2341,9 +2337,9 @@ function buildLastGameLine(log) {
   }
   return {
     pre: `${ev.atVs === 'at' ? '@' : 'vs'} ${(ev.opponent || {}).abbreviation || ''}`.trim(),
-    logo: (ev.opponent || {}).logo || '',
-    // Blockers and anyone without counting stats still get the game context.
-    text: parts.join(', ') || [ev.gameResult, ev.score].filter(Boolean).join(' '),
+    result: ev.gameResult || '',
+    // Blockers and anyone without counting stats still get the score instead.
+    text: parts.join(', ') || ev.score || '',
   };
 }
 function useLastGameLine(a, enabled) {
@@ -2399,9 +2395,9 @@ function SportsCard({ athlete: a, isMobile, onClick, showDepth, compact }) {
         </div>
         <div style={{ fontWeight: 800, fontSize: compact ? 16 : 20, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: compact ? 4 : 6 }}>{a.name}</div>
         {lastGame ? (
-          <div style={{ fontSize: 11.5, color: G.textSecondary, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-            {lastGame.logo && <TeamLogo url={lastGame.logo} size={16} />}
+          <div style={{ fontSize: 11.5, color: G.textSecondary, display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
             <span style={{ fontWeight: 700, color: G.text, whiteSpace: "nowrap" }}>{lastGame.pre}</span>
+            {lastGame.result && <span style={{ fontWeight: 800, color: lastGame.result === 'W' ? G.green : lastGame.result === 'L' ? G.red : G.textSecondary, whiteSpace: "nowrap" }}>{lastGame.result}</span>}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lastGame.text}</span>
           </div>
         ) : (
@@ -4264,7 +4260,7 @@ function useOpenDealAlerts(athletes, user, enabled = true) {
   }, [userKey]);
   const alerts = useMemo(() => {
     if (!enabled) return [];
-    const deals = parseDeals(dealsTab.data).filter(d => d.open && d.dealId && !dealExpired(d));
+    const deals = parseDeals(dealsTab.data).filter(d => d.open && !d.archived && d.dealId && !dealExpired(d));
     if (!deals.length) return [];
     const inv = invTab.data;
     const hi = n => (inv ? inv.headers.findIndex(h => h.toLowerCase() === n.toLowerCase()) : -1);
@@ -6342,7 +6338,7 @@ const dealMoney = (v) => {
 const parseDeals = (d) => {
   if (!d) return [];
   const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget'), resolvedCards: hi('resolvedCards'), openToken: hi('openToken'), collectionName: hi('collectionName') };
+  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget'), resolvedCards: hi('resolvedCards'), openToken: hi('openToken'), collectionName: hi('collectionName'), archived: hi('archived') };
   return d.rows.map(r => ({
     _row: r._row,
     company: c.company >= 0 ? r.cells[c.company] || '' : '',
@@ -6355,6 +6351,7 @@ const parseDeals = (d) => {
     fileId: c.fileId >= 0 ? r.cells[c.fileId] || '' : '',
     fileName: c.fileName >= 0 ? r.cells[c.fileName] || '' : '',
     open: c.open >= 0 && /^true$/i.test(r.cells[c.open] || ''),
+    archived: c.archived >= 0 && /^true$/i.test(r.cells[c.archived] || ''),
     dealType: c.dealType >= 0 ? r.cells[c.dealType] || 'product' : 'product',
     dealId: c.dealId >= 0 ? r.cells[c.dealId] || '' : '',
     products: (c.products >= 0 ? r.cells[c.products] || '' : '').split(/\r?\n/).map(s => s.trim()).filter(Boolean),
@@ -7057,7 +7054,17 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
     });
     return m;
   }, [invTab.data]);
-  const openDeals = useMemo(() => deals.filter(d => d.open).sort((a, b) => (Date.parse(b.dateSubmitted) || 0) - (Date.parse(a.dateSubmitted) || 0)), [deals]);
+  const byNewest = (a, b) => (Date.parse(b.dateSubmitted) || 0) - (Date.parse(a.dateSubmitted) || 0);
+  const openDeals = useMemo(() => deals.filter(d => d.open && !d.archived).sort(byNewest), [deals]);
+  const archivedDeals = useMemo(() => deals.filter(d => d.open && d.archived).sort(byNewest), [deals]);
+  const [showArch, setShowArch] = useState(false);
+  const [archBusy, setArchBusy] = useState(null); // _row being archived/restored
+  const setDealArchived = async (d, on) => {
+    setArchBusy(d._row);
+    await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'tab-update', tab: 'branddeals', row: d._row, values: { archived: on ? 'TRUE' : '' } }) }).catch(() => {});
+    await tab.reload();
+    setArchBusy(null);
+  };
   // The dashboard banner deep-links here: open that deal's board on arrival.
   useEffect(() => {
     if (!PENDING_DEAL.id || !deals.length) return;
@@ -7115,11 +7122,21 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
           + Add Deal
         </button>
       </div>
-      {openDeals.length > 0 && (
+      {(openDeals.length > 0 || archivedDeals.length > 0) && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, marginBottom: 10 }}>Open deals</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{showArch ? 'Archived deals' : 'Open deals'}</div>
+            <div style={{ flex: 1 }} />
+            {(archivedDeals.length > 0 || showArch) && (
+              <button onClick={() => setShowArch(v => !v)}
+                onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = G.textTertiary}
+                style={{ background: "none", border: "none", padding: 0, fontSize: 11.5, fontWeight: 600, color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: `color 0.15s ${G.ease}` }}>
+                {showArch ? '← Back to open deals' : `Archived (${archivedDeals.length}) →`}
+              </button>
+            )}
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
-            {openDeals.map(d => {
+            {(showArch ? archivedDeals : openDeals).map(d => {
               const c = invCounts[d.dealId] || { invited: 0, signed: 0 };
               const closed = dealExpired(d);
               return (
@@ -7141,11 +7158,20 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                     <span style={{ fontSize: 12, color: G.textTertiary }}>{c.invited} invited</span>
                     <div style={{ flex: 1 }} />
                     {d.expires && !closed && <span style={{ fontSize: 11.5, color: G.textTertiary }}>closes {d.expires}</span>}
+                    <button onClick={(e) => { e.stopPropagation(); if (archBusy == null) setDealArchived(d, !showArch); }}
+                      title={showArch ? 'Move back to open deals' : 'Archive this deal — find it under Archived'}
+                      onMouseEnter={e => e.currentTarget.style.color = showArch ? G.green : G.text} onMouseLeave={e => e.currentTarget.style.color = showArch ? G.green : G.textTertiary}
+                      style={{ background: "none", border: "none", padding: 0, fontSize: 11.5, fontWeight: 600, color: showArch ? G.green : G.textTertiary, cursor: "pointer", fontFamily: ff, flexShrink: 0, transition: `color 0.15s ${G.ease}` }}>
+                      {archBusy === d._row ? 'Saving…' : showArch ? 'Restore' : 'Archive'}
+                    </button>
                   </div>
                 </div>
               );
             })}
           </div>
+          {showArch && archivedDeals.length === 0 && (
+            <div style={{ fontSize: 12.5, color: G.textTertiary, padding: "4px 0" }}>Nothing archived.</div>
+          )}
         </div>
       )}
       <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>

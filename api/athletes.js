@@ -615,7 +615,7 @@ const ADMIN_TABS = {
     // open=TRUE flags one, dealId joins DealInvites rows, products is a
     // newline list players pick from, levels/minFollowers gate eligibility,
     // expires closes the links.
-    ensureCols: ['open', 'dealId', 'products', 'stipulations', 'levels', 'minFollowers', 'expires', 'dealType', 'pickCount', 'pickBudget', 'resolvedCards', 'openToken', 'collectionName'] },
+    ensureCols: ['open', 'dealId', 'products', 'stipulations', 'levels', 'minFollowers', 'expires', 'dealType', 'pickCount', 'pickBudget', 'resolvedCards', 'openToken', 'collectionName', 'archived'] },
   // One row per invited player per open deal; token is the signing link's
   // credential. Written by the deal-invite action + the public /api/deal sign.
   dealinvites: { title: 'DealInvites', writable: true, autoCreate: ['dealId', 'player', 'token', 'invitedBy', 'invitedAt', 'status', 'product', 'signature', 'signedAt', 'productUrls'],
@@ -1409,10 +1409,15 @@ module.exports = async (req, res) => {
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
       sheetGet(token, "'AutoSync'!A:V").catch(() => ({ values: [] })), // pre-migration tolerance
-      sheetGet(token, "'Staff'!A:A").catch(() => ({ values: [] })),    // names only — never the password column
+      sheetGet(token, "'Staff'!A:B").catch(() => ({ values: [] })),    // name + role only — never the password/email columns
       getDecks().catch(() => null),
     ]);
-    const staffNames = (staffD.values || []).slice(1).map(r => String(r[0] || '').trim()).filter(Boolean);
+    // Sports-facing agent lists (edit-form picker, page filters) only offer
+    // people who actually rep players: agents + marketing, plus Jake. Music
+    // managers and the other admins stay out.
+    const staffNames = (staffD.values || []).slice(1)
+      .filter(r => /^(agent|marketing)$/i.test(String(r[1] || '').trim()) || /^jake\s+presser$/i.test(String(r[0] || '').trim()))
+      .map(r => String(r[0] || '').trim()).filter(Boolean);
 
     const appMap = {};
     parseRows(app).forEach(r => { const k = (r['name'] || r['Name'] || '').toLowerCase().trim(); if (k) appMap[k] = r; });
