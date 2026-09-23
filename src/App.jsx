@@ -1934,7 +1934,7 @@ function ClientFiltersDropdown({ filterContact, setFilterContact, filterLabel, s
   );
 }
 
-function ClientSortDropdown({ clientSort, setClientSort, compact }) {
+function ClientSortDropdown({ clientSort, setClientSort, compact, domain }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const ref = useRef();
@@ -1946,7 +1946,7 @@ function ClientSortDropdown({ clientSort, setClientSort, compact }) {
   // Fixed-position menu (anchored to the trigger) so it never gets clipped by a
   // horizontally-scrolling header row.
   const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 188)) }); } setOpen(v => !v); };
-  const SORTS = [["default","Roster Order"], ["alpha","A – Z"]];
+  const SORTS = [["default","Roster Order"], ["alpha","A – Z"], ...(domain === 'sports' ? [["team","Team"]] : [])];
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button onClick={toggle}
@@ -3396,8 +3396,73 @@ function CustomGroupPicker({ items, selected, groupTitle, onToggle, onClear, onC
   );
 }
 
-// Unified export control: Download PDF (Simple/Detailed) + hosted share link.
-function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading, onLink, onClearLink, iconOnly }) {
+// Table roster view (sports): one row per athlete, marketing-board style —
+// sortable headers, no zebra (matches the other boards). The Agent column is
+// staff-only; public sessions never receive agentAssigned anyway.
+function RosterTable({ athletes, isAdmin, onOpen }) {
+  const [sortCol, setSortCol] = useState(null); // null = keep the page's sort order
+  const [sortDir, setSortDir] = useState('asc');
+  const teamOf = a => a.nflTeam || a.college || '';
+  const rows = useMemo(() => {
+    if (!sortCol) return athletes;
+    const get = { name: a => a.name, position: a => a.position || '', team: teamOf, level: a => a.level || '', agent: a => a.agentAssigned || '', reach: athleteReach }[sortCol];
+    if (!get) return athletes;
+    return [...athletes].sort((a, b) => {
+      const va = get(a), vb = get(b);
+      const cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb));
+      return (sortDir === 'desc' ? -1 : 1) * cmp || a.name.localeCompare(b.name);
+    });
+  }, [athletes, sortCol, sortDir]);
+  const headers = [
+    ['name', 'Player'], ['position', 'Pos'], ['team', 'Team / School'], ['level', 'Level'],
+    ...(isAdmin ? [['agent', 'Agent(s)']] : []), ['reach', 'Reach'],
+  ];
+  const clickHead = (key) => {
+    if (sortCol === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(key); setSortDir(key === 'reach' ? 'desc' : 'asc'); }
+  };
+  return (
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
+      <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead><tr>
+            {headers.map(([key, h]) => (
+              <th key={key} onClick={() => clickHead(key)}
+                style={{ textAlign: key === 'reach' ? "right" : "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
+                {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+              </th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {rows.map((a, i) => {
+              const td = { padding: "9px 14px", fontSize: 13, color: G.textSecondary, borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+              return (
+                <tr key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} onClick={() => onOpen(a)} style={{ cursor: "pointer" }}
+                  onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <td style={{ ...td, color: G.text, fontWeight: 700 }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                      <Avatar name={a.name} photoUrl={a.photoUrl} size={26} />
+                      {a.name}{unsignedDot(a) && <span style={{ display: "inline-flex" }}>{unsignedDot(a)}</span>}
+                    </span>
+                  </td>
+                  <td style={td}>{a.position || '—'}</td>
+                  <td style={td}>{teamOf(a) || '—'}</td>
+                  <td style={td}>{a.level || '—'}</td>
+                  {isAdmin && <td style={{ ...td, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{a.agentAssigned || '—'}</td>}
+                  <td style={{ ...td, textAlign: "right", color: G.text, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{athleteReach(a) ? bigNum(athleteReach(a)) : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Unified export control: Download PDF (Simple/Detailed/Table) + hosted share link.
+function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading, onLink, onClearLink, iconOnly, tableCols, onToggleCol }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const [expiry, setExpiry] = useState('90');
@@ -3434,8 +3499,20 @@ function ExportMenu({ view, count, isAdmin, pdfBusy, onPdf, linkUrl, linkLoading
           <button onClick={() => { onPdf(); setOpen(false); }} disabled={pdfBusy}
             style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised, cursor: pdfBusy ? "wait" : "pointer", fontFamily: ff }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>Download PDF</span>
-            <span style={{ fontSize: 11, color: G.textTertiary }}>{view === 'detailed' ? 'Detailed' : 'Simple'} · {count}</span>
+            <span style={{ fontSize: 11, color: G.textTertiary }}>{view === 'detailed' ? 'Detailed' : view === 'table' ? 'Table' : 'Simple'} · {count}</span>
           </button>
+          {view === 'table' && tableCols && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: G.textTertiary, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>PDF columns</div>
+              {[['position', 'Position'], ['team', 'Team / School'], ['level', 'Level'], ...(isAdmin ? [['agent', 'Agent(s)']] : []), ['reach', 'Social reach']].map(([k, l]) => (
+                <label key={k} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 2px", fontSize: 13, color: G.text, cursor: "pointer" }}>
+                  <input type="checkbox" checked={tableCols[k] !== false} onChange={() => onToggleCol(k)}
+                    style={{ accentColor: G.green, width: 14, height: 14, cursor: "pointer", margin: 0 }} />
+                  {l}
+                </label>
+              ))}
+            </div>
+          )}
           {isAdmin && (
             <>
               <div style={{ height: 1, background: G.surfaceBorder, margin: "12px 0" }} />
@@ -7995,8 +8072,13 @@ function App() {
   };
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
-  // Roster display: 'list' (compact cards / 3x5 PDF) or 'detailed' (rich cards / 1x4 PDF).
+  // Roster display: 'list' (compact cards / 3x5 PDF), 'detailed' (rich cards /
+  // 1x4 PDF) or, on sports, 'table' (rows / landscape table PDF).
   const [rosterView, setRosterView] = useState('list');
+  // Which columns the table PDF includes — unchecked ones stay off the export
+  // (e.g. drop Agent when sending the roster to a college GM).
+  const [tableCols, setTableCols] = useCachedState('roster.tableCols', {});
+  const toggleTableCol = (k) => setTableCols(v => ({ ...v, [k]: v[k] === false }));
   // Custom group: a hand-picked set of names. When non-empty it becomes the roster,
   // overriding the type/other filters (search still narrows within it). Works for both domains.
   const [customGroup, setCustomGroup] = useState([]);
@@ -8224,6 +8306,19 @@ function App() {
       }, `${base}.pdf`);
     }
     if (domain === 'sports') {
+      if (rosterView === 'table' && !layout) {
+        const inc = k => tableCols[k] !== false;
+        const levelLabel = sportsLevels.length === ALL_LEVELS.length ? '' : sportsLevels.join(' + ');
+        const subtitle = [levelLabel, agentFilter !== 'All' ? agentFilter : null, posValue !== 'All' ? posValue : null, depthFilter !== 'All' ? depthFilter : null].filter(Boolean).join(' · ');
+        return downloadPdf({
+          action: 'roster-table-pdf', title: rosterTitle(), subtitle,
+          include: { position: inc('position'), team: inc('team'), level: inc('level'), agent: isAdmin && inc('agent'), reach: inc('reach') },
+          rows: filteredAthletes.map(a => ({
+            name: a.name, photoUrl: a.photoUrl || '', level: a.level || '', position: a.position || '',
+            team: a.nflTeam || a.college || '', agent: a.agentAssigned || '', reach: athleteReach(a),
+          })),
+        }, `${base}-roster.pdf`);
+      }
       if (detailed) {
         return downloadPdf({
           action: 'roster-pdf', layout: 'detailed', title: rosterTitle(), pathPrefix: 'sports/',
@@ -8427,6 +8522,11 @@ function App() {
       return true;
     });
     if (clientSort === 'alpha') return [...list].sort((a, b) => a.name.localeCompare(b.name));
+    if (clientSort === 'team') return [...list].sort((a, b) => {
+      const ta = a.nflTeam || a.college || '', tb = b.nflTeam || b.college || '';
+      if (!ta !== !tb) return ta ? -1 : 1; // teamless (free agents) sink
+      return ta.localeCompare(tb) || athleteReach(b) - athleteReach(a);
+    });
     // Default (Roster Order): by league (NFL → College → HS); within a league,
     // free agents sink to the bottom, then rank by social reach.
     return [...list].sort((a, b) => {
@@ -8765,11 +8865,11 @@ function App() {
     </div>
   );
 
-  // List / Detailed view toggle (both domains).
+  // List / Detailed view toggle (both domains); sports adds a Table view.
   const viewToggle = (
     <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-      {[['list', 'M4 6h16M4 12h16M4 18h16'], ['detailed', 'M4 5h16v6H4zM4 15h16v4H4z']].map(([v, d], i) => (
-        <button key={v} onClick={() => setRosterView(v)} title={v === 'list' ? 'List view' : 'Detailed view'}
+      {[['list', 'M4 6h16M4 12h16M4 18h16'], ['detailed', 'M4 5h16v6H4zM4 15h16v4H4z'], ...(domain === 'sports' ? [['table', 'M4 5h16v14H4zM4 10h16M4 14.5h16']] : [])].map(([v, d], i) => (
+        <button key={v} onClick={() => setRosterView(v)} title={v === 'list' ? 'List view' : v === 'detailed' ? 'Detailed view' : 'Table view'}
           style={{ padding: "8px 8px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", cursor: "pointer", background: rosterView === v ? G.greenSubtle : "transparent", color: rosterView === v ? G.green : G.textSecondary, display: "flex", alignItems: "center" }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d={d} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
@@ -8818,7 +8918,8 @@ function App() {
   const exportControl = (iconOnly = false) => (
     <ExportMenu iconOnly={iconOnly} view={domain === 'all' ? 'list' : rosterView} count={domain === 'sports' ? filteredAthletes.length : domain === 'all' ? allRows.length : filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
       onPdf={downloadRosterPdf} linkUrl={shareRosterUrl} linkLoading={shareRosterLoading}
-      onLink={generateShareLink} onClearLink={() => setShareRosterUrl(null)} />
+      onLink={generateShareLink} onClearLink={() => setShareRosterUrl(null)}
+      tableCols={domain === 'sports' ? tableCols : null} onToggleCol={toggleTableCol} />
   );
   const customItems = (domain === 'sports' ? athletes : clients).map(x => ({
     name: x.name, photoUrl: x.photoUrl,
@@ -8893,7 +8994,7 @@ function App() {
                       </button>
                     )}
                     {domain !== 'all' && viewFilter}
-                    {domain !== 'all' && <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} compact />}
+                    {domain !== 'all' && <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} compact domain={domain} />}
                     {domain !== 'all' && viewToggle}
                     {domain === 'all' && allSortToggle}
                     <div style={{ flex: 1, minWidth: 0 }} />
@@ -8950,7 +9051,7 @@ function App() {
                   style={{ ...inputBase, width: 220, padding: "8px 12px", flexShrink: 0 }} />
                 <div style={{ display: "flex", gap: 8, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
                   {viewFilter}
-                  <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} />
+                  <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} domain={domain} />
                   {viewToggle}
                 </div>
                 {isAdmin && (
@@ -9029,6 +9130,8 @@ function App() {
                     <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
                       <div style={{ fontSize: 15 }}>{search || sportsLevels.length < ALL_LEVELS.length ? 'No athletes match your filters.' : 'No athletes to show yet.'}</div>
                     </div>
+                  ) : rosterView === 'table' ? (
+                    <RosterTable athletes={filteredAthletes} isAdmin={isAdmin} onOpen={(a) => setView('detail', a)} />
                   ) : rosterView === 'detailed' ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
                       {filteredAthletes.map((a, i) => (
