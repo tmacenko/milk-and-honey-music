@@ -3410,7 +3410,12 @@ function CustomGroupPicker({ items, selected, groupTitle, onToggle, onClear, onC
 // Table roster view (sports): one row per athlete, marketing-board style —
 // sortable headers, no zebra (matches the other boards). The Agent column is
 // staff-only; public sessions never receive agentAssigned anyway.
-function RosterTable({ athletes, isAdmin, onOpen }) {
+function RosterTable({ athletes, isAdmin, onOpen, levels }) {
+  // Header adapts to the level filter: pro-only reads "Team", college/HS-only
+  // reads "School", a mix keeps both.
+  const hasNfl = (levels || []).includes('NFL');
+  const hasAmateur = (levels || []).some(l => l !== 'NFL');
+  const teamLabel = hasNfl && hasAmateur ? 'Team / School' : hasNfl ? 'Team' : 'School';
   const [sortCol, setSortCol] = useState(null); // null = keep the page's sort order
   const [sortDir, setSortDir] = useState('asc');
   const teamOf = a => a.nflTeam || a.college || '';
@@ -3427,7 +3432,7 @@ function RosterTable({ athletes, isAdmin, onOpen }) {
     });
   }, [athletes, sortCol, sortDir]);
   const headers = [
-    ['name', 'Player'], ['position', 'Pos'], ['class', 'Class'], ['team', 'Team / School'], ['level', 'Level'],
+    ['name', 'Player'], ['position', 'Pos'], ['class', 'Class'], ['team', teamLabel], ['level', 'Level'],
     ...(isAdmin ? [['agent', 'Agent(s)']] : []), ['reach', 'Reach'],
   ];
   const clickHead = (key) => {
@@ -8329,8 +8334,10 @@ function App() {
         const inc = k => tableCols[k] !== false;
         const levelLabel = sportsLevels.length === ALL_LEVELS.length ? '' : sportsLevels.join(' + ');
         const subtitle = [levelLabel, agentFilter !== 'All' ? agentFilter : null, posValue !== 'All' ? posValue : null, depthFilter !== 'All' ? depthFilter : null].filter(Boolean).join(' · ');
+        const hasNfl = sportsLevels.includes('NFL'), hasAmateur = sportsLevels.some(l => l !== 'NFL');
         return downloadPdf({
           action: 'roster-table-pdf', title: rosterTitle(), subtitle,
+          teamLabel: hasNfl && hasAmateur ? 'Team / School' : hasNfl ? 'Team' : 'School',
           include: { position: inc('position'), class: inc('class'), team: inc('team'), level: inc('level'), agent: isAdmin && inc('agent'), reach: inc('reach') },
           rows: filteredAthletes.map(a => ({
             name: a.name, photoUrl: a.photoUrl || '', level: a.level || '', position: a.position || '',
@@ -9151,7 +9158,7 @@ function App() {
                       <div style={{ fontSize: 15 }}>{search || sportsLevels.length < ALL_LEVELS.length ? 'No athletes match your filters.' : 'No athletes to show yet.'}</div>
                     </div>
                   ) : rosterView === 'table' ? (
-                    <RosterTable athletes={filteredAthletes} isAdmin={isAdmin} onOpen={(a) => setView('detail', a)} />
+                    <RosterTable athletes={filteredAthletes} isAdmin={isAdmin} levels={sportsLevels} onOpen={(a) => setView('detail', a)} />
                   ) : rosterView === 'detailed' ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
                       {filteredAthletes.map((a, i) => (

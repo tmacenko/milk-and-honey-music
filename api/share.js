@@ -548,7 +548,7 @@ async function buildRosterTablePdf(data) {
     { key: 'name', label: 'PLAYER', w: 0.25 },
     ...(on('position') ? [{ key: 'position', label: 'POS', w: 0.07 }] : []),
     ...(on('class') ? [{ key: 'class', label: 'CLASS', w: 0.10 }] : []),
-    ...(on('team') ? [{ key: 'team', label: 'TEAM / SCHOOL', w: 0.24 }] : []),
+    ...(on('team') ? [{ key: 'team', label: String(data.teamLabel || 'Team / School').toUpperCase(), w: 0.24 }] : []),
     ...(on('agent') ? [{ key: 'agent', label: 'AGENT', w: 0.21 }] : []),
     ...(on('reach') ? [{ key: 'reach', label: 'SOCIAL REACH', w: 0.11 }] : []),
   ];
