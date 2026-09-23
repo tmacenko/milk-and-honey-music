@@ -2296,8 +2296,75 @@ const unsignedDot = (a, abs) => a.public === false ? (
     : { width: 9, height: 9, borderRadius: "50%", background: G.yellow, flexShrink: 0, cursor: "help" }} />
 ) : null;
 
+// ── Last-game line for featured cards ────────────────────────────────────────
+// Featured dashboard cards swap the "TE · #87 · Kansas City Chiefs" meta line
+// for the player's line from their most recent game ("vs IND · 9 Rec, 101 Rec
+// Yds, TD"), fetched from ESPN's public gamelog JSON in the browser (same feed
+// the profile Stats tab uses) and cached for the session. Falls back to the
+// meta line when there's no game in the last 10 days (offseason, bye, IR) or
+// no espnId (high schoolers).
+const LAST_GAME_CACHE = {};
+function buildLastGameLine(log) {
+  const evs = Object.values((log || {}).events || {}).filter(e => e.gameResult).sort((a, b) => String(b.gameDate || '').localeCompare(String(a.gameDate || '')));
+  const ev = evs[0];
+  if (!ev || Date.now() - new Date(ev.gameDate).getTime() > 10 * 24 * 3600 * 1000) return null;
+  let stats = null;
+  (log.seasonTypes || []).forEach(t => (t.categories || []).forEach(c => (c.events || []).forEach(x => { if (String(x.eventId) === String(ev.id)) stats = x.stats || null; })));
+  const by = {};
+  (log.displayNames || []).forEach((n, i) => { if (!(n in by)) by[n] = stats ? stats[i] : undefined; });
+  const num = n => { const v = parseFloat(by[n]); return isNaN(v) ? 0 : v; };
+  const tdPart = n => num(n) > 0 ? [num(n) > 1 ? `${num(n)} TD` : 'TD'] : [];
+  let parts = [];
+  if (num('Passing Attempts') > 0) {
+    parts = [`${by['Completions']}/${by['Passing Attempts']}`, `${by['Passing Yards']} Pass Yds`, ...tdPart('Passing Touchdowns'), ...(num('Interceptions') > 0 ? [`${num('Interceptions')} INT`] : [])];
+    if (num('Rushing Touchdowns') > 0) parts.push(num('Rushing Touchdowns') > 1 ? `${num('Rushing Touchdowns')} Rush TD` : 'Rush TD');
+  } else if (num('Receptions') > 0 || num('Rushing Attempts') > 0) {
+    const recFirst = num('Receptions') >= num('Rushing Attempts');
+    parts = recFirst
+      ? [`${num('Receptions')} Rec`, `${by['Receiving Yards']} Rec Yds`, ...tdPart('Receiving Touchdowns')]
+      : [`${num('Rushing Attempts')} Car`, `${by['Rushing Yards']} Rush Yds`, ...tdPart('Rushing Touchdowns')];
+    // The other side of the ball only earns a mention when it mattered.
+    const oTd = recFirst ? num('Rushing Touchdowns') : num('Receiving Touchdowns');
+    const oYds = recFirst ? num('Rushing Yards') : num('Receiving Yards');
+    if (oTd > 0) parts.push(`${oTd > 1 ? oTd + ' ' : ''}${recFirst ? 'Rush' : 'Rec'} TD`);
+    else if (oYds >= 25) parts.push(`${oYds} ${recFirst ? 'Rush' : 'Rec'} Yds`);
+  } else if (num('Total Tackles') > 0 || num('Solo Tackles') > 0 || num('Sacks') > 0) {
+    parts = [`${num('Total Tackles')} Tkl`];
+    if (num('Sacks') > 0) parts.push(`${num('Sacks')} ${num('Sacks') === 1 ? 'Sack' : 'Sacks'}`);
+    if (num('Interceptions') > 0) parts.push(`${num('Interceptions')} INT`);
+    if (num('Forced Fumbles') > 0) parts.push(`${num('Forced Fumbles')} FF`);
+  } else if (num('Field Goal Attempts') > 0 || num('Extra Points Made') > 0) {
+    if (num('Field Goal Attempts') > 0) parts.push(`${num('Field Goals Made')}/${num('Field Goal Attempts')} FG`);
+    if (num('Extra Points Made') > 0) parts.push(`${num('Extra Points Made')} XP`);
+  } else if (num('Punts') > 0) {
+    parts = [`${num('Punts')} Punts`, ...(num('Gross Avg Punt Yards') > 0 ? [`${by['Gross Avg Punt Yards']} Avg`] : [])];
+  }
+  return {
+    pre: `${ev.atVs === 'at' ? '@' : 'vs'} ${(ev.opponent || {}).abbreviation || ''}`.trim(),
+    logo: (ev.opponent || {}).logo || '',
+    // Blockers and anyone without counting stats still get the game context.
+    text: parts.join(', ') || [ev.gameResult, ev.score].filter(Boolean).join(' '),
+  };
+}
+function useLastGameLine(a, enabled) {
+  const key = enabled && a.espnId ? String(a.espnId) : '';
+  const [line, setLine] = useState(key ? LAST_GAME_CACHE[key] || null : null);
+  useEffect(() => {
+    if (!key || LAST_GAME_CACHE[key] !== undefined) return;
+    let dead = false;
+    const league = a.level === 'NFL' ? 'nfl' : 'college-football';
+    fetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/${league}/athletes/${key}/gamelog`)
+      .then(r => r.json())
+      .then(log => { LAST_GAME_CACHE[key] = buildLastGameLine(log); if (!dead) setLine(LAST_GAME_CACHE[key]); })
+      .catch(() => { LAST_GAME_CACHE[key] = null; });
+    return () => { dead = true; };
+  }, [key]);
+  return line;
+}
+
 function SportsCard({ athlete: a, isMobile, onClick, showDepth, compact }) {
   const [hov, setHov] = useState(false);
+  const lastGame = useLastGameLine(a, !!compact);
   const team = a.nflTeam || a.college || '';
   const meta = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join(' · ');
   // Employee-only depth tag ("RT1" = starting right tackle, per Ourlads).
@@ -2331,7 +2398,15 @@ function SportsCard({ athlete: a, isMobile, onClick, showDepth, compact }) {
           <TeamLogo url={a.teamLogo} size={compact ? 30 : 38} />
         </div>
         <div style={{ fontWeight: 800, fontSize: compact ? 16 : 20, color: G.text, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: compact ? 4 : 6 }}>{a.name}</div>
-        <div style={{ fontSize: compact ? 11.5 : 14, color: G.textSecondary }}>{meta}{depthTag}</div>
+        {lastGame ? (
+          <div style={{ fontSize: 11.5, color: G.textSecondary, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            {lastGame.logo && <TeamLogo url={lastGame.logo} size={16} />}
+            <span style={{ fontWeight: 700, color: G.text, whiteSpace: "nowrap" }}>{lastGame.pre}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lastGame.text}</span>
+          </div>
+        ) : (
+          <div style={{ fontSize: compact ? 11.5 : 14, color: G.textSecondary }}>{meta}{depthTag}</div>
+        )}
       </div>
     </div>
   );
