@@ -8258,6 +8258,12 @@ function App() {
   };
   // Music employee section (Tyler-only while it's broken in): 'home' / 'roster'.
   const [musicPage, setMusicPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
+  // Every navigation (side, page, or opened profile) lands at the top — in a
+  // single-page app the window would otherwise keep the last page's scroll.
+  // Keyed on the profile's name, not the object, so a save that refreshes
+  // the open profile doesn't yank the viewer back up.
+  const selectedKey = selected ? `${selected.level || ''}|${selected.name || ''}` : '';
+  useEffect(() => { window.scrollTo(0, 0); }, [domain, sportsPage, musicPage, view, selectedKey]);
   const goMusicPage = (key) => {
     if (key === musicPage && view !== 'detail') return;
     window.history.pushState({ view: 'roster', domain: 'music', musicPage: key }, '', key === 'home' ? '/' : `/?page=${key}`);
