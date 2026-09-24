@@ -129,7 +129,34 @@ module.exports = async (req, res) => {
     // account can see at its root (collaborated folders appear there).
     if (req.method === 'GET' && req.query.probe) {
       const list = await boxApi(token, '/folders/0/items?limit=1000&fields=id,name,type');
-      return res.json({ ok: true, rootItems: (list.entries || []).map(e => `${e.type}: ${e.name}`) });
+      const out = { ok: true, rootItems: (list.entries || []).map(e => `${e.type}: ${e.name}`) };
+      // ?probe=where — who owns the portal folder, where it sits in the
+      // owner's Box, who it's shared with, and what's inside (troubleshooting
+      // "I can't find the folder in our account").
+      if (req.query.probe === 'where') {
+        const me = await boxApi(token, '/users/me?fields=name,login');
+        out.serviceAccount = `${me.name} <${me.login}>`;
+        out.folders = [];
+        for (const e of (list.entries || []).filter(x => x.type === 'folder')) {
+          const f = await boxApi(token, `/folders/${e.id}?fields=id,name,owned_by,created_by,path_collection`);
+          const col = await boxApi(token, `/folders/${e.id}/collaborations?fields=accessible_by,role,status`).catch(() => ({}));
+          const kids = await boxApi(token, `/folders/${e.id}/items?limit=100&fields=id,name,type`);
+          const sub = [];
+          for (const k of (kids.entries || []).filter(x => x.type === 'folder')) {
+            const n = await boxApi(token, `/folders/${k.id}/items?limit=1000&fields=name,type`);
+            sub.push({ name: k.name, count: n.total_count, sample: (n.entries || []).slice(0, 5).map(x => x.name) });
+          }
+          out.folders.push({
+            name: f.name, id: f.id,
+            owner: `${f.owned_by?.name || ''} <${f.owned_by?.login || ''}>`,
+            createdBy: `${f.created_by?.name || ''} <${f.created_by?.login || ''}>`,
+            pathInOwnerBox: (f.path_collection?.entries || []).map(x => x.name).join(' / ') || '(top level)',
+            collaborators: (col.entries || []).map(c => `${c.accessible_by?.name || ''} <${c.accessible_by?.login || ''}> ${c.role} ${c.status}`),
+            subfolders: sub,
+          });
+        }
+      }
+      return res.json(out);
     }
 
     // Box's hosted preview for one file — an expiring (~60 min) URL that
