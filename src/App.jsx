@@ -8263,7 +8263,13 @@ function App() {
   // Keyed on the profile's name, not the object, so a save that refreshes
   // the open profile doesn't yank the viewer back up.
   const selectedKey = selected ? `${selected.level || ''}|${selected.name || ''}` : '';
-  useEffect(() => { window.scrollTo(0, 0); }, [domain, sportsPage, musicPage, view, selectedKey]);
+  // The page scrolls inside <body> (html and body are both overflow:auto),
+  // so reset every candidate, not just the window.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+  }, [domain, sportsPage, musicPage, view, selectedKey]);
   const goMusicPage = (key) => {
     if (key === musicPage && view !== 'detail') return;
     window.history.pushState({ view: 'roster', domain: 'music', musicPage: key }, '', key === 'home' ? '/' : `/?page=${key}`);
