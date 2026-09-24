@@ -622,7 +622,7 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       // Mutating actions drop this instance's sheet-read cache; the listed
       // actions are read-only (or write only to Blob) and run frequently.
-      const RO_ACTIONS = ['chat', 'artist-shows', 'artist-shows-store', 'tool-secret', 'tool-secrets-store'];
+      const RO_ACTIONS = ['chat', 'artist-shows', 'artist-shows-store', 'tool-secret', 'tool-secrets-store', 'tracklists'];
       if (!RO_ACTIONS.includes(req.body?.action)) clearSheetCache();
       // Weekly Bandsintown harvest drop-off (runs headless on Tyler's Mac —
       // Bandsintown only serves real browsers, so the server can't fetch it).
@@ -672,6 +672,28 @@ module.exports = async (req, res) => {
         if (!passwords || typeof passwords !== 'object' || Array.isArray(passwords)) return res.status(400).json({ error: 'Missing passwords map' });
         await require('../lib/encstore').saveEnc('tool-creds.enc.json', { passwords, updatedAt: new Date().toISOString() }, process.env.AUTH_SECRET);
         return res.json({ ok: true, count: Object.keys(passwords).length });
+      }
+
+      // 1001Tracklists charts (music dashboard module + page). Harvested from
+      // the site's public pages (lib/tracklists.js) into Blob; the first
+      // viewer after the cache ages past 6h triggers a refresh (~1s, 5 page
+      // loads). If the site is unreachable the last good copy is served.
+      if (req.body?.action === 'tracklists') {
+        const PATH = 'tracklists-cache.json';
+        const TTL = 6 * 60 * 60 * 1000;
+        const cache = await loadBlobCache(PATH);
+        if (cache && cache.charts && Date.now() - (cache.ts || 0) < TTL) return res.json(cache);
+        try {
+          const fresh = await require('../lib/tracklists').harvestCharts(cache);
+          if (Object.keys(fresh.charts).length) {
+            await saveBlobCache(PATH, fresh);
+            return res.json(fresh);
+          }
+          throw new Error((fresh.errors || []).join('; ') || 'no charts parsed');
+        } catch (e) {
+          if (cache && cache.charts) return res.json({ ...cache, stale: true });
+          return res.status(502).json({ error: '1001Tracklists unavailable: ' + e.message });
+        }
       }
 
       // Upcoming shows for Artist-type clients (music dashboard module).

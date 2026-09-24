@@ -4815,6 +4815,7 @@ const MUSIC_TOOLS = [
     { label: 'Spot On Track', url: 'https://www.spotontrack.com/login', email: 'spotontrack', pw: true },
   ] },
   { key: 'tools-charts', label: 'Charts', icon: 'M23 6l-9.5 9.5-5-5L1 18', items: [
+    { label: '1001Tracklists', page: 'tracklists' },
     { label: 'All Access', url: 'https://www.allaccess.com/login', email: 'allaccess', pw: true },
     { label: 'Mediabase', url: 'https://www.hitsdailydouble.com/mediabase_building_charts' },
     { label: 'Pollstar', url: 'https://www.pollstar.com' },
@@ -5287,7 +5288,230 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
 // tiles — built from what the music sheet actually tracks (types, reps,
 // countries, Spotify listeners/releases). Gated to Tyler's login while it's
 // broken in.
-function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onFilterType, onGoMarketing, onGoSchedule, onGoNotes }) {
+// ── 1001Tracklists charts (music dashboard + page) ──────────────────────────
+// Server harvests the site's public chart pages into Blob (6h refresh); the
+// browser keeps its copy for 30 min. Rows featuring an M&H client (artist,
+// featured artist, or remixer) get the green treatment and feed the
+// "our artists on the charts" strip.
+const TRACKLISTS_CACHE = { data: null, ts: 0, promise: null };
+function loadTracklists() {
+  if (TRACKLISTS_CACHE.data && Date.now() - TRACKLISTS_CACHE.ts < 30 * 60 * 1000) return Promise.resolve(TRACKLISTS_CACHE.data);
+  if (!TRACKLISTS_CACHE.promise) {
+    TRACKLISTS_CACHE.promise = fetch('/api/sheets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'tracklists' }) })
+      .then(r => r.json())
+      .then(d => { if (d && d.charts) { TRACKLISTS_CACHE.data = d; TRACKLISTS_CACHE.ts = Date.now(); } return d; })
+      .finally(() => { TRACKLISTS_CACHE.promise = null; });
+  }
+  return TRACKLISTS_CACHE.promise;
+}
+const TL_TRACK_CHARTS = [
+  ['top', 'Top overall', 'Most DJ support · 4 weeks'],
+  ['trending', 'Trending', 'Top 50 shows · 2 weeks'],
+  ['heard', 'Most heard', 'Listener plays · 5 days'],
+  ['newcomer', 'Newcomers', 'New tracks · 21 days'],
+];
+const TL_SET_CHARTS = [
+  ['viewed', 'Most viewed sets', 'Views · last 24h'],
+  ['liked', 'Most liked sets', 'This month'],
+  ['premium', 'Premium audio sets', 'Latest added'],
+];
+const tlNorm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const TL_SPLIT = /\s+(?:&|and|x|vs\.?|ft\.?|feat\.?|featuring|pres\.?|presents|with|b2b|b3b)\s+|\s*,\s*|\s*&\s*/i;
+// Everyone credited on a row: main artists, featured artists, remixers.
+function tlCredits(artist, title) {
+  const names = String(artist || '').split(TL_SPLIT);
+  for (const m of String(title || '').matchAll(/\(([^()]+?)\s+(?:Remix|Edit|Rework|Bootleg|Flip|VIP|Dub|Mix|Re-?Edit|Extended Remix)\)/gi)) names.push(...m[1].split(TL_SPLIT));
+  return names.map(tlNorm).filter(Boolean);
+}
+function useClientMatcher(clients) {
+  return useMemo(() => {
+    // Keys: full name, name minus a parenthetical, and the parenthetical
+    // itself ("Alexis Kesselman (Idarose)" answers to either). One-word
+    // names must equal a credited name exactly ("Nadia" ≠ "Nadia Kazmi");
+    // multi-word names may also sit inside a longer credit string.
+    const keys = [];
+    for (const c of clients || []) {
+      if (!c.name) continue;
+      const paren = (c.name.match(/\(([^)]+)\)/) || [])[1];
+      new Set([c.name, c.name.replace(/\([^)]*\)/g, ''), paren].map(tlNorm).filter(k => k && k.length >= 3)).forEach(k => keys.push([k, c]));
+    }
+    return (credits, whole) => {
+      const hits = [];
+      const wholeN = ' ' + tlNorm(whole) + ' ';
+      for (const [k, c] of keys) {
+        if (hits.includes(c)) continue;
+        if (credits.includes(k) || (k.includes(' ') && wholeN.includes(' ' + k + ' '))) hits.push(c);
+      }
+      return hits;
+    };
+  }, [clients]);
+}
+const tlAgo = (ts) => {
+  const m = Math.round((Date.now() - ts) / 60000);
+  return m < 2 ? 'just now' : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)} days ago`;
+};
+const tlDate = (d) => { const t = new Date(d + 'T12:00:00'); return isNaN(t) ? '' : t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+
+function TracklistsModule({ clients, isMobile, onOpenClient, onShowAll, fullPage }) {
+  const [data, setData] = useState(TRACKLISTS_CACHE.data);
+  const [failed, setFailed] = useState(false);
+  const [tab, setTab] = useCachedState('tl.tab', 'tracks');
+  useEffect(() => {
+    let on = true;
+    loadTracklists().then(d => { if (!on) return; if (d && d.charts) setData(d); else setFailed(true); }).catch(() => on && setFailed(true));
+    return () => { on = false; };
+  }, []);
+  const match = useClientMatcher(clients);
+  const charts = (data && data.charts) || {};
+  // Annotate every row with the clients it credits.
+  const rowsOf = useCallback((key) => ((charts[key] || {}).rows || []).map(r => {
+    const credits = r.dj !== undefined ? tlCredits(r.dj, '') : tlCredits(r.artist, r.title);
+    return { ...r, clients: match(credits, r.dj !== undefined ? r.dj : r.artist) };
+  }), [charts, match]);
+  const spotlight = useMemo(() => {
+    const best = new Map();
+    for (const [key, label] of [...TL_TRACK_CHARTS, ...TL_SET_CHARTS]) {
+      for (const r of rowsOf(key)) for (const c of r.clients) {
+        const cur = best.get(c) || { c, hits: [] };
+        cur.hits.push({ label, rank: r.rank });
+        best.set(c, cur);
+      }
+    }
+    return [...best.values()].map(x => ({ ...x, top: x.hits.reduce((a, b) => (b.rank < a.rank ? b : a)) }))
+      .sort((a, b) => a.top.rank - b.top.rank || b.hits.length - a.hits.length);
+  }, [rowsOf]);
+
+  if (!fullPage && failed && !data) return null;
+  const limit = fullPage ? 20 : 5;
+  const colHead = (label, sub) => (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: G.text, letterSpacing: "-0.01em" }}>{label}</div>
+      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{sub}</div>
+    </div>
+  );
+  const hoverRow = { onMouseEnter: e => { e.currentTarget.style.background = G.surfaceRaised; }, onMouseLeave: e => { e.currentTarget.style.background = e.currentTarget.dataset.mine ? G.greenSubtle : "transparent"; } };
+  const rankCell = (n) => <span style={{ width: 18, flexShrink: 0, textAlign: "right", fontSize: 11.5, fontWeight: 700, color: G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{n}</span>;
+  const trackRow = (r) => {
+    const mine = r.clients.length > 0;
+    return (
+      <a key={r.url + r.rank} href={r.url} target="_blank" rel="noopener noreferrer" data-mine={mine ? '1' : undefined} {...hoverRow}
+        title={r.full + (r.labels?.length ? `  [${r.labels.join(' / ')}]` : '')}
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 6px", borderRadius: 8, textDecoration: "none", background: mine ? G.greenSubtle : "transparent", transition: `background 0.12s ${G.ease}` }}>
+        {rankCell(r.rank)}
+        {r.art
+          ? <img src={r.art} alt="" loading="lazy" referrerPolicy="no-referrer" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", flexShrink: 0, background: G.surfaceRaised }} />
+          : <span style={{ width: 32, height: 32, borderRadius: 6, flexShrink: 0, background: G.surfaceRaised }} />}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title || r.full}</span>
+          <span style={{ display: "block", fontSize: 11.5, fontWeight: mine ? 700 : 500, color: mine ? G.green : G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.artist}</span>
+        </span>
+        <span style={{ flexShrink: 0, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+          {r.djs > 0 && <span style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: G.textSecondary }}>{r.djs} <span style={{ fontWeight: 500, color: G.textTertiary }}>DJs</span></span>}
+          {r.move && <span style={{ display: "block", fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: r.move === 'new' || r.move.startsWith('+') ? G.green : G.red }}>{r.move === 'new' ? 'NEW' : r.move.startsWith('+') ? `▲ ${r.move.slice(1)}` : `▼ ${r.move.slice(1)}`}</span>}
+        </span>
+      </a>
+    );
+  };
+  const setRow = (r) => {
+    const mine = r.clients.length > 0;
+    return (
+      <a key={r.url + r.rank} href={r.url} target="_blank" rel="noopener noreferrer" data-mine={mine ? '1' : undefined} {...hoverRow} title={r.full}
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 6px", borderRadius: 8, textDecoration: "none", background: mine ? G.greenSubtle : "transparent", transition: `background 0.12s ${G.ease}` }}>
+        {rankCell(r.rank)}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: mine ? G.green : G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.dj || r.full}</span>
+          <span style={{ display: "block", fontSize: 11.5, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.event}</span>
+        </span>
+        <span style={{ flexShrink: 0, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+          {r.views && <span style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: G.textSecondary }}>{r.views} <span style={{ fontWeight: 500, color: G.textTertiary }}>views</span></span>}
+          {r.date && <span style={{ display: "block", fontSize: 10, color: G.textTertiary }}>{tlDate(r.date)}</span>}
+        </span>
+      </a>
+    );
+  };
+  const columns = (defs, render, sub) => (
+    <div className={isMobile ? "mh-hscroll" : undefined}
+      style={isMobile
+        ? { display: "flex", gap: 16, overflowX: "auto", scrollSnapType: "x mandatory", margin: "0 -4px", padding: "0 4px 4px" }
+        : { display: "grid", gridTemplateColumns: `repeat(${defs.length}, minmax(0, 1fr))`, gap: 20 }}>
+      {defs.map(([key, label, note]) => {
+        const rows = rowsOf(key).slice(0, limit);
+        return (
+          <div key={key} style={isMobile ? { flex: "0 0 86%", scrollSnapAlign: "start", minWidth: 0 } : { minWidth: 0 }}>
+            {colHead(label, key === 'liked' && charts.liked?.period ? charts.liked.period : note)}
+            {rows.length ? rows.map(render) : <div style={{ fontSize: 12, color: G.textTertiary, padding: "6px 0" }}>{data ? 'Not available right now.' : 'Loading…'}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+  const pill = (on, label, onClick) => (
+    <button key={label} onClick={onClick}
+      style={{ padding: "4px 10px", borderRadius: 99, border: `1px solid ${on ? G.green : G.surfaceBorder}`, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
+  );
+  const spotlightStrip = spotlight.length > 0 && (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "10px 0 14px" }}>
+      <span style={{ fontSize: 11.5, fontWeight: 700, color: G.textSecondary, marginRight: 2 }}>Our artists on the charts</span>
+      {spotlight.map(({ c, top, hits }) => (
+        <button key={c.name} onClick={() => onOpenClient && onOpenClient(c)} title={hits.map(h => `#${h.rank} ${h.label}`).join('\n')}
+          onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}
+          style={{ display: "flex", alignItems: "center", gap: 7, background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 999, padding: "3px 10px 3px 4px", cursor: "pointer", fontFamily: ff, transition: `box-shadow 0.15s ${G.ease}` }}>
+          <Avatar name={c.name} photoUrl={c.photoUrl} size={20} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: G.text }}>{c.name}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: G.green }}>#{top.rank} {top.label}</span>
+          {hits.length > 1 && <span style={{ fontSize: 11, color: G.textTertiary }}>+{hits.length - 1} more</span>}
+        </button>
+      ))}
+    </div>
+  );
+  const footer = data && (
+    <div style={{ fontSize: 11, color: G.textTertiary, marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <span>Updated {tlAgo(data.ts)}{data.stale ? ' (couldn’t refresh — showing last copy)' : ''}</span>
+      <span>·</span>
+      <a href="https://www.1001tracklists.com" target="_blank" rel="noopener noreferrer" style={{ color: G.textTertiary }}>1001tracklists.com ↗</a>
+    </div>
+  );
+  const sectionLabel = (t) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, margin: "4px 0 12px" }}>{t}</div>;
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, transition: `box-shadow 0.18s ${G.ease}` };
+  const lift = { onMouseEnter: e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }, onMouseLeave: e => { e.currentTarget.style.boxShadow = G.cardShadow; } };
+
+  if (fullPage) return (
+    <>
+      {spotlightStrip}
+      <div style={{ ...card, marginTop: spotlight.length ? 0 : 16 }} {...lift}>
+        {sectionLabel('Tracks')}
+        {columns(TL_TRACK_CHARTS, trackRow)}
+      </div>
+      <div style={{ ...card, marginTop: 12 }} {...lift}>
+        {sectionLabel('DJ sets')}
+        {columns(TL_SET_CHARTS, setRow)}
+        {footer}
+      </div>
+    </>
+  );
+  return (
+    <div style={{ ...card, marginTop: 12 }} {...lift}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: spotlight.length ? 0 : 12 }}>
+        <button onClick={onShowAll} title="Open 1001Tracklists charts"
+          onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.lastChild.style.opacity = 1; }}
+          onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; e.currentTarget.lastChild.style.opacity = 0.45; }}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, cursor: "pointer", fontFamily: ff, transition: "color 0.15s" }}>
+          <span>1001Tracklists charts</span><span style={{ opacity: 0.45, transition: "opacity 0.15s" }}>→</span>
+        </button>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: "flex", gap: 4 }}>
+          {pill(tab === 'tracks', 'Tracks', () => setTab('tracks'))}
+          {pill(tab === 'sets', 'DJ sets', () => setTab('sets'))}
+        </div>
+      </div>
+      {spotlightStrip}
+      {tab === 'sets' ? columns(TL_SET_CHARTS, setRow) : columns(TL_TRACK_CHARTS, trackRow)}
+      {footer}
+    </div>
+  );
+}
+
+function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onFilterType, onGoMarketing, onGoSchedule, onGoNotes, onGoTracklists }) {
   const now = new Date();
   const s = useMemo(() => {
     const typeCounts = {};
@@ -5457,6 +5681,8 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
           </CarouselRow>
         </div>
       )}
+
+      <TracklistsModule clients={clients} isMobile={isMobile} onOpenClient={onOpenClient} onShowAll={onGoTracklists} />
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
         <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
@@ -8843,9 +9069,9 @@ function App() {
                   const em = t.email === 'me' ? (currentUser?.email || '') : t.email ? (toolEmails[t.email] || '') : '';
                   const copiedEm = toolCopied === t.label, copiedPw = toolCopied === t.label + '#pw';
                   return (
-                    <button key={t.label} onClick={() => openTool(t)}
-                      title={em ? `Opens in a new tab — copies the login email (${em})` : 'Opens in a new tab'}
-                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px 8px 27px", background: "transparent", border: "none", borderRadius: 9, color: copiedEm || copiedPw ? G.green : G.textSecondary, fontWeight: copiedEm || copiedPw ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
+                    <button key={t.label} onClick={() => t.page ? goMusicPage(t.page) : openTool(t)}
+                      title={t.page ? 'Open in the app' : em ? `Opens in a new tab — copies the login email (${em})` : 'Opens in a new tab'}
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px 8px 27px", background: t.page && musicPage === t.page && view !== 'detail' ? G.surface : "transparent", boxShadow: t.page && musicPage === t.page && view !== 'detail' ? G.cardShadow : "none", border: "none", borderRadius: 9, color: copiedEm || copiedPw || (t.page && musicPage === t.page && view !== 'detail') ? G.green : G.textSecondary, fontWeight: copiedEm || copiedPw || (t.page && musicPage === t.page && view !== 'detail') ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
                       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{copiedPw ? '✓ Password copied' : copiedEm ? '✓ Email copied' : t.label}</span>
                       {t.pw && (
                         <span onClick={e => { e.stopPropagation(); copyToolPw(t); }} title="Copy the shared password"
@@ -9187,9 +9413,17 @@ function App() {
                   onFilterType={(t) => { clearCustomGroup(); setFilterTypes([t]); goMusicPage('roster'); }}
                   onGoMarketing={() => goMusicPage('marketing')}
                   onGoSchedule={() => goMusicPage('schedule')}
-                  onGoNotes={() => goMusicPage('notes')} />
+                  onGoNotes={() => goMusicPage('notes')}
+                  onGoTracklists={() => goMusicPage('tracklists')} />
               )}
               {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'notes' && <NotesPage isMobile={isMobile} user={currentUser} />}
+              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'tracklists' && (
+                <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
+                  <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>1001Tracklists</div>
+                  <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>What DJs are playing right now. Green rows feature our artists</div>
+                  <TracklistsModule clients={clients} isMobile={isMobile} onOpenClient={(c) => setView('detail', c)} fullPage />
+                </div>
+              )}
               {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'schedule' && (
                 <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
                   <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Schedule</div>
