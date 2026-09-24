@@ -5451,7 +5451,6 @@ function TracklistsModule({ clients, isMobile, onOpenClient, onShowAll, fullPage
   );
   const spotlightStrip = spotlight.length > 0 && (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "10px 0 14px" }}>
-      <span style={{ fontSize: 11.5, fontWeight: 700, color: G.textSecondary, marginRight: 2 }}>Our artists on the charts</span>
       {spotlight.map(({ c, top, hits }) => (
         <button key={c.name} onClick={() => onOpenClient && onOpenClient(c)} title={hits.map(h => `#${h.rank} ${h.label}`).join('\n')}
           onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}
@@ -5506,7 +5505,6 @@ function TracklistsModule({ clients, isMobile, onOpenClient, onShowAll, fullPage
       </div>
       {spotlightStrip}
       {tab === 'sets' ? columns(TL_SET_CHARTS, setRow) : columns(TL_TRACK_CHARTS, trackRow)}
-      {footer}
     </div>
   );
 }
@@ -9420,7 +9418,6 @@ function App() {
               {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'tracklists' && (
                 <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
                   <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>1001Tracklists</div>
-                  <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>What DJs are playing right now. Green rows feature our artists</div>
                   <TracklistsModule clients={clients} isMobile={isMobile} onOpenClient={(c) => setView('detail', c)} fullPage />
                 </div>
               )}
