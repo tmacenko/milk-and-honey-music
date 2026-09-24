@@ -5315,7 +5315,7 @@ const TL_SET_CHARTS = [
   ['liked', 'Most liked sets', 'This month'],
   ['premium', 'Premium audio sets', 'Latest added'],
 ];
-const tlNorm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const tlNorm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/ß/g, 'ss').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const TL_SPLIT = /\s+(?:&|and|x|vs\.?|ft\.?|feat\.?|featuring|pres\.?|presents|with|b2b|b3b)\s+|\s*,\s*|\s*&\s*/i;
 // Everyone credited on a row: main artists, featured artists, remixers.
 function tlCredits(artist, title) {
