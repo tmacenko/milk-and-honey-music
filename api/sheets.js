@@ -29,7 +29,7 @@ const TRACK_ART_CACHE_PATH = 'spotify-track-art-cache.json';
 
 // Persisted in Vercel Blob (not just in-memory) so the cache survives cold
 // starts -- a 1-week TTL is pointless if a function restart wipes it.
-const RELEASES_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 1 week -- new releases land on Fridays
+const RELEASES_CACHE_TTL_MS = 8 * 24 * 60 * 60 * 1000; // the Friday refresh-music job owns updates; this lazy path only fills gaps if it missed a week
 // Resolved photos + song credits from Spotify. Re-resolving on every load was the
 // main cause of slow API responses; song credits shift week to week by streams.
 const MEDIA_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 1 week

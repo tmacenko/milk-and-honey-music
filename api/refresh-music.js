@@ -8,10 +8,18 @@
 //      pages don't show listeners. Never blanks a value on a failed fetch.
 //      Each run also appends to a hidden ListenerHistory tab (date|name|
 //      listeners) so listener growth can be charted later.
-//   2. Recent releases: re-fetches each artist's latest albums/singles from
-//      the Spotify API and overwrites the Vercel Blob releases cache, so the
-//      dashboard's "Recent releases" tile is fresh every Friday morning
-//      (release day) instead of waiting for a lazy 7-day TTL to expire.
+//   2. Recent releases: refreshes each artist's latest albums/singles in the
+//      Vercel Blob releases cache so the dashboard's "Recent releases" tile is
+//      fresh every Friday (release day). Releases come from the same artist-
+//      overview call that carries monthly listeners — NOT the official Web
+//      API, whose rate limit cut the 2026-09-25 run off after 5 of 43 artists.
+//      The Web API is only a per-artist fallback, and a 429 there no longer
+//      ends the pass for everyone else.
+//
+// ?mode=releases — releases-only catch-up (Friday backup cron, manual
+// re-runs): skips artists refreshed in the last 6h and never touches the
+// listener column or ListenerHistory. Every run logs a one-line summary so a
+// partial run shows up as partial instead of a silent 200.
 //
 // Auth: admin cookie, or `Authorization: Bearer $CRON_SECRET` (what Vercel
 // Cron sends when CRON_SECRET is set), or `?key=$CRON_SECRET` for manual runs.
@@ -128,7 +136,31 @@ async function getAnonToken(artistId) {
   if (!m) return null;
   try { return JSON.parse(m[1]).props?.pageProps?.state?.settings?.session?.accessToken || null; } catch { return null; }
 }
-async function fetchMonthlyListeners(artistId, anonToken) {
+// Discography block of the overview → the releases-cache shape the dashboard
+// already reads ({name,type,artwork,releaseDate,url}, newest first, max 8).
+function overviewReleases(disc) {
+  const seen = new Set(), out = [];
+  const pad = n => String(n).padStart(2, '0');
+  const add = (rel) => {
+    if (!rel || !rel.id || seen.has(rel.id) || !rel.date?.year) return;
+    seen.add(rel.id);
+    const d = rel.date;
+    const srcs = [...(rel.coverArt?.sources || [])].sort((a, b) => (b.width || 0) - (a.width || 0));
+    out.push({
+      name: rel.name || '',
+      type: String(rel.type || '').toLowerCase(),
+      artwork: srcs[0]?.url,
+      releaseDate: d.precision === 'YEAR' ? String(d.year) : d.precision === 'MONTH' ? `${d.year}-${pad(d.month)}` : `${d.year}-${pad(d.month)}-${pad(d.day)}`,
+      url: `https://open.spotify.com/album/${rel.id}`,
+    });
+  };
+  if (!disc) return null;
+  add(disc.latest);
+  for (const k of ['singles', 'albums']) for (const it of disc[k]?.items || []) add(it?.releases?.items?.[0]);
+  if (!out.length) return null;
+  return out.sort((a, b) => String(b.releaseDate).localeCompare(String(a.releaseDate))).slice(0, 8);
+}
+async function fetchOverview(artistId, anonToken) {
   if (!anonToken) return null;
   const r = await fetch('https://api-partner.spotify.com/pathfinder/v2/query', {
     method: 'POST',
@@ -142,8 +174,10 @@ async function fetchMonthlyListeners(artistId, anonToken) {
   });
   if (!r.ok) return null;
   const j = await r.json();
-  const n = j?.data?.artistUnion?.stats?.monthlyListeners;
-  return Number.isFinite(n) && n > 0 ? n : null;
+  const a = j?.data?.artistUnion;
+  if (!a) return null;
+  const n = a.stats?.monthlyListeners;
+  return { listeners: Number.isFinite(n) && n > 0 ? n : null, releases: overviewReleases(a.discography) };
 }
 async function getSpotifyApiToken() {
   const cid = process.env.SPOTIFY_CLIENT_ID, csec = process.env.SPOTIFY_CLIENT_SECRET;
@@ -230,54 +264,81 @@ module.exports = async (req, res) => {
       else if (url) skippedNonArtist++;
     });
 
-    // 1) Monthly listeners → sheet column + history tab. One anonymous token
-    // from the embed page covers every artist's overview query.
+    const releasesOnly = req.query?.mode === 'releases';
+    const RECENT_MS = 6 * 60 * 60 * 1000;
+    const cache = await loadBlobCache(RELEASES_CACHE_PATH);
+    const needsReleases = (a) => !(releasesOnly && cache[a.artistId] && Date.now() - (cache[a.artistId].fetchedAt || 0) < RECENT_MS);
+
+    // One overview call per artist feeds both the listener count and the
+    // releases. One anonymous token (from the embed page) covers them all.
     const writes = [], history = [], errors = [];
     const today = new Date().toISOString().slice(0, 10);
-    const anonToken = artists.length ? await getAnonToken(artists[0].artistId) : null;
-    await runPool(artists, 5, async (a) => {
+    const todo = artists.filter(a => !releasesOnly || needsReleases(a));
+    const anonToken = todo.length ? await getAnonToken(todo[0].artistId) : null;
+    const overview = {};
+    await runPool(todo, 5, async (a) => {
       try {
-        const n = await fetchMonthlyListeners(a.artistId, anonToken);
-        if (n != null && n > 0) {
-          writes.push({ range: `Clients!${colLetter(mlC + 1)}${a.row}`, values: [[n]] });
-          history.push([today, a.name, n]);
+        const ov = await fetchOverview(a.artistId, anonToken);
+        overview[a.artistId] = ov;
+        if (releasesOnly) return;
+        if (ov?.listeners) {
+          writes.push({ range: `Clients!${colLetter(mlC + 1)}${a.row}`, values: [[ov.listeners]] });
+          history.push([today, a.name, ov.listeners]);
         } else errors.push(a.name);
-      } catch { errors.push(a.name); }
+      } catch { if (!releasesOnly) errors.push(a.name); }
     });
     if (writes.length) {
       await sheetBatchWrite(token, writes);
       await ensureHistoryTab(token);
-      await sheetAppend(token, 'ListenerHistory!A:C', history);
+      // A second run on the same day must not double-count the history.
+      const prior = ((await sheetGet(token, 'ListenerHistory!A:B')).values || [])
+        .filter(r => r[0] === today).map(r => String(r[1] || '').toLowerCase());
+      const fresh = history.filter(h => !prior.includes(String(h[1]).toLowerCase()));
+      if (fresh.length) await sheetAppend(token, 'ListenerHistory!A:C', fresh);
     }
 
-    // 2) Releases cache → fresh Friday snapshot in the shared blob store.
-    let releasesRefreshed = 0, releasesSkipped = false;
-    const apiToken = await getSpotifyApiToken();
-    if (apiToken) {
-      const cache = await loadBlobCache(RELEASES_CACHE_PATH);
-      let dirty = false, rateLimited = false;
-      await runPool(artists, 5, async (a) => {
-        if (rateLimited) return;
-        try {
-          const out = await fetchReleases(a.artistId, apiToken);
-          if (out?.rateLimited) { rateLimited = true; return; }
-          if (out?.releases) {
-            cache[a.artistId] = { data: out.releases, fetchedAt: Date.now() };
-            dirty = true; releasesRefreshed++;
-          }
-        } catch { /* keep the old cache entry */ }
-      });
-      if (dirty) await saveBlobCache(RELEASES_CACHE_PATH, cache);
-      if (rateLimited) releasesSkipped = true;
-    } else releasesSkipped = true;
+    // Releases: overview first; the official Web API only for artists whose
+    // overview came back without a discography. A 429 there stops further
+    // API calls, never the overview-sourced ones.
+    let fromOverview = 0, fromApi = 0, alreadyFresh = 0, apiRateLimited = false;
+    const releaseMisses = [];
+    let apiToken;
+    for (const a of artists) {
+      if (!needsReleases(a)) { alreadyFresh++; continue; }
+      let rel = overview[a.artistId]?.releases || null;
+      if (rel) fromOverview++;
+      else if (!apiRateLimited) {
+        if (apiToken === undefined) apiToken = await getSpotifyApiToken();
+        const out = apiToken ? await fetchReleases(a.artistId, apiToken).catch(() => null) : null;
+        if (out?.rateLimited) apiRateLimited = true;
+        else if (out?.releases) { rel = out.releases; fromApi++; }
+      }
+      if (rel) cache[a.artistId] = { data: rel, fetchedAt: Date.now() };
+      else releaseMisses.push(a.name);
+    }
+    const releasesRefreshed = fromOverview + fromApi;
+    if (releasesRefreshed) await saveBlobCache(RELEASES_CACHE_PATH, cache);
+    const releasesSkipped = releaseMisses.length > 0;
+
+    console.log(`refresh-music${releasesOnly ? ' (releases-only)' : ''}: releases ${releasesRefreshed + alreadyFresh}/${artists.length} current`
+      + ` (${fromOverview} overview, ${fromApi} web-api, ${alreadyFresh} already fresh)`
+      + (releaseMisses.length ? ` — MISSED ${releaseMisses.length}: ${releaseMisses.join(', ')}` : '')
+      + (apiRateLimited ? ' — web-api rate-limited' : '')
+      + (releasesOnly ? '' : ` | listeners ${writes.length}/${artists.length}`));
 
     return res.json({
       ok: true,
+      mode: releasesOnly ? 'releases' : 'full',
       artistProfiles: artists.length,
       skippedNonArtist,
       listenersWritten: writes.length,
       listenerErrors: errors,
       releasesRefreshed,
+      releasesAlreadyFresh: alreadyFresh,
+      releasesFromOverview: fromOverview,
+      releasesFromWebApi: fromApi,
+      releasesMissed: releaseMisses,
+      webApiRateLimited: apiRateLimited,
       releasesSkipped,
     });
   } catch (err) {
