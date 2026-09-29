@@ -2958,7 +2958,18 @@ function PillRow({ label, items }) {
 // JSON in the browser (their API sends open CORS headers) using the espnId the
 // nightly sync already found. Cached per athlete for the session.
 const ESPN_STATS_CACHE = {};
-function SportsStatsTab({ athlete: a, isMobile, pad }) {
+function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
+  // College clients: production vs. peers from the prospect database
+  // (ESPN id == CFBD id). Never triggers a build.
+  const wantPx = !!(withReport && a.level === 'College' && a.espnId);
+  const [pxData, setPxData] = useState(PROSPECTS.data);
+  useEffect(() => {
+    if (!wantPx || pxData) return;
+    let on = true;
+    loadProspectData(false).then(d => on && setPxData(d)).catch(() => {});
+    return () => { on = false; };
+  }, [wantPx, pxData]);
+  const pxP = useMemo(() => (wantPx && pxData ? pxData.players.find(pl => !pl.isHs && String(pl.id) === String(a.espnId)) || null : null), [wantPx, pxData, a.espnId]);
   const league = a.level === 'NFL' ? 'nfl' : 'college-football';
   const [data, setData] = useState(ESPN_STATS_CACHE[a.espnId] || null);
   const [failed, setFailed] = useState(false);
@@ -3014,8 +3025,15 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
   );
 
   if (!a.espnId) return <div style={{ padding: `40px ${pad}px`, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No ESPN profile linked yet — add their ESPN ID in the edit form and stats appear here.</div>;
-  if (failed) return <div style={{ padding: `40px ${pad}px`, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Couldn't reach ESPN just now — try again in a minute.</div>;
-  if (!data) return <div style={{ padding: `40px ${pad}px`, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading stats from ESPN…</div>;
+  const report = pxP ? <ProductionReport p={pxP} data={pxData} narrow={isMobile} /> : null;
+  const shell = (msg) => (
+    <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
+      {report}
+      <div style={{ padding: "20px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{msg}</div>
+    </div>
+  );
+  if (failed) return shell('Couldn’t reach ESPN just now — try again in a minute.');
+  if (!data) return shell('Loading stats from ESPN…');
 
   // Career / season-by-season tables, one per stat category.
   const teams = (data.stats || {}).teams || {};
@@ -3139,6 +3157,7 @@ function SportsStatsTab({ athlete: a, isMobile, pad }) {
   // each scrolling inside its own card instead of stretching the page.
   return (
     <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
+      {report && <div style={{ marginBottom: 12 }}>{report}</div>}
       {gameCard}
       {catCards.length === 0 && !logCard && !gameCard && (
         <div style={{ padding: 30, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>ESPN doesn't have stat lines for {a.name} yet — they'll appear here once games are logged.</div>
@@ -3257,7 +3276,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
         {companyView && page === 'marketing' ? (
           <SportsMarketingTab athlete={a} isMobile={isMobile} pad={pad} />
         ) : companyView && a.espnId && page === 'stats' ? (
-          <SportsStatsTab athlete={a} isMobile={isMobile} pad={pad} />
+          <SportsStatsTab athlete={a} isMobile={isMobile} pad={pad} withReport />
         ) : (
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
           {a.bio && (
@@ -6291,33 +6310,11 @@ function pxScoreAll(players, S, teamInfo) {
     const vals = def.parts.map(pt => { const v = pt[2](p, s, gp); return Number.isFinite(v) ? v : null; });
     (buckets[b] = buckets[b] || []).push({ p, vals });
   });
-  // Mid-rank percentile (ties share the middle, so a pile of zeros lands
-  // near the bottom half rather than looking elite).
-  const midPct = (xs, v) => {
-    let lo = 0, hi = xs.length;
-    while (lo < hi) { const m = (lo + hi) >> 1; if (xs[m] < v) lo = m + 1; else hi = m; }
-    let eq = lo; while (eq < xs.length && xs[eq] === v) eq++;
-    return ((lo + (eq - lo) / 2) / xs.length) * 100;
-  };
   Object.entries(buckets).forEach(([b, list]) => {
-    const def = PX_SCORE_DEFS[b];
-    const sorted = def.parts.map((_, i) => list.map(r => r.vals[i]).filter(v => v != null).sort((a, c) => a - c));
-    list.forEach(r => {
-      let num = 0, den = 0;
-      r.parts = def.parts.map((pt, j) => {
-        const v = r.vals[j];
-        if (v == null || !sorted[j].length) return null;
-        let pp = midPct(sorted[j], v);
-        if (pt[1] < 0) pp = 100 - pp;
-        num += Math.abs(pt[1]) * pp; den += Math.abs(pt[1]);
-        return { label: pt[0], value: pt[3](v), pct: Math.max(1, Math.min(99, Math.round(pp))), weight: pt[1] };
-      }).filter(Boolean);
-      r.comp = den ? num / den : 0;
-    });
-    list.sort((a, c) => a.comp - c.comp);
-    list.forEach((r, i) => {
-      r.p.prodPct = Math.max(1, Math.min(99, Math.round(((i + 1) / list.length) * 100)));
-      r.p.scoreN = list.length;
+    const { ranked } = pxRankList(list, PX_SCORE_DEFS[b]);
+    ranked.forEach(r => {
+      r.p.prodPct = r.pct;
+      r.p.scoreN = ranked.length;
       r.p.scoreParts = r.parts;
     });
   });
@@ -6330,38 +6327,284 @@ function pxScoreAll(players, S, teamInfo) {
     p.teamStrength = t.sp ? Math.round(100 * (1 - (t.sp - 1) / N)) : 0;
     p.outperf = p.prodPct - p.teamStrength;
   });
+  return buckets;
+}
+// Mid-rank percentile (ties share the middle, so a pile of zeros lands near
+// the bottom half rather than looking elite).
+function pxMidPct(xs, v) {
+  let lo = 0, hi = xs.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (xs[m] < v) lo = m + 1; else hi = m; }
+  let eq = lo; while (eq < xs.length && xs[eq] === v) eq++;
+  return ((lo + (eq - lo) / 2) / xs.length) * 100;
+}
+// Ranks one position's players: each stat becomes a percentile within the
+// list, the score is their weighted blend, the percentile is the blend's rank.
+// Returns fresh objects (weakest first) so peer subsets don't overwrite the
+// players' own all-levels score.
+function pxRankList(list, def) {
+  const sorted = def.parts.map((_, i) => list.map(r => r.vals[i]).filter(v => v != null).sort((a, c) => a - c));
+  const ranked = list.map(r => {
+    let num = 0, den = 0;
+    const parts = def.parts.map((pt, j) => {
+      const v = r.vals[j], xs = sorted[j];
+      if (v == null || !xs.length) return null;
+      let pp = pxMidPct(xs, v);
+      if (pt[1] < 0) pp = 100 - pp;
+      num += Math.abs(pt[1]) * pp; den += Math.abs(pt[1]);
+      return { label: pt[0], value: pt[3](v), pct: Math.max(1, Math.min(99, Math.round(pp))), weight: pt[1], j, raw: v, med: pt[3](xs[Math.floor(xs.length / 2)]) };
+    }).filter(Boolean);
+    return { p: r.p, vals: r.vals, parts, comp: den ? num / den : 0 };
+  }).sort((a, c) => a.comp - c.comp);
+  ranked.forEach((r, i) => { r.pct = Math.max(1, Math.min(99, Math.round(((i + 1) / ranked.length) * 100))); });
+  return { ranked, sorted };
+}
+const pxOrd = (n) => { const v = n % 100; return `${n}${v >= 11 && v <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] || 'th'}`; };
+// A player ranked against one peer group: 'all', 'tier' (same level) or
+// 'conf' (same conference).
+function pxPeerView(data, p, scope) {
+  const all = ((data.scoreBuckets || {})[p.scoreBucket]) || [];
+  const list = scope === 'tier' ? all.filter(r => r.p.tier === p.tier) : scope === 'conf' ? all.filter(r => r.p.conf === p.conf) : all;
+  if (!list.length) return null;
+  const { ranked, sorted } = pxRankList(list, PX_SCORE_DEFS[p.scoreBucket]);
+  const i = ranked.findIndex(r => r.p === p);
+  return i < 0 ? null : { me: ranked[i], rank: ranked.length - i, n: ranked.length, sorted };
+}
+// The stat a position's share of team production is measured in.
+const PX_SHARE = {
+  QB: ['total yards (pass + rush)', (g) => g('passYds') + g('rushYds')],
+  RB: ['scrimmage yards', (g) => g('rushYds') + g('recYds')], ATH: ['scrimmage yards', (g) => g('rushYds') + g('recYds')],
+  WR: ['receiving yards', (g) => g('recYds')], TE: ['receiving yards', (g) => g('recYds')],
+  CB: ['passes defended (breakups + INTs)', (g) => g('pd') + g('int')], S: ['passes defended (breakups + INTs)', (g) => g('pd') + g('int')], DB: ['passes defended (breakups + INTs)', (g) => g('pd') + g('int')],
+  LB: ['tackles', (g) => g('tkl')],
+  EDGE: ['tackles for loss', (g) => g('tfl')], DT: ['tackles for loss', (g) => g('tfl')], DL: ['tackles for loss', (g) => g('tfl')],
+};
+function pxTeamShare(data, p) {
+  const def = PX_SHARE[p.scoreBucket];
+  if (!def || !p.team) return null;
+  const { S } = data;
+  const val = (pl) => (pl.season ? def[1]((k) => pl.season[S[k]] || 0) : 0);
+  let me = 0, room = 0, rest = 0, better = 0;
+  const mine = val(p);
+  data.players.forEach(pl => {
+    if (pl.isHs || pl.team !== p.team) return;
+    const v = val(pl);
+    if (pl === p) me = v;
+    else if (PX_BUCKET[String(pl.pos || '').toUpperCase()] === p.scoreBucket) room += v;
+    else rest += v;
+    if (pl !== p && v > mine) better++;
+  });
+  const total = me + room + rest;
+  return total > 0 && me > 0 ? { label: def[0], me, room, rest, total, teamRank: better + 1 } : null;
 }
 const pxScoreTitle = (p) => p.prodPct
   ? `${p.prodPct}th percentile among ${p.scoreN} ${PX_BUCKET_LABEL[p.scoreBucket] || 'players'} — ` + (p.scoreParts || []).slice().sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight)).slice(0, 3).map(x => `${x.label}: ${x.value} (${x.pct}th)`).join(' · ')
   : (p.scoreNote || '');
 
-// Score card in the player profile: the number, what it's compared against,
-// what drove it, and how it stacks up against his team's strength.
-function ProductionCard({ p }) {
-  if (p.isHs || p.boardOnly) return null;
-  const box = { background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 14, marginTop: 18 };
-  if (!p.prodPct) return p.scoreNote ? <div style={{ ...box, fontSize: 12.5, color: G.textTertiary }}>{p.scoreNote}</div> : null;
-  const parts = (p.scoreParts || []).slice().sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
+// Production vs. peers: the score laid out as a small dashboard — headline
+// percentile on a segmented meter, what drives it, where the player sits in
+// the position's distribution, and their share of the team's output. Peer
+// group switches between all levels, the player's level and conference.
+function PxMeter({ pct, ticks = 30, h = 30 }) {
+  const on = Math.round((pct / 100) * ticks);
   return (
-    <div style={box}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: p.prodPct >= 90 ? G.green : G.text, lineHeight: 1 }}>{p.prodPct}</span>
-        <span style={{ fontSize: 13, color: G.textSecondary }}>production percentile among {p.scoreN} {PX_BUCKET_LABEL[p.scoreBucket]}</span>
+    <div role="img" aria-label={`${pxOrd(pct)} percentile`} style={{ display: "flex", gap: 3, height: h }}>
+      {Array.from({ length: ticks }, (_, i) => <span key={i} style={{ flex: 1, borderRadius: 2, background: i < on ? G.green : G.surfaceBorderLight }} />)}
+    </div>
+  );
+}
+function PxDonut({ segs, size = 120, stroke = 14, center, sub }) {
+  const r = (size - stroke) / 2, C = 2 * Math.PI * r;
+  const total = segs.reduce((a, x) => a + x.v, 0) || 1;
+  const gap = segs.filter(x => x.v > 0).length > 1 ? 2 : 0;
+  let at = 0;
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)", display: "block" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={G.surfaceBorder} strokeWidth={stroke} />
+        {segs.map(x => {
+          const len = (x.v / total) * C;
+          const el = x.v > 0 && (
+            <circle key={x.label} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={x.color} strokeWidth={stroke}
+              strokeDasharray={`${Math.max(0, len - gap)} ${C}`} strokeDashoffset={-at}>
+              <title>{`${x.label}: ${Math.round((x.v / total) * 100)}%`}</title>
+            </circle>
+          );
+          at += len;
+          return el;
+        })}
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{center}</div>
+        {sub && <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, marginTop: 4 }}>{sub}</div>}
       </div>
-      <div style={{ marginTop: 12 }}>
+    </div>
+  );
+}
+function ProductionReport({ p, data, narrow, inPanel }) {
+  const [scope, setScope] = useState('all');
+  const [distJ, setDistJ] = useState(null);
+  const [hoverBin, setHoverBin] = useState(null);
+  useEffect(() => { setScope('all'); setDistJ(null); }, [p.id]);
+  const view = useMemo(() => (p.prodPct && data.scoreBuckets ? pxPeerView(data, p, scope) : null), [p, data, scope]);
+  const share = useMemo(() => (p.prodPct && data.players ? pxTeamShare(data, p) : null), [p, data]);
+  if (p.isHs || p.boardOnly) return null;
+  const card = { background: inPanel ? G.surfaceRaised : G.surface, border: `1px solid ${inPanel ? G.surfaceBorder : G.cardBorder}`, boxShadow: inPanel ? 'none' : G.cardShadow, borderRadius: 14, padding: 16, minWidth: 0 };
+  const label = (t, extra) => (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{t}</div>
+      {extra}
+    </div>
+  );
+  if (!p.prodPct || !view) {
+    return p.scoreNote ? <div style={{ ...card, marginTop: inPanel ? 18 : 0, fontSize: 13, color: G.textTertiary }}>{p.scoreNote}</div> : null;
+  }
+  const b = p.scoreBucket, def = PX_SCORE_DEFS[b];
+  const who = PX_BUCKET_LABEL[b] || 'players';
+  const scopes = [['all', 'All levels'], p.tier && ['tier', PX_TIER_NAME[p.tier] || p.tier], p.conf && ['conf', p.conf]].filter(Boolean);
+  const scopeName = scope === 'tier' ? ` in ${PX_TIER_NAME[p.tier] || p.tier}` : scope === 'conf' ? ` in the ${p.conf}` : '';
+  const pct = view.me.pct;
+  const parts = view.me.parts.slice().sort((x, y) => Math.abs(y.weight) - Math.abs(x.weight));
+
+  // Headline
+  const head = (
+    <div style={card}>
+      {label('Production percentile', <span style={{ fontSize: 11.5, color: G.textTertiary }}>{data.season} season</span>)}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 38, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, color: G.text, fontVariantNumeric: "tabular-nums" }}>{pxOrd(pct)}</span>
+        <span style={{ fontSize: 13, color: G.textSecondary }}>among {view.n} {who}{scopeName}</span>
+      </div>
+      <div style={{ marginTop: 16 }}><PxMeter pct={pct} /></div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, color: G.textSecondary }}>Rank <b style={{ color: G.text, fontVariantNumeric: "tabular-nums" }}>#{view.rank}</b> of {view.n}</span>
+        {scope === 'all' && (
+          p.outperf >= 40
+            ? <span title={`Production percentile ${p.prodPct} vs team strength ${p.teamStrength} (SP+ percentile)`} style={{ fontSize: 11.5, fontWeight: 700, color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "4px 8px" }}>Outperforming team · +{p.outperf}</span>
+            : <span style={{ fontSize: 11.5, color: G.textTertiary }}>Team strength {p.teamStrength ? `${pxOrd(p.teamStrength)} pct (SP+)` : 'outside FBS'} · <span style={{ color: p.outperf > 0 ? G.green : p.outperf < 0 ? G.red : G.textTertiary, fontWeight: 700 }}>{p.outperf > 0 ? '+' : ''}{p.outperf}</span></span>
+        )}
+      </div>
+    </div>
+  );
+
+  // What drives it
+  const drivers = (
+    <div style={card}>
+      {label('What drives it', <span style={{ fontSize: 11.5, color: G.textTertiary }}>heaviest weight first</span>)}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {parts.map(x => (
-          <div key={x.label} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: G.textSecondary }}>{x.label}{x.weight < 0 ? ' (lower is better)' : ''}</span>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: G.text, width: 56, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{x.value}</span>
-            <span style={{ width: 90, height: 6, borderRadius: 3, background: G.surface, overflow: "hidden", flexShrink: 0 }}>
-              <span style={{ display: "block", width: `${x.pct}%`, height: "100%", background: x.pct >= 80 ? G.green : G.textTertiary }} />
-            </span>
-            <span style={{ fontSize: 11.5, color: G.textTertiary, width: 34, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{x.pct}th</span>
+          <div key={x.label} title={`Counts ×${Math.abs(x.weight)} in the score${x.weight < 0 ? ' (lower is better)' : ''}`}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: G.textSecondary }}>{x.label}{x.weight < 0 ? ' · lower is better' : ''}</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: G.text, fontVariantNumeric: "tabular-nums" }}>{x.value}</span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: x.pct >= 75 ? G.green : G.textTertiary, width: 36, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{pxOrd(x.pct)}</span>
+            </div>
+            <div style={{ position: "relative", height: 6, borderRadius: 3, background: G.surfaceBorderLight, marginTop: 6 }}>
+              <div style={{ width: `${x.pct}%`, height: "100%", borderRadius: 3, background: x.pct >= 75 ? G.green : G.textTertiary }} />
+              <div title="Position median" style={{ position: "absolute", left: "50%", top: -3, bottom: -3, width: 2, marginLeft: -1, background: G.text, opacity: 0.5, borderRadius: 1 }} />
+            </div>
+            <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>Median {x.med}</div>
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 10, lineHeight: 1.5 }}>
-        Team strength: {p.teamStrength ? `${p.teamStrength}th percentile of FBS (SP+)` : 'outside FBS'} · {p.outperf >= 40 ? <b style={{ color: G.green }}>outperforming his team by {p.outperf} points</b> : `${p.outperf >= 0 ? '+' : ''}${p.outperf} vs team strength`}. Stats are per team game, compared only with players at his position who’ve played enough to judge.
+    </div>
+  );
+
+  // Distribution of one stat across the peer group
+  const pick = parts.find(x => x.j === distJ) || parts.find(x => /per game/i.test(x.label) && x.weight > 0) || parts[0];
+  const xs = view.sorted[pick.j] || [];
+  const fmt = def.parts[pick.j][3];
+  const BINS = 24;
+  const lo = xs[0], hi = Math.max(xs[Math.floor(0.98 * (xs.length - 1))], pick.raw);
+  const w = (hi - lo) / BINS || 1;
+  const binOf = (v) => Math.max(0, Math.min(BINS - 1, Math.floor((v - lo) / w)));
+  const counts = Array(BINS).fill(0);
+  xs.forEach(v => { counts[binOf(v)]++; });
+  const maxC = Math.max(...counts, 1);
+  const myBin = binOf(pick.raw);
+  const medBin = binOf(xs[Math.floor(xs.length / 2)]);
+  const hb = hoverBin != null ? hoverBin : null;
+  const dist = (
+    <div style={card}>
+      {label('Where the player sits', <span style={{ fontSize: 11.5, color: G.textTertiary }}>{xs.length} {who}{scopeName}</span>)}
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12 }}>
+        {parts.map(x => (
+          <button key={x.j} onClick={() => setDistJ(x.j)}
+            style={{ fontFamily: ff, fontSize: 11.5, fontWeight: 600, padding: "4px 8px", borderRadius: 99, cursor: "pointer", border: `1px solid ${x.j === pick.j ? G.greenBorder : G.surfaceBorder}`, background: x.j === pick.j ? G.greenSubtle : 'transparent', color: x.j === pick.j ? G.green : G.textSecondary }}>
+            {x.label.replace(/ \(.*\)/, '')}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: 13, color: G.textSecondary, minHeight: 20 }}>
+        {hb != null
+          ? <><b style={{ color: G.text, fontVariantNumeric: "tabular-nums" }}>{counts[hb]}</b> {counts[hb] === 1 ? 'player' : 'players'} at {fmt(lo + hb * w)}–{hb === BINS - 1 ? `${fmt(lo + BINS * w)}+` : fmt(lo + (hb + 1) * w)}</>
+          : <><b style={{ color: G.text, fontVariantNumeric: "tabular-nums" }}>{pick.value}</b> — better than {pick.pct}% of {who}{scopeName}</>}
+      </div>
+      <div onMouseLeave={() => setHoverBin(null)} style={{ position: "relative", display: "flex", alignItems: "flex-end", gap: 2, height: 110, marginTop: 8, borderBottom: `1px solid ${G.surfaceBorderLight}` }}>
+        {counts.map((c, i) => (
+          <div key={i} onMouseEnter={() => setHoverBin(i)} style={{ flex: 1, height: "100%", display: "flex", alignItems: "flex-end", cursor: "default" }}>
+            <div style={{ width: "100%", height: c ? `${Math.max(i === myBin ? 8 : 3, (c / maxC) * 100)}%` : 0, borderRadius: "4px 4px 0 0", background: i === myBin ? G.green : hb === i ? G.textTertiary : G.surfaceBorderLight, transition: "background 0.12s" }} />
+          </div>
+        ))}
+        <div title="Median" style={{ position: "absolute", left: `${((medBin + 0.5) / BINS) * 100}%`, top: 0, bottom: 0, borderLeft: `1px dashed ${G.textTertiary}`, pointerEvents: "none" }} />
+      </div>
+      <div style={{ position: "relative", height: 16, marginTop: 4 }}>
+        <span style={{ position: "absolute", left: `${((myBin + 0.5) / BINS) * 100}%`, transform: `translateX(${myBin > BINS * 0.8 ? '-100%' : myBin < BINS * 0.2 ? '0' : '-50%'})`, marginLeft: myBin > BINS * 0.8 ? 6 : myBin < BINS * 0.2 ? -6 : 0, fontSize: 11.5, fontWeight: 700, color: G.green, whiteSpace: "nowrap" }}>▲ {(p.name || '').split(' ')[0]}</span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: G.textTertiary, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
+        <span>{fmt(lo)}</span><span>median {pick.med}</span><span>{fmt(hi)}+</span>
+      </div>
+      {pick.weight < 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>Lower is better for this one.</div>}
+    </div>
+  );
+
+  // Share of team output
+  const shareCard = share && (() => {
+    const segs = [
+      { label: p.name, v: share.me, color: G.green },
+      { label: `Other ${who}`, v: share.room, color: G.textTertiary },
+      { label: 'Rest of team', v: share.rest, color: G.surfaceBorderLight },
+    ];
+    const f = (v) => (Number.isInteger(v) ? v.toLocaleString() : (Math.round(v * 10) / 10).toLocaleString());
+    return (
+      <div style={card}>
+        {label(`Share of team ${share.label}`, <span style={{ fontSize: 11.5, color: G.textTertiary, whiteSpace: "nowrap" }}>#{share.teamRank} on team</span>)}
+        <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+          <PxDonut segs={segs} center={`${Math.round((share.me / share.total) * 100)}%`} sub="of team" />
+          <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 8 }}>
+            {segs.map(x => (
+              <div key={x.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: x.color, flexShrink: 0 }} />
+                <span style={{ flex: 1, minWidth: 0, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.label}</span>
+                <span style={{ fontWeight: 700, color: G.text, fontVariantNumeric: "tabular-nums" }}>{f(x.v)}</span>
+                <span style={{ color: G.textTertiary, width: 36, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Math.round((x.v / share.total) * 100)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  })();
+
+  return (
+    <div style={{ marginTop: inPanel ? 20 : 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <div style={{ fontSize: inPanel ? 15 : 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>Production vs. peers</div>
+        <div style={{ display: "flex", gap: 4, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: 4 }}>
+          {scopes.map(([k, l]) => (
+            <button key={k} onClick={() => setScope(k)}
+              onMouseEnter={e => { if (scope !== k) e.currentTarget.style.color = G.text; }}
+              onMouseLeave={e => { if (scope !== k) e.currentTarget.style.color = G.textSecondary; }}
+              style={{ fontFamily: ff, fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: scope === k ? G.surface : 'transparent', color: scope === k ? G.text : G.textSecondary, boxShadow: scope === k ? G.cardShadow : 'none', whiteSpace: "nowrap" }}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 12, alignItems: "start" }}>
+        {head}
+        {shareCard || drivers}
+        {shareCard && drivers}
+        {dist}
+      </div>
+      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>
+        Counting stats are per team game; compared only with {who} who’ve played enough to judge ({def.min}). Source: CollegeFootballData.
       </div>
     </div>
   );
@@ -6499,10 +6742,10 @@ function loadProspectData(canBuild, onBuilding) {
       o.sp = o.spRank || 0;
       teamInfo[name] = o;
     });
-    pxScoreAll(players, S, teamInfo);
+    const scoreBuckets = pxScoreAll(players, S, teamInfo);
     const portal = (raw.portal || []).map(e => ({ name: `${e[0]} ${e[1]}`.trim(), pos: e[2], grp: pxGroupOf(e[2]), origin: e[3], dest: e[4], date: e[5], stars: e[6], elig: e[7], cycle: e[8] }));
     PROSPECTS.data = {
-      teamInfo, portal,
+      teamInfo, portal, scoreBuckets,
       ts: raw.ts, season: raw.season, hsClass: raw.hsClass || 0, careerSeasons: raw.careerSeasons || [], S, players,
       confs: [...confs].sort(), states: [...states].sort(), cityIndex,
       cities: Object.values(cityIndex).map(c => c.label).sort(),
@@ -7712,7 +7955,7 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
             {fact('Usage', p.usage && ['QB', 'RB', 'WR', 'TE', 'ATH'].includes(p.grp) ? `${Math.round(p.usage[0] * 100)}% of team plays` : '')}
           </div>
 
-          <ProductionCard p={p} />
+          <ProductionReport p={p} data={data} narrow inPanel />
 
           <div style={{ display: "flex", borderBottom: `1px solid ${G.surfaceBorder}`, marginTop: 22 }}>
             {tabBtn('overview', 'Overview')}
