@@ -7235,7 +7235,7 @@ const PX_ACAD_LABEL = { 1: 'Elite academics', 2: 'Strong academics', 3: 'Good ac
 const PX_STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, DB: 4, 'K/P': 1, ATH: 1 };
 const PX_FIT_FACTORS = [
   ['opp', 'Playing time', 'Would they start: how their production compares with the players who return there, plus how much of the position’s production is leaving (net of commits)'],
-  ['level', 'Level', 'Whether the team is at or above the level the player has earned (production and current team; for recruits, stars and their commitment). Stronger teams score full marks until they become a big reach; weaker teams lose points'],
+  ['level', 'Level', 'Whether the program is at or above the level the player has earned (production and current team; for recruits, stars, national rank and their commitment). Program level = SP+ this season blended with last season, roster talent, and a conference nudge (Power 4 highest). Stronger programs score full marks until they become a big reach; weaker ones lose points'],
   ['nfl', 'NFL development', 'Players the school sent to the NFL draft at this position in the last five drafts'],
   ['home', 'Close to home', 'Distance from hometown to campus'],
   ['acad', 'Academics', 'Generic academic tier from national rankings'],
@@ -7253,6 +7253,34 @@ const PX_FIT_PRESETS = [
   ['Academics', { opp: 2, level: 2, nfl: 1, home: 1, acad: 3, scheme: 0, build: 1, coach: 1 }],
 ];
 
+// Program level (0–100, higher = stronger) for the fit model's Level factor:
+// SP+ this season blended with last season (last season weighs more until
+// this one has games), 70/30 with roster talent, plus a small conference
+// nudge (Power 4 +6, AAC / Mountain West +2) so brand counts without
+// letting a bad P4 team outrank a great G5 one. FBS programs are ranked 1…N.
+function pxProgram(data) {
+  if (data._prog) return data._prog;
+  const ts = Object.values(data.teamInfo);
+  const cnt = (k) => ts.filter(t => t[k] > 0).length || 1;
+  const N = cnt('sp'), NP = cnt('spPrev'), NT = cnt('talentRank');
+  const rp = (r, n) => 100 * (1 - (r - 1) / n);
+  const G5B = { 'American Athletic': 2, 'Mountain West': 2 };
+  const pct = {};
+  ts.forEach(t => {
+    const wc = Math.min(1, (t.games || 0) / 12);
+    const cur = t.sp ? rp(t.sp, N) : null, prev = t.spPrev ? rp(t.spPrev, NP) : null;
+    const sp = cur != null && prev != null ? wc * cur + (1 - wc) * prev : cur != null ? cur : prev;
+    const tal = t.talentRank ? rp(t.talentRank, NT) : null;
+    let v = sp != null && tal != null ? 0.7 * sp + 0.3 * tal : sp != null ? sp : tal;
+    if (v == null) { pct[t.name] = t.tier === 'G5' ? 12 : 5; return; }
+    v += t.tier === 'P4' ? 6 : (G5B[t.conf] || 0);
+    pct[t.name] = Math.max(1, Math.min(100, v));
+  });
+  const rank = {};
+  ts.filter(t => t.tier === 'P4' || t.tier === 'G5').sort((a, b) => pct[b.name] - pct[a.name]).forEach((t, i) => { rank[t.name] = i + 1; });
+  data._prog = { pct, rank };
+  return data._prog;
+}
 // Estimated coach hot-seat risk (0–100). Heuristic, not a report: how the
 // team performs (SP+) against its roster talent, win-loss (last season
 // weighs more until this season has games), SP+ decline, and tenure — new
@@ -7300,9 +7328,9 @@ function pxFitRank(data, p, prefs) {
   const grp = p.grp || pxGroupOf(p.pos);
   if (!grp) return null;
   const info = data.teamInfo;
-  const N = Object.values(info).filter(t => t.sp > 0).length || 136;
-  const tPct = (t) => (t && t.sp ? Math.round(100 * (1 - (t.sp - 1) / N)) : t && t.tier === 'G5' ? 12 : 5);
-  const spNear = (pct) => Math.max(1, Math.round((1 - pct / 100) * N) + 1);
+  const prog = pxProgram(data);
+  const tPct = (t) => (t && prog.pct[t.name] != null ? prog.pct[t.name] : 5);
+  const spNear = (pct) => Math.max(1, Object.keys(prog.rank).filter(n => prog.pct[n] >= pct).length);
   // Level target
   const P = p.prodPct || 0;
   const C = p.isHs ? null : tPct(info[p.team]);
@@ -7361,7 +7389,7 @@ function pxFitRank(data, p, prefs) {
     // gently; below it drops faster.
     const label = diff > 25 ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
     const lv = diff >= 0 ? Math.exp(-((Math.max(0, diff - 15) / 30) ** 2)) : Math.exp(-((diff / 18) ** 2));
-    f.level = [100 * lv, ti.sp ? `SP+ #${ti.sp}` : PX_TIER_NAME[ti.tier] || ''];
+    f.level = [100 * lv, prog.rank[t.name] ? `Program #${prog.rank[t.name]}` : PX_TIER_NAME[ti.tier] || ''];
     if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
     if (avail.home) {
       if (ti.lat) { const d = pxMiles(p, { lat: ti.lat, lng: ti.lng }); f.home = [d <= 150 ? 100 : Math.max(0, 100 - (d - 150) / 13.5), `${Math.round(d).toLocaleString()} mi from home`]; }
@@ -7429,10 +7457,10 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const presetOn = (w) => PX_FIT_FACTORS.every(([k]) => (prefs.w[k] || 0) === (w[k] || 0));
   const autoWord = p.isHs ? `${p.stars ? `${p.stars}★` : 'unrated'}${p.natRank ? ` (#${p.natRank} national)` : ''} recruit${p.commit ? ` committed to ${p.commit}` : ''}` : p.prodPct ? `${pxOrd(p.prodPct)} percentile production at ${p.team}` : `current level (${p.team})`;
   const levelLine = res && (prefs.level === 'auto'
-    ? `Aiming at SP+ #${res.spTarget} or better, based on ${autoWord}.`
+    ? `Aiming at programs ranked #${res.spTarget} or better, based on ${autoWord}.`
     : prefs.level === 'top'
       ? 'Aiming as high as possible — the strongest programs score best on level.'
-      : `Aiming at SP+ #${res.spTarget} or better (${PX_FIT_LEVELS.find(x => x[0] === prefs.level)[1].toLowerCase()} from ${p.isHs ? 'their recruiting level' : p.team}).`);
+      : `Aiming at programs ranked #${res.spTarget} or better (${PX_FIT_LEVELS.find(x => x[0] === prefs.level)[1].toLowerCase()} from ${p.isHs ? 'their recruiting level' : p.team}).`);
   const save = async () => {
     setSaving('saving');
     try { await store.save({ w: prefs.w, level: prefs.level, tiers: prefs.tiers }); setDraft(null); setSaving('saved'); setTimeout(() => setSaving(''), 2000); }
