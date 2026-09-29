@@ -473,6 +473,41 @@ async function deleteAthlete(token, body) {
   }
 }
 
+// Re-point the ESPN-owned AutoSync fields at a newly linked (or unlinked)
+// ESPN profile right away. Otherwise the profile keeps showing the previously
+// linked player's team/size until the nightly sync, which reads as "the link
+// didn't take".
+async function refreshEspnAutoSync(token, name, espnId, level) {
+  const autoD = await sheetGet(token, "'AutoSync'!A:AZ");
+  const rows = autoD.values || [];
+  const head = (rows[0] || []).map(h => String(h || '').trim());
+  const col = n => head.findIndex(h => h.toLowerCase() === n.toLowerCase());
+  const nameC = col('name');
+  if (nameC < 0) return;
+  const targetRows = [];
+  rows.forEach((r, i) => { if (i > 0 && String(r[nameC] || '').toLowerCase().trim() === String(name).toLowerCase().trim()) targetRows.push(i + 1); });
+  if (!targetRows.length) return;
+  let vals = { espnTeam: '', espnHeight: '', espnWeight: '', espnJersey: '', espnStatus: '', espnClass: '', positionCoach: '' };
+  if (espnId) {
+    const league = level === 'NFL' ? 'nfl' : 'college-football';
+    const d = JSON.parse(await lookupFetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/${league}/athletes/${espnId}`));
+    const a = d.athlete || d;
+    if (!a || !a.displayName) return;
+    vals = {
+      espnTeam: league === 'nfl' ? ((a.team || {}).displayName || '') : ((a.team || {}).location || ''),
+      espnHeight: String(a.displayHeight || '').replace(/\s+/g, ''),
+      espnWeight: String(a.displayWeight || '').replace(/\s*lbs.*$/i, ''),
+      espnJersey: String(a.jersey || ''),
+      espnStatus: String((a.status || {}).name || ''),
+      espnClass: league === 'nfl' ? '' : String(a.displayExperience || ''),
+      positionCoach: '', // belonged to the old team; the nightly sync refills it
+    };
+  }
+  const ups = [];
+  for (const row of targetRows) for (const [k, v] of Object.entries(vals)) { const c = col(k); if (c >= 0) ups.push({ range: `'AutoSync'!${colLetter(c)}${row}`, values: [[v]] }); }
+  if (ups.length) await sheetBatchUpdate(token, ups);
+}
+
 async function saveAthlete(token, body) {
   const a = body.athlete || {};
   const originalName = String(body.originalName || a.name || '').trim();
@@ -554,6 +589,8 @@ async function saveAthlete(token, body) {
   };
   const rowNum = nameCol < 0 ? -1 : appRows.findIndex((r, i) =>
     i > 0 && String(r[nameCol] || '').toLowerCase().trim() === originalName.toLowerCase());
+  const espnCol = appHeaders.findIndex(h => h.toLowerCase() === 'espnid');
+  const oldEspnId = rowNum > 0 && espnCol >= 0 ? String(appRows[rowNum][espnCol] || '').trim() : '';
   if (rowNum > 0) {
     appHeaders.forEach((h, i) => {
       const v = getExt(h);
@@ -564,6 +601,11 @@ async function saveAthlete(token, body) {
     await sheetBatchUpdate(token, updates);
     const newRow = appHeaders.map(h => { const v = getExt(h); return v === undefined ? '' : String(v ?? ''); });
     if (appHeaders.length) await sheetAppend(token, 'AppData!A:AZ', newRow);
+  }
+
+  if (a.espnId !== undefined && String(a.espnId || '').trim() !== oldEspnId && a.level !== 'High School') {
+    try { await refreshEspnAutoSync(token, originalName, String(a.espnId || '').trim(), a.level); }
+    catch (e) { console.error('ESPN refresh after relink failed:', e.message); }
   }
 
   // 3) Follower counts are robot-owned (AutoSync tab) but stay hand-editable

@@ -266,17 +266,32 @@ module.exports = async (req, res) => {
     const appRowByKey = {};
     autoRows.forEach((r, i) => { if (i > 0) { const k = nameKey(r[nameCol]); if (k) appRowByKey[k] = i + 1; } });
     let autoRowCount = autoRows.length;
-    const ensureAutoRow = async (name) => {
+    // Appends are serialized and use the row number the sheet reports back.
+    // Sync modules run in parallel: without this, two first-time players
+    // could both append and then be mapped to each other's rows (one
+    // player's ESPN details written onto another), or one name could get
+    // two rows.
+    let autoChain = Promise.resolve();
+    const ensureAutoRow = (name) => {
       const k = nameKey(name);
-      if (appRowByKey[k]) return appRowByKey[k];
-      if (dryRun) return 0;
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'AutoSync'!A:V")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: [autoHeaders.map((_, j) => j === nameCol ? name : '')] }),
+      if (appRowByKey[k]) return Promise.resolve(appRowByKey[k]);
+      if (dryRun) return Promise.resolve(0);
+      const job = autoChain.then(async () => {
+        if (appRowByKey[k]) return appRowByKey[k];
+        const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'AutoSync'!A:AZ")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: [autoHeaders.map((_, j) => j === nameCol ? name : '')] }),
+        });
+        const d = await r.json().catch(() => ({}));
+        const m = String(d?.updates?.updatedRange || '').match(/![A-Z]+(\d+)/);
+        if (!m) return 0; // unknown row — skip this player rather than guess
+        const row = parseInt(m[1], 10);
+        autoRowCount = Math.max(autoRowCount, row);
+        appRowByKey[k] = row;
+        return row;
       });
-      autoRowCount += 1;
-      appRowByKey[k] = autoRowCount;
-      return autoRowCount;
+      autoChain = job.catch(() => {});
+      return job;
     };
 
     // AppData lookups (espnId store, 247 profile links) + ensure the
@@ -392,9 +407,12 @@ module.exports = async (req, res) => {
       espn.statusChanges = [];
       const appStatusUpdates = [];
       const targets = [
-        ...nflPlayers.map(p => ({ name: p['Name'], league: 'nfl' })),
-        ...colPlayers.map(p => ({ name: p['Name'], league: 'college-football' })),
+        ...nflPlayers.map(p => ({ name: p['Name'], league: 'nfl', school: p['Team'] || '' })),
+        ...colPlayers.map(p => ({ name: p['Name'], league: 'college-football', school: p['School'] || '' })),
       ].filter(t => t.name);
+      espn.ambiguous = [];
+      // "UCLA" vs ESPN's "UCLA Bruins": compare letters-only, containment.
+      const teamKey = s => String(s || '').toLowerCase().replace(/\b(university|college|of|the)\b/g, '').replace(/[^a-z]/g, '');
       // Discover missing espnIds (bounded per run to stay in budget).
       const espnUpdates = [];
       let lookups = 0;
@@ -406,16 +424,36 @@ module.exports = async (req, res) => {
           try {
             const sr = await (await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(t.name)}&limit=10`, { headers: { 'User-Agent': UA } })).json();
             const wantLeague = t.league === 'nfl' ? 'NFL' : 'NCAAF';
+            const hits = [];
             for (const g of sr.results || []) {
               if (g.type !== 'player') continue;
               for (const it of g.contents || []) {
                 if (String(it.description || '').toUpperCase() !== wantLeague) continue;
                 if (nameKey(it.displayName) !== nameKey(t.name)) continue;
                 const m = String(it.uid || '').match(/a:(\d+)/) || String((it.link || {}).web || '').match(/\/id\/(\d+)/);
-                if (m) { id = m[1]; break; }
+                if (m && !hits.some(h => h.id === m[1])) hits.push({ id: m[1], team: String(it.subtitle || '') });
               }
-              if (id) break;
             }
+            // Shared names are common (two NCAAF "Michael Price"s, 2026-09):
+            // with a school on file, only a hit on that team counts; without
+            // one, only an unambiguous single hit. Anything else stays for a
+            // person to link in the edit form.
+            const sk = teamKey(t.school || (rec && rec.cells[appHeaders.findIndex(h => /^teamoverride$/i.test(h))]) || '');
+            // Exact team match via each candidate's ESPN record ("Texas" must
+            // not accept a same-named Texas A&M player).
+            const onTeam = [];
+            if (sk) {
+              for (const h of hits.slice(0, 4)) {
+                try {
+                  const dd = await (await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/${t.league}/athletes/${h.id}`, { headers: { 'User-Agent': UA } })).json();
+                  const tm = (dd.athlete || dd).team || {};
+                  if ([tm.location, tm.displayName, tm.name, tm.abbreviation, tm.shortDisplayName].some(x => x && teamKey(x) === sk)) onTeam.push(h);
+                } catch { /* unverifiable candidate — not picked */ }
+              }
+            }
+            const pick = sk ? (onTeam.length === 1 ? onTeam[0] : null) : (hits.length === 1 ? hits[0] : null);
+            if (pick) id = pick.id;
+            else if (hits.length) espn.ambiguous.push(`${t.name}${t.school ? ` (${t.school})` : ''}: ${hits.map(h => h.team || '?').join(' / ')}`);
           } catch (e) { espn.errors.push(`search ${t.name}: ${e.message}`); }
           if (id && !dryRun && espnIdCol >= 0) {
             await sheetBatchUpdate(token, [{ range: `AppData!${colLetter(espnIdCol)}${rec.row}`, values: [[id]] }]);
