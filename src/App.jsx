@@ -7910,6 +7910,22 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
   const [pickId, setPickId] = useCachedState('fit.pick', '');
   const [q, setQ] = useState('');
   const [hi, setHi] = useState(0);
+  const [listTab, setListTab] = useState('clients');
+  const [showAll, setShowAll] = useState(false);
+  const prefsTab = useAdminTab('fitprefs');
+  // Starting lists: our clients (college by ESPN id, HS seniors by name) and
+  // the recruiting board. Players in the portal and those with priorities set
+  // come first, then by production.
+  const lists = useMemo(() => {
+    if (!data) return { clients: [], board: [] };
+    const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
+    const byId = {}, byName = {};
+    data.players.forEach(p => { if (p.isHs) byName[nk(p.name)] = p; else byId[p.id] = p; });
+    const clients = (athletes || []).map(a => (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && byName[nk(a.name)]) || null).filter(Boolean);
+    const seen = new Set(clients.map(p => p.id));
+    const board = data.players.filter(p => !seen.has(p.id) && V.tagFor(p) === 'On board');
+    return { clients, board };
+  }, [data, athletes, V.tagFor]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!data) return <div style={pxPageWrap(isMobile)}>{pxTitle(isMobile, 'Team Fit')}{V.status}</div>;
   const pick = pickId ? data.players.find(p => p.id === pickId) : null;
   const ql = q.trim().toLowerCase();
@@ -7981,17 +7997,65 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
   return (
     <div style={pxPageWrap(isMobile)}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        {pxTitle(isMobile, 'Team Fit')}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
+          {pxTitle(isMobile, 'Team Fit')}
+          {pick && <button onClick={() => setPickId('')} style={{ background: "none", border: "none", padding: 0, color: G.green, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>← All players</button>}
+        </div>
         {search}
       </div>
       {pick ? (
         <TeamFit p={pick} data={data} onOpenTeam={(t) => V.setTeam(t)} user={user} wide={!isMobile} side={side} />
-      ) : (
-        <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: "40px 24px", marginTop: 16, textAlign: "center" }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: G.text }}>Find a player’s best-fit teams</div>
-          <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 8, lineHeight: 1.5 }}>Search above — clients and board players come up first. Teams are ranked on playing time, level, NFL development, distance from home, academics and scheme, weighted by the player’s priorities.</div>
-        </div>
-      )}
+      ) : (() => {
+        const pk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
+        const portal = new Set((data.portal || []).filter(e => e.cycle === data.season + 1).map(e => `${e.origin}|${pk(e.name)}`));
+        const ph = (prefsTab.data && prefsTab.data.headers) || [];
+        const pc = (n) => ph.findIndex(x => x.toLowerCase() === n.toLowerCase());
+        const prefBy = {};
+        ((prefsTab.data && prefsTab.data.rows) || []).forEach(r => { prefBy[r.cells[pc('playerId')]] = r.cells[pc('updatedBy')] || 'Set'; });
+        const inPortal = (p) => !p.isHs && portal.has(`${p.team}|${pk(p.name)}`);
+        const rows = (lists[listTab] || []).slice().sort((x, y) => inPortal(y) - inPortal(x) || (!!prefBy[y.id]) - (!!prefBy[x.id]) || (y.prodPct || 0) - (x.prodPct || 0) || x.name.localeCompare(y.name));
+        const visible = showAll ? rows : rows.slice(0, 10);
+        const th = (t, right) => <th style={{ textAlign: right ? "right" : "left", padding: "8px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{t}</th>;
+        const td = (right, extra) => ({ padding: "8px 12px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", textAlign: right ? "right" : "left", fontVariantNumeric: "tabular-nums", ...extra });
+        return (
+          <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, marginTop: 16, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 16px 8px", flexWrap: "wrap" }}>
+              {pxPill(listTab === 'clients', `Clients (${lists.clients.length})`, () => { setListTab('clients'); setShowAll(false); }, 'c')}
+              {pxPill(listTab === 'board', `Recruiting board (${lists.board.length})`, () => { setListTab('board'); setShowAll(false); }, 'b')}
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: 11.5, color: G.textTertiary }}>Pick a player to rank their best-fit teams — or search above</span>
+            </div>
+            {rows.length === 0 ? <div style={{ padding: "24px 16px", fontSize: 13, color: G.textTertiary }}>No {listTab === 'clients' ? 'clients' : 'board players'} matched to the college database yet.</div> : (
+              <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                  <thead><tr>{th('Player')}{th('Pos')}{th('School')}{th('Class')}{th('Prod %ile', true)}{th('Team SP+', true)}{th('Priorities')}{th('Status')}</tr></thead>
+                  <tbody>
+                    {visible.map((p, i) => {
+                      const zebra = i % 2 ? G.surfaceRaised : "transparent";
+                      return (
+                        <tr key={p.id} onClick={() => choose(p)} style={{ cursor: "pointer", background: zebra }}
+                          onMouseEnter={e => e.currentTarget.style.background = G.surfaceBorder} onMouseLeave={e => e.currentTarget.style.background = zebra}>
+                          <td style={td(false, { color: G.text, fontWeight: 700 })}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Avatar name={p.name} photoUrl={photo(p)} size={24} faceZoom />{p.name}</span></td>
+                          <td style={td()}>{p.pos || '—'}</td>
+                          <td style={td()}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{(p.isHs ? p.commitLogo : p.logo) && <TeamLogo url={p.isHs ? p.commitLogo : p.logo} size={20} />}{p.isHs ? `${p.hs || '—'}${p.commit ? ` → ${p.commit}` : ''}` : p.team}</span></td>
+                          <td style={td()}>{p.isHs ? `HS '${String(p.hsClass).slice(2)}` : PX_CLASS[Math.min(p.yr || 0, 5)] || '—'}</td>
+                          <td style={td(true, { color: p.prodPct >= 90 ? G.green : p.prodPct ? G.text : G.textTertiary, fontWeight: p.prodPct ? 700 : 400 })}>{p.prodPct || '—'}</td>
+                          <td style={td(true)}>{!p.isHs && p.sp ? `#${p.sp}` : '—'}</td>
+                          <td style={td(false, { color: prefBy[p.id] ? G.text : G.textTertiary })}>{prefBy[p.id] ? `Set by ${prefBy[p.id]}` : 'Defaults'}</td>
+                          <td style={td()}>{inPortal(p) ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.red }}>In portal</span> : pxLeaving(p) ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.yellow }}>Final year</span> : <span style={{ color: G.textTertiary }}>—</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {rows.length > 10 && (
+              <button onClick={() => setShowAll(v => !v)} style={{ display: "block", margin: "8px 16px 16px", background: "none", border: "none", padding: 0, color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>{showAll ? 'Show fewer' : `Show all ${rows.length}`}</button>
+            )}
+          </div>
+        );
+      })()}
       {V.overlays}
     </div>
   );
