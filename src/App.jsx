@@ -6217,7 +6217,23 @@ const PX_STATS = [
 ];
 const PX_STAT_LABEL = Object.fromEntries(PX_STATS);
 const PX_DEFAULT_SORT = { QB: 'passYds', RB: 'rushYds', WR: 'recYds', TE: 'recYds', DL: 'sacks', LB: 'tkl', DB: 'tkl', 'K/P': 'fgm' };
-const PX_EMPTY = { q: '', groups: [], tiers: [], conf: '', classes: [], htMin: 0, htMax: 0, wtMin: '', wtMax: '', st: '', near: '', miles: 100, hs: '', stars: 0, spTop: 0, scope: 'season', rules: [] };
+const PX_EMPTY = { q: '', team: '', groups: [], tiers: [], conf: '', classes: [], htMin: 0, htMax: 0, wtMin: '', wtMax: '', st: '', near: '', miles: 0, hs: '', stars: 0, spTop: 0, scope: 'season', rules: [], cols: null };
+// Short headers for the per-stat table columns.
+const PX_COL = {
+  passCmp: 'CMP', passAtt: 'ATT', passYds: 'Pass yds', passTd: 'Pass TD', passInt: 'INT thrown',
+  rushAtt: 'CAR', rushYds: 'Rush yds', rushTd: 'Rush TD', rec: 'REC', recYds: 'Rec yds', recTd: 'Rec TD',
+  tkl: 'TKL', solo: 'Solo', tfl: 'TFL', sacks: 'Sacks', qbh: 'QB hur', int: 'INT', pd: 'PD',
+  fgm: 'FGM', fga: 'FGA', punts: 'Punts', puntYds: 'Punt yds',
+};
+// Stat columns shown by default for the selected position groups.
+const PX_GROUP_COLS = {
+  QB: ['passCmp', 'passAtt', 'passYds', 'passTd', 'passInt', 'rushYds', 'rushTd'],
+  RB: ['rushAtt', 'rushYds', 'rushTd', 'rec', 'recYds', 'recTd'],
+  WR: ['rec', 'recYds', 'recTd', 'rushYds'], TE: ['rec', 'recYds', 'recTd'],
+  DL: ['tkl', 'solo', 'tfl', 'sacks', 'qbh', 'pd'], LB: ['tkl', 'solo', 'tfl', 'sacks', 'int', 'pd'],
+  DB: ['tkl', 'solo', 'tfl', 'int', 'pd'], 'K/P': ['fgm', 'fga', 'punts', 'puntYds'], ATH: ['rushYds', 'rec', 'recYds', 'tkl'],
+};
+const PX_ALL_COLS = ['passYds', 'passTd', 'rushYds', 'rushTd', 'rec', 'recYds', 'recTd', 'tkl', 'tfl', 'sacks', 'int', 'pd'];
 const pxMiles = (a, b) => {
   const R = 3959, r = Math.PI / 180;
   const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
@@ -6263,10 +6279,14 @@ function loadProspectData(canBuild, onBuilding) {
         season: p[C.season] || null, career: p[C.career] || null,
       };
     });
+    const hsCount = {};
+    players.forEach(p => { if (p.hs) hsCount[p.hs] = (hsCount[p.hs] || 0) + 1; });
     PROSPECTS.data = {
       ts: raw.ts, season: raw.season, careerSeasons: raw.careerSeasons || [], S, players,
       confs: [...confs].sort(), states: [...states].sort(), cityIndex,
       cities: Object.values(cityIndex).map(c => c.label).sort(),
+      teams: Object.entries(raw.teams).map(([name, t]) => ({ name, conf: t[0], logo: t[4] })).sort((a, b) => a.name.localeCompare(b.name)),
+      highSchools: Object.keys(hsCount).sort((a, b) => hsCount[b] - hsCount[a]),
     };
     return PROSPECTS.data;
   })().finally(() => { PROSPECTS.promise = null; });
@@ -6293,19 +6313,36 @@ function ProspectSearch({ isMobile, user, athletes }) {
   const [data, setData] = useState(PROSPECTS.data);
   const [err, setErr] = useState('');
   const [building, setBuilding] = useState(false);
-  const [f, setF] = useCachedState('px.filters', PX_EMPTY);
+  const [fRaw, setF] = useCachedState('px.filters', PX_EMPTY);
+  const f = { ...PX_EMPTY, ...fRaw };
   const [sort, setSort] = useCachedState('px.sort', { col: '', dir: 'desc' });
   const [shown, setShown] = useState(100);
+  const [typed, setTyped] = useState('');
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [colsOpen, setColsOpen] = useState(false);
+  const [open, setOpen] = useState(null); // player whose panel is showing
   const q = useDeferredValue(f.q);
-  const set = (k, v) => { setF(x => ({ ...x, [k]: v })); setShown(100); };
+  const set = (k, v) => { setF(x => ({ ...PX_EMPTY, ...x, [k]: v })); setShown(100); };
+  const setMany = (o) => { setF(x => ({ ...PX_EMPTY, ...x, ...o })); setShown(100); };
   const toggleIn = (k, v) => set(k, (f[k] || []).includes(v) ? f[k].filter(x => x !== v) : [...(f[k] || []), v]);
+  const searchRef = useRef();
+  const colsRef = useRef();
   useEffect(() => {
     let on = true;
     loadProspectData(canBuild, (b) => on && setBuilding(b)).then(d => on && setData(d)).catch(e => on && setErr(e.message));
     return () => { on = false; };
   }, [canBuild]);
+  useEffect(() => {
+    const h = e => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) setSuggestOpen(false);
+      if (colsRef.current && !colsRef.current.contains(e.target)) setColsOpen(false);
+    };
+    const k = e => { if (e.key === 'Escape') setOpen(null); };
+    document.addEventListener('mousedown', h);
+    document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); };
+  }, []);
 
-  // Already ours: roster clients and players on the recruiting board.
   const board = useAdminTab('recruiting');
   const ours = useMemo(() => {
     const m = {};
@@ -6318,16 +6355,42 @@ function ProspectSearch({ isMobile, user, athletes }) {
     return m;
   }, [athletes, board.data]);
 
+  // Search suggestions: the same text could be a name, a school, a hometown
+  // or a high school — let the person say which instead of mixing them.
+  const suggestions = useMemo(() => {
+    const t = typed.trim().toLowerCase();
+    if (!data || t.length < 2) return null;
+    const starts = (x) => x.toLowerCase().startsWith(t);
+    const has = (x) => x.toLowerCase().includes(t);
+    const rank = (list, get) => list.filter(x => has(get(x))).sort((a, b) => (starts(get(b)) ? 1 : 0) - (starts(get(a)) ? 1 : 0)).slice(0, 5);
+    return {
+      teams: rank(data.teams, x => x.name),
+      cities: rank(data.cities, x => x),
+      schools: rank(data.highSchools, x => x),
+      names: data.players.filter(p => p.name.toLowerCase().includes(t)).length,
+    };
+  }, [typed, data]);
+  const applyName = () => { set('q', typed.trim()); setSuggestOpen(false); };
+
+  const statCols = useMemo(() => {
+    if (f.cols) return f.cols;
+    const base = f.groups.length ? [...new Set(f.groups.flatMap(g => PX_GROUP_COLS[g] || []))] : PX_ALL_COLS;
+    const extra = (f.rules || []).map(r => r.stat).filter(k => k && !base.includes(k));
+    return [...base, ...extra];
+  }, [f.cols, f.groups, f.rules]);
+
   const results = useMemo(() => {
     if (!data) return [];
     const { S } = data;
     const ql = String(q || '').trim().toLowerCase();
     const hsl = String(f.hs || '').trim().toLowerCase();
     const nearPt = f.near ? data.cityIndex[String(f.near).trim().toLowerCase()] : null;
+    const exactCity = nearPt && !f.miles ? String(f.near).trim().toLowerCase() : '';
     const wMin = parseFloat(f.wtMin) || 0, wMax = parseFloat(f.wtMax) || 0;
     const rules = (f.rules || []).filter(r => r.stat && r.min !== '' && Number.isFinite(parseFloat(r.min)));
     const out = [];
     for (const p of data.players) {
+      if (f.team && p.team !== f.team) continue;
       if (f.groups.length && !f.groups.includes(p.grp)) continue;
       if (f.tiers.length && !f.tiers.includes(p.tier)) continue;
       if (f.conf && p.conf !== f.conf) continue;
@@ -6337,17 +6400,16 @@ function ProspectSearch({ isMobile, user, athletes }) {
       if (wMin && !(p.wt >= wMin)) continue;
       if (wMax && !(p.wt && p.wt <= wMax)) continue;
       if (f.st && p.st !== f.st) continue;
-      if (nearPt && !(p.lat && pxMiles(p, nearPt) <= f.miles)) continue;
+      if (exactCity) { if (`${p.city}, ${p.st}`.toLowerCase() !== exactCity) continue; }
+      else if (nearPt && !(p.lat && pxMiles(p, nearPt) <= f.miles)) continue;
       if (hsl && !String(p.hs || '').toLowerCase().includes(hsl)) continue;
       if (f.stars && !(p.stars >= f.stars)) continue;
       if (f.spTop && !(p.sp && p.sp <= f.spTop)) continue;
       const v = f.scope === 'career' ? p.career : p.season;
       if (rules.length && !rules.every(r => v && v[S[r.stat]] >= parseFloat(r.min))) continue;
-      if (ql && !`${p.name} ${p.team} ${p.hs} ${p.city}`.toLowerCase().includes(ql)) continue;
+      if (ql && !p.name.toLowerCase().includes(ql)) continue;
       out.push(p);
     }
-    // Sort: explicit column, else the first stat rule, else the position's
-    // headline stat, else name.
     const statKey = sort.col && sort.col.startsWith('stat:') ? sort.col.slice(5)
       : !sort.col && rules[0] ? rules[0].stat
       : !sort.col && f.groups.length === 1 ? PX_DEFAULT_SORT[f.groups[0]] : '';
@@ -6355,7 +6417,7 @@ function ProspectSearch({ isMobile, user, athletes }) {
     const val = (p) => {
       if (statKey) { const v = f.scope === 'career' ? p.career : p.season; return v ? v[S[statKey]] || 0 : -1; }
       switch (sort.col) {
-        case 'pos': return p.pos || ''; case 'yr': return p.yr || 0; case 'team': return p.team || '';
+        case 'name': return p.name; case 'pos': return p.pos || ''; case 'yr': return p.yr || 0; case 'team': return p.team || '';
         case 'conf': return p.conf || ''; case 'ht': return p.ht || 0; case 'wt': return p.wt || 0;
         case 'home': return `${p.st} ${p.city}`; case 'hs': return p.hs || '~';
         case 'stars': return p.stars || 0; case 'sp': return p.sp || 999;
@@ -6370,28 +6432,51 @@ function ProspectSearch({ isMobile, user, athletes }) {
       });
     } else out.sort((a, b) => a.name.localeCompare(b.name));
     return out;
-  }, [data, f, q, sort]);
+  }, [data, fRaw, q, sort]); // eslint-disable-line
 
-  const ruleStats = (f.rules || []).map(r => r.stat).filter(Boolean);
   const clickSort = (col) => setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col.startsWith('stat:') || ['stars', 'ht', 'wt', 'yr'].includes(col) ? 'desc' : 'asc' });
-  const activeFilters = JSON.stringify({ ...f, q: '' }) !== JSON.stringify({ ...PX_EMPTY, q: '' }) || !!f.q;
+  const activeFilters = JSON.stringify({ ...f, cols: null }) !== JSON.stringify({ ...PX_EMPTY, cols: null });
 
   const label = (t) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 6 }}>{t}</div>;
   const chip = (on, text, onClick, key) => (
     <button key={key || text} onClick={onClick}
       style={{ padding: "5px 10px", borderRadius: 99, border: `1px solid ${on ? G.green : G.surfaceBorder}`, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>{text}</button>
   );
+  const tagChip = (text, onClear, key) => (
+    <span key={key} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: G.greenSubtle, color: G.green, borderRadius: 99, padding: "4px 6px 4px 11px", fontSize: 12, fontWeight: 700 }}>
+      {text}
+      <button onClick={onClear} title="Remove" style={{ background: "none", border: "none", color: G.green, cursor: "pointer", fontSize: 11, padding: "0 3px", fontFamily: ff, lineHeight: 1 }}>✕</button>
+    </span>
+  );
   const sel = { ...inputBase, padding: "7px 10px", fontSize: 12.5, cursor: "pointer" };
   const inp = { ...inputBase, padding: "7px 10px", fontSize: 12.5 };
   const heights = []; for (let h = 66; h <= 82; h++) heights.push(h);
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14 };
-
-  const th = (col, text, right) => (
-    <th key={col} onClick={() => clickSort(col)}
-      style={{ textAlign: right ? "right" : "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sort.col === col ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none", position: "sticky", top: 0, background: G.surface }}>
+  const headBase = { padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none", background: G.surface };
+  const th = (col, text, right, extra) => (
+    <th key={col} onClick={() => clickSort(col)} style={{ ...headBase, textAlign: right ? "right" : "left", color: sort.col === col ? G.green : G.textTertiary, ...extra }}>
       {text}{sort.col === col ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
     </th>
   );
+  const fmtStat = (n) => (n ? Math.round(n * 10) / 10 : 0);
+  const sugRow = (key, icon, text, sub, onPick) => (
+    <button key={key} onMouseDown={e => { e.preventDefault(); onPick(); }}
+      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+      style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "7px 10px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, textAlign: "left" }}>
+      <span style={{ width: 20, display: "flex", justifyContent: "center", flexShrink: 0 }}>{icon}</span>
+      <span style={{ fontSize: 13, color: G.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{text}</span>
+      {sub && <span style={{ fontSize: 11.5, color: G.textTertiary, whiteSpace: "nowrap" }}>{sub}</span>}
+    </button>
+  );
+  const sugHead = (t) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, padding: "8px 10px 4px" }}>{t}</div>;
+  const glyph = (d) => <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d={d} stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+
+  const tags = [
+    f.q && tagChip(`Name: ${f.q}`, () => { set('q', ''); setTyped(''); }, 'q'),
+    f.team && tagChip(`School: ${f.team}`, () => set('team', ''), 'team'),
+    f.near && tagChip(f.miles ? `Within ${f.miles} mi of ${f.near}` : `Hometown: ${f.near}`, () => set('near', ''), 'near'),
+    f.hs && tagChip(`High school: ${f.hs}`, () => set('hs', ''), 'hs'),
+  ].filter(Boolean);
 
   return (
     <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
@@ -6408,11 +6493,23 @@ function ProspectSearch({ isMobile, user, athletes }) {
 
       {data && (<>
         <div style={{ ...card, marginTop: 16, padding: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
-            <div>
-              {label('Search')}
-              <input value={f.q} onChange={e => set('q', e.target.value)} placeholder="Name, school, high school, hometown…" style={inp} />
-            </div>
+          <div ref={searchRef} style={{ position: "relative", maxWidth: 560 }}>
+            <input value={typed} onChange={e => { setTyped(e.target.value); setSuggestOpen(true); }} onFocus={() => setSuggestOpen(true)}
+              onKeyDown={e => { if (e.key === 'Enter') applyName(); }}
+              placeholder="Search a player, school, hometown or high school…" style={{ ...inputBase, padding: "10px 14px", fontSize: 13.5 }} />
+            {suggestOpen && suggestions && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, boxShadow: G.shadowLg, zIndex: 60, padding: 6, maxHeight: 420, overflowY: "auto" }}>
+                {suggestions.names > 0 && sugRow('name', glyph('M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z'), `Players named “${typed.trim()}”`, `${suggestions.names} match${suggestions.names === 1 ? '' : 'es'} · Enter`, applyName)}
+                {suggestions.teams.length > 0 && <>{sugHead('Plays for')}{suggestions.teams.map(t => sugRow('t' + t.name, t.logo ? <TeamLogo url={t.logo} size={18} /> : glyph('M3 21h18M5 21V7l7-4 7 4v14'), t.name, t.conf, () => { set('team', t.name); setTyped(''); setSuggestOpen(false); }))}</>}
+                {suggestions.cities.length > 0 && <>{sugHead('Hometown')}{suggestions.cities.map(c => sugRow('c' + c, glyph('M12 22s7-7.1 7-12a7 7 0 10-14 0c0 4.9 7 12 7 12zM12 12a2 2 0 100-4 2 2 0 000 4z'), c, '', () => { setMany({ near: c, miles: 0 }); setTyped(''); setSuggestOpen(false); }))}</>}
+                {suggestions.schools.length > 0 && <>{sugHead('High school')}{suggestions.schools.map(h => sugRow('h' + h, glyph('M22 10L12 5 2 10l10 5 10-5zM6 12v5c3 2 9 2 12 0v-5'), h, '', () => { set('hs', h); setTyped(''); setSuggestOpen(false); }))}</>}
+                {!suggestions.names && !suggestions.teams.length && !suggestions.cities.length && !suggestions.schools.length && <div style={{ padding: "10px 12px", fontSize: 12.5, color: G.textTertiary }}>Nothing matches “{typed.trim()}”.</div>}
+              </div>
+            )}
+          </div>
+          {tags.length > 0 && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{tags}</div>}
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(220px, 1fr))", gap: 16, marginTop: 16 }}>
             <div style={{ gridColumn: isMobile ? undefined : "span 2" }}>
               {label('Position')}
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{PX_POS_GROUPS.map(([g]) => chip(f.groups.includes(g), g, () => toggleIn('groups', g)))}</div>
@@ -6461,19 +6558,16 @@ function ProspectSearch({ isMobile, user, athletes }) {
               </select>
             </div>
             <div>
-              {label('Hometown near')}
+              {label('Hometown area')}
               <div style={{ display: "flex", gap: 6 }}>
                 <input value={f.near} onChange={e => set('near', e.target.value)} list="px-cities" placeholder="City, ST" style={inp} />
-                <select value={f.miles} onChange={e => set('miles', +e.target.value)} style={{ ...sel, width: 96, flexShrink: 0 }}>
+                <select value={f.miles} onChange={e => set('miles', +e.target.value)} style={{ ...sel, width: 104, flexShrink: 0 }}>
+                  <option value={0}>Exact city</option>
                   {[25, 50, 100, 200, 400].map(m => <option key={m} value={m}>{m} mi</option>)}
                 </select>
               </div>
               <datalist id="px-cities">{data.cities.map(c => <option key={c} value={c} />)}</datalist>
               {f.near && !data.cityIndex[String(f.near).trim().toLowerCase()] && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>Pick a city from the list</div>}
-            </div>
-            <div>
-              {label('High school')}
-              <input value={f.hs} onChange={e => set('hs', e.target.value)} placeholder="e.g. IMG Academy" style={inp} />
             </div>
             <div>
               {label('Recruiting stars')}
@@ -6503,32 +6597,58 @@ function ProspectSearch({ isMobile, user, athletes }) {
             <button onClick={() => set('rules', [...(f.rules || []), { stat: 'rec', min: '' }])}
               style={{ background: "none", border: `1px dashed ${G.surfaceBorderLight}`, borderRadius: 10, padding: "5px 10px", color: G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>+ Stat filter</button>
             <div style={{ flex: 1 }} />
-            {activeFilters && <button onClick={() => { setF(PX_EMPTY); setSort({ col: '', dir: 'desc' }); setShown(100); }} style={{ background: "none", border: "none", color: G.textTertiary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Reset filters</button>}
+            {activeFilters && <button onClick={() => { setF(PX_EMPTY); setTyped(''); setSort({ col: '', dir: 'desc' }); setShown(100); }} style={{ background: "none", border: "none", color: G.textTertiary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Reset filters</button>}
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, margin: "18px 2px 10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 2px 10px" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: G.text }}>{results.length.toLocaleString()} player{results.length === 1 ? '' : 's'}</div>
           {results.length > shown && <div style={{ fontSize: 12, color: G.textTertiary }}>showing the first {shown}</div>}
+          <div style={{ flex: 1 }} />
+          <div ref={colsRef} style={{ position: "relative" }}>
+            <button onClick={() => setColsOpen(v => !v)}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 10, padding: "7px 12px", color: G.textSecondary, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v14H4zM9.5 5v14M15 5v14" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>
+              Stat columns <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
+            </button>
+            {colsOpen && (
+              <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", width: 240, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, boxShadow: G.shadowLg, zIndex: 60, padding: 10, maxHeight: 420, overflowY: "auto" }}>
+                <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{f.cols ? 'Custom' : 'Auto (by position)'}</span>
+                  <div style={{ flex: 1 }} />
+                  {f.cols && <button onClick={() => set('cols', null)} style={{ background: "none", border: "none", color: G.green, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Back to auto</button>}
+                </div>
+                {PX_STATS.map(([k, l]) => (
+                  <label key={k} style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 2px", fontSize: 13, color: G.text, cursor: "pointer" }}>
+                    <input type="checkbox" checked={statCols.includes(k)} onChange={() => set('cols', statCols.includes(k) ? statCols.filter(x => x !== k) : [...statCols, k])} style={{ accentColor: G.green, width: 14, height: 14, margin: 0, cursor: "pointer" }} />
+                    {l}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div style={{ ...card, overflow: "hidden" }}>
           <div className="mh-hscroll" style={{ overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%" }}>
               <thead><tr>
-                {th('name', 'Player')}{th('pos', 'Pos')}{th('yr', 'Class')}{th('team', 'School')}{th('conf', 'Conference')}
-                {th('ht', 'Ht', true)}{th('wt', 'Wt', true)}{th('home', 'Hometown')}{th('hs', 'High school')}{th('stars', '★', true)}{th('sp', 'SP+', true)}
-                {ruleStats.length ? ruleStats.map(k => th('stat:' + k, PX_STAT_LABEL[k] || k, true)) : <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", position: "sticky", top: 0, background: G.surface }}>{f.scope === 'career' ? 'Career production' : `${data.season} production`}</th>}
+                {th('name', 'Player', false, { position: "sticky", left: 0, zIndex: 2 })}{th('pos', 'Pos')}{th('yr', 'Class')}{th('team', 'School')}
+                {th('ht', 'Ht', true)}{th('wt', 'Wt', true)}{th('home', 'Hometown')}{th('stars', '★', true)}
+                {statCols.map(k => th('stat:' + k, PX_COL[k] || k, true, { borderLeft: k === statCols[0] ? `1px solid ${G.surfaceBorder}` : undefined }))}
               </tr></thead>
               <tbody>
                 {results.slice(0, shown).map((p, i, arr) => {
-                  const td = { padding: "8px 12px", fontSize: 13, color: G.textSecondary, borderBottom: i < arr.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+                  const isOpen = open && open.id === p.id;
+                  const rowBg = isOpen ? G.greenSubtle : G.surface;
+                  const td = { padding: "8px 12px", fontSize: 13, color: G.textSecondary, borderBottom: i < arr.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle", background: rowBg };
                   const v = f.scope === 'career' ? p.career : p.season;
                   const tag = ours[p.id];
                   return (
-                    <tr key={p.id} onClick={() => window.open(`https://www.espn.com/college-football/player/_/id/${p.id}`, '_blank', 'noopener')} style={{ cursor: "pointer" }} title="Open ESPN profile"
-                      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      <td style={{ ...td, color: G.text, fontWeight: 700 }}>
+                    <tr key={p.id} onClick={() => setOpen(p)} style={{ cursor: "pointer" }}
+                      onMouseEnter={e => { if (!isOpen) [...e.currentTarget.cells].forEach(c => { c.style.background = G.surfaceRaised; }); }}
+                      onMouseLeave={e => { [...e.currentTarget.cells].forEach(c => { c.style.background = rowBg; }); }}>
+                      <td style={{ ...td, color: G.text, fontWeight: 700, position: "sticky", left: 0, zIndex: 1 }}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
                           <Avatar name={p.name} photoUrl={`https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={26} faceZoom />
                           {p.name}
@@ -6538,16 +6658,14 @@ function ProspectSearch({ isMobile, user, athletes }) {
                       <td style={td}>{p.pos || '—'}</td>
                       <td style={td}>{PX_CLASS[Math.min(p.yr || 0, 5)] || '—'}</td>
                       <td style={td}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>{p.logo && <TeamLogo url={p.logo} size={18} />}{p.team}</span></td>
-                      <td style={td}>{p.conf || '—'}</td>
                       <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{pxHt(p.ht) || '—'}</td>
                       <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{p.wt || '—'}</td>
                       <td style={td}>{p.city ? `${p.city}, ${p.st}` : '—'}</td>
-                      <td style={{ ...td, maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis" }}>{p.hs || '—'}</td>
                       <td style={{ ...td, textAlign: "right", color: p.stars >= 4 ? G.green : G.textSecondary, fontWeight: p.stars ? 700 : 400 }}>{p.stars || '—'}</td>
-                      <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{p.sp ? `#${p.sp}` : '—'}</td>
-                      {ruleStats.length
-                        ? ruleStats.map(k => <td key={k} style={{ ...td, textAlign: "right", color: G.text, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{v ? Math.round((v[data.S[k]] || 0) * 10) / 10 : '—'}</td>)
-                        : <td style={{ ...td, color: G.text }}>{pxKeyLine(p, v, data.S) || <span style={{ color: G.textTertiary }}>—</span>}</td>}
+                      {statCols.map((k, ci) => {
+                        const n = v ? fmtStat(v[data.S[k]]) : 0;
+                        return <td key={k} style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: n ? G.text : G.textTertiary, fontWeight: n ? 700 : 400, borderLeft: ci === 0 ? `1px solid ${G.surfaceBorder}` : undefined }}>{n || '—'}</td>;
+                      })}
                     </tr>
                   );
                 })}
@@ -6562,10 +6680,112 @@ function ProspectSearch({ isMobile, user, athletes }) {
           </div>
         )}
         <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 14 }}>
-          Data from CollegeFootballData.com, refreshed weekly{data.ts ? ` · updated ${new Date(data.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}. Rows open the player’s ESPN profile. High school and stars exist for recruited players only.
+          Data from CollegeFootballData.com, refreshed weekly{data.ts ? ` · updated ${new Date(data.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}. High school and stars exist for recruited players only.
         </div>
       </>)}
+
+      {open && data && <ProspectPanel p={open} data={data} tag={ours[open.id]} isMobile={isMobile} onClose={() => setOpen(null)} />}
     </div>
+  );
+}
+
+// Slide-in player profile for Prospect Search: facts grid, this season vs
+// career from our data, and the full ESPN stats/game log on demand.
+function ProspectPanel({ p, data, tag, isMobile, onClose }) {
+  const [tab, setTab] = useState('overview');
+  useEffect(() => { setTab('overview'); }, [p.id]);
+  const S = data.S;
+  const fact = (k, v) => (
+    <div key={k}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{k}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: G.text, marginTop: 4 }}>{v || '—'}</div>
+    </div>
+  );
+  const groups = [
+    ['Passing', ['passCmp', 'passAtt', 'passYds', 'passTd', 'passInt']],
+    ['Rushing', ['rushAtt', 'rushYds', 'rushTd']],
+    ['Receiving', ['rec', 'recYds', 'recTd']],
+    ['Defense', ['tkl', 'solo', 'tfl', 'sacks', 'qbh', 'int', 'pd']],
+    ['Kicking & punting', ['fgm', 'fga', 'punts', 'puntYds']],
+  ].map(([name, keys]) => [name, keys.filter(k => (p.season && p.season[S[k]]) || (p.career && p.career[S[k]]))]).filter(([, keys]) => keys.length);
+  const n = (v, k) => (v && v[S[k]] ? Math.round(v[S[k]] * 10) / 10 : '—');
+  const tabBtn = (k, l) => (
+    <button key={k} onClick={() => setTab(k)}
+      style={{ background: "none", border: "none", borderBottom: `2px solid ${tab === k ? G.green : 'transparent'}`, padding: "10px 2px", marginRight: 18, color: tab === k ? G.text : G.textTertiary, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>{l}</button>
+  );
+  const careerLabel = data.careerSeasons.length > 1 ? `Career ${data.careerSeasons[0]}–${String(data.careerSeasons[data.careerSeasons.length - 1]).slice(2)}` : 'Career';
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 190, background: "transparent" }} />
+      <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: isMobile ? "100%" : 560, zIndex: 200, background: G.surface, boxShadow: G.shadowLg, borderLeft: `1px solid ${G.surfaceBorder}`, display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 14px 0" }}>
+          <a href={`https://www.espn.com/college-football/player/_/id/${p.id}`} target="_blank" rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", gap: 6, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 11px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>ESPN profile ↗</a>
+          <button onClick={onClose} title="Close (Esc)" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 10px", color: G.textSecondary, cursor: "pointer", fontSize: 13, fontFamily: ff }}>✕</button>
+        </div>
+        <div style={{ overflowY: "auto", flex: 1, padding: "8px 24px 32px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <Avatar name={p.name} photoUrl={`https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={76} faceZoom />
+              {p.logo && <span style={{ position: "absolute", right: -6, bottom: -4 }}><TeamLogo url={p.logo} size={28} /></span>}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.15 }}>{p.name}</div>
+              <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>{[p.pos, p.team, p.conf].filter(Boolean).join(' · ')}</div>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                {p.tier && <span style={{ fontSize: 11, fontWeight: 700, color: G.textSecondary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 99, padding: "2px 9px" }}>{({ P4: 'FBS · Power 4', G5: 'FBS · Group of 5', FCS: 'FCS', D2: 'Division II' })[p.tier] || p.tier}</span>}
+                {tag && <span style={{ fontSize: 11, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 9px" }}>{tag}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px 12px", marginTop: 22 }}>
+            {fact('Position', p.pos)}
+            {fact('Height', pxHt(p.ht))}
+            {fact('Weight', p.wt ? `${p.wt} lbs` : '')}
+            {fact('Class', PX_CLASS[Math.min(p.yr || 0, 5)])}
+            {fact('Hometown', p.city ? `${p.city}, ${p.st}` : '')}
+            {fact('High school', p.hs)}
+            {fact('Recruiting', p.stars ? `${'★'.repeat(p.stars)}${p.natRank ? ` · #${p.natRank} natl` : ''}` : '')}
+            {fact('Team SP+', p.sp ? `#${p.sp} FBS` : '')}
+            {fact('Conference', p.conf)}
+          </div>
+
+          <div style={{ display: "flex", borderBottom: `1px solid ${G.surfaceBorder}`, marginTop: 22 }}>
+            {tabBtn('overview', 'Overview')}
+            {tabBtn('stats', 'Stats & game log')}
+          </div>
+
+          {tab === 'overview' ? (
+            groups.length === 0 ? (
+              <div style={{ fontSize: 13, color: G.textTertiary, padding: "18px 0" }}>No recorded stats{data.careerSeasons.length > 1 ? ` since ${data.careerSeasons[0]}` : ' this season'}.</div>
+            ) : groups.map(([name, keys]) => (
+              <div key={name} style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 6 }}>{name}</div>
+                <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                  <thead><tr>
+                    <th style={{ textAlign: "left", padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}` }} />
+                    {keys.map(k => <th key={k} style={{ textAlign: "right", padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{PX_COL[k]}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {[[`${data.season}`, p.season], [careerLabel, p.career]].map(([l, v]) => (
+                      <tr key={l}>
+                        <td style={{ padding: "7px 8px", fontSize: 12.5, fontWeight: 700, color: G.text, whiteSpace: "nowrap" }}>{l}</td>
+                        {keys.map(k => <td key={k} style={{ padding: "7px 8px", fontSize: 13, textAlign: "right", color: G.text, fontVariantNumeric: "tabular-nums" }}>{n(v, k)}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))
+          ) : (
+            <div style={{ marginTop: 12 }}>
+              <SportsStatsTab athlete={{ espnId: p.id, level: 'College', name: p.name }} isMobile={isMobile} pad={0} />
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
