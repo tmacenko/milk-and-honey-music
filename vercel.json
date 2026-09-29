@@ -22,6 +22,9 @@
     },
     "api/backup.js": {
       "maxDuration": 60
+    },
+    "api/prospects.js": {
+      "maxDuration": 60
     }
   },
   "crons": [
@@ -48,6 +51,10 @@
     {
       "path": "/api/refresh-music-socials",
       "schedule": "15 9 * * *"
+    },
+    {
+      "path": "/api/prospects?build=1",
+      "schedule": "0 11 * * 2"
     }
   ],
   "rewrites": [
