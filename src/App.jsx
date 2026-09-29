@@ -6735,7 +6735,7 @@ function loadProspectData(canBuild, onBuilding) {
     // File predates newer fields (portal, usage, efficiency, team location
     // and draft…) — rebuild quietly in the background; open pages swap in the
     // new file when it's ready.
-    PROSPECTS.stale = !raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('draft');
+    PROSPECTS.stale = !raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('recPrev');
     if (canBuild) pxRefreshIfStale();
     const C = {}; raw.cols.forEach((c, i) => { C[c] = i; });
     const S = {}; raw.stats.forEach((c, i) => { S[c] = i; });
@@ -6755,6 +6755,7 @@ function loadProspectData(canBuild, onBuilding) {
         isHs: hs, hsClass: hs ? p[C.recClass] : 0, commit: hs ? p[C.commit] || '' : '', commitLogo: hs && p[C.commit] ? ((raw.teams[p[C.commit]] || [])[4] || '') : '',
         usage: C.usage !== undefined && p[C.usage] ? p[C.usage] : null,
         ppa: C.ppa !== undefined && p[C.ppa] ? p[C.ppa] : null,
+        recClass: p[C.recClass] || 0, recType: p[C.recType] || '',
       };
     });
     const hsCount = {};
@@ -7239,16 +7240,60 @@ const PX_FIT_FACTORS = [
   ['home', 'Close to home', 'Distance from hometown to campus'],
   ['acad', 'Academics', 'Generic academic tier from national rankings'],
   ['scheme', 'Scheme', 'Offense only: how pass-heavy the offense is (receivers, TEs, QBs) or run-heavy (backs)'],
+  ['build', 'Roster building', 'How the team added players the last two years. Recruits: teams that sign and develop high schoolers score higher than ones that reload through the portal. College players: the reverse — teams that take transfers'],
+  ['coach', 'Coach stability', 'Estimated hot-seat risk: performance (SP+) vs roster talent, win-loss this season and last, SP+ trend and years in charge (first- and second-year coaches get time). A coaching change usually reshuffles the roster'],
 ];
 const PX_FIT_WEIGHT_LABEL = ['Ignore', 'Some', 'Important', 'Top'];
-const PX_FIT_DEFAULT = { w: { opp: 3, level: 3, nfl: 2, home: 1, acad: 1, scheme: 1 }, level: 'auto', tiers: ['P4', 'G5', 'FCS'] };
+const PX_FIT_DEFAULT = { w: { opp: 3, level: 3, nfl: 2, home: 1, acad: 1, scheme: 1, build: 1, coach: 1 }, level: 'auto', tiers: ['P4', 'G5', 'FCS'] };
 const PX_FIT_PRESETS = [
   ['Balanced', PX_FIT_DEFAULT.w],
-  ['NFL-first', { opp: 2, level: 3, nfl: 3, home: 0, acad: 0, scheme: 2 }],
-  ['Start anywhere', { opp: 3, level: 1, nfl: 1, home: 1, acad: 0, scheme: 1 }],
-  ['Stay close', { opp: 2, level: 2, nfl: 1, home: 3, acad: 1, scheme: 0 }],
-  ['Academics', { opp: 2, level: 2, nfl: 1, home: 1, acad: 3, scheme: 0 }],
+  ['NFL-first', { opp: 2, level: 3, nfl: 3, home: 0, acad: 0, scheme: 2, build: 1, coach: 1 }],
+  ['Start anywhere', { opp: 3, level: 1, nfl: 1, home: 1, acad: 0, scheme: 1, build: 1, coach: 1 }],
+  ['Stay close', { opp: 2, level: 2, nfl: 1, home: 3, acad: 1, scheme: 0, build: 1, coach: 1 }],
+  ['Academics', { opp: 2, level: 2, nfl: 1, home: 1, acad: 3, scheme: 0, build: 1, coach: 1 }],
 ];
+
+// Estimated coach hot-seat risk (0–100). Heuristic, not a report: how the
+// team performs (SP+) against its roster talent, win-loss (last season
+// weighs more until this season has games), SP+ decline, and tenure — new
+// coaches get time.
+function pxCoachRisk(data, t) {
+  if (!t || t.hcFirst === undefined || !t.coach) return null;
+  const clamp = (x) => Math.max(0, Math.min(1, x));
+  const tenure = t.hcFirst ? data.season - t.hcFirst + 1 : 3;
+  const wl = (r) => { const m = String(r || '').match(/(\d+)-(\d+)/); return m && (+m[1] + +m[2]) ? [+m[1], +m[2]] : null; };
+  const cur = wl(t.record), prev = tenure >= 2 ? wl(t.recPrev) : null;
+  const wc = cur ? Math.min(1, (cur[0] + cur[1]) / 12) : 0;
+  const pct = (x) => x[0] / (x[0] + x[1]);
+  const win = cur && prev ? wc * pct(cur) + (1 - wc) * pct(prev) : cur ? pct(cur) : prev ? pct(prev) : null;
+  const spB = t.sp && t.spPrev && tenure >= 2 ? wc * t.sp + (1 - wc) * t.spPrev : t.sp || 0;
+  const under = t.talentRank && spB ? clamp((spB - t.talentRank) / 40) : 0;
+  const losing = win != null ? clamp((0.5 - win) / 0.3) : 0;
+  const decline = t.sp && t.spPrev && tenure >= 2 ? clamp((t.sp - t.spPrev) / 40) : 0;
+  const factor = tenure <= 1 ? 0.15 : tenure === 2 ? 0.5 : 1;
+  const risk = Math.round(100 * factor * (0.45 * under + 0.35 * losing + 0.2 * decline));
+  return { risk, tenure, label: risk >= 50 ? 'Hot seat' : risk >= 25 ? 'Some pressure' : 'Stable' };
+}
+// Per-team context shared by every fit ranking: how rosters were built
+// (portal arrivals vs high school signees, last two cycles) and coach risk.
+function pxTeamCtx(data) {
+  if (data._teamCtx) return data._teamCtx;
+  const tIn = {}, hsIn = {};
+  (data.portal || []).forEach(e => { if (e.dest && (e.cycle === data.season || e.cycle === data.season - 1)) tIn[e.dest] = (tIn[e.dest] || 0) + 1; });
+  data.players.forEach(p => { if (!p.isHs && p.team && p.recType === 'HighSchool' && (p.recClass === data.season || p.recClass === data.season - 1)) hsIn[p.team] = (hsIn[p.team] || 0) + 1; });
+  const byTeam = {};
+  Object.entries(data.teamInfo).forEach(([n, t]) => {
+    const a = tIn[n] || 0, b = hsIn[n] || 0;
+    byTeam[n] = { tIn: a, hsIn: b, reliance: a + b >= 8 ? a / (a + b) : null, coach: pxCoachRisk(data, t) };
+  });
+  data._teamCtx = {
+    byTeam,
+    rel: Object.values(byTeam).map(x => x.reliance).filter(x => x != null).sort((x, y) => x - y),
+    hasBuild: (data.portal || []).some(e => e.cycle === data.season - 1),
+    hasCoach: Object.values(data.teamInfo).some(t => t.hcFirst !== undefined),
+  };
+  return data._teamCtx;
+}
 const PX_FIT_LEVELS = [['auto', 'Auto'], ['top', 'Highest possible'], ['up', 'Move up'], ['stay', 'Same level'], ['down', 'Move down']];
 
 function pxFitRank(data, p, prefs) {
@@ -7265,7 +7310,9 @@ function pxFitRank(data, p, prefs) {
   // level (it means a real offer) — whichever is higher.
   const starsD = { 5: 97, 4: 85, 3: 65, 2: 40 };
   const commitPct = p.isHs && p.commit && info[p.commit] ? tPct(info[p.commit]) : 0;
-  const auto = p.isHs ? Math.max(starsD[p.stars] || 45, commitPct) : P ? Math.max(3, Math.min(99, C + (P - 50))) : C;
+  const n = p.natRank || 0;
+  const rankD = !n ? 0 : n <= 50 ? 97 : n <= 150 ? 90 : n <= 300 ? 82 : n <= 500 ? 74 : 0;
+  const auto = p.isHs ? Math.max(starsD[p.stars] || 45, rankD, commitPct) : P ? Math.max(3, Math.min(99, C + (P - 50))) : C;
   const base = p.isHs ? auto : C;
   const D = prefs.level === 'top' ? 99 : prefs.level === 'up' ? Math.min(99, base + 25) : prefs.level === 'down' ? Math.max(3, base - 25) : prefs.level === 'stay' ? base : auto;
   // Who returns at the position, per team (seniors and next-cycle portal
@@ -7283,7 +7330,8 @@ function pxFitRank(data, p, prefs) {
   const hasLoc = Object.values(info).some(t => t.lat);
   const rates = Object.values(info).map(t => t.passRate || 0).filter(x => x > 0).sort((x, y) => x - y);
   const schemeOk = rates.length > 20 && ['QB', 'WR', 'TE', 'RB'].includes(grp);
-  const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk };
+  const ctx = pxTeamCtx(data);
+  const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk, build: ctx.hasBuild, coach: ctx.hasCoach };
   const S0 = PX_STARTERS[grp] || 1;
   const gone = h > 1 ? `gone by ${data.season + h}` : 'leaving';
   const rows = pxTeamNeeds(data, grp, h).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
@@ -7324,6 +7372,17 @@ function pxFitRank(data, p, prefs) {
     if (avail.scheme) {
       if (ti.passRate) { const pp = pxMidPct(rates, ti.passRate); f.scheme = [grp === 'RB' ? 100 - pp : pp, `${Math.round(ti.passRate * 100)}% pass plays`]; }
       else f.scheme = [50, ''];
+    }
+    const tc = ctx.byTeam[t.name] || {};
+    if (avail.build) {
+      if (tc.reliance != null) {
+        const rp = pxMidPct(ctx.rel, tc.reliance);
+        f.build = [p.isHs ? 100 - rp : rp, `${Math.round(tc.reliance * 100)}% of newcomers via portal`];
+      } else f.build = [50, ''];
+    }
+    if (avail.coach) {
+      if (tc.coach) f.coach = [100 - tc.coach.risk, `${tc.coach.label}${tc.coach.tenure ? ` · HC yr ${tc.coach.tenure}` : ''}`];
+      else f.coach = [50, ''];
     }
     let num = 0, den = 0;
     PX_FIT_FACTORS.forEach(([k]) => { const w = (prefs.w || {})[k] || 0; if (f[k] && w > 0) { num += w * f[k][0]; den += w; } });
@@ -7368,7 +7427,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const seg = (on) => ({ fontFamily: ff, fontSize: 11.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: "none", cursor: "pointer", background: on ? G.surface : 'transparent', color: on ? G.text : G.textTertiary, boxShadow: on ? G.cardShadow : 'none', whiteSpace: "nowrap" });
   const segWrap = { display: "inline-flex", gap: 2, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: 2 };
   const presetOn = (w) => PX_FIT_FACTORS.every(([k]) => (prefs.w[k] || 0) === (w[k] || 0));
-  const autoWord = p.isHs ? `${p.stars ? `${p.stars}★` : 'unrated'} recruit${p.commit ? ` committed to ${p.commit}` : ''}` : p.prodPct ? `${pxOrd(p.prodPct)} percentile production at ${p.team}` : `current level (${p.team})`;
+  const autoWord = p.isHs ? `${p.stars ? `${p.stars}★` : 'unrated'}${p.natRank ? ` (#${p.natRank} national)` : ''} recruit${p.commit ? ` committed to ${p.commit}` : ''}` : p.prodPct ? `${pxOrd(p.prodPct)} percentile production at ${p.team}` : `current level (${p.team})`;
   const levelLine = res && (prefs.level === 'auto'
     ? `Aiming at SP+ #${res.spTarget} or better, based on ${autoWord}.`
     : prefs.level === 'top'
@@ -7938,6 +7997,8 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
   const [listTab, setListTab] = useState('clients');
   const [sort, setSort] = useState({ col: '', dir: 'desc' });
   const prefsTab = useAdminTab('fitprefs');
+  // 247 stars / national rank for high school clients (robot snapshots).
+  const hist = useAdminTab('stathistory');
   // Starting lists: our clients (college by ESPN id, HS seniors by name) and
   // the recruiting board. Players in the portal and those with priorities set
   // come first, then by production.
@@ -7959,9 +8020,11 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
       const [city, st] = String(a.hometown || '').split(',').map(x => x.trim());
       const loc = city && st ? data.cityIndex[`${city}, ${st}`.toLowerCase()] : null;
       const commit = teamBy[teamKey(a.committedTo)] || '';
-      return { id: `c:${slugOf(a.name)}`, name: a.name, isHs: true, fromClient: true, photo: a.photoUrl || '', pos, grp: pxGroupOf(pos), hs: a.college || a.school || '', hsClass: cls, stars: 0, natRank: 0,
+      return { id: `c:${slugOf(a.name)}`, name: a.name, isHs: true, fromClient: true, photo: a.photoUrl || '', pos, grp: pxGroupOf(pos), hs: a.college || a.school || '', hsClass: cls, stars: (r247[nk(a.name)] || {}).stars || 0, natRank: (r247[nk(a.name)] || {}).nat || 0,
         commit, commitLogo: commit ? (data.teamInfo[commit] || {}).logo || '' : '', city: city || '', st: st || '', lat: loc ? loc.lat : 0, lng: loc ? loc.lng : 0, ht: htIn(a.height), wt: parseInt(a.weight, 10) || 0, tier: 'HS' };
     };
+    const r247 = {};
+    ((hist.data && hist.data.rows) || []).forEach(r => { const c = r.cells || []; if (c[5] || c[6]) r247[nk(c[1])] = { stars: parseInt(c[5], 10) || 0, nat: parseInt(c[6], 10) || 0 }; });
     const clients = (athletes || []).map(a => {
       const p = (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && (byName[nk(a.name)] || fromClient(a))) || null;
       return p && { p, a };
@@ -7969,7 +8032,7 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
     const seen = new Set(clients.map(r => r.p.id));
     const board = data.players.filter(p => !seen.has(p.id) && V.tagFor(p) === 'On board').map(p => ({ p, a: null }));
     return { clients, board };
-  }, [data, athletes, V.tagFor]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, athletes, V.tagFor, hist.data]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!data) return <div style={pxPageWrap(isMobile)}>{pxTitle(isMobile, 'Team Fit')}{V.status}</div>;
   const extra = lists.clients.filter(r => r.p.fromClient).map(r => r.p);
   const pick = pickId ? (extra.find(p => p.id === pickId) || data.players.find(p => p.id === pickId)) : null;
