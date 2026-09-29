@@ -6235,7 +6235,56 @@ const PX_STATS = [
 ];
 const PX_STAT_LABEL = Object.fromEntries(PX_STATS);
 const PX_DEFAULT_SORT = { QB: 'passYds', RB: 'rushYds', WR: 'recYds', TE: 'recYds', DL: 'sacks', LB: 'tkl', DB: 'tkl', 'K/P': 'fgm' };
-const PX_EMPTY = { q: '', team: '', groups: [], tiers: [], conf: '', classes: [], htMin: 0, htMax: 0, wtMin: '', wtMax: '', st: '', near: '', miles: 0, hs: '', stars: 0, spTop: 0, scope: 'season', rules: [], cols: null };
+const PX_EMPTY = { q: '', team: '', groups: [], tiers: [], conf: '', classes: [], htMin: 0, htMax: 0, wtMin: '', wtMax: '', st: '', near: '', miles: 0, hs: '', stars: 0, spTop: 0, scope: 'season', rules: [], cols: null, outperf: false, hideOurs: false };
+// One production number per position group (this season), used to rank a
+// player against everyone at his position (Production percentile) and to
+// weigh how much of a room's output is leaving. Deliberately simple and
+// explainable: yards plus touchdown/turnover credit on offense, tackles
+// weighted up for plays behind the line and takeaways on defense.
+function pxMetric(grp, v, S) {
+  if (!v) return 0;
+  const g = (k) => v[S[k]] || 0;
+  switch (grp) {
+    case 'QB': return g('passYds') + 20 * g('passTd') - 45 * g('passInt') + g('rushYds') + 20 * g('rushTd');
+    case 'RB': return g('rushYds') + g('recYds') + 20 * (g('rushTd') + g('recTd'));
+    case 'WR': case 'TE': return g('recYds') + 20 * g('recTd');
+    case 'DL': return g('tkl') + 3 * g('tfl') + 5 * g('sacks') + 2 * g('qbh') + 2 * g('pd');
+    case 'LB': return g('tkl') + 3 * g('tfl') + 4 * g('sacks') + 5 * g('int') + 2 * g('pd');
+    case 'DB': return g('tkl') + 6 * g('int') + 3 * g('pd') + 2 * g('tfl');
+    case 'K/P': return 3 * g('fgm') + g('punts');
+    case 'ATH': return g('rushYds') + g('recYds') + g('tkl');
+    default: return 0;
+  }
+}
+const pxLeaving = (pl) => !pl.isHs && (pl.yr || 0) >= 4; // SR / 5th year: likely out of eligibility
+// Per position group: every team's room, how much of its production is
+// likely leaving (seniors + next-cycle portal entries) and what's coming in
+// (committed high school seniors). Cached on the data object per group.
+function pxTeamNeeds(data, grp) {
+  data._needs = data._needs || {};
+  if (data._needs[grp]) return data._needs[grp];
+  const byTeam = {};
+  const get = (t) => (byTeam[t] = byTeam[t] || { name: t, room: [], commits: 0, portalOut: 0 });
+  data.players.forEach(pl => {
+    if (pl.grp !== grp) return;
+    if (pl.isHs) { if (pl.commit) get(pl.commit).commits++; return; }
+    if (pl.team) get(pl.team).room.push(pl);
+  });
+  (data.portal || []).forEach(e => { if (e.cycle === data.season + 1 && e.grp === grp && e.origin && byTeam[e.origin]) byTeam[e.origin].portalOut++; });
+  const out = Object.values(byTeam).filter(t => t.room.length).map(t => {
+    const info = data.teamInfo[t.name] || {};
+    const total = t.room.reduce((a, pl) => a + (pl.metric || 0), 0);
+    const leavers = t.room.filter(pxLeaving);
+    const leavingProd = leavers.reduce((a, pl) => a + (pl.metric || 0), 0);
+    // Rooms without countable production (OL, early season) fall back to headcount.
+    const share = total > 0 ? leavingProd / total : leavers.length / t.room.length;
+    const score = share * 100 + t.portalOut * 8 - t.commits * 10;
+    return { name: t.name, tier: info.tier || '', sp: info.sp || 0, logo: info.logo || '', conf: info.conf || '', roomSize: t.room.length, leaving: leavers.length, share, commits: t.commits, portalOut: t.portalOut, score, byCount: !(total > 0) };
+  }).sort((a, b) => b.score - a.score || (a.sp || 999) - (b.sp || 999));
+  data._needs[grp] = out;
+  return out;
+}
+
 // Short headers for the per-stat table columns.
 const PX_COL = {
   passCmp: 'CMP', passAtt: 'ATT', passYds: 'Pass yds', passTd: 'Pass TD', passInt: 'INT thrown',
@@ -6281,6 +6330,12 @@ function loadProspectData(canBuild, onBuilding) {
     const res = await fetch(meta.url);
     if (!res.ok || !res.body) throw new Error('Couldn’t download the player database.');
     const raw = JSON.parse(await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).text());
+    // File predates the team-context fields (portal, usage, coaches…) —
+    // rebuild quietly; the next visit gets them.
+    if (!raw.teamCols && canBuild && !PROSPECTS.building) {
+      PROSPECTS.building = true;
+      build(1).finally(() => { PROSPECTS.building = false; });
+    }
     const C = {}; raw.cols.forEach((c, i) => { C[c] = i; });
     const S = {}; raw.stats.forEach((c, i) => { S[c] = i; });
     const cityIndex = {}, confs = new Set(), states = new Set();
@@ -6297,11 +6352,29 @@ function loadProspectData(canBuild, onBuilding) {
         conf: t[0] || '', tier: hs ? 'HS' : (t[1] || ''), sp: t[2] || 0, logo: t[4] || '',
         season: p[C.season] || null, career: p[C.career] || null,
         isHs: hs, hsClass: hs ? p[C.recClass] : 0, commit: hs ? p[C.commit] || '' : '', commitLogo: hs && p[C.commit] ? ((raw.teams[p[C.commit]] || [])[4] || '') : '',
+        usage: C.usage !== undefined && p[C.usage] ? p[C.usage] : null,
       };
     });
     const hsCount = {};
     players.forEach(p => { if (p.hs) hsCount[p.hs] = (hsCount[p.hs] || 0) + 1; });
+    // Production percentile within position group (players who've produced).
+    const byGrp = {};
+    players.forEach(p => { if (p.isHs) return; p.metric = pxMetric(p.grp, p.season, S); if (p.metric > 0) (byGrp[p.grp] = byGrp[p.grp] || []).push(p); });
+    Object.values(byGrp).forEach(list => {
+      list.sort((a, b) => a.metric - b.metric);
+      list.forEach((p, i) => { p.prodPct = Math.max(1, Math.min(99, Math.round(((i + 1) / list.length) * 100))); });
+    });
+    const tc = raw.teamCols || [];
+    const teamInfo = {};
+    Object.entries(raw.teams).forEach(([name, t]) => {
+      const o = { name };
+      tc.forEach((c, i) => { o[c] = t[i]; });
+      o.sp = o.spRank || 0;
+      teamInfo[name] = o;
+    });
+    const portal = (raw.portal || []).map(e => ({ name: `${e[0]} ${e[1]}`.trim(), pos: e[2], grp: pxGroupOf(e[2]), origin: e[3], dest: e[4], date: e[5], stars: e[6], elig: e[7], cycle: e[8] }));
     PROSPECTS.data = {
+      teamInfo, portal,
       ts: raw.ts, season: raw.season, hsClass: raw.hsClass || 0, careerSeasons: raw.careerSeasons || [], S, players,
       confs: [...confs].sort(), states: [...states].sort(), cityIndex,
       cities: Object.values(cityIndex).map(c => c.label).sort(),
@@ -6341,6 +6414,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [colsOpen, setColsOpen] = useState(false);
   const [open, setOpen] = useState(null); // player whose panel is showing
+  const [teamView, setTeamView] = useState(null); // school whose Team Outlook is showing
   const q = useDeferredValue(f.q);
   const set = (k, v) => { setF(x => ({ ...PX_EMPTY, ...x, [k]: v })); setShown(100); };
   const setMany = (o) => { setF(x => ({ ...PX_EMPTY, ...x, ...o })); setShown(100); };
@@ -6422,6 +6496,8 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
     const out = [];
     for (const p of data.players) {
       if (f.team && p.team !== f.team) continue;
+      if (f.outperf && !(!p.isHs && p.prodPct >= 80 && (p.tier === 'G5' || p.tier === 'FCS' || p.tier === 'D2' || !p.sp || p.sp > 50))) continue;
+      if (f.hideOurs && tagFor(p)) continue;
       if (f.groups.length && !f.groups.includes(p.grp)) continue;
       if (f.tiers.length && !f.tiers.includes(p.tier)) continue;
       if (f.conf && p.conf !== f.conf) continue;
@@ -6453,6 +6529,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
         case 'home': return `${p.st} ${p.city}`; case 'hs': return p.hs || '~';
         case 'stars': return p.stars || 0; case 'sp': return p.sp || 999;
         case 'rank': return p.natRank || 99999;
+        case 'prod': return p.prodPct || 0;
         case 'commit': return p.commit || '~';
         default: return null;
       }
@@ -6465,7 +6542,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
       });
     } else out.sort((a, b) => a.name.localeCompare(b.name));
     return out;
-  }, [data, fRaw, q, sort]); // eslint-disable-line
+  }, [data, fRaw, q, sort, ours]); // eslint-disable-line
 
   const clickSort = (col) => setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col.startsWith('stat:') || ['stars', 'ht', 'wt', 'yr'].includes(col) ? 'desc' : 'asc' });
   // Recruit view: national rank matters, college stats don't.
@@ -6544,7 +6621,13 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
               </div>
             )}
           </div>
-          {tags.length > 0 && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{tags}</div>}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+            <span style={{ fontSize: 11.5, color: G.textTertiary, marginRight: 2 }}>Quick search:</span>
+            <button onClick={() => { setF({ ...PX_EMPTY, tiers: ['G5', 'FCS'], classes: [1, 2, 3], outperf: true, hideOurs: true }); setTyped(''); setSort({ col: 'prod', dir: 'desc' }); setShown(100); }}
+              title="Group of 5 and FCS players with eligibility left, producing in the top 20% at their position on a team outside the SP+ top 50 — not already clients or on the board"
+              style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "4px 11px", color: G.green, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Transfer candidates</button>
+            {tags}
+          </div>
 
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(220px, 1fr))", gap: 16, marginTop: 16 }}>
             <div style={{ gridColumn: isMobile ? undefined : "span 2" }}>
@@ -6618,6 +6701,8 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
           <div style={{ height: 1, background: G.surfaceBorder, margin: "16px 0" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginRight: 4 }}>Stats</span>
+            {chip(f.outperf, 'Outperforming team', () => set('outperf', !f.outperf), 'op')}
+            {chip(f.hideOurs, 'Hide clients & board', () => set('hideOurs', !f.hideOurs), 'ho')}
             {chip(f.scope === 'season', `${data.season} season`, () => set('scope', 'season'), 'sc-s')}
             {chip(f.scope === 'career', `Career${data.careerSeasons.length > 1 ? ` (${data.careerSeasons[0]}–${data.careerSeasons[data.careerSeasons.length - 1]})` : ''}`, () => set('scope', 'career'), 'sc-c')}
             <span style={{ width: 8 }} />
@@ -6673,6 +6758,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
                 {th('name', 'Player', false, { position: "sticky", left: 0, zIndex: 2 })}{th('pos', 'Pos')}{th('yr', 'Class')}{th('team', 'School')}
                 {th('ht', 'Ht', true)}{th('wt', 'Wt', true)}{th('home', 'Hometown')}{th('stars', '★', true)}
                 {showRank && th('rank', 'Natl rank', true)}
+                {!hsOnly && th('prod', 'Prod %ile', true)}
                 {hsOnly && th('commit', 'Committed to')}
                 {shownStatCols.map(k => th('stat:' + k, PX_COL[k] || k, true, { borderLeft: k === shownStatCols[0] ? `1px solid ${G.surfaceBorder}` : undefined }))}
               </tr></thead>
@@ -6706,6 +6792,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
                       <td style={td}>{p.city ? `${p.city}, ${p.st}` : '—'}</td>
                       <td style={{ ...td, textAlign: "right", color: p.stars >= 4 ? G.green : G.textSecondary, fontWeight: p.stars ? 700 : 400 }}>{p.stars || '—'}</td>
                       {showRank && <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: p.natRank ? G.text : G.textTertiary, fontWeight: p.natRank ? 700 : 400 }}>{p.natRank ? `#${p.natRank}` : '—'}</td>}
+                      {!hsOnly && <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: p.prodPct >= 90 ? G.green : p.prodPct ? G.text : G.textTertiary, fontWeight: p.prodPct ? 700 : 400 }} title={p.prodPct ? `Better production than ${p.prodPct}% of ${p.grp}s this season` : ''}>{p.prodPct ? `${p.prodPct}` : '—'}</td>}
                       {hsOnly && <td style={td}>{p.commit ? <span style={{ display: "inline-flex", alignItems: "center", gap: 7, color: G.text }}>{p.commitLogo && <TeamLogo url={p.commitLogo} size={18} />}{p.commit}</span> : <span style={{ color: G.textTertiary }}>Uncommitted</span>}</td>}
                       {shownStatCols.map((k, ci) => {
                         const n = v ? fmtStat(v[data.S[k]]) : 0;
@@ -6729,7 +6816,190 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
         </div>
       </>)}
 
-      {open && data && <ProspectPanel p={open} data={data} tag={tagFor(open)} isMobile={isMobile} onClose={() => setOpen(null)} ops={ops} staff={staff} user={user} />}
+      {teamView && data && <TeamOutlook team={teamView} data={data} tagOf={tagFor} isMobile={isMobile} onClose={() => setTeamView(null)} onOpenPlayer={(pl) => setOpen(pl)} />}
+      {open && data && <ProspectPanel p={open} data={data} tag={tagFor(open)} isMobile={isMobile} onClose={() => setOpen(null)} ops={ops} staff={staff} user={user} onOpenTeam={(t) => { setTeamView(t); setOpen(null); }} />}
+    </div>
+  );
+}
+
+// Where a player's position is opening up: every team ranked by the share of
+// its room's production that's likely leaving (seniors/5th-years plus
+// next-cycle portal entries), minus incoming high school commits.
+function TeamFit({ p, data, onOpenTeam }) {
+  const grp = p.grp || pxGroupOf(p.pos);
+  const [tiers, setTiers] = useState(['P4', 'G5']);
+  const [shown, setShown] = useState(15);
+  const rows = useMemo(() => (grp ? pxTeamNeeds(data, grp) : []).filter(t => tiers.includes(t.tier) && t.name !== p.team), [data, grp, tiers, p.team]);
+  if (!grp) return <div style={{ fontSize: 13, color: G.textTertiary, padding: "14px 0" }}>No position on file.</div>;
+  const chip = (t, l) => {
+    const on = tiers.includes(t);
+    return <button key={t} onClick={() => setTiers(on ? tiers.filter(x => x !== t) : [...tiers, t])}
+      style={{ padding: "4px 10px", borderRadius: 99, border: `1px solid ${on ? G.green : G.surfaceBorder}`, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{l}</button>;
+  };
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontSize: 12.5, color: G.textSecondary, lineHeight: 1.5 }}>
+        Teams where the <b style={{ color: G.text }}>{grp}</b> room is losing the most production after this season, net of incoming commits.
+      </div>
+      <div style={{ display: "flex", gap: 5, margin: "10px 0 6px" }}>{chip('P4', 'Power 4')}{chip('G5', 'Group of 5')}{chip('FCS', 'FCS')}</div>
+      {rows.slice(0, shown).map((t, i) => (
+        <div key={t.name} onClick={() => onOpenTeam && onOpenTeam(t.name)}
+          onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+          style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderRadius: 8, cursor: onOpenTeam ? "pointer" : "default", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <span style={{ width: 18, textAlign: "right", fontSize: 11.5, fontWeight: 700, color: G.textTertiary }}>{i + 1}</span>
+          {t.logo ? <TeamLogo url={t.logo} size={22} /> : <span style={{ width: 22 }} />}
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
+            <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>{[t.conf, t.sp ? `SP+ #${t.sp}` : ''].filter(Boolean).join(' · ')}</span>
+          </span>
+          <span style={{ textAlign: "right", flexShrink: 0 }}>
+            <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: t.share >= 0.5 ? G.green : G.text }}>{t.byCount ? `${t.leaving} of ${t.roomSize} leaving` : `${Math.round(t.share * 100)}% of production leaving`}</span>
+            <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>
+              {[!t.byCount && `${t.leaving} of ${t.roomSize} likely leaving`, t.portalOut ? `${t.portalOut} in portal` : '', t.commits ? `+${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}
+            </span>
+          </span>
+        </div>
+      ))}
+      {rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 10, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
+      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 10, lineHeight: 1.5 }}>“Leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data, so some may return) plus next-cycle portal entries once that window opens.</div>
+    </div>
+  );
+}
+
+// Full-screen team view: every position room with class, size, production,
+// usage and next-year status, plus portal movement and incoming commits.
+function TeamOutlook({ team, data, tagOf, isMobile, onClose, onOpenPlayer }) {
+  const info = data.teamInfo[team] || { name: team };
+  const pk = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+  const roster = useMemo(() => data.players.filter(x => !x.isHs && x.team === team), [data, team]);
+  const commits = useMemo(() => data.players.filter(x => x.isHs && x.commit === team), [data, team]);
+  const portalIn = (data.portal || []).filter(e => e.dest === team && e.cycle === data.season);
+  const portalOutNow = (data.portal || []).filter(e => e.origin === team && e.cycle === data.season);
+  const portalOutNext = (data.portal || []).filter(e => e.origin === team && e.cycle === data.season + 1);
+  const inByName = {}; portalIn.forEach(e => { inByName[pk(e.name)] = e; });
+  const nextOutByName = {}; portalOutNext.forEach(e => { nextOutByName[pk(e.name)] = e; });
+  const groups = PX_POS_GROUPS.map(([g]) => g).filter(g => roster.some(x => x.grp === g) || commits.some(x => x.grp === g));
+  const statusOf = (x) => {
+    const out = [];
+    if (nextOutByName[pk(x.name)]) out.push(['In portal', G.red]);
+    else if (pxLeaving(x)) out.push(['Likely leaving', '#d97706']);
+    const tin = inByName[pk(x.name)];
+    if (tin) out.push([`Transfer from ${tin.origin}`, G.textSecondary]);
+    return out;
+  };
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14 };
+  const stat = (label, value) => value ? (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: G.text, marginTop: 4 }}>{value}</div>
+    </div>
+  ) : null;
+  const thS = { textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 180, background: G.bg, overflowY: "auto" }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto", padding: isMobile ? "16px 16px 80px" : "22px 28px 60px" }}>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: G.textSecondary, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>← Back</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
+          {info.logo && <TeamLogo url={info.logo} size={56} />}
+          <div>
+            <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{team}</div>
+            <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 3 }}>{[info.conf, ({ P4: 'Power 4', G5: 'Group of 5', FCS: 'FCS', D2: 'Division II' })[info.tier], info.coach ? `HC ${info.coach}${info.record ? ` (${info.record})` : ''}` : ''].filter(Boolean).join(' · ')}</div>
+          </div>
+        </div>
+        <div style={{ ...card, padding: 16, marginTop: 16, display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(6, 1fr)", gap: 16 }}>
+          {stat('SP+ rank', info.sp ? `#${info.sp}` : '')}
+          {stat('Talent rank', info.talentRank ? `#${info.talentRank}` : '')}
+          {stat('Returning production', info.retPct ? `${info.retPct}%` : '')}
+          {stat('Returning passing', info.retPass ? `${info.retPass}%` : '')}
+          {stat('Roster', `${roster.length} players`)}
+          {stat(`${data.hsClass} commits`, commits.length ? `${commits.length}` : '0')}
+        </div>
+
+        {groups.map(g => {
+          const room = roster.filter(x => x.grp === g).sort((a, b) => (b.metric || 0) - (a.metric || 0) || (b.yr || 0) - (a.yr || 0));
+          const inc = commits.filter(x => x.grp === g);
+          const leaving = room.filter(x => pxLeaving(x) || nextOutByName[pk(x.name)]);
+          const total = room.reduce((a, x) => a + (x.metric || 0), 0);
+          const leavingProd = leaving.reduce((a, x) => a + (x.metric || 0), 0);
+          const skill = ['QB', 'RB', 'WR', 'TE', 'ATH'].includes(g);
+          return (
+            <div key={g} style={{ ...card, marginTop: 14, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "14px 16px 6px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: G.text }}>{g}</span>
+                <span style={{ fontSize: 12.5, color: G.textSecondary }}>
+                  {[`${room.length} on roster`, leaving.length ? `${leaving.length} likely leaving${total > 0 ? ` (${Math.round(leavingProd / total * 100)}% of production)` : ''}` : 'none leaving', inc.length ? `${inc.length} commit${inc.length === 1 ? '' : 's'} incoming` : ''].filter(Boolean).join(' · ')}
+                </span>
+              </div>
+              <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                  <thead><tr>
+                    <th style={thS}>Player</th><th style={thS}>Class</th><th style={{ ...thS, textAlign: "right" }}>Ht</th><th style={{ ...thS, textAlign: "right" }}>Wt</th><th style={{ ...thS, textAlign: "right" }}>★</th>
+                    <th style={thS}>{data.season} production</th>{skill && <th style={{ ...thS, textAlign: "right" }}>Usage</th>}<th style={{ ...thS, textAlign: "right" }}>Prod %ile</th><th style={thS}>Next year</th>
+                  </tr></thead>
+                  <tbody>
+                    {room.map(x => {
+                      const td = { padding: "7px 10px", fontSize: 13, color: G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" };
+                      const tag = tagOf ? tagOf(x) : '';
+                      const st = statusOf(x);
+                      return (
+                        <tr key={x.id} onClick={() => onOpenPlayer && onOpenPlayer(x)} style={{ cursor: "pointer" }}
+                          onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                          <td style={{ ...td, color: G.text, fontWeight: 700 }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                              <Avatar name={x.name} photoUrl={`https://a.espncdn.com/i/headshots/college-football/players/full/${x.id}.png`} size={24} faceZoom />
+                              {x.name}
+                              {tag && <span style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 7px" }}>{tag}</span>}
+                            </span>
+                          </td>
+                          <td style={td}>{PX_CLASS[Math.min(x.yr || 0, 5)] || '—'}</td>
+                          <td style={{ ...td, textAlign: "right" }}>{pxHt(x.ht) || '—'}</td>
+                          <td style={{ ...td, textAlign: "right" }}>{x.wt || '—'}</td>
+                          <td style={{ ...td, textAlign: "right", color: x.stars >= 4 ? G.green : G.textSecondary, fontWeight: x.stars ? 700 : 400 }}>{x.stars || '—'}</td>
+                          <td style={{ ...td, color: G.text }}>{pxKeyLine(x, x.season, data.S) || <span style={{ color: G.textTertiary }}>—</span>}</td>
+                          {skill && <td style={{ ...td, textAlign: "right" }}>{x.usage ? `${Math.round(x.usage[0] * 100)}%` : '—'}</td>}
+                          <td style={{ ...td, textAlign: "right", color: x.prodPct >= 90 ? G.green : G.text, fontWeight: x.prodPct ? 700 : 400 }}>{x.prodPct || '—'}</td>
+                          <td style={td}>{st.length ? st.map(([l, c]) => <span key={l} style={{ fontSize: 11.5, fontWeight: 700, color: c, marginRight: 8 }}>{l}</span>) : <span style={{ color: G.textTertiary }}>Returning</span>}</td>
+                        </tr>
+                      );
+                    })}
+                    {inc.map(x => (
+                      <tr key={x.id} onClick={() => onOpenPlayer && onOpenPlayer(x)} style={{ cursor: "pointer", background: G.greenSubtle }}>
+                        <td style={{ padding: "7px 10px", fontSize: 13, color: G.text, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Avatar name={x.name} photoUrl={null} size={24} />{x.name}</span>
+                        </td>
+                        <td style={{ padding: "7px 10px", fontSize: 13, color: G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}` }}>HS '{String(x.hsClass).slice(2)}</td>
+                        <td style={{ padding: "7px 10px", fontSize: 13, color: G.textSecondary, textAlign: "right", borderBottom: `1px solid ${G.surfaceBorder}` }}>{pxHt(x.ht) || '—'}</td>
+                        <td style={{ padding: "7px 10px", fontSize: 13, color: G.textSecondary, textAlign: "right", borderBottom: `1px solid ${G.surfaceBorder}` }}>{x.wt || '—'}</td>
+                        <td style={{ padding: "7px 10px", fontSize: 13, textAlign: "right", fontWeight: 700, color: x.stars >= 4 ? G.green : G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}` }}>{x.stars || '—'}</td>
+                        <td colSpan={skill ? 3 : 2} style={{ padding: "7px 10px", fontSize: 12.5, color: G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{[x.hs, x.natRank ? `#${x.natRank} national` : ''].filter(Boolean).join(' · ')}</td>
+                        <td style={{ padding: "7px 10px", fontSize: 11.5, fontWeight: 700, color: G.green, borderBottom: `1px solid ${G.surfaceBorder}` }}>Committed</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })}
+
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginTop: 14 }}>
+          {[['Transferred in', portalIn, 'origin', 'from'], ['Transferred out', portalOutNow, 'dest', 'to']].map(([title, list, key, word]) => (
+            <div key={title} style={{ ...card, padding: 16 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 8 }}>{title} · {data.season - 1}–{String(data.season).slice(2)} portal cycle ({list.length})</div>
+              {list.length === 0 ? <div style={{ fontSize: 12.5, color: G.textTertiary }}>None.</div>
+                : list.slice().sort((a, b) => (b.stars || 0) - (a.stars || 0)).map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0", fontSize: 13, borderBottom: `1px solid ${G.surfaceBorder}` }}>
+                    <span style={{ fontWeight: 700, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                    <span style={{ color: G.textTertiary }}>{e.pos}</span>
+                    <span style={{ flex: 1 }} />
+                    <span style={{ color: G.textSecondary, whiteSpace: "nowrap" }}>{e[key] ? `${word} ${e[key]}` : 'no destination yet'}</span>
+                  </div>
+                ))}
+            </div>
+          ))}
+        </div>
+        {portalOutNext.length === 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12 }}>The {data.season}–{String(data.season + 1).slice(2)} portal hasn’t opened yet — entries appear here (and in “Next year”) as soon as players enter.</div>}
+      </div>
     </div>
   );
 }
@@ -6900,7 +7170,7 @@ function RecruitBlock({ p, ops, staff, user, onEditRecord }) {
   );
 }
 
-function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEditRecord }) {
+function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEditRecord, onOpenTeam }) {
   const [tab, setTab] = useState('overview');
   useEffect(() => { setTab('overview'); }, [p.id]);
   const S = data.S;
@@ -6945,6 +7215,12 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.15 }}>{p.name}</div>
               <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>{p.isHs ? [p.pos, p.hs, p.city ? `${p.city}, ${p.st}` : ''].filter(Boolean).join(' · ') : [p.pos, p.team, p.conf].filter(Boolean).join(' · ')}</div>
+              {onOpenTeam && data.teamInfo && ((!p.isHs && p.team && data.teamInfo[p.team]) || (p.isHs && p.commit && data.teamInfo[p.commit])) && (
+                <button onClick={() => onOpenTeam(p.isHs ? p.commit : p.team)}
+                  style={{ background: "none", border: "none", padding: 0, marginTop: 6, color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>
+                  {p.isHs ? `${p.commit}` : p.team} roster outlook →
+                </button>
+              )}
 
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 {p.tier && <span style={{ fontSize: 11, fontWeight: 700, color: G.textSecondary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 99, padding: "2px 9px" }}>{({ P4: 'FBS · Power 4', G5: 'FBS · Group of 5', FCS: 'FCS', D2: 'Division II', HS: `High school · class of ${p.hsClass}` })[p.tier] || p.tier}</span>}
@@ -6967,7 +7243,7 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
               : /^\d+$/.test(String(p.id))
                 ? <div style={{ marginTop: 18 }}><SportsStatsTab athlete={{ espnId: p.id, level: 'College', name: p.name }} isMobile={isMobile} pad={0} /></div>
                 : <div style={{ fontSize: 12.5, color: G.textTertiary, marginTop: 22, lineHeight: 1.5 }}>No ESPN profile linked on the board yet, so stats can’t be shown. Add their ESPN id in Edit full record.</div>}
-          </>) : p.isHs ? (
+          </>) : p.isHs ? (<>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px 12px", marginTop: 22 }}>
               {fact('Position', p.pos)}
               {fact('Height', pxHt(p.ht))}
@@ -6979,7 +7255,13 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
               {fact('National rank', p.natRank ? `#${p.natRank}` : '')}
               {fact('Committed to', p.commit || 'Uncommitted')}
             </div>
-          ) : (<>
+            {data.players && p.grp && !p.boardOnly && (
+              <div style={{ marginTop: 22 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 4 }}>Team fit</div>
+                <TeamFit p={p} data={data} onOpenTeam={onOpenTeam} />
+              </div>
+            )}
+          </>) : (<>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px 12px", marginTop: 22 }}>
             {fact('Position', p.pos)}
             {fact('Height', pxHt(p.ht))}
@@ -6990,14 +7272,19 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
             {fact('Recruiting', p.stars ? `${'★'.repeat(p.stars)}${p.natRank ? ` · #${p.natRank} natl` : ''}` : '')}
             {fact('Team SP+', p.sp ? `#${p.sp} FBS` : '')}
             {fact('Conference', p.conf)}
+            {fact('Production', p.prodPct ? `${p.prodPct}th percentile ${p.grp}` : '')}
+            {fact('Usage', p.usage && ['QB', 'RB', 'WR', 'TE', 'ATH'].includes(p.grp) ? `${Math.round(p.usage[0] * 100)}% of team plays` : '')}
           </div>
 
           <div style={{ display: "flex", borderBottom: `1px solid ${G.surfaceBorder}`, marginTop: 22 }}>
             {tabBtn('overview', 'Overview')}
             {tabBtn('stats', 'Stats & game log')}
+            {data.players && p.grp && tabBtn('fit', 'Team fit')}
           </div>
 
-          {tab === 'overview' ? (
+          {tab === 'fit' ? (
+            <TeamFit p={p} data={data} onOpenTeam={onOpenTeam} />
+          ) : tab === 'overview' ? (
             groups.length === 0 ? (
               <div style={{ fontSize: 13, color: G.textTertiary, padding: "18px 0" }}>No recorded stats{data.careerSeasons.length > 1 ? ` since ${data.careerSeasons[0]}` : ' this season'}.</div>
             ) : groups.map(([name, keys]) => (
@@ -7055,6 +7342,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
     return hit ? { ...hit, photo: hit.isHs ? ops.cell(r, 'photo') : '', url247: ops.cell(r, 'url247') } : boardProspect(ops, r);
   };
   const [panelRow, setPanelRow] = useState(null);
+  const [teamView, setTeamView] = useState(null);
   const sub = useAdminTab('onboarding');
   const [promoting, setPromoting] = useState('');
   const [justPromoted, setJustPromoted] = useState({});
@@ -7366,8 +7654,10 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
           tag={isClient(ops.cell(panelRow, 'name')) ? 'Client' : ''}
           ops={ops} staff={staff} user={user}
           onEditRecord={(row) => { setEditing(row); setPanelRow(null); }}
+          onOpenTeam={px ? (t) => { setTeamView(t); setPanelRow(null); } : undefined}
           onClose={() => setPanelRow(null)} />
       )}
+      {teamView && px && <TeamOutlook team={teamView} data={px} tagOf={(x) => (ops.rowFor(x) ? 'On board' : '')} isMobile={isMobile} onClose={() => setTeamView(null)} onOpenPlayer={null} />}
       {editing && (
         <RecruitForm headers={headers} initial={editing === 'new' ? null : editing} defaultLevel={recTab} staff={staff}
           onCancel={() => setEditing(null)}
