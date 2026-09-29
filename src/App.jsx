@@ -7911,6 +7911,7 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
   const [q, setQ] = useState('');
   const [hi, setHi] = useState(0);
   const [listTab, setListTab] = useState('clients');
+  const [sort, setSort] = useState({ col: '', dir: 'desc' });
   const prefsTab = useAdminTab('fitprefs');
   // Starting lists: our clients (college by ESPN id, HS seniors by name) and
   // the recruiting board. Players in the portal and those with priorities set
@@ -7920,9 +7921,9 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
     const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
     const byId = {}, byName = {};
     data.players.forEach(p => { if (p.isHs) byName[nk(p.name)] = p; else byId[p.id] = p; });
-    const clients = (athletes || []).map(a => (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && byName[nk(a.name)]) || null).filter(Boolean);
-    const seen = new Set(clients.map(p => p.id));
-    const board = data.players.filter(p => !seen.has(p.id) && V.tagFor(p) === 'On board');
+    const clients = (athletes || []).map(a => { const p = (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && byName[nk(a.name)]) || null; return p && { p, a }; }).filter(Boolean);
+    const seen = new Set(clients.map(r => r.p.id));
+    const board = data.players.filter(p => !seen.has(p.id) && V.tagFor(p) === 'On board').map(p => ({ p, a: null }));
     return { clients, board };
   }, [data, athletes, V.tagFor]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!data) return <div style={pxPageWrap(isMobile)}>{pxTitle(isMobile, 'Team Fit')}{V.status}</div>;
@@ -8012,42 +8013,62 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
         const prefBy = {};
         ((prefsTab.data && prefsTab.data.rows) || []).forEach(r => { prefBy[r.cells[pc('playerId')]] = r.cells[pc('updatedBy')] || 'Set'; });
         const inPortal = (p) => !p.isHs && portal.has(`${p.team}|${pk(p.name)}`);
-        const rows = (lists[listTab] || []).slice().sort((x, y) => inPortal(y) - inPortal(x) || (!!prefBy[y.id]) - (!!prefBy[x.id]) || (y.prodPct || 0) - (x.prodPct || 0) || x.name.localeCompare(y.name));
-        const th = (t, right) => <th style={{ position: "sticky", top: 0, zIndex: 1, background: G.surface, textAlign: right ? "right" : "left", padding: "8px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{t}</th>;
-        const td = (right, extra) => ({ padding: "8px 12px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", textAlign: right ? "right" : "left", fontVariantNumeric: "tabular-nums", ...extra });
+        const classOf = (p) => (p.isHs ? `HS '${String(p.hsClass).slice(2)}` : PX_CLASS[Math.min(p.yr || 0, 5)] || '');
+        const schoolOf = (p) => (p.isHs ? `${p.hs || ''}${p.commit ? ` → ${p.commit}` : ''}` : p.team || '');
+        const statusRank = (p) => (inPortal(p) ? 2 : pxLeaving(p) ? 1 : 0);
+        const base = (lists[listTab] || []).slice().sort((x, y) => inPortal(y.p) - inPortal(x.p) || (!!prefBy[y.p.id]) - (!!prefBy[x.p.id]) || (y.p.prodPct || 0) - (x.p.prodPct || 0) || x.p.name.localeCompare(y.p.name));
+        const rows = sort.col ? pxSortTable(base.map(r => ({ ...r, name: r.p.name })), sort, (r, c) => ({
+          name: r.p.name, pos: r.p.pos || '', class: r.p.isHs ? -1 : r.p.yr || 0, school: schoolOf(r.p), agent: (r.a && r.a.agentAssigned) || '',
+          prod: r.p.prodPct || 0, sp: !r.p.isHs && r.p.sp ? r.p.sp : 999, prefs: prefBy[r.p.id] || '', status: statusRank(r.p),
+        })[c]) : base;
+        const isClients = listTab === 'clients';
+        const heads = [['name', 'Player', false, 'asc'], ['pos', 'Pos', false, 'asc'], ['class', 'Class'], ['school', 'School', false, 'asc'], ...(isClients ? [['agent', 'Agent(s)', false, 'asc']] : []), ['prod', 'Prod %ile', true], ['sp', 'Team SP+', true, 'asc'], ['prefs', 'Priorities'], ['status', 'Status']];
         return (
-          <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, marginTop: 16, overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 16px 8px", flexWrap: "wrap" }}>
-              {pxPill(listTab === 'clients', `Clients (${lists.clients.length})`, () => setListTab('clients'), 'c')}
-              {pxPill(listTab === 'board', `Recruiting board (${lists.board.length})`, () => setListTab('board'), 'b')}
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              {pxPill(isClients, `Clients (${lists.clients.length})`, () => setListTab('clients'), 'c')}
+              {pxPill(!isClients, `Recruiting board (${lists.board.length})`, () => setListTab('board'), 'b')}
               <span style={{ flex: 1 }} />
-              <span style={{ fontSize: 11.5, color: G.textTertiary }}>Pick a player to rank their best-fit teams — or search above</span>
+              <span style={{ fontSize: 11.5, color: G.textTertiary }}>Click a player to rank their best-fit teams — or search above</span>
             </div>
-            {rows.length === 0 ? <div style={{ padding: "24px 16px", fontSize: 13, color: G.textTertiary }}>No {listTab === 'clients' ? 'clients' : 'board players'} matched to the college database yet.</div> : (
-              <div className="mh-hscroll" style={{ overflow: "auto", maxHeight: isMobile ? 420 : 480 }}>
-                <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                  <thead><tr>{th('Player')}{th('Pos')}{th('School')}{th('Class')}{th('Prod %ile', true)}{th('Team SP+', true)}{th('Priorities')}{th('Status')}</tr></thead>
-                  <tbody>
-                    {rows.map((p, i) => {
-                      const zebra = i % 2 ? G.surfaceRaised : "transparent";
-                      return (
-                        <tr key={p.id} onClick={() => choose(p)} style={{ cursor: "pointer", background: zebra }}
-                          onMouseEnter={e => e.currentTarget.style.background = G.surfaceBorder} onMouseLeave={e => e.currentTarget.style.background = zebra}>
-                          <td style={td(false, { color: G.text, fontWeight: 700 })}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Avatar name={p.name} photoUrl={photo(p)} size={24} faceZoom />{p.name}</span></td>
-                          <td style={td()}>{p.pos || '—'}</td>
-                          <td style={td()}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{(p.isHs ? p.commitLogo : p.logo) && <TeamLogo url={p.isHs ? p.commitLogo : p.logo} size={20} />}{p.isHs ? `${p.hs || '—'}${p.commit ? ` → ${p.commit}` : ''}` : p.team}</span></td>
-                          <td style={td()}>{p.isHs ? `HS '${String(p.hsClass).slice(2)}` : PX_CLASS[Math.min(p.yr || 0, 5)] || '—'}</td>
-                          <td style={td(true, { color: p.prodPct >= 90 ? G.green : p.prodPct ? G.text : G.textTertiary, fontWeight: p.prodPct ? 700 : 400 })}>{p.prodPct || '—'}</td>
-                          <td style={td(true)}>{!p.isHs && p.sp ? `#${p.sp}` : '—'}</td>
-                          <td style={td(false, { color: prefBy[p.id] ? G.text : G.textTertiary })}>{prefBy[p.id] ? `Set by ${prefBy[p.id]}` : 'Defaults'}</td>
-                          <td style={td()}>{inPortal(p) ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.red }}>In portal</span> : pxLeaving(p) ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.yellow }}>Final year</span> : <span style={{ color: G.textTertiary }}>—</span>}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
+              {rows.length === 0 ? <div style={{ padding: "24px 16px", fontSize: 13, color: G.textTertiary }}>No {isClients ? 'clients' : 'board players'} matched to the college database yet.</div> : (
+                <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+                  <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                    <thead><tr>
+                      {heads.map(([k, t, right, first]) => (
+                        <th key={k} onClick={() => setSort(x => x.col === k ? { col: k, dir: x.dir === 'asc' ? 'desc' : 'asc' } : { col: k, dir: first || 'desc' })}
+                          style={{ textAlign: right ? "right" : "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sort.col === k ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
+                          {t}{sort.col === k ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        </th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {rows.map(({ p, a }, i) => {
+                        const td = { padding: "9px 14px", fontSize: 13, color: G.textSecondary, borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+                        const logo = p.isHs ? p.commitLogo : p.logo;
+                        return (
+                          <tr key={p.id} onClick={() => choose(p)} style={{ cursor: "pointer" }}
+                            onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                            <td style={{ ...td, color: G.text, fontWeight: 700 }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}><Avatar name={p.name} photoUrl={(a && a.photoUrl) || photo(p)} size={26} faceZoom />{p.name}</span>
+                            </td>
+                            <td style={td}>{p.pos || '—'}</td>
+                            <td style={td}>{classOf(p) || '—'}</td>
+                            <td style={td}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{logo && <TeamLogo url={logo} size={18} />}{schoolOf(p) || '—'}</span></td>
+                            {isClients && <td style={{ ...td, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{(a && a.agentAssigned) || '—'}</td>}
+                            <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: p.prodPct >= 90 ? G.green : p.prodPct ? G.text : G.textTertiary, fontWeight: p.prodPct ? 700 : 400 }}>{p.prodPct || '—'}</td>
+                            <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{!p.isHs && p.sp ? `#${p.sp}` : '—'}</td>
+                            <td style={{ ...td, color: prefBy[p.id] ? G.text : G.textTertiary }}>{prefBy[p.id] ? `Set by ${prefBy[p.id]}` : 'Defaults'}</td>
+                            <td style={td}>{inPortal(p) ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.red }}>In portal</span> : pxLeaving(p) ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.yellow }}>Final year</span> : <span style={{ color: G.textTertiary }}>—</span>}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         );
       })()}
