@@ -6748,19 +6748,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
               </div>
             )}
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
-            <span style={{ fontSize: 11.5, color: G.textTertiary, marginRight: 2 }}>Quick search:</span>
-            {(() => {
-              const preset = { ...PX_EMPTY, tiers: ['G5', 'FCS'], classes: [1, 2, 3], outperf: true };
-              const on = JSON.stringify({ ...f, cols: null }) === JSON.stringify({ ...preset, cols: null });
-              return (
-                <button onClick={() => { setF(on ? PX_EMPTY : preset); setTyped(''); setSort(on ? { col: '', dir: 'desc' } : { col: 'prod', dir: 'desc' }); setShown(100); }}
-                  title="Group of 5 and FCS players with eligibility left whose production percentile is 75+ and at least 40 points above their team's strength"
-                  style={{ background: on ? G.greenSubtle : "transparent", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 99, padding: "4px 11px", color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: on ? 700 : 600, cursor: "pointer", fontFamily: ff }}>Transfer candidates</button>
-              );
-            })()}
-            {tags}
-          </div>
+          {tags.length > 0 && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{tags}</div>}
 
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(220px, 1fr))", gap: 16, marginTop: 16 }}>
             <div style={{ gridColumn: isMobile ? undefined : "span 2" }}>
