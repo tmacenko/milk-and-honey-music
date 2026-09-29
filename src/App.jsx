@@ -6785,7 +6785,6 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [colsOpen, setColsOpen] = useState(false);
   const [open, setOpen] = useState(null); // player whose panel is showing
-  const [teamView, setTeamView] = useState(null); // school whose Team Outlook is showing
   const q = useDeferredValue(f.q);
   const set = (k, v) => { setF(x => ({ ...PX_EMPTY, ...x, [k]: v })); setShown(100); };
   const setMany = (o) => { setF(x => ({ ...PX_EMPTY, ...x, ...o })); setShown(100); };
@@ -7179,8 +7178,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
         </div>
       </>)}
 
-      {teamView && data && <TeamOutlook team={teamView} data={data} tagOf={tagFor} isMobile={isMobile} onClose={() => setTeamView(null)} onOpenPlayer={(pl) => setOpen(pl)} />}
-      {open && data && <ProspectPanel p={open} data={data} tag={tagFor(open)} isMobile={isMobile} onClose={() => setOpen(null)} ops={ops} staff={staff} user={user} onOpenTeam={(t) => { setTeamView(t); setOpen(null); }} />}
+      {open && data && <ProspectPanel p={open} data={data} tag={tagFor(open)} isMobile={isMobile} onClose={() => setOpen(null)} ops={ops} staff={staff} user={user} onOpenTeam={(t) => { setOpen(null); openTeamPage(t); }} />}
     </div>
   );
 }
@@ -7229,23 +7227,49 @@ function TeamFit({ p, data, onOpenTeam }) {
   );
 }
 
-// Full-screen team view: every position room with class, size, production,
-// usage and next-year status, plus portal movement and incoming commits.
-function TeamOutlook({ team, data, tagOf, isMobile, onClose, onOpenPlayer }) {
-  const info = data.teamInfo[team] || { name: team };
-  const pk = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
-  const roster = useMemo(() => data.players.filter(x => !x.isHs && x.team === team), [data, team]);
-  const commits = useMemo(() => data.players.filter(x => x.isHs && x.commit === team), [data, team]);
+// Team pages are a real sidebar page (/sports?page=team&team=…) so every
+// "roster outlook" link — from a player, the Teams list, the board — lands on
+// the same thing. Deep components ask the app shell to navigate by event.
+const openTeamPage = (team) => { if (team) window.dispatchEvent(new CustomEvent('mh:open-team', { detail: team })); };
+const openSportsPage = (page) => window.dispatchEvent(new CustomEvent('mh:open-page', { detail: page }));
+
+// A team's roster by position room: per-stat sortable columns, class, size,
+// production percentile and next-year status, plus portal movement and
+// incoming commits.
+function TeamPage({ team, isMobile, user, athletes, staff }) {
+  const V = useProspectViewer({ user, athletes, staff, isMobile });
+  const { data } = V;
+  const [q, setQ] = useState('');
+  const [only, setOnly] = useState('');
+  const [sorts, setSorts] = useState({});
+  useEffect(() => { setQ(''); setOnly(''); setSorts({}); }, [team]);
+  const pk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
+  const roster = useMemo(() => (data ? data.players.filter(x => !x.isHs && x.team === team) : []), [data, team]);
+  const commits = useMemo(() => (data ? data.players.filter(x => x.isHs && x.commit === team) : []), [data, team]);
+  const wrap = pxPageWrap(isMobile);
+  const crumbs = (
+    <div style={{ fontSize: 13, color: G.textTertiary }}>
+      <button onClick={() => openSportsPage('teams')} style={{ background: "none", border: "none", padding: 0, color: G.green, fontWeight: 600, cursor: "pointer", fontFamily: ff, fontSize: 13 }}>Teams</button>
+      <span> / {team || '—'}</span>
+    </div>
+  );
+  if (!data) return <div style={wrap}>{crumbs}{V.status}</div>;
+  if (!team || !data.teamInfo[team]) return <div style={wrap}>{crumbs}<div style={{ marginTop: 16, fontSize: 13, color: G.textTertiary }}>That team isn’t in the database.</div></div>;
+  const info = data.teamInfo[team];
+  const S = data.S;
   const portalIn = (data.portal || []).filter(e => e.dest === team && e.cycle === data.season);
   const portalOutNow = (data.portal || []).filter(e => e.origin === team && e.cycle === data.season);
   const portalOutNext = (data.portal || []).filter(e => e.origin === team && e.cycle === data.season + 1);
   const inByName = {}; portalIn.forEach(e => { inByName[pk(e.name)] = e; });
   const nextOutByName = {}; portalOutNext.forEach(e => { nextOutByName[pk(e.name)] = e; });
-  const groups = PX_POS_GROUPS.map(([g]) => g).filter(g => roster.some(x => x.grp === g) || commits.some(x => x.grp === g));
+  const allGroups = PX_POS_GROUPS.map(([g]) => g).filter(g => roster.some(x => x.grp === g) || commits.some(x => x.grp === g));
+  const groups = only ? allGroups.filter(g => g === only) : allGroups;
+  const ql = q.trim().toLowerCase();
+  const nextOf = (x) => (nextOutByName[pk(x.name)] ? 2 : pxLeaving(x) ? 1 : 0);
   const statusOf = (x) => {
     const out = [];
     if (nextOutByName[pk(x.name)]) out.push(['In portal', G.red]);
-    else if (pxLeaving(x)) out.push(['Likely leaving', '#d97706']);
+    else if (pxLeaving(x)) out.push(['Likely leaving', G.yellow]);
     const tin = inByName[pk(x.name)];
     if (tin) out.push([`Transfer from ${tin.origin}`, G.textSecondary]);
     return out;
@@ -7257,100 +7281,132 @@ function TeamOutlook({ team, data, tagOf, isMobile, onClose, onOpenPlayer }) {
       <div style={{ fontSize: 15, fontWeight: 700, color: G.text, marginTop: 4 }}>{value}</div>
     </div>
   ) : null;
-  const thS = { textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" };
+  const sv = (x, k) => (x.season && x.season[S[k]]) || 0;
+  const num = (v) => (v ? Math.round(v * 10) / 10 : '—');
+  const td = (right, extra) => ({ padding: "8px 12px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", textAlign: right ? "right" : "left", fontVariantNumeric: "tabular-nums", ...extra });
+  const shownCount = roster.filter(x => (!only || x.grp === only) && (!ql || x.name.toLowerCase().includes(ql))).length;
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 180, background: G.bg, overflowY: "auto" }}>
-      <div style={{ maxWidth: 1400, margin: "0 auto", padding: isMobile ? "16px 16px 80px" : "22px 28px 60px" }}>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: G.textSecondary, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: 0 }}>← Back</button>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
-          {info.logo && <TeamLogo url={info.logo} size={56} />}
-          <div>
-            <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{team}</div>
-            <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 3 }}>{[info.conf, ({ P4: 'Power 4', G5: 'Group of 5', FCS: 'FCS', D2: 'Division II' })[info.tier], info.coach ? `HC ${info.coach}${info.record ? ` (${info.record})` : ''}` : ''].filter(Boolean).join(' · ')}</div>
-          </div>
+    <div style={wrap}>
+      {crumbs}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+        {info.logo && <TeamLogo url={info.logo} size={56} />}
+        <div>
+          <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{team}</div>
+          <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>{[info.conf, PX_TIER_NAME[info.tier], info.coach ? `HC ${info.coach}${info.record ? ` (${info.record})` : ''}` : ''].filter(Boolean).join(' · ')}</div>
         </div>
-        <div style={{ ...card, padding: 16, marginTop: 16, display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: 16 }}>
-          {stat('SP+ rank', info.sp ? `#${info.sp}` : '')}
-          {stat('Talent rank', info.talentRank ? `#${info.talentRank}` : '')}
-          {stat('Returning production', info.retPct ? `${info.retPct}%` : '', 'Share of last season’s offensive production (passing, rushing, receiving — weighted by points added) from players still on the roster')}
-          {stat('Roster', `${roster.length} players`)}
-          {stat(`${data.hsClass} commits`, commits.length ? `${commits.length}` : '0')}
-        </div>
+      </div>
+      <div style={{ ...card, padding: 16, marginTop: 16, display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: 16 }}>
+        {stat('SP+ rank', info.sp ? `#${info.sp}` : '')}
+        {stat('Talent rank', info.talentRank ? `#${info.talentRank}` : '')}
+        {stat('Returning production', info.retPct ? `${info.retPct}%` : '', 'Share of last season’s offensive production (passing, rushing, receiving — weighted by points added) from players still on the roster')}
+        {stat('Roster', `${roster.length} players`)}
+        {stat(`${data.hsClass} commits`, commits.length ? `${commits.length}` : '0')}
+      </div>
 
-        {groups.map(g => {
-          const room = roster.filter(x => x.grp === g).sort((a, b) => (b.metric || 0) - (a.metric || 0) || (b.yr || 0) - (a.yr || 0));
-          const inc = commits.filter(x => x.grp === g);
-          const leaving = room.filter(x => pxLeaving(x) || nextOutByName[pk(x.name)]);
-          const total = room.reduce((a, x) => a + (x.metric || 0), 0);
-          const leavingProd = leaving.reduce((a, x) => a + (x.metric || 0), 0);
-          const skill = ['QB', 'RB', 'WR', 'TE', 'ATH'].includes(g);
-          return (
-            <div key={g} style={{ ...card, marginTop: 14, overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "14px 16px 6px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: G.text }}>{g}</span>
-                <span style={{ fontSize: 12.5, color: G.textSecondary }}>
-                  {[`${room.length} on roster`, leaving.length ? `${leaving.length} likely leaving${total > 0 ? ` (${Math.round(leavingProd / total * 100)}% of production)` : ''}` : 'none leaving', inc.length ? `${inc.length} commit${inc.length === 1 ? '' : 's'} incoming` : ''].filter(Boolean).join(' · ')}
-                </span>
-              </div>
-              <div className="mh-hscroll" style={{ overflowX: "auto" }}>
-                <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                  <thead><tr>
-                    <th style={thS}>Player</th><th style={thS}>Class</th><th style={{ ...thS, textAlign: "right" }}>Ht</th><th style={{ ...thS, textAlign: "right" }}>Wt</th><th style={{ ...thS, textAlign: "right" }}>★</th>
-                    <th style={thS}>{data.season} production</th>{skill && <th style={{ ...thS, textAlign: "right" }}>Usage</th>}<th style={{ ...thS, textAlign: "right" }}>Prod %ile</th><th style={thS}>Next year</th>
-                  </tr></thead>
-                  <tbody>
-                    {room.map(x => {
-                      const td = { padding: "7px 10px", fontSize: 13, color: G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" };
-                      const tag = tagOf ? tagOf(x) : '';
-                      const st = statusOf(x);
-                      return (
-                        <tr key={x.id} onClick={() => onOpenPlayer && onOpenPlayer(x)} style={{ cursor: "pointer" }}
-                          onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                          <td style={{ ...td, color: G.text, fontWeight: 700 }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                              <Avatar name={x.name} photoUrl={`https://a.espncdn.com/i/headshots/college-football/players/full/${x.id}.png`} size={24} faceZoom />
-                              {x.name}
-                              {tag && <span style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 7px" }}>{tag}</span>}
-                            </span>
-                          </td>
-                          <td style={td}>{PX_CLASS[Math.min(x.yr || 0, 5)] || '—'}</td>
-                          <td style={{ ...td, textAlign: "right" }}>{pxHt(x.ht) || '—'}</td>
-                          <td style={{ ...td, textAlign: "right" }}>{x.wt || '—'}</td>
-                          <td style={{ ...td, textAlign: "right", color: x.stars >= 4 ? G.green : G.textSecondary, fontWeight: x.stars ? 700 : 400 }}>{x.stars || '—'}</td>
-                          <td style={{ ...td, color: G.text }}>{pxKeyLine(x, x.season, data.S) || <span style={{ color: G.textTertiary }}>—</span>}</td>
-                          {skill && <td style={{ ...td, textAlign: "right" }}>{x.usage ? `${Math.round(x.usage[0] * 100)}%` : '—'}</td>}
-                          <td style={{ ...td, textAlign: "right", color: x.prodPct >= 90 ? G.green : G.text, fontWeight: x.prodPct ? 700 : 400 }}>{x.prodPct || '—'}</td>
-                          <td style={td}>{st.length ? st.map(([l, c]) => <span key={l} style={{ fontSize: 11.5, fontWeight: 700, color: c, marginRight: 8 }}>{l}</span>) : <span style={{ color: G.textTertiary }}>Returning</span>}</td>
-                        </tr>
-                      );
-                    })}
-                    {inc.map(x => (
-                      <tr key={x.id} onClick={() => onOpenPlayer && onOpenPlayer(x)} style={{ cursor: "pointer", background: G.greenSubtle }}>
-                        <td style={{ padding: "7px 10px", fontSize: 13, color: G.text, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${G.surfaceBorder}` }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Avatar name={x.name} photoUrl={null} size={24} />{x.name}</span>
-                        </td>
-                        <td style={{ padding: "7px 10px", fontSize: 13, color: G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}` }}>HS '{String(x.hsClass).slice(2)}</td>
-                        <td style={{ padding: "7px 10px", fontSize: 13, color: G.textSecondary, textAlign: "right", borderBottom: `1px solid ${G.surfaceBorder}` }}>{pxHt(x.ht) || '—'}</td>
-                        <td style={{ padding: "7px 10px", fontSize: 13, color: G.textSecondary, textAlign: "right", borderBottom: `1px solid ${G.surfaceBorder}` }}>{x.wt || '—'}</td>
-                        <td style={{ padding: "7px 10px", fontSize: 13, textAlign: "right", fontWeight: 700, color: x.stars >= 4 ? G.green : G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}` }}>{x.stars || '—'}</td>
-                        <td colSpan={skill ? 3 : 2} style={{ padding: "7px 10px", fontSize: 12.5, color: G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{[x.hs, x.natRank ? `#${x.natRank} national` : ''].filter(Boolean).join(' · ')}</td>
-                        <td style={{ padding: "7px 10px", fontSize: 11.5, fontWeight: 700, color: G.green, borderBottom: `1px solid ${G.surfaceBorder}` }}>Committed</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "24px 0 4px" }}>
+        {pxPill(!only, 'All positions', () => setOnly(''), '_all')}
+        {allGroups.map(g => pxPill(only === g, g, () => setOnly(only === g ? '' : g), g))}
+        <div style={{ flex: 1 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search players…" style={{ ...inputBase, width: isMobile ? "100%" : 220, padding: "7px 11px", fontSize: 13 }} />
+      </div>
+      {ql && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 8 }}>{shownCount} match{shownCount === 1 ? '' : 'es'}</div>}
+
+      {groups.map(g => {
+        const roomAll = roster.filter(x => x.grp === g);
+        const room = roomAll.filter(x => !ql || x.name.toLowerCase().includes(ql));
+        const inc = commits.filter(x => x.grp === g && (!ql || x.name.toLowerCase().includes(ql)));
+        if (ql && !room.length && !inc.length) return null;
+        const leaving = roomAll.filter(x => nextOf(x));
+        const total = roomAll.reduce((acc, x) => acc + (x.metric || 0), 0);
+        const leavingProd = leaving.reduce((acc, x) => acc + (x.metric || 0), 0);
+        const skill = ['QB', 'RB', 'WR', 'TE', 'ATH'].includes(g);
+        const cols = PX_GROUP_COLS[g] || [];
+        const sort = sorts[g] || { col: PX_DEFAULT_SORT[g] ? `stat:${PX_DEFAULT_SORT[g]}` : 'yr', dir: 'desc' };
+        const setSort = (fn) => setSorts(m => ({ ...m, [g]: typeof fn === 'function' ? fn(sort) : fn }));
+        const rows = pxSortTable(room, sort, (x, c) => {
+          if (c.startsWith('stat:')) return sv(x, c.slice(5));
+          switch (c) {
+            case 'yr': return x.yr || 0; case 'ht': return x.ht || 0; case 'wt': return x.wt || 0; case 'stars': return x.stars || 0;
+            case 'usage': return x.usage ? x.usage[0] : 0; case 'prod': return x.prodPct || 0; case 'next': return nextOf(x);
+            default: return x.name;
+          }
+        });
+        const nCols = 6 + cols.length + (skill ? 1 : 0) + 1;
+        return (
+          <div key={g} style={{ ...card, marginTop: 16, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "16px 16px 8px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: G.text }}>{g}</span>
+              <span style={{ fontSize: 13, color: G.textSecondary }}>
+                {[`${roomAll.length} on roster`, leaving.length ? `${leaving.length} likely leaving${total > 0 ? ` (${Math.round(leavingProd / total * 100)}% of production)` : ''}` : 'none leaving', commits.filter(x => x.grp === g).length ? `${commits.filter(x => x.grp === g).length} commit${commits.filter(x => x.grp === g).length === 1 ? '' : 's'} incoming` : ''].filter(Boolean).join(' · ')}
+              </span>
             </div>
-          );
-        })}
+            <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr>
+                  {pxHeadCell(sort, setSort, 'name', 'Player', false, 'asc')}
+                  {pxHeadCell(sort, setSort, 'yr', 'Class')}
+                  {pxHeadCell(sort, setSort, 'ht', 'Ht', true)}
+                  {pxHeadCell(sort, setSort, 'wt', 'Wt', true)}
+                  {pxHeadCell(sort, setSort, 'stars', '★', true)}
+                  {cols.map(k => pxHeadCell(sort, setSort, `stat:${k}`, PX_COL[k], true))}
+                  {skill && pxHeadCell(sort, setSort, 'usage', 'Usage', true)}
+                  {pxHeadCell(sort, setSort, 'prod', 'Prod %ile', true)}
+                  {pxHeadCell(sort, setSort, 'next', 'Next year')}
+                </tr></thead>
+                <tbody>
+                  {rows.map((x, i) => {
+                    const tag = V.tagFor(x);
+                    const st = statusOf(x);
+                    const zebra = i % 2 ? G.surfaceRaised : "transparent";
+                    return (
+                      <tr key={x.id} onClick={() => V.setOpen(x)} style={{ cursor: "pointer", background: zebra }}
+                        onMouseEnter={e => e.currentTarget.style.background = G.surfaceBorder} onMouseLeave={e => e.currentTarget.style.background = zebra}>
+                        <td style={td(false, { color: G.text, fontWeight: 700 })}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                            <Avatar name={x.name} photoUrl={`https://a.espncdn.com/i/headshots/college-football/players/full/${x.id}.png`} size={24} faceZoom />
+                            {x.name}
+                            {tag && <span style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 8px" }}>{tag}</span>}
+                          </span>
+                        </td>
+                        <td style={td()}>{PX_CLASS[Math.min(x.yr || 0, 5)] || '—'}</td>
+                        <td style={td(true)}>{pxHt(x.ht) || '—'}</td>
+                        <td style={td(true)}>{x.wt || '—'}</td>
+                        <td style={td(true, { color: x.stars >= 4 ? G.green : G.textSecondary, fontWeight: x.stars ? 700 : 400 })}>{x.stars || '—'}</td>
+                        {cols.map(k => <td key={k} style={td(true, { color: sv(x, k) ? G.text : G.textTertiary, fontWeight: sort.col === `stat:${k}` ? 700 : 400 })}>{num(sv(x, k))}</td>)}
+                        {skill && <td style={td(true)}>{x.usage ? `${Math.round(x.usage[0] * 100)}%` : '—'}</td>}
+                        <td style={td(true, { color: x.prodPct >= 90 ? G.green : G.text, fontWeight: x.prodPct ? 700 : 400 })} title={pxScoreTitle(x)}>{x.prodPct || '—'}</td>
+                        <td style={td()}>{st.length ? st.map(([l, c]) => <span key={l} style={{ fontSize: 11.5, fontWeight: 700, color: c, marginRight: 8 }}>{l}</span>) : <span style={{ color: G.textTertiary }}>Returning</span>}</td>
+                      </tr>
+                    );
+                  })}
+                  {inc.map(x => (
+                    <tr key={x.id} onClick={() => V.setOpen(x)} style={{ cursor: "pointer", background: G.greenSubtle }}>
+                      <td style={td(false, { color: G.text, fontWeight: 700 })}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Avatar name={x.name} photoUrl={null} size={24} />{x.name}</span>
+                      </td>
+                      <td style={td()}>HS '{String(x.hsClass).slice(2)}</td>
+                      <td style={td(true)}>{pxHt(x.ht) || '—'}</td>
+                      <td style={td(true)}>{x.wt || '—'}</td>
+                      <td style={td(true, { fontWeight: 700, color: x.stars >= 4 ? G.green : G.textSecondary })}>{x.stars || '—'}</td>
+                      <td colSpan={nCols - 6} style={td(false, { fontSize: 13 })}>{[x.hs, x.natRank ? `#${x.natRank} national` : ''].filter(Boolean).join(' · ')}</td>
+                      <td style={td(false, { fontSize: 11.5, fontWeight: 700, color: G.green })}>Committed</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginTop: 14 }}>
+      {!only && !ql && (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginTop: 24 }}>
           {[['Transferred in', portalIn, 'origin', 'from'], ['Transferred out', portalOutNow, 'dest', 'to']].map(([title, list, key, word]) => (
             <div key={title} style={{ ...card, padding: 16 }}>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 8 }}>{title} · {data.season - 1}–{String(data.season).slice(2)} portal cycle ({list.length})</div>
-              {list.length === 0 ? <div style={{ fontSize: 12.5, color: G.textTertiary }}>None.</div>
-                : list.slice().sort((a, b) => (b.stars || 0) - (a.stars || 0)).map((e, i) => (
-                  <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0", fontSize: 13, borderBottom: `1px solid ${G.surfaceBorder}` }}>
+              {list.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary }}>None.</div>
+                : list.slice().sort((x, y) => (y.stars || 0) - (x.stars || 0)).map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 13, borderBottom: `1px solid ${G.surfaceBorder}` }}>
                     <span style={{ fontWeight: 700, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
                     <span style={{ color: G.textTertiary }}>{e.pos}</span>
                     <span style={{ flex: 1 }} />
@@ -7360,8 +7416,9 @@ function TeamOutlook({ team, data, tagOf, isMobile, onClose, onOpenPlayer }) {
             </div>
           ))}
         </div>
-        {portalOutNext.length === 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12 }}>The {data.season}–{String(data.season + 1).slice(2)} portal hasn’t opened yet — entries appear here (and in “Next year”) as soon as players enter.</div>}
-      </div>
+      )}
+      {!only && !ql && portalOutNext.length === 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12 }}>The {data.season}–{String(data.season + 1).slice(2)} portal hasn’t opened yet — entries appear here (and in “Next year”) as soon as players enter.</div>}
+      {V.overlays}
     </div>
   );
 }
@@ -7398,7 +7455,7 @@ function useProspectViewer({ user, athletes, staff, isMobile }) {
   }, [athletes, ops.data]);
   const tagFor = (p) => ours[p.isHs ? 'n:' + p.name.toLowerCase().replace(/[^a-z]/g, '') : p.id];
   const [open, setOpen] = useState(null);
-  const [team, setTeam] = useState(null);
+  const setTeam = openTeamPage;
   useEffect(() => {
     const k = (e) => { if (e.key === 'Escape') setOpen(null); };
     document.addEventListener('keydown', k);
@@ -7406,8 +7463,7 @@ function useProspectViewer({ user, athletes, staff, isMobile }) {
   }, []);
   const overlays = data ? (
     <>
-      {team && <TeamOutlook team={team} data={data} tagOf={tagFor} isMobile={isMobile} onClose={() => setTeam(null)} onOpenPlayer={(pl) => setOpen(pl)} />}
-      {open && <ProspectPanel p={open} data={data} tag={tagFor(open)} isMobile={isMobile} onClose={() => setOpen(null)} ops={ops} staff={staff} user={user} onOpenTeam={(t) => { setTeam(t); setOpen(null); }} />}
+      {open && <ProspectPanel p={open} data={data} tag={tagFor(open)} isMobile={isMobile} onClose={() => setOpen(null)} ops={ops} staff={staff} user={user} onOpenTeam={(t) => { setOpen(null); openTeamPage(t); }} />}
     </>
   ) : null;
   const status = data ? null : (
@@ -7415,7 +7471,7 @@ function useProspectViewer({ user, athletes, staff, isMobile }) {
       {err || (building ? 'Building the player database for the first time — about 30 seconds…' : 'Loading player database…')}
     </div>
   );
-  return { data, ops, tagFor, open, setOpen, team, setTeam, overlays, status };
+  return { data, ops, tagFor, open, setOpen, setTeam, overlays, status };
 }
 
 const pxPageWrap = (isMobile) => ({ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" });
@@ -8022,7 +8078,6 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
     return hit ? { ...hit, photo: hit.isHs ? ops.cell(r, 'photo') : '', url247: ops.cell(r, 'url247') } : boardProspect(ops, r);
   };
   const [panelRow, setPanelRow] = useState(null);
-  const [teamView, setTeamView] = useState(null);
   const sub = useAdminTab('onboarding');
   const [promoting, setPromoting] = useState('');
   const [justPromoted, setJustPromoted] = useState({});
@@ -8334,10 +8389,9 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
           tag={isClient(ops.cell(panelRow, 'name')) ? 'Client' : ''}
           ops={ops} staff={staff} user={user}
           onEditRecord={(row) => { setEditing(row); setPanelRow(null); }}
-          onOpenTeam={px ? (t) => { setTeamView(t); setPanelRow(null); } : undefined}
+          onOpenTeam={px ? (t) => { setPanelRow(null); openTeamPage(t); } : undefined}
           onClose={() => setPanelRow(null)} />
       )}
-      {teamView && px && <TeamOutlook team={teamView} data={px} tagOf={(x) => (ops.rowFor(x) ? 'On board' : '')} isMobile={isMobile} onClose={() => setTeamView(null)} onOpenPlayer={null} />}
       {editing && (
         <RecruitForm headers={headers} initial={editing === 'new' ? null : editing} defaultLevel={recTab} staff={staff}
           onCancel={() => setEditing(null)}
@@ -10092,6 +10146,7 @@ function App() {
   // 'marketing' / 'resources'. Rendering gates on isAdmin, so public/b2b
   // sessions always get the roster regardless.
   const [sportsPage, setSportsPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
+  const [teamParam, setTeamParam] = useState(() => new URLSearchParams(window.location.search).get('team') || '');
   // History-aware page switch so the browser back/forward buttons walk the
   // sidebar sections instead of leaving the site. URL carries ?page= so a
   // refresh lands back on the same section.
@@ -10102,6 +10157,25 @@ function App() {
     // Sidebar clicks from a player page leave the profile and land there.
     if (view === 'detail') { setSelected(null); setViewState('roster'); }
   };
+  // Team pages (and a way back to a sidebar page) requested from deep inside
+  // the recruiting tools.
+  const goSportsPageRef = useRef(goSportsPage);
+  goSportsPageRef.current = goSportsPage;
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(() => {
+    const onTeam = (e) => {
+      const t = e.detail;
+      window.history.pushState({ view: 'roster', domain: 'sports', sportsPage: 'team', team: t }, '', `/sports?page=team&team=${encodeURIComponent(t)}`);
+      setTeamParam(t);
+      setSportsPage('team');
+      if (viewRef.current === 'detail') { setSelected(null); setViewState('roster'); }
+    };
+    const onPage = (e) => goSportsPageRef.current(e.detail);
+    window.addEventListener('mh:open-team', onTeam);
+    window.addEventListener('mh:open-page', onPage);
+    return () => { window.removeEventListener('mh:open-team', onTeam); window.removeEventListener('mh:open-page', onPage); };
+  }, []);
   // Music employee section (Tyler-only while it's broken in): 'home' / 'roster'.
   const [musicPage, setMusicPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
   // Every navigation (side, page, or opened profile) lands at the top — in a
@@ -10115,7 +10189,7 @@ function App() {
     window.scrollTo(0, 0);
     document.body.scrollTop = 0;
     document.documentElement.scrollTop = 0;
-  }, [domain, sportsPage, musicPage, view, selectedKey]);
+  }, [domain, sportsPage, musicPage, view, selectedKey, teamParam]);
   const goMusicPage = (key) => {
     if (key === musicPage && view !== 'detail') return;
     window.history.pushState({ view: 'roster', domain: 'music', musicPage: key }, '', key === 'home' ? '/' : `/?page=${key}`);
@@ -10229,6 +10303,7 @@ function App() {
       const { domain: d, slug } = parseUrl();
       setDomainState(d);
       setSportsPage(e.state?.sportsPage || new URLSearchParams(window.location.search).get('page') || 'home');
+      setTeamParam(e.state?.team || new URLSearchParams(window.location.search).get('team') || '');
       setMusicPage(e.state?.musicPage || new URLSearchParams(window.location.search).get('page') || 'home');
       const list = d === 'sports' ? athletes : clients;
       if (list.length && slug) {
@@ -10864,7 +10939,7 @@ function App() {
   const musicNavActive = domain === 'music' && isAdmin && view !== 'detail';
   const navSide = domain === 'all' ? lastSide : domain;
   const navItems = navSide === 'sports' ? NAV_SPORTS : NAV_MUSIC;
-  const navPage = domain === 'all' ? 'roster' : (navSide === 'sports' ? sportsPage : musicPage);
+  const navPage = domain === 'all' ? 'roster' : (navSide === 'sports' ? (sportsPage === 'team' ? 'teams' : sportsPage) : musicPage);
   // Roster search/filter/export controls only make sense on the roster itself
   // (and always for public sessions). Both domains wait for the auth answer so
   // employees land straight on the dashboard with no roster flash.
@@ -11239,6 +11314,7 @@ function App() {
               {view === 'roster' && navActive && sportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'prospects' && <ProspectSearch isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'teams' && <TeamsPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
+              {view === 'roster' && navActive && sportsPage === 'team' && <TeamPage team={teamParam} isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'portal' && <PortalPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'teamfit' && <TeamFitPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => { rosterFreshRef.current = true; setAthletesLoaded(false); }} />}
