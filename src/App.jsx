@@ -6750,9 +6750,15 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
             <span style={{ fontSize: 11.5, color: G.textTertiary, marginRight: 2 }}>Quick search:</span>
-            <button onClick={() => { setF({ ...PX_EMPTY, tiers: ['G5', 'FCS'], classes: [1, 2, 3], outperf: true }); setTyped(''); setSort({ col: 'prod', dir: 'desc' }); setShown(100); }}
-              title="Group of 5 and FCS players with eligibility left whose production percentile is 75+ and at least 40 points above their team's strength"
-              style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "4px 11px", color: G.green, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Transfer candidates</button>
+            {(() => {
+              const preset = { ...PX_EMPTY, tiers: ['G5', 'FCS'], classes: [1, 2, 3], outperf: true };
+              const on = JSON.stringify({ ...f, cols: null }) === JSON.stringify({ ...preset, cols: null });
+              return (
+                <button onClick={() => { setF(on ? PX_EMPTY : preset); setTyped(''); setSort(on ? { col: '', dir: 'desc' } : { col: 'prod', dir: 'desc' }); setShown(100); }}
+                  title="Group of 5 and FCS players with eligibility left whose production percentile is 75+ and at least 40 points above their team's strength"
+                  style={{ background: on ? G.greenSubtle : "transparent", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 99, padding: "4px 11px", color: on ? G.green : G.textSecondary, fontSize: 12, fontWeight: on ? 700 : 600, cursor: "pointer", fontFamily: ff }}>Transfer candidates</button>
+              );
+            })()}
             {tags}
           </div>
 
@@ -10565,7 +10571,6 @@ function App() {
         { key: 'gifting', label: 'Gifting', icon: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z' },
       ],
     },
-    { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
     {
       key: 'recruiting-group', label: 'Recruiting', icon: 'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6',
       children: [
@@ -10576,6 +10581,7 @@ function App() {
         { key: 'teamfit', label: 'Team Fit', icon: 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 16a4 4 0 100-8 4 4 0 000 8zM12 12h.01' },
       ],
     },
+    { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
   ];
