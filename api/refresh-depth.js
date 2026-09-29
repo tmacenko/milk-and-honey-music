@@ -695,6 +695,18 @@ module.exports = async (req, res) => {
       const hsTasks = hsTargets.map(t => async () => {
         try {
           const html = await fetchText(t.url, true); // 247 needs the residential proxy
+          // 247 Composite (industry average — what 247 leads with): rating +
+          // national rank from the profile's ranks block. Stars follow 247's
+          // composite bands. Stored beside 247's own numbers in StatHistory.
+          const flat = html.replace(/<[^>]+>/g, ' ').replace(/&reg;|®/g, '').replace(/\s+/g, ' ');
+          const cm = flat.match(/247Sports Composite\s*([01]\.\d{3,4})\s*Natl\.\s*(\d+)/i);
+          if (cm) {
+            const rating = parseFloat(cm[1]);
+            const stars = rating >= 0.9834 ? 5 : rating >= 0.89 ? 4 : rating >= 0.797 ? 3 : rating >= 0.7 ? 2 : '';
+            const k = nameKey(t.name);
+            rankTrend[k] = { ...(rankTrend[k] || { name: t.name }), compRating247: cm[1], compStars247: stars, compNatRank247: cm[2] };
+            hs247.composite = (hs247.composite || 0) + 1;
+          }
           const h1 = html.search(/<h1[^>]*>/i);
           const head = h1 > 0 ? html.slice(0, h1) : html;
           const imgs = [...head.matchAll(/data-src="(https:\/\/s3media\.247sports\.com\/Uploads\/Assets\/[^"]+?\.jpe?g)[^"]*"/gi)];
@@ -1265,7 +1277,7 @@ module.exports = async (req, res) => {
       for (const [k, v] of Object.entries(rankTrend)) trend[k] = { ...(trend[k] || {}), ...v };
       const entries = Object.values(trend);
       if (entries.length && !dryRun) {
-        const HEAD = ['date', 'name', 'depthRank', 'depthPos', 'rating247', 'stars247', 'natRank247', 'posRank247', 'stateRank247'];
+        const HEAD = ['date', 'name', 'depthRank', 'depthPos', 'rating247', 'stars247', 'natRank247', 'posRank247', 'stateRank247', 'compRating247', 'compStars247', 'compNatRank247'];
         const appendRows = (range, rows2) => fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
           method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ values: rows2 }),
@@ -1275,18 +1287,33 @@ module.exports = async (req, res) => {
         catch {
           await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
             method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'StatHistory', hidden: true, gridProperties: { rowCount: 20000, columnCount: 9 } } } }] }),
+            body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'StatHistory', hidden: true, gridProperties: { rowCount: 20000, columnCount: HEAD.length } } } }] }),
           });
-          await appendRows("'StatHistory'!A:I", [HEAD]);
+          await appendRows(`'StatHistory'!A:${colLetter(HEAD.length - 1)}`, [HEAD]);
           histD = { values: [['date']] };
         }
+        // Tabs created before the composite columns: widen the grid and
+        // write the new headers (idempotent).
+        try {
+          const mr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties))`, { headers: { Authorization: `Bearer ${token}` } });
+          const sh = ((await mr.json()).sheets || []).find(x => (x.properties?.title || '').trim() === 'StatHistory');
+          const cols = sh?.properties?.gridProperties?.columnCount || 0;
+          if (sh && cols < HEAD.length) {
+            await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+              method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ requests: [{ appendDimension: { sheetId: sh.properties.sheetId, dimension: 'COLUMNS', length: HEAD.length - cols } }] }),
+            });
+          }
+          await sheetBatchUpdate(token, [{ range: `'StatHistory'!A1:${colLetter(HEAD.length - 1)}1`, values: [HEAD] }]);
+        } catch (e) { statHistory.error = `header: ${e.message}`; }
         const today = new Date().toISOString().slice(0, 10);
         const dates = (histD.values || []).slice(1).map(r => String(r[0] || ''));
         if (dates.includes(today)) {
           statHistory.skippedToday = true;
         } else {
-          await appendRows("'StatHistory'!A:I", entries.map(v =>
-            [today, v.name, v.depthRank ?? '', v.depthPos ?? '', v.rating247 ?? '', v.stars247 ?? '', v.natRank247 ?? '', v.posRank247 ?? '', v.stateRank247 ?? '']));
+          await appendRows(`'StatHistory'!A:${colLetter(HEAD.length - 1)}`, entries.map(v =>
+            [today, v.name, v.depthRank ?? '', v.depthPos ?? '', v.rating247 ?? '', v.stars247 ?? '', v.natRank247 ?? '', v.posRank247 ?? '', v.stateRank247 ?? '',
+              v.compRating247 ?? '', v.compStars247 ?? '', v.compNatRank247 ?? '']));
           statHistory.rows = entries.length;
         }
         // Prune >60-day-old rows once a real backlog builds (append-only tab —

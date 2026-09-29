@@ -2297,7 +2297,9 @@ function latest247From(rows) {
   for (const r of rows || []) {
     const c = r.cells || [];
     const k = String(c[1] || '').toLowerCase().trim();
-    if (k && (c[4] || c[5] || c[6] || c[7])) out[k] = { rating: c[4], stars: c[5], nat: c[6], pos: c[7] };
+    // c[9..11] = 247 Composite rating / stars / national rank (added Sep 2026;
+    // blank on older rows). Trends keep using 247's own columns.
+    if (k && (c[4] || c[5] || c[6] || c[7])) out[k] = { rating: c[4], stars: c[5], nat: c[6], pos: c[7], compRating: c[9] || '', compStars: c[10] || '', compNat: c[11] || '' };
   }
   return out;
 }
@@ -2501,22 +2503,24 @@ function Rank247Chip({ name, position }) {
     for (let i = rows.length - 1; i >= 0; i--) {
       const c = rows[i].cells || [];
       if (String(c[1] || '').toLowerCase().trim() === k && (c[5] || c[6] || c[7])) {
-        return { stars: c[5], nat: c[6], pos: c[7] };
+        // Composite (industry average) when captured; 247's own otherwise.
+        return { stars: c[10] || c[5], nat: c[11] || c[6], pos: c[7], comp: !!(c[10] || c[11]) };
       }
     }
     return null;
   }, [hist.data, name]);
   if (!info) return null;
+  const src = info.comp ? '247Sports Composite' : '247Sports rating';
   const chips = [
-    info.stars && `${info.stars}★`,
-    info.nat && `#${info.nat} National`,
-    info.pos && `#${info.pos} ${position || 'Position'}`,
+    info.stars && [`${info.stars}★`, src],
+    info.nat && [`#${info.nat} National`, src],
+    info.pos && [`#${info.pos} ${position || 'Position'}`, '247Sports position rank'],
   ].filter(Boolean);
   if (!chips.length) return null;
   return (
     <>
-      {chips.map(c => (
-        <span key={c} style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
+      {chips.map(([c, t]) => (
+        <span key={c} title={t} style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
           {c}
         </span>
       ))}
@@ -8131,7 +8135,7 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
         commit, commitLogo: commit ? (data.teamInfo[commit] || {}).logo || '' : '', city: city || '', st: st || '', lat: loc ? loc.lat : 0, lng: loc ? loc.lng : 0, ht: htIn(a.height), wt: parseInt(a.weight, 10) || 0, tier: 'HS' };
     };
     const r247 = {};
-    ((hist.data && hist.data.rows) || []).forEach(r => { const c = r.cells || []; if (c[5] || c[6]) r247[nk(c[1])] = { stars: parseInt(c[5], 10) || 0, nat: parseInt(c[6], 10) || 0 }; });
+    ((hist.data && hist.data.rows) || []).forEach(r => { const c = r.cells || []; if (c[5] || c[6] || c[10]) r247[nk(c[1])] = { stars: parseInt(c[10] || c[5], 10) || 0, nat: parseInt(c[11] || c[6], 10) || 0 }; });
     const clients = (athletes || []).map(a => {
       const p = (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && (byName[nk(a.name)] || fromClient(a))) || null;
       return p && { p, a };
