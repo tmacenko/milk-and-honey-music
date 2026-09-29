@@ -6635,28 +6635,36 @@ const pxLeaving = (pl) => !pl.isHs && (pl.yr || 0) >= 4; // SR / 5th year: likel
 // Per position group: every team's room, how much of its production is
 // likely leaving (seniors + next-cycle portal entries) and what's coming in
 // (committed high school seniors). Cached on the data object per group.
-function pxTeamNeeds(data, grp) {
+// h = seasons until the player would arrive (1 = next fall; 2 = the fall
+// after, for the recruiting class two years out): by then, anyone with
+// 5 − h or more years in (listed class) is gone.
+function pxTeamNeeds(data, grp, h = 1) {
   data._needs = data._needs || {};
-  if (data._needs[grp]) return data._needs[grp];
+  const ck = `${grp}|${h}`;
+  if (data._needs[ck]) return data._needs[ck];
   const byTeam = {};
-  const get = (t) => (byTeam[t] = byTeam[t] || { name: t, room: [], commits: 0, portalOut: 0 });
+  const get = (t) => (byTeam[t] = byTeam[t] || { name: t, room: [], commits: 0, commitsW: 0, portalOut: 0 });
+  // Blue-chip bodies (4★+) count extra as competition.
+  const bw = (pl) => ((pl.stars || 0) >= 4 ? 1.5 : 1);
   data.players.forEach(pl => {
     if (pl.grp !== grp) return;
-    if (pl.isHs) { if (pl.commit) get(pl.commit).commits++; return; }
+    if (pl.isHs) { if (pl.commit) { const t = get(pl.commit); t.commits++; t.commitsW += bw(pl); } return; }
     if (pl.team) get(pl.team).room.push(pl);
   });
   (data.portal || []).forEach(e => { if (e.cycle === data.season + 1 && e.grp === grp && e.origin && byTeam[e.origin]) byTeam[e.origin].portalOut++; });
   const out = Object.values(byTeam).filter(t => t.room.length).map(t => {
     const info = data.teamInfo[t.name] || {};
     const total = t.room.reduce((a, pl) => a + (pl.metric || 0), 0);
-    const leavers = t.room.filter(pxLeaving);
+    const leavers = t.room.filter(pl => !pl.isHs && (pl.yr || 0) >= 5 - h);
     const leavingProd = leavers.reduce((a, pl) => a + (pl.metric || 0), 0);
     // Rooms without countable production (OL, early season) fall back to headcount.
     const share = total > 0 ? leavingProd / total : leavers.length / t.room.length;
     const score = share * 100 + t.portalOut * 8 - t.commits * 10;
-    return { name: t.name, tier: info.tier || '', sp: info.sp || 0, logo: info.logo || '', conf: info.conf || '', roomSize: t.room.length, leaving: leavers.length, share, commits: t.commits, portalOut: t.portalOut, score, byCount: !(total > 0) };
+    const stayers = t.room.filter(pl => !((pl.yr || 0) >= 5 - h));
+    return { name: t.name, tier: info.tier || '', sp: info.sp || 0, logo: info.logo || '', conf: info.conf || '', roomSize: t.room.length, leaving: leavers.length, share, commits: t.commits, portalOut: t.portalOut, score, byCount: !(total > 0),
+      staying: stayers.length, stayW: stayers.reduce((a, pl) => a + bw(pl), 0), commitsW: t.commitsW };
   }).sort((a, b) => b.score - a.score || (a.sp || 999) - (b.sp || 999));
-  data._needs[grp] = out;
+  data._needs[ck] = out;
   return out;
 }
 
@@ -7262,12 +7270,13 @@ function pxFitRank(data, p, prefs) {
   const D = prefs.level === 'top' ? 99 : prefs.level === 'up' ? Math.min(99, base + 25) : prefs.level === 'down' ? Math.max(3, base - 25) : prefs.level === 'stay' ? base : auto;
   // Who returns at the position, per team (seniors and next-cycle portal
   // entries are leaving).
+  const h = p.isHs && p.hsClass ? Math.max(1, p.hsClass - data.season) : 1;
   const pk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
   const nextOut = new Set((data.portal || []).filter(e => e.cycle === data.season + 1).map(e => `${e.origin}|${pk(e.name)}`));
   const returners = {};
   data.players.forEach(pl => {
     if (pl.isHs || pl.grp !== grp || !pl.team || pl === p) return;
-    if (pxLeaving(pl) || nextOut.has(`${pl.team}|${pk(pl.name)}`)) return;
+    if ((pl.yr || 0) >= 5 - h || nextOut.has(`${pl.team}|${pk(pl.name)}`)) return;
     (returners[pl.team] = returners[pl.team] || []).push(pl.prodPct || 0);
   });
   const hasDraft = Object.values(info).some(t => t.draft !== undefined);
@@ -7276,18 +7285,26 @@ function pxFitRank(data, p, prefs) {
   const schemeOk = rates.length > 20 && ['QB', 'WR', 'TE', 'RB'].includes(grp);
   const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk };
   const S0 = PX_STARTERS[grp] || 1;
-  const rows = pxTeamNeeds(data, grp).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
+  const gone = h > 1 ? `gone by ${data.season + h}` : 'leaving';
+  const rows = pxTeamNeeds(data, grp, h).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
     const ti = info[t.name] || {};
     const f = {};
     // Playing time
-    const needScore = Math.max(0, Math.min(100, t.share * 100 * 1.2 + t.portalOut * 8 - t.commits * 6));
+    // Two+ years out, most of today's production is gone everywhere — judge
+    // the opening by who'll still be in the room (today's younger players and
+    // the current commits, blue-chips counting extra) against a full room.
+    const needScore = h > 1
+      ? Math.max(0, Math.min(100, 100 * (1 - (t.stayW + t.commitsW) / (S0 * 3.5)) + t.share * 20 + t.portalOut * 5))
+      : Math.max(0, Math.min(100, t.share * 100 * 1.2 + t.portalOut * 8 - t.commits * 6));
     let slot = 0;
     if (P) {
       slot = (returners[t.name] || []).filter(x => x > P).length + 1;
       const st = slot <= S0 ? 100 : slot === S0 + 1 ? 70 : slot === S0 + 2 ? 45 : 20;
-      f.opp = [0.6 * st + 0.4 * needScore, `${slot <= S0 ? 'Projected starter' : `Projected ${grp}${slot}`} · ${Math.round(t.share * 100)}% of ${grp} production leaving`];
+      f.opp = [0.6 * st + 0.4 * needScore, `${slot <= S0 ? 'Projected starter' : `Projected ${grp}${slot}`} · ${Math.round(t.share * 100)}% of ${grp} production ${gone}`];
     } else {
-      f.opp = [needScore, `${Math.round(t.share * 100)}% of ${grp} production leaving${t.commits ? ` · ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`];
+      f.opp = [needScore, h > 1
+        ? `${t.staying} ${grp}${t.staying === 1 ? '' : 's'} still there in ${data.season + h}${t.commits ? ` + ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`
+        : `${Math.round(t.share * 100)}% of ${grp} production ${gone}${t.commits ? ` · ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`];
     }
     // Level
     const T = tPct(ti), diff = T - D;
@@ -7312,7 +7329,7 @@ function pxFitRank(data, p, prefs) {
     PX_FIT_FACTORS.forEach(([k]) => { const w = (prefs.w || {})[k] || 0; if (f[k] && w > 0) { num += w * f[k][0]; den += w; } });
     return { ...t, fit: den ? Math.round(num / den) : 0, f, label, slot };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
-  return { rows, avail, D, C, auto, spTarget: spNear(D), grp };
+  return { rows, avail, D, C, auto, spTarget: spNear(D), grp, h };
 }
 
 // Shared per-player priorities (FitPrefs tab: playerId | name | prefs JSON).
@@ -7929,21 +7946,41 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
     const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
     const byId = {}, byName = {};
     data.players.forEach(p => { if (p.isHs) byName[nk(p.name)] = p; else byId[p.id] = p; });
-    const clients = (athletes || []).map(a => { const p = (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && byName[nk(a.name)]) || null; return p && { p, a }; }).filter(Boolean);
+    // High school clients the database doesn't carry yet (it only has the
+    // current senior class): built from the client record, up to two
+    // classes out — hometown located via towns already in the database.
+    const teamKey = (x) => nk(String(x || '').replace(/\b(university|college|of|the)\b/gi, ''));
+    const teamBy = {}; Object.keys(data.teamInfo).forEach(n => { teamBy[teamKey(n)] = n; });
+    const htIn = (x) => { const m = String(x || '').match(/(\d)\s*['’\-\s]\s*(\d{1,2})/); return m ? +m[1] * 12 + +m[2] : (parseInt(x, 10) > 50 ? parseInt(x, 10) : 0); };
+    const fromClient = (a) => {
+      const cls = parseInt(a.classOf, 10);
+      if (!cls || cls <= data.season || cls > data.season + 2) return null;
+      const pos = String(a.position || '').split(/[/,\s]+/)[0].toUpperCase();
+      const [city, st] = String(a.hometown || '').split(',').map(x => x.trim());
+      const loc = city && st ? data.cityIndex[`${city}, ${st}`.toLowerCase()] : null;
+      const commit = teamBy[teamKey(a.committedTo)] || '';
+      return { id: `c:${slugOf(a.name)}`, name: a.name, isHs: true, fromClient: true, photo: a.photoUrl || '', pos, grp: pxGroupOf(pos), hs: a.college || a.school || '', hsClass: cls, stars: 0, natRank: 0,
+        commit, commitLogo: commit ? (data.teamInfo[commit] || {}).logo || '' : '', city: city || '', st: st || '', lat: loc ? loc.lat : 0, lng: loc ? loc.lng : 0, ht: htIn(a.height), wt: parseInt(a.weight, 10) || 0, tier: 'HS' };
+    };
+    const clients = (athletes || []).map(a => {
+      const p = (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && (byName[nk(a.name)] || fromClient(a))) || null;
+      return p && { p, a };
+    }).filter(Boolean);
     const seen = new Set(clients.map(r => r.p.id));
     const board = data.players.filter(p => !seen.has(p.id) && V.tagFor(p) === 'On board').map(p => ({ p, a: null }));
     return { clients, board };
   }, [data, athletes, V.tagFor]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!data) return <div style={pxPageWrap(isMobile)}>{pxTitle(isMobile, 'Team Fit')}{V.status}</div>;
-  const pick = pickId ? data.players.find(p => p.id === pickId) : null;
+  const extra = lists.clients.filter(r => r.p.fromClient).map(r => r.p);
+  const pick = pickId ? (extra.find(p => p.id === pickId) || data.players.find(p => p.id === pickId)) : null;
   const ql = q.trim().toLowerCase();
   // Clients and board players first, then everyone else.
-  const matches = ql.length >= 2 ? data.players.filter(p => p.name.toLowerCase().includes(ql))
+  const matches = ql.length >= 2 ? [...extra, ...data.players].filter(p => p.name.toLowerCase().includes(ql))
     .map(p => ({ p, tag: V.tagFor(p) || '' }))
     .sort((x, y) => (y.tag === 'Client') - (x.tag === 'Client') || (!!y.tag) - (!!x.tag) || (y.p.name.toLowerCase().startsWith(ql)) - (x.p.name.toLowerCase().startsWith(ql)))
     .slice(0, 10) : [];
   const choose = (p) => { setPickId(p.id); setQ(''); setHi(0); };
-  const photo = (p) => (p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`);
+  const photo = (p) => p.photo || (p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`);
   const search = (
     <div style={{ position: "relative", width: isMobile ? "100%" : 420 }}>
       <input value={q} onChange={e => { setQ(e.target.value); setHi(0); }} autoFocus={!pick}
