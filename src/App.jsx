@@ -6310,7 +6310,7 @@ function pxKeyLine(p, v, S) {
   return parts.join(' · ');
 }
 
-function ProspectSearch({ isMobile, user, athletes }) {
+function ProspectSearch({ isMobile, user, athletes, staff }) {
   const canBuild = !user || user.userRole === 'admin';
   const [data, setData] = useState(PROSPECTS.data);
   const [err, setErr] = useState('');
@@ -6345,7 +6345,8 @@ function ProspectSearch({ isMobile, user, athletes }) {
     return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); };
   }, []);
 
-  const board = useAdminTab('recruiting');
+  const ops = useRecruitBoard({ athletes });
+  const board = { data: ops.data };
   // Keyed by ESPN id for college players; high schoolers have no ESPN id
   // yet, so they match by name ('n:' keys).
   const ours = useMemo(() => {
@@ -6710,14 +6711,178 @@ function ProspectSearch({ isMobile, user, athletes }) {
         </div>
       </>)}
 
-      {open && data && <ProspectPanel p={open} data={data} tag={tagFor(open)} isMobile={isMobile} onClose={() => setOpen(null)} />}
+      {open && data && <ProspectPanel p={open} data={data} tag={tagFor(open)} isMobile={isMobile} onClose={() => setOpen(null)} ops={ops} staff={staff} user={user} />}
     </div>
   );
 }
 
 // Slide-in player profile for Prospect Search: facts grid, this season vs
 // career from our data, and the full ESPN stats/game log on demand.
-function ProspectPanel({ p, data, tag, isMobile, onClose }) {
+// ── Recruiting board ⇄ Prospect Search ───────────────────────────────────────
+// One set of board operations for both pages: find a player's board row
+// (college by ESPN id, anyone by name), change stage (Signed → confirm → becomes
+// a client, same as the board's own select), change agents, add a player.
+// Pass `tab` to share a board instance the page already loaded so both views
+// refresh together.
+const pxNameKey = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+function useRecruitBoard({ tab: extTab, athletes, onPromoted } = {}) {
+  const own = useAdminTab('recruiting', 'athletes', !extTab);
+  const tab = extTab || own;
+  const data = tab.data;
+  const headers = data?.headers || [];
+  const hf = (re) => headers.findIndex(h => re.test(String(h).trim()));
+  const I = {
+    name: hf(/player\s*name|^name/i), school: hf(/school/i), level: hf(/^level/i), pos: hf(/position/i),
+    rank: hf(/rank/i), klass: hf(/class|year/i), agent: hf(/agent/i), notes: hf(/^notes/i),
+    stage: hf(/^stage/i), espn: hf(/^espnid/i), url247: hf(/^url247/i), photo: hf(/^photo/i),
+  };
+  const cell = (r, k) => (r && I[k] >= 0 ? String(r.cells[I[k]] || '').trim() : '');
+  const index = useMemo(() => {
+    const byEspn = {}, byName = {};
+    (data?.rows || []).forEach(r => {
+      const e = cell(r, 'espn'); if (e) byEspn[e] = r;
+      const n = pxNameKey(cell(r, 'name')); if (n.length > 4 && !byName[n]) byName[n] = r;
+    });
+    return { byEspn, byName };
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rowFor = (pl) => (pl && ((/^\d+$/.test(String(pl.id)) && index.byEspn[String(pl.id)]) || index.byName[pxNameKey(pl.name)])) || null;
+  const rosterNames = useMemo(() => new Set((athletes || []).map(a => nameKey(a.name))), [athletes]);
+  const post = async (body) => {
+    const r = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || 'Save failed');
+  };
+  const reload = async () => { if (tab.reload) await tab.reload(); };
+  const setStage = async (r, v) => {
+    const name = cell(r, 'name');
+    const makeClient = v === 'Signed' && name && !rosterNames.has(nameKey(name));
+    if (makeClient && !window.confirm(`Mark ${name} as Signed and add them as a client? They'll appear on the client dashboard and public site — flip Public off on their profile to hide them.`)) return false;
+    await post({ action: 'tab-update', tab: 'recruiting', row: r._row, values: { stage: v } });
+    if (makeClient) {
+      const resp = await fetch('/api/onboard', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name, level: cell(r, 'level') || 'College', position: cell(r, 'pos'), schoolOrTeam: cell(r, 'school'),
+          classOf: cell(r, 'klass'), agent: cell(r, 'agent'), espnId: cell(r, 'espn'), profileUrl247: cell(r, 'url247'),
+        }),
+      });
+      const d = await resp.json().catch(() => ({}));
+      if (!resp.ok || !d.success) throw new Error(d.error || 'Adding them as a client failed');
+      if (onPromoted) onPromoted();
+    }
+    await reload();
+    return true;
+  };
+  const setAgent = async (r, v) => { await post({ action: 'tab-update', tab: 'recruiting', row: r._row, values: { agent: v } }); await reload(); };
+  const add = async (pl, { agent, stage }) => {
+    const hs = !!pl.isHs;
+    await post({ action: 'tab-append', tab: 'recruiting', values: {
+      'Player Name': pl.name, School: hs ? pl.hs : pl.team, Level: hs ? 'High School' : 'College', Position: pl.pos || '',
+      Ranking: pl.stars ? `${pl.stars}-star` : '',
+      'Class/Year': hs ? String(pl.hsClass || '') : ({ 1: 'Freshman', 2: 'Sophomore', 3: 'Junior', 4: 'Senior', 5: 'Senior' })[Math.min(pl.yr || 0, 5)] || '',
+      Agent: agent || '', Stage: stage || '', EspnId: hs ? '' : pl.id,
+      Photo: hs ? '' : `https://a.espncdn.com/i/headshots/college-football/players/full/${pl.id}.png`,
+    } });
+    await reload();
+  };
+  return { data, loading: tab.loading, cell, rowFor, setStage, setAgent, add };
+}
+
+// A board row that isn't in the prospect database (class of 2028+, or a
+// college player CFBD doesn't list) still gets a profile from its own fields.
+function boardProspect(ops, r) {
+  const level = ops.cell(r, 'level');
+  const hs = /high/i.test(level);
+  const espn = ops.cell(r, 'espn');
+  const stars = parseInt((ops.cell(r, 'rank').match(/(\d)/) || [])[1], 10) || 0;
+  return {
+    id: espn && !hs ? espn : 'b' + r._row, name: ops.cell(r, 'name'), pos: ops.cell(r, 'pos').toUpperCase(),
+    isHs: hs, hs: hs ? ops.cell(r, 'school') : '', team: hs ? '' : ops.cell(r, 'school'),
+    hsClass: hs ? ops.cell(r, 'klass') : 0, classLabel: prettyClass(ops.cell(r, 'klass')),
+    stars, rating: prettyRating(ops.cell(r, 'rank')), photo: ops.cell(r, 'photo'), url247: ops.cell(r, 'url247'),
+    tier: hs ? 'HS' : '', boardOnly: true, season: null, career: null,
+  };
+}
+
+function RecruitBlock({ p, ops, staff, user, onEditRecord }) {
+  const row = ops.rowFor(p);
+  const [busy, setBusy] = useState('');
+  const [agentDraft, setAgentDraft] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const defaultAgent = user?.name && (staff || []).includes(user.name) ? user.name : '';
+  const [newAgent, setNewAgent] = useState(defaultAgent);
+  const [newStage, setNewStage] = useState('Outreach');
+  useEffect(() => { setAgentDraft(null); setAdding(false); setNewAgent(defaultAgent); setNewStage('Outreach'); }, [p.id, p.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  const run = async (label, fn) => { setBusy(label); try { await fn(); } catch (e) { alert(e.message || 'Save failed'); } finally { setBusy(''); } };
+  if (!ops.data) return null;
+  const box = { background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 14, marginTop: 18 };
+  const lab = (t) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 6 }}>{t}</div>;
+  const btn = (primary) => ({ background: primary ? G.green : "transparent", color: primary ? "#0a0a0a" : G.textSecondary, border: primary ? "none" : `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", fontWeight: 700, fontSize: 12.5, cursor: busy ? "wait" : "pointer", fontFamily: ff, whiteSpace: "nowrap" });
+  const stageSel = (value, onChange, opts, disabled) => (
+    <select value={value} disabled={disabled} onChange={onChange}
+      style={{ width: "100%", background: G.surface, border: `1px solid ${value ? stageColor(value) + '55' : G.surfaceBorder}`, borderRadius: 9, padding: "8px 10px", color: value ? stageColor(value) : G.textTertiary, fontWeight: 700, fontSize: 13, fontFamily: ff, cursor: disabled ? "wait" : "pointer" }}>
+      <option value="">—</option>
+      {opts.map(x => <option key={x} value={x}>{x}</option>)}
+    </select>
+  );
+  if (row) {
+    const stage = ops.cell(row, 'stage');
+    const saved = ops.cell(row, 'agent');
+    const agent = agentDraft ?? saved;
+    const notes = ops.cell(row, 'notes');
+    return (
+      <div style={box}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>On the Recruiting board</span>
+          <div style={{ flex: 1 }} />
+          {busy === 'stage' && <span style={{ fontSize: 12, color: G.textTertiary, marginRight: 10 }}>Saving…</span>}
+          {onEditRecord && <button onClick={() => onEditRecord(row)} style={btn(false)}>Edit full record</button>}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>{lab('Stage')}{stageSel(stage, e => run('stage', () => ops.setStage(row, e.target.value)), REC_STAGES, !!busy)}</div>
+          <div>
+            {lab('Agent(s)')}
+            <MultiSelectCombo value={agent} onChange={setAgentDraft} options={staff || []} placeholder="Assign agent(s)..." />
+            {agentDraft !== null && agentDraft !== saved && (
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <button onClick={() => run('agent', async () => { await ops.setAgent(row, agentDraft); setAgentDraft(null); })} style={btn(true)}>{busy === 'agent' ? 'Saving…' : 'Save agents'}</button>
+                <button onClick={() => setAgentDraft(null)} style={btn(false)}>Cancel</button>
+              </div>
+            )}
+          </div>
+        </div>
+        {notes && <div style={{ marginTop: 12 }}>{lab('Notes')}<div style={{ fontSize: 13, color: G.textSecondary, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{notes}</div></div>}
+      </div>
+    );
+  }
+  return (
+    <div style={box}>
+      {!adding ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: G.text }}>Not on the Recruiting board</div>
+            <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 2 }}>Add them to track stage and agents.</div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setAdding(true)} style={btn(true)}>+ Add to board</button>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>{lab('Agent(s)')}<MultiSelectCombo value={newAgent} onChange={setNewAgent} options={staff || []} placeholder="Assign agent(s)..." /></div>
+            <div>{lab('Stage')}{stageSel(newStage, e => setNewStage(e.target.value), REC_STAGES.filter(x => x !== 'Signed' && x !== 'Signed Elsewhere'), false)}</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 12, justifyContent: "flex-end" }}>
+            <button onClick={() => setAdding(false)} style={btn(false)}>Cancel</button>
+            <button onClick={() => run('add', () => ops.add(p, { agent: newAgent, stage: newStage }))} disabled={!!busy} style={btn(true)}>{busy === 'add' ? 'Adding…' : 'Add to board'}</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEditRecord }) {
   const [tab, setTab] = useState('overview');
   useEffect(() => { setTab('overview'); }, [p.id]);
   const S = data.S;
@@ -6745,19 +6910,24 @@ function ProspectPanel({ p, data, tag, isMobile, onClose }) {
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 190, background: "transparent" }} />
       <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: isMobile ? "100%" : 560, zIndex: 200, background: G.surface, boxShadow: G.shadowLg, borderLeft: `1px solid ${G.surfaceBorder}`, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 14px 0" }}>
-          <a href={p.isHs ? `https://www.google.com/search?q=${encodeURIComponent(`${p.name} ${p.hs} football 247Sports`)}` : `https://www.espn.com/college-football/player/_/id/${p.id}`} target="_blank" rel="noopener noreferrer"
-            style={{ display: "flex", alignItems: "center", gap: 6, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 11px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>{p.isHs ? 'Find on 247Sports ↗' : 'ESPN profile ↗'}</a>
+          {(() => {
+            const espn = /^\d+$/.test(String(p.id));
+            const href = p.url247 ? p.url247 : espn ? `https://www.espn.com/college-football/player/_/id/${p.id}` : `https://www.google.com/search?q=${encodeURIComponent(`${p.name} ${p.hs || p.team} football 247Sports`)}`;
+            const text = p.url247 ? '247Sports profile ↗' : espn ? 'ESPN profile ↗' : 'Find on 247Sports ↗';
+            return <a href={href} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 6, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 11px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>{text}</a>;
+          })()}
           <button onClick={onClose} title="Close (Esc)" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 10px", color: G.textSecondary, cursor: "pointer", fontSize: 13, fontFamily: ff }}>✕</button>
         </div>
         <div style={{ overflowY: "auto", flex: 1, padding: "8px 24px 32px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ position: "relative", flexShrink: 0 }}>
-              <Avatar name={p.name} photoUrl={p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={76} faceZoom />
+              <Avatar name={p.name} photoUrl={p.photo || (/^\d+$/.test(String(p.id)) ? `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png` : null)} size={76} faceZoom />
               {(p.isHs ? p.commitLogo : p.logo) && <span style={{ position: "absolute", right: -6, bottom: -4 }}><TeamLogo url={p.isHs ? p.commitLogo : p.logo} size={28} /></span>}
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.15 }}>{p.name}</div>
               <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>{p.isHs ? [p.pos, p.hs, p.city ? `${p.city}, ${p.st}` : ''].filter(Boolean).join(' · ') : [p.pos, p.team, p.conf].filter(Boolean).join(' · ')}</div>
+
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 {p.tier && <span style={{ fontSize: 11, fontWeight: 700, color: G.textSecondary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 99, padding: "2px 9px" }}>{({ P4: 'FBS · Power 4', G5: 'FBS · Group of 5', FCS: 'FCS', D2: 'Division II', HS: `High school · class of ${p.hsClass}` })[p.tier] || p.tier}</span>}
                 {tag && <span style={{ fontSize: 11, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 9px" }}>{tag}</span>}
@@ -6765,7 +6935,21 @@ function ProspectPanel({ p, data, tag, isMobile, onClose }) {
             </div>
           </div>
 
-          {p.isHs ? (
+          {ops && <RecruitBlock p={p} ops={ops} staff={staff} user={user} onEditRecord={onEditRecord} />}
+
+          {p.boardOnly ? (<>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px 12px", marginTop: 22 }}>
+              {fact('Position', p.pos)}
+              {fact(p.isHs ? 'High school' : 'School', p.isHs ? p.hs : p.team)}
+              {fact('Class', p.classLabel)}
+              {fact('Rating', p.rating)}
+            </div>
+            {p.isHs
+              ? <div style={{ fontSize: 12.5, color: G.textTertiary, marginTop: 22, lineHeight: 1.5 }}>Not in the searchable recruit database yet — it carries each class once it reaches its senior year{data.hsClass ? ` (currently ${data.hsClass})` : ''}. Details here come from the Recruiting board{p.url247 ? '; the 247Sports profile has the rest' : ''}.</div>
+              : /^\d+$/.test(String(p.id))
+                ? <div style={{ marginTop: 18 }}><SportsStatsTab athlete={{ espnId: p.id, level: 'College', name: p.name }} isMobile={isMobile} pad={0} /></div>
+                : <div style={{ fontSize: 12.5, color: G.textTertiary, marginTop: 22, lineHeight: 1.5 }}>No ESPN profile linked on the board yet, so stats can’t be shown. Add their ESPN id in Edit full record.</div>}
+          </>) : p.isHs ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px 12px", marginTop: 22 }}>
               {fact('Position', p.pos)}
               {fact('Height', pxHt(p.ht))}
@@ -6823,7 +7007,7 @@ function ProspectPanel({ p, data, tag, isMobile, onClose }) {
             </div>
           )}
           </>)}
-          {p.isHs && <div style={{ fontSize: 12.5, color: G.textTertiary, marginTop: 22, lineHeight: 1.5 }}>High school game stats aren’t published in a searchable form, so recruits are searchable by profile only: position, size, hometown, high school, stars and rank.</div>}
+          {p.isHs && !p.boardOnly && <div style={{ fontSize: 12.5, color: G.textTertiary, marginTop: 22, lineHeight: 1.5 }}>High school game stats aren’t published in a searchable form, so recruits are searchable by profile only: position, size, hometown, high school, stars and rank.</div>}
         </div>
       </div>
     </>
@@ -6832,6 +7016,27 @@ function ProspectPanel({ p, data, tag, isMobile, onClose }) {
 
 function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const { data, err, loading, reload } = useAdminTab('recruiting');
+  // Same board ops as Prospect Search, sharing this page's copy of the tab.
+  const ops = useRecruitBoard({ tab: { data, reload, loading }, athletes, onPromoted });
+  // The prospect database links board players to their stats and profiles
+  // (college by ESPN id, current seniors by name). Never triggers a build.
+  const [px, setPx] = useState(PROSPECTS.data);
+  useEffect(() => { let on = true; loadProspectData(false).then(d => on && setPx(d)).catch(() => {}); return () => { on = false; }; }, []);
+  const pxIndex = useMemo(() => {
+    if (!px) return null;
+    const byId = {}, byName = {};
+    px.players.forEach(pl => { if (pl.isHs) byName[pxNameKey(pl.name)] = pl; else byId[pl.id] = pl; });
+    return { byId, byName };
+  }, [px]);
+  const pxMatch = (r) => {
+    if (!pxIndex) return null;
+    return /high/i.test(ops.cell(r, 'level')) ? pxIndex.byName[pxNameKey(ops.cell(r, 'name'))] || null : pxIndex.byId[ops.cell(r, 'espn')] || null;
+  };
+  const profileFor = (r) => {
+    const hit = pxMatch(r);
+    return hit ? { ...hit, photo: hit.isHs ? ops.cell(r, 'photo') : '', url247: ops.cell(r, 'url247') } : boardProspect(ops, r);
+  };
+  const [panelRow, setPanelRow] = useState(null);
   const sub = useAdminTab('onboarding');
   const [promoting, setPromoting] = useState('');
   const [justPromoted, setJustPromoted] = useState({});
@@ -7037,9 +7242,9 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead><tr>
-                  {[['player', 'Player'], ['position', 'Position'], ['school', 'School'], ['class', 'Class'], ['agent', 'Agent'], ['rating', 'Rating'], ['stage', 'Stage']].map(([key, h]) => (
+                  {[['player', 'Player'], ['position', 'Position'], ['school', 'School'], ['class', 'Class'], ['agent', 'Agent'], ['rating', 'Rating'], ['profile', recTab === 'College' && px ? `${px.season} production` : 'Profile'], ['stage', 'Stage']].map(([key, h]) => (
                     <th key={key}
-                      onClick={() => { if (sortCol === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(key === 'rating' ? 'desc' : 'asc'); } }}
+                      onClick={() => { if (key === 'profile') return; if (sortCol === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(key === 'rating' ? 'desc' : 'asc'); } }}
                       style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
                       {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
                     </th>
@@ -7049,7 +7254,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                   {rows.map((r, i) => {
                     const td = { padding: "11px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < rows.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" };
                     return (
-                      <tr key={r._row} onClick={() => setEditing(r)} style={{ cursor: "pointer" }}
+                      <tr key={r._row} onClick={() => setPanelRow(r)} style={{ cursor: "pointer" }}
                         onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         <td style={{ ...td, color: G.text, fontWeight: 600 }}>
@@ -7070,6 +7275,14 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                               ? <a href={u} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
                                   style={{ color: "inherit", textDecoration: "underline", textDecorationColor: G.surfaceBorderLight, textUnderlineOffset: 3 }}>{rt}</a>
                               : rt;
+                          })()}
+                        </td>
+                        <td style={{ ...td, maxWidth: 300 }}>
+                          {(() => {
+                            const m = pxMatch(r);
+                            if (!m) return <span style={{ color: G.textTertiary }}>—</span>;
+                            if (m.isHs) return [pxHt(m.ht), m.wt ? `${m.wt} lbs` : '', m.city ? `${m.city}, ${m.st}` : ''].filter(Boolean).join(' · ') || '—';
+                            return pxKeyLine(m, m.season, px.S) || <span style={{ color: G.textTertiary }}>No stats yet</span>;
                           })()}
                         </td>
                         <td style={{ ...td, overflow: "visible", maxWidth: "none" }} onClick={e => e.stopPropagation()}>
@@ -7129,6 +7342,13 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
             Promoting creates their roster profile from their submission — it goes public right away (flip Public off on their profile to hide it).
           </div>
         </div>
+      )}
+      {panelRow && (
+        <ProspectPanel p={profileFor(panelRow)} data={px || { S: {}, careerSeasons: [], season: '', hsClass: 0 }} isMobile={isMobile}
+          tag={isClient(ops.cell(panelRow, 'name')) ? 'Client' : ''}
+          ops={ops} staff={staff} user={user}
+          onEditRecord={(row) => { setEditing(row); setPanelRow(null); }}
+          onClose={() => setPanelRow(null)} />
       )}
       {editing && (
         <RecruitForm headers={headers} initial={editing === 'new' ? null : editing} defaultLevel={recTab} staff={staff}
@@ -10021,7 +10241,7 @@ function App() {
               )}
               {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
-              {view === 'roster' && navActive && sportsPage === 'prospects' && <ProspectSearch isMobile={isMobile} user={currentUser} athletes={athletes} />}
+              {view === 'roster' && navActive && sportsPage === 'prospects' && <ProspectSearch isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => { rosterFreshRef.current = true; setAthletesLoaded(false); }} />}
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'gifting' && <GiftingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
