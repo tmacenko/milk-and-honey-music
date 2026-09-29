@@ -7668,7 +7668,6 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
 
       {fitCtx && (() => {
         const { p: fp, row, rank, of } = fitCtx;
-        const grpHere = allGroups.includes(fp.grp);
         return (
           <div style={{ ...card, padding: 16, marginTop: 16, border: `1px solid ${G.greenBorder}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -7688,7 +7687,6 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
             </div>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12 }}><PxFitFactors t={row} w={fitCtx.w} /></div>
             <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-              {grpHere && pxPill(only === fp.grp, `Show only the ${fp.grp} room`, () => setOnly(only === fp.grp ? '' : fp.grp), 'fitgrp')}
               <button onClick={() => window.history.back()} style={{ background: "none", border: "none", padding: "4px 8px", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>← Back to Team Fit</button>
               <span style={{ flex: 1 }} />
               <button onClick={() => { setFitCtx(null); PX_FIT_CTX.cur = null; }} style={{ background: "none", border: "none", padding: "4px 8px", color: G.textTertiary, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Hide</button>
