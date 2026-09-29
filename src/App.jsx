@@ -2969,6 +2969,7 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
     loadProspectData(false).then(d => on && setPxData(d)).catch(() => {});
     return () => { on = false; };
   }, [wantPx, pxData]);
+  useProspectsRefreshed(setPxData);
   const pxP = useMemo(() => (wantPx && pxData ? pxData.players.find(pl => !pl.isHs && String(pl.id) === String(a.espnId)) || null : null), [wantPx, pxData, a.espnId]);
   const league = a.level === 'NFL' ? 'nfl' : 'college-football';
   const [data, setData] = useState(ESPN_STATS_CACHE[a.espnId] || null);
@@ -6682,8 +6683,27 @@ const pxMiles = (a, b) => {
   return 2 * R * Math.asin(Math.sqrt(h));
 };
 
+// Rebuild an out-of-date file (admins only — the server checks), then load
+// the new one and hand it to every open page ('mh:prospects').
+function pxRefreshIfStale() {
+  if (!PROSPECTS.stale || PROSPECTS.building) return;
+  PROSPECTS.building = true;
+  fetch('/api/prospects?build=1&past=1').then(r => r.json()).then(b => {
+    if (!b || !b.ok) return;
+    PROSPECTS.stale = false;
+    PROSPECTS.data = null;
+    return loadProspectData(false).then(d => window.dispatchEvent(new CustomEvent('mh:prospects', { detail: d })));
+  }).catch(() => {}).finally(() => { PROSPECTS.building = false; });
+}
+function useProspectsRefreshed(setter) {
+  useEffect(() => {
+    const h = (e) => setter(e.detail);
+    window.addEventListener('mh:prospects', h);
+    return () => window.removeEventListener('mh:prospects', h);
+  }, [setter]);
+}
 function loadProspectData(canBuild, onBuilding) {
-  if (PROSPECTS.data) return Promise.resolve(PROSPECTS.data);
+  if (PROSPECTS.data) { if (canBuild) pxRefreshIfStale(); return Promise.resolve(PROSPECTS.data); }
   if (PROSPECTS.promise) return PROSPECTS.promise;
   PROSPECTS.promise = (async () => {
     let meta = await fetch('/api/prospects').then(r => r.json());
@@ -6704,12 +6724,11 @@ function loadProspectData(canBuild, onBuilding) {
     const res = await fetch(meta.url);
     if (!res.ok || !res.body) throw new Error('Couldn’t download the player database.');
     const raw = JSON.parse(await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).text());
-    // File predates the team-context fields (portal, usage, coaches…) —
-    // rebuild quietly; the next visit gets them.
-    if ((!raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('draft')) && canBuild && !PROSPECTS.building) {
-      PROSPECTS.building = true;
-      build(1).finally(() => { PROSPECTS.building = false; });
-    }
+    // File predates newer fields (portal, usage, efficiency, team location
+    // and draft…) — rebuild quietly in the background; open pages swap in the
+    // new file when it's ready.
+    PROSPECTS.stale = !raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('draft');
+    if (canBuild) pxRefreshIfStale();
     const C = {}; raw.cols.forEach((c, i) => { C[c] = i; });
     const S = {}; raw.stats.forEach((c, i) => { S[c] = i; });
     const cityIndex = {}, confs = new Set(), states = new Set();
@@ -6796,6 +6815,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
     loadProspectData(canBuild, (b) => on && setBuilding(b)).then(d => on && setData(d)).catch(e => on && setErr(e.message));
     return () => { on = false; };
   }, [canBuild]);
+  useProspectsRefreshed(setData);
   useEffect(() => {
     const h = e => {
       if (searchRef.current && !searchRef.current.contains(e.target)) setSuggestOpen(false);
@@ -7308,7 +7328,7 @@ function useFitPrefs(p, user) {
   return { saved, meta, save, loading: tab.loading && !tab.data };
 }
 
-function TeamFit({ p, data, onOpenTeam, user }) {
+function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const grp = p.grp || pxGroupOf(p.pos);
   const store = useFitPrefs(p, user);
   const [draft, setDraft] = useState(null); // unsaved edits
@@ -7336,19 +7356,18 @@ function TeamFit({ p, data, onOpenTeam, user }) {
   };
   const summary = PX_FIT_PRESETS.find(([, w]) => presetOn(w));
   const labelColor = { Reach: G.yellow, Match: G.green, Safe: G.textSecondary };
-  return (
-    <div style={{ marginTop: 12 }}>
-      {/* Priorities */}
-      <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 12 }}>
+  const showEdit = wide || editOpen;
+  const prioritiesCard = (
+      <div style={wide ? { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 } : { background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{first}’s priorities</span>
           <span style={{ fontSize: 12, color: G.textSecondary }}>{summary ? summary[0] : 'Custom'} · {PX_FIT_LEVELS.find(x => x[0] === prefs.level)[1]} level</span>
           <span style={{ flex: 1 }} />
           {store.meta && !dirty && <span style={{ fontSize: 11.5, color: G.textTertiary }}>Set by {store.meta.by} · {store.meta.at}</span>}
           {!store.meta && !dirty && !store.loading && <span style={{ fontSize: 11.5, color: G.textTertiary }}>Defaults</span>}
-          <button onClick={() => setEditOpen(o => !o)} style={{ background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: ff, padding: 0 }}>{editOpen ? 'Done' : 'Edit'}</button>
+          {!wide && <button onClick={() => setEditOpen(o => !o)} style={{ background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: ff, padding: 0 }}>{editOpen ? 'Done' : 'Edit'}</button>}
         </div>
-        {editOpen && (
+        {showEdit && (
           <div style={{ marginTop: 12 }}>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12 }}>
               {PX_FIT_PRESETS.map(([name, w]) => pxPill(presetOn(w), name, () => set({ w }), name))}
@@ -7380,8 +7399,8 @@ function TeamFit({ p, data, onOpenTeam, user }) {
         )}
         {res && <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 8 }}>{levelLine}</div>}
       </div>
-
-      {/* Ranked teams */}
+  );
+  const list = (<>
       {res && res.rows.slice(0, shown).map((t, i) => (
         <div key={t.name} onClick={() => onOpenTeam && onOpenTeam(t.name)}
           onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
@@ -7416,6 +7435,26 @@ function TeamFit({ p, data, onOpenTeam, user }) {
       {res && res.rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 12, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
       {res && !res.rows.length && <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No teams match — turn on another division.</div>}
       <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>Fit = the factors above, weighted by {first}’s priorities. “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
+  </>);
+  if (wide) {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(300px, 380px) minmax(0, 1fr)", gap: 24, alignItems: "start", marginTop: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, position: "sticky", top: 16 }}>{side}{prioritiesCard}</div>
+        <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: "16px 16px 20px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, padding: "0 8px 8px" }}>
+            <span style={{ fontSize: 15, fontWeight: 800, color: G.text }}>Best-fit teams</span>
+            {res && <span style={{ fontSize: 11.5, color: G.textTertiary }}>{res.rows.length} teams ranked · click one for its roster</span>}
+          </div>
+          {list}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginTop: 12 }}>
+      {side}
+      {prioritiesCard}
+      {list}
     </div>
   );
 }
@@ -7630,6 +7669,7 @@ function useProspectViewer({ user, athletes, staff, isMobile }) {
     loadProspectData(canBuild, (b) => on && setBuilding(b)).then(d => on && setData(d)).catch(e => on && setErr(e.message));
     return () => { on = false; };
   }, [canBuild]);
+  useProspectsRefreshed(setData);
   const ops = useRecruitBoard({ athletes });
   const ours = useMemo(() => {
     const m = {};
@@ -7869,66 +7909,88 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
   const { data } = V;
   const [pickId, setPickId] = useCachedState('fit.pick', '');
   const [q, setQ] = useState('');
-  const clients = useMemo(() => {
-    if (!data) return [];
-    const byId = {}, byName = {};
-    data.players.forEach(p => { if (p.isHs) byName[p.name.toLowerCase().replace(/[^a-z]/g, '')] = p; else byId[p.id] = p; });
-    return (athletes || []).map(a => (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && byName[String(a.name || '').toLowerCase().replace(/[^a-z]/g, '')]) || null).filter(Boolean);
-  }, [data, athletes]);
+  const [hi, setHi] = useState(0);
   if (!data) return <div style={pxPageWrap(isMobile)}>{pxTitle(isMobile, 'Team Fit')}{V.status}</div>;
   const pick = pickId ? data.players.find(p => p.id === pickId) : null;
   const ql = q.trim().toLowerCase();
-  const matches = ql.length >= 2 ? data.players.filter(p => p.name.toLowerCase().includes(ql)).slice(0, 12) : [];
-  const chip = (p) => (
-    <button key={p.id} onClick={() => { setPickId(p.id); setQ(''); }}
-      style={{ display: "flex", alignItems: "center", gap: 7, background: pick && pick.id === p.id ? G.greenSubtle : G.surface, border: `1px solid ${pick && pick.id === p.id ? G.green : G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 999, padding: "3px 11px 3px 4px", cursor: "pointer", fontFamily: ff }}>
-      <Avatar name={p.name} photoUrl={p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={22} faceZoom />
-      <span style={{ fontSize: 12.5, fontWeight: 700, color: G.text }}>{p.name}</span>
-      <span style={{ fontSize: 11.5, color: G.textTertiary }}>{p.pos} · {p.isHs ? `HS '${String(p.hsClass).slice(2)}` : p.team}</span>
-    </button>
+  // Clients and board players first, then everyone else.
+  const matches = ql.length >= 2 ? data.players.filter(p => p.name.toLowerCase().includes(ql))
+    .map(p => ({ p, tag: V.tagFor(p) || '' }))
+    .sort((x, y) => (y.tag === 'Client') - (x.tag === 'Client') || (!!y.tag) - (!!x.tag) || (y.p.name.toLowerCase().startsWith(ql)) - (x.p.name.toLowerCase().startsWith(ql)))
+    .slice(0, 10) : [];
+  const choose = (p) => { setPickId(p.id); setQ(''); setHi(0); };
+  const photo = (p) => (p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`);
+  const search = (
+    <div style={{ position: "relative", width: isMobile ? "100%" : 420 }}>
+      <input value={q} onChange={e => { setQ(e.target.value); setHi(0); }} autoFocus={!pick}
+        onKeyDown={e => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(h + 1, matches.length - 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(h - 1, 0)); }
+          else if (e.key === 'Enter' && matches[hi]) choose(matches[hi].p);
+          else if (e.key === 'Escape') setQ('');
+        }}
+        placeholder={pick ? 'Search another player…' : 'Search a client, board player or any college player / HS senior…'}
+        style={{ ...inputBase, padding: "9px 14px", fontSize: 13 }} />
+      {matches.length > 0 && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, boxShadow: G.shadowLg, zIndex: 60, padding: 4 }}>
+          {matches.map(({ p, tag }, i) => (
+            <button key={p.id} onClick={() => choose(p)} onMouseEnter={() => setHi(i)}
+              style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 8px", background: i === hi ? G.surfaceRaised : "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, textAlign: "left" }}>
+              <Avatar name={p.name} photoUrl={photo(p)} size={24} faceZoom />
+              <span style={{ fontSize: 13, fontWeight: 700, color: G.text, whiteSpace: "nowrap" }}>{p.name}</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.pos} · {p.isHs ? `${p.hs} (HS '${String(p.hsClass).slice(2)})` : p.team}</span>
+              {tag && <span style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 8px", flexShrink: 0 }}>{tag}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+  const tag = pick ? V.tagFor(pick) : '';
+  const side = pick && (
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <Avatar name={pick.name} photoUrl={photo(pick)} size={56} faceZoom />
+          {(pick.isHs ? pick.commitLogo : pick.logo) && <span style={{ position: "absolute", right: -4, bottom: -4 }}><TeamLogo url={pick.isHs ? pick.commitLogo : pick.logo} size={24} /></span>}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 17, fontWeight: 800, color: G.text, letterSpacing: "-0.02em" }}>{pick.name}</span>
+            {tag && <span style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 8px" }}>{tag}</span>}
+          </div>
+          <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>{[pick.pos, pick.isHs ? `${pick.hs} · HS '${String(pick.hsClass).slice(2)}` : pick.team, !pick.isHs && PX_CLASS[Math.min(pick.yr || 0, 5)]].filter(Boolean).join(' · ')}</div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 16 }}>
+        {[['Production', pick.prodPct ? pxOrd(pick.prodPct) : '—'], ['Team SP+', pick.isHs ? '—' : pick.sp ? `#${pick.sp}` : '—'], ['Hometown', pick.city ? `${pick.city}, ${pick.st}` : '—']].map(([l, v]) => (
+          <div key={l} style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{l}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: G.text, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+        <button onClick={() => V.setOpen(pick)} onMouseEnter={e => e.currentTarget.style.background = G.surfaceBorder} onMouseLeave={e => e.currentTarget.style.background = G.surfaceRaised}
+          style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Quick view</button>
+        {tag === 'Client' && <button onClick={() => openClientProfile(pick)} onMouseEnter={e => e.currentTarget.style.background = G.greenBorder} onMouseLeave={e => e.currentTarget.style.background = G.greenSubtle}
+          style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "7px 12px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Client profile →</button>}
+      </div>
+    </div>
   );
   return (
     <div style={pxPageWrap(isMobile)}>
-      {pxTitle(isMobile, 'Team Fit', 'Best-fit teams for a player: playing time, level, NFL development, home, academics and scheme')}
-      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 16 }}>
-        <div style={{ position: "relative", maxWidth: 520 }}>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search any college player or high school senior…" style={{ ...inputBase, padding: "10px 14px", fontSize: 13.5 }} />
-          {matches.length > 0 && (
-            <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, boxShadow: G.shadowLg, zIndex: 60, padding: 6 }}>
-              {matches.map(p => (
-                <button key={p.id} onClick={() => { setPickId(p.id); setQ(''); }}
-                  onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                  style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "7px 10px", background: "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: ff, textAlign: "left" }}>
-                  <Avatar name={p.name} photoUrl={p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={22} faceZoom />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{p.name}</span>
-                  <span style={{ fontSize: 11.5, color: G.textTertiary }}>{p.pos} · {p.isHs ? `${p.hs} (HS '${String(p.hsClass).slice(2)})` : p.team}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {clients.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 8 }}>Your clients</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{clients.map(chip)}</div>
-          </div>
-        )}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        {pxTitle(isMobile, 'Team Fit')}
+        {search}
       </div>
       {pick ? (
-        <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 18, marginTop: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-            <Avatar name={pick.name} photoUrl={pick.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${pick.id}.png`} size={52} faceZoom />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: G.text, letterSpacing: "-0.02em" }}>{pick.name}</div>
-              <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 2 }}>{[pick.pos, pick.isHs ? pick.hs : pick.team, pick.prodPct ? `${pick.prodPct}th percentile production` : ''].filter(Boolean).join(' · ')}</div>
-            </div>
-            <button onClick={() => V.setOpen(pick)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Quick view</button>
-            {V.tagFor(pick) === 'Client' && <button onClick={() => openClientProfile(pick)} style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "7px 12px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Client profile →</button>}
-          </div>
-          <TeamFit p={pick} data={data} onOpenTeam={(t) => V.setTeam(t)} user={user} />
-        </div>
+        <TeamFit p={pick} data={data} onOpenTeam={(t) => V.setTeam(t)} user={user} wide={!isMobile} side={side} />
       ) : (
-        <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 18 }}>Pick a client or search for a player to see his best-fit teams.</div>
+        <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: "40px 24px", marginTop: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: G.text }}>Find a player’s best-fit teams</div>
+          <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 8, lineHeight: 1.5 }}>Search above — clients and board players come up first. Teams are ranked on playing time, level, NFL development, distance from home, academics and scheme, weighted by the player’s priorities.</div>
+        </div>
       )}
       {V.overlays}
     </div>
@@ -8264,6 +8326,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   // (college by ESPN id, current seniors by name). Never triggers a build.
   const [px, setPx] = useState(PROSPECTS.data);
   useEffect(() => { let on = true; loadProspectData(false).then(d => on && setPx(d)).catch(() => {}); return () => { on = false; }; }, []);
+  useProspectsRefreshed(setPx);
   const pxIndex = useMemo(() => {
     if (!px) return null;
     const byId = {}, byName = {};
