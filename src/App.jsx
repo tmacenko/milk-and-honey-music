@@ -7389,8 +7389,9 @@ function pxFitRank(data, p, prefs) {
     const lv = diff >= 0 ? Math.exp(-((Math.max(0, diff - 15) / 30) ** 2)) : Math.exp(-((diff / 18) ** 2));
     f.level = [100 * lv, prog.rank[t.name] ? `Program #${prog.rank[t.name]}` : PX_TIER_NAME[ti.tier] || ''];
     if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
+    // Distance score is a smooth curve: 25 mi ≈ 93, 145 ≈ 66, 250 ≈ 49, 500 ≈ 24, 1,000 ≈ 6.
     if (avail.home) {
-      if (ti.lat) { const d = pxMiles(p, { lat: ti.lat, lng: ti.lng }); f.home = [100 * Math.exp(-d / 350), `${Math.round(d).toLocaleString()} mi from home`]; // smooth: 25 mi ≈ 93, 145 ≈ 66, 250 ≈ 49, 500 ≈ 24, 1,000 ≈ 6 }
+      if (ti.lat) { const d = pxMiles(p, { lat: ti.lat, lng: ti.lng }); f.home = [100 * Math.exp(-d / 350), `${Math.round(d).toLocaleString()} mi from home`]; }
       else f.home = [0, 'Location unknown'];
     }
     const tier = PX_ACADEMIC[t.name] || 4;
