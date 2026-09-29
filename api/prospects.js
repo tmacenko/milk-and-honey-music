@@ -56,7 +56,10 @@ module.exports = async (req, res) => {
         get: (name) => blobGetJson(name),
         put: (name, obj) => blobPut(name, JSON.stringify(obj), 'application/json'),
       };
-      const { data, log } = await buildProspects({ key, store });
+      // ?past=N — how many uncached past seasons this run may fetch (~50s
+      // each). The page's first-ever build passes 0 so it returns in ~30s.
+      const pastPerRun = Math.max(0, Math.min(3, parseInt(req.query.past ?? '1', 10) || 0));
+      const { data, log } = await buildProspects({ key, store, pastPerRun, deadline: Date.now() + 240000 });
       await blobPut(DATA_PATH, zlib.gzipSync(JSON.stringify(data)), 'application/octet-stream');
       const meta = { ts: data.ts, season: data.season, players: data.players.length, careerSeasons: data.careerSeasons, careerMissing: data.careerMissing };
       await blobPut(META_PATH, JSON.stringify(meta), 'application/json');

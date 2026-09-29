@@ -6230,17 +6230,18 @@ function loadProspectData(canBuild, onBuilding) {
   if (PROSPECTS.promise) return PROSPECTS.promise;
   PROSPECTS.promise = (async () => {
     let meta = await fetch('/api/prospects').then(r => r.json());
-    const build = () => fetch('/api/prospects?build=1').then(r => r.json()).catch(() => null);
+    const build = (past) => fetch(`/api/prospects?build=1&past=${past}`).then(r => r.json()).catch(() => null);
     if (meta.missing && canBuild) {
-      // First run ever: nothing to show until one build lands (~30s).
+      // First run ever: current season only (~30s) so there's something to
+      // search; past seasons fill in on later runs.
       onBuilding && onBuilding(true);
-      const b = await build();
+      const b = await build(0);
       onBuilding && onBuilding(false);
       if (b && b.ok) meta = await fetch('/api/prospects').then(r => r.json());
     } else if ((meta.careerMissing || []).length && canBuild && !PROSPECTS.building) {
       // Older seasons still loading — show what exists, fill in behind.
       PROSPECTS.building = true;
-      build().finally(() => { PROSPECTS.building = false; });
+      build(2).finally(() => { PROSPECTS.building = false; });
     }
     if (!meta.url) throw new Error(meta.missing ? 'The player database hasn’t been built yet — an admin opening this page starts it.' : (meta.error || 'Unavailable'));
     const res = await fetch(meta.url);
