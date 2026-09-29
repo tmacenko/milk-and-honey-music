@@ -340,6 +340,7 @@ function mergeAthlete(row, ext, level) {
     committedTo: (level === 'High School' ? (row['Committed'] || row['Commitment'] || '') : '') || ext['committedTo'] || '',
     yearInSchool: ext['yearInSchool'] || '',
     espnClass: ext['espnClass'] || '',
+    offers247: ext['offers247'] || '', // staff-only (not in PUBLIC_FIELDS): JSON [[school, offered, status]]
     draftYear: ext['draftYear'] || '',
     draftRound: ext['draftRound'] || '',
     draftPick: ext['draftPick'] || '',
@@ -1476,7 +1477,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass', 'offers247']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;

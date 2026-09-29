@@ -100,6 +100,23 @@ const BROWSER_HEADERS = {
   'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none',
   'Upgrade-Insecure-Requests': '1',
 };
+// 247 recruitment interests page → [{ school, offer, status, visit }].
+function parseInterests(html) {
+  const start = html.indexOf('recruit-interest-index_lst');
+  if (start < 0) return [];
+  const seg = html.slice(start);
+  const out = [];
+  const re = /<li>\s*<img alt="([^"]+)"[\s\S]*?<span class="heading">Offer:<\/span>\s*([^<]*?)\s*<\/span>/g;
+  let m;
+  while ((m = re.exec(seg))) {
+    const block = m[0];
+    const status = ((block.match(/temp-status">\s*([^<]+?)\s*</) || [])[1] || '').trim();
+    const visit = ((block.match(/<span class="heading">Visit:<\/span>\s*([^<]*?)\s*<\/span>/) || [])[1] || '').trim();
+    out.push({ school: m[1].replace(/&amp;/g, '&').trim(), offer: /yes/i.test(m[2]), status, visit: visit === '-' ? '' : visit });
+  }
+  return out;
+}
+
 async function fetchText(url, viaProxy = false) {
   const opts = { headers: BROWSER_HEADERS, redirect: 'follow' };
   const useProxy = viaProxy && proxyDispatcher && proxyFetch;
@@ -243,7 +260,7 @@ module.exports = async (req, res) => {
     // for the ESPN/247 sync are appended to its header row on first run.
     const autoRows = auto.values || [];
     let autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
-    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass'];
+    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass', 'offers247'];
     const missingAuto = AUTO_EXTRA.filter(h => !autoHeaders.some(x => x.toLowerCase() === h.toLowerCase()));
     if (missingAuto.length && !dryRun) {
       // Widen the grid first if the tab is at its column limit.
@@ -520,8 +537,12 @@ module.exports = async (req, res) => {
     // Daily 247 rating/rank per linked HS kid — merged with depth ranks into
     // the StatHistory snapshot at the end of the run.
     const rankTrend = {};
+    // 247 recruitment "interests" page per HS kid (offers list) — URL comes
+    // from the same Recruits JSON lookup that feeds the rank snapshot.
+    const interestUrls = {};
     if (wants('hs')) {
       const photoCol = autoIdx('photo247');
+      const offersCol = autoIdx('offers247');
 
       // 3a: URL auto-discovery. For HS athletes with no saved 247 link, query the
       // season Recruits JSON (contains-match on name, ≤50 results) and accept a
@@ -628,7 +649,10 @@ module.exports = async (req, res) => {
               const body = await fetchText(`https://247sports.com/Season/${y}-Football/Recruits.json?Player.FullName=${encodeURIComponent(q)}`, true);
               for (const r of JSON.parse(body) || []) {
                 const pl = r.Player || {};
-                if (sameProfile(pl.Url, url)) return { hit: pl, hitYear: r.Year || y };
+                if (sameProfile(pl.Url, url)) {
+                  if (r.RecruitInterestsUrl) interestUrls[nameKey(p['Name'])] = r.RecruitInterestsUrl;
+                  return { hit: pl, hitYear: r.Year || y };
+                }
               }
             } catch (e) { errSink.push(`${p['Name']} (${y}): ${e.message}`); }
           }
@@ -706,6 +730,20 @@ module.exports = async (req, res) => {
             const k = nameKey(t.name);
             rankTrend[k] = { ...(rankTrend[k] || { name: t.name }), compRating247: cm[1], compStars247: stars, compNatRank247: cm[2] };
             hs247.composite = (hs247.composite || 0) + 1;
+          }
+          // Offers: 247's recruitment interests list → AutoSync offers247 as
+          // JSON [[school, offered 1/0, status], …] (status: Cool/Warm/Hot/
+          // Committed…). Only written when the page parses.
+          const iUrl = interestUrls[nameKey(t.name)];
+          if (iUrl && offersCol >= 0) {
+            try {
+              const ih = await fetchText(iUrl, true);
+              const list = parseInterests(ih);
+              if (list.length) {
+                const rowN = await ensureAutoRow(t.name);
+                if (rowN) { hsUpdates.push({ range: `'AutoSync'!${colLetter(offersCol)}${rowN}`, values: [[JSON.stringify(list.map(x => [x.school, x.offer ? 1 : 0, x.status]))]] }); hs247.offers = (hs247.offers || 0) + 1; }
+              }
+            } catch (e) { hs247.errors.push(`${t.name} offers: ${e.message}`); }
           }
           const h1 = html.search(/<h1[^>]*>/i);
           const head = h1 > 0 ? html.slice(0, h1) : html;

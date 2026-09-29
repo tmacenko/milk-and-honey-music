@@ -3204,6 +3204,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
     companyView && a.positionCoach && !isFreeAgent(a) && ['Position coach', a.positionCoach],
     a.classOf && ['Class of', a.classOf],
     a.committedTo && ['Committed', a.committedTo],
+    companyView && (() => { const o = pxParseOffers(a.offers247).filter(x => x[1]).map(x => x[0]); return o.length ? ['Offers', `${o.length} — ${o.join(', ')}`] : null; })(),
     (a.draftYear || a.draftRound || a.draftPick) && ['Draft', [a.draftYear, a.draftRound && `R${a.draftRound}`, a.draftPick && `P${a.draftPick}`].filter(Boolean).join(' ')],
   ].filter(Boolean);
   const banner = a.heroImageUrl;
@@ -7287,6 +7288,17 @@ function pxProgram(data) {
   data._prog = { pct, rank };
   return data._prog;
 }
+// 247 offers (AutoSync offers247: JSON [[school, offered 1/0, status], …]).
+const pxParseOffers = (raw) => { try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+// 247 school names → database team names (most match once accents and
+// punctuation are ignored; the rest are aliases).
+const PX_TEAM_ALIAS = { umass: 'Massachusetts', usf: 'South Florida', fiu: 'Florida International', fau: 'Florida Atlantic', appalachianstate: 'App State', louisianamonroe: 'UL Monroe', ulm: 'UL Monroe', hawaii: 'Hawai\'i', sanjosestate: 'San José State', miamiohio: 'Miami (OH)', miamioh: 'Miami (OH)', southernmississippi: 'Southern Miss', centralflorida: 'UCF', connecticut: 'UConn', mississippi: 'Ole Miss', northcarolinastate: 'NC State', louisianalafayette: 'Louisiana', ulala: 'Louisiana', texassanantonio: 'UTSA', texaselpaso: 'UTEP', southerncalifornia: 'USC', brighamyoung: 'BYU', texaschristian: 'TCU', southernmethodist: 'SMU', nevadalasvegas: 'UNLV', alabamabirmingham: 'UAB' };
+function pxTeamByName(data, name) {
+  const nk = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+  if (!data._teamNk) { data._teamNk = {}; Object.keys(data.teamInfo).forEach(n => { data._teamNk[nk(n)] = n; }); }
+  const k = nk(name);
+  return data._teamNk[k] || (PX_TEAM_ALIAS[k] && data.teamInfo[PX_TEAM_ALIAS[k]] ? PX_TEAM_ALIAS[k] : '');
+}
 // Estimated coach hot-seat risk (0–100). Heuristic, not a report: how the
 // team performs (SP+) against its roster talent, win-loss (last season
 // weighs more until this season has games), SP+ decline, and tenure — new
@@ -7348,9 +7360,14 @@ function pxFitRank(data, p, prefs) {
   // level (it means a real offer) — whichever is higher.
   const starsD = { 5: 97, 4: 85, 3: 65, 2: 40 };
   const commitPct = p.isHs && p.commit && info[p.commit] ? tPct(info[p.commit]) : 0;
+  // Offers are the best evidence of a recruit's level: the third-best offer
+  // (the best one if fewer) sets a floor — one outlier offer can't.
+  const offered = new Set(p.offers || []);
+  const offerPcts = [...offered].map(n => tPct(info[n])).sort((x, y) => y - x);
+  const offerPct = offerPcts.length ? offerPcts[Math.min(2, offerPcts.length - 1)] : 0;
   const n = p.natRank || 0;
   const rankD = !n ? 0 : n <= 50 ? 97 : n <= 150 ? 90 : n <= 300 ? 82 : n <= 500 ? 74 : 0;
-  const auto = p.isHs ? Math.max(starsD[p.stars] || 45, rankD, commitPct) : P ? Math.max(3, Math.min(99, C + (P - 50))) : C;
+  const auto = p.isHs ? Math.max(starsD[p.stars] || 45, rankD, commitPct, offerPct) : P ? Math.max(3, Math.min(99, C + (P - 50))) : C;
   // D = the level the player has earned; reaches above it get discounted
   // (Aim sets how much).
   const D = auto;
@@ -7404,9 +7421,19 @@ function pxFitRank(data, p, prefs) {
     // a productive transfer's; Stretch allows 10 (recruits) / 15 more points;
     // Anything none.
     const reachAt = p.isHs ? 15 : 25;
-    const label = diff > reachAt ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
+    // Recruits with an offer list: anything clearly above their best offer is a reach.
+    const aboveOffers = p.isHs && offerPcts.length >= 3 && !offered.has(t.name) && T > offerPcts[0] + 5;
+    const label = aboveOffers || diff > reachAt ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
     const free = (p.isHs ? 8 : 15) + (aim === 'stretch' ? (p.isHs ? 10 : 15) : 0);
-    const realism = aim === 'any' ? 1 : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : 30)) ** 2)));
+    const isOffer = offered.has(t.name);
+    // A recruit with a real offer list: offering schools are realistic by
+    // definition; schools above their best offer haven't shown that level of
+    // interest, so the discount starts right there (Stretch allows 10).
+    const byOffers = p.isHs && offerPcts.length >= 3;
+    const over = T - Math.max(D, offerPcts[0] || 0) - (aim === 'stretch' ? 10 : 0);
+    const realism = aim === 'any' || isOffer ? 1
+      : byOffers ? (over <= 0 ? 1 : Math.max(0.35, Math.exp(-((over / 10) ** 2))))
+      : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : 30)) ** 2)));
     if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
     // Distance score is a smooth curve: 25 mi ≈ 93, 145 ≈ 66, 250 ≈ 49, 500 ≈ 24, 1,000 ≈ 6.
     if (avail.home) {
@@ -7439,9 +7466,11 @@ function pxFitRank(data, p, prefs) {
       num += w * f[k][0]; den += w;
       if (lvl === 3) gate *= 0.55 + 0.45 * (f[k][0] / 100);
     });
-    return { ...t, fit: den ? Math.round((num / den) * gate * realism) : 0, f, label, slot, realism };
+    // An offer = the school wants them: a modest ×1.1 lift (capped at 100).
+    const fitRaw = den ? (num / den) * gate * realism * (isOffer ? 1.1 : 1) : 0;
+    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, offered: isOffer };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
-  return { rows, avail, D, C, auto, spTarget: spNear(D), grp, h };
+  return { rows, avail, D, C, auto, spTarget: spNear(D), grp, h, offers: offered.size };
 }
 
 // A team's factor breakdown for one player (Team Fit rows and the team
@@ -7487,6 +7516,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const [saving, setSaving] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [teamQ, setTeamQ] = useState('');
+  const [offersOnly, setOffersOnly] = useState(false);
   useEffect(() => { setDraft(null); setShown(15); setEditOpen(false); setTeamQ(''); }, [p.id]);
   const prefs = { ...PX_FIT_DEFAULT, ...(store.saved || {}), ...(draft || {}), w: { ...PX_FIT_DEFAULT.w, ...((store.saved || {}).w || {}), ...((draft || {}).w || {}) } };
   const res = useMemo(() => (grp ? pxFitRank(data, p, prefs) : null), [data, p, grp, JSON.stringify(prefs)]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -7552,13 +7582,14 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
       </div>
   );
   const tq = teamQ.trim().toLowerCase();
-  const listed = !res ? [] : tq
-    ? res.rows.map((t, i) => [t, i]).filter(([t]) => t.name.toLowerCase().includes(tq) || String(t.conf || '').toLowerCase().includes(tq))
+  const listed = !res ? [] : (tq || offersOnly)
+    ? res.rows.map((t, i) => [t, i]).filter(([t]) => (!offersOnly || t.offered) && (!tq || t.name.toLowerCase().includes(tq) || String(t.conf || '').toLowerCase().includes(tq)))
     : res.rows.slice(0, shown).map((t, i) => [t, i]);
-  const teamSearch = (
+  const teamSearch = (<>
+    {res && res.offers > 0 && pxPill(offersOnly, `Offered only (${res.offers})`, () => setOffersOnly(v => !v), 'offers')}
     <input value={teamQ} onChange={e => setTeamQ(e.target.value)} placeholder="Find a team in the ranking…"
       style={{ ...inputBase, width: wide ? 220 : "100%", padding: "6px 10px", fontSize: 12.5, marginTop: wide ? 0 : 12 }} />
-  );
+  </>);
   const list = (<>
       {tq && res && !listed.length && <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 8px" }}>No ranked team matches “{teamQ.trim()}” — it may be in a division that’s turned off.</div>}
       {listed.map(([t, i]) => (
@@ -7572,6 +7603,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
                 <span title="Reach: well above the level the player has earned (discounted unless Aim is Anything) · Match: at or a bit above it · Safe: below it" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: labelColor[t.label] }}>{t.label}</span>
+                {t.offered && <span title="Has offered (247Sports)" style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "1px 8px" }}>Offered</span>}
               </span>
               <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{[t.conf, t.sp ? `SP+ #${t.sp}` : ''].filter(Boolean).join(' · ')}</span>
             </span>
@@ -7585,7 +7617,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
           </div>
         </div>
       ))}
-      {res && !tq && res.rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 12, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
+      {res && !tq && !offersOnly && res.rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 12, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
       {res && !res.rows.length && <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No teams match — turn on another division.</div>}
       <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>Fit = the factors above, weighted by {first}’s priorities (Some ×1, Important ×3, Top ×6 — and a team that scores poorly on a Top priority is pulled down overall). “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
   </>);
@@ -7714,6 +7746,7 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
                   <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>Fit for</span>
                   <span style={{ fontSize: 15, fontWeight: 800, color: G.text }}>{fp.name}</span>
                   <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: PX_FIT_LABEL_COLOR[row.label] }}>{row.label}</span>
+                {row.offered && <span style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "1px 8px" }}>Offered</span>}
                 </div>
                 <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>#{rank} of {of} teams on {fp.name.split(' ')[0]}’s Team Fit · {[fp.pos, fp.isHs ? `HS '${String(fp.hsClass).slice(2)}` : fp.team].filter(Boolean).join(' · ')}</div>
               </div>
@@ -8137,19 +8170,23 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
     const r247 = {};
     ((hist.data && hist.data.rows) || []).forEach(r => { const c = r.cells || []; if (c[5] || c[6] || c[10]) r247[nk(c[1])] = { stars: parseInt(c[10] || c[5], 10) || 0, nat: parseInt(c[11] || c[6], 10) || 0 }; });
     const clients = (athletes || []).map(a => {
-      const p = (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && (byName[nk(a.name)] || fromClient(a))) || null;
-      return p && { p, a };
+      const p0 = (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && (byName[nk(a.name)] || fromClient(a))) || null;
+      if (!p0) return null;
+      const offers = a.level === 'High School' ? pxParseOffers(a.offers247).filter(o => o[1]).map(o => pxTeamByName(data, o[0])).filter(Boolean) : [];
+      return { p: offers.length ? { ...p0, offers } : p0, a };
     }).filter(Boolean);
     const seen = new Set(clients.map(r => r.p.id));
     const board = data.players.filter(p => !seen.has(p.id) && V.tagFor(p) === 'On board').map(p => ({ p, a: null }));
     return { clients, board };
   }, [data, athletes, V.tagFor, hist.data]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!data) return <div style={pxPageWrap(isMobile)}>{pxTitle(isMobile, 'Team Fit')}{V.status}</div>;
-  const extra = lists.clients.filter(r => r.p.fromClient).map(r => r.p);
+  // Client versions of players (their own records, offers) take precedence.
+  const extra = lists.clients.filter(r => r.p.fromClient || r.p.offers).map(r => r.p);
+  const extraIds = new Set(extra.map(p => p.id));
   const pick = pickId ? (extra.find(p => p.id === pickId) || data.players.find(p => p.id === pickId)) : null;
   const ql = q.trim().toLowerCase();
   // Clients and board players first, then everyone else.
-  const matches = ql.length >= 2 ? [...extra, ...data.players].filter(p => p.name.toLowerCase().includes(ql))
+  const matches = ql.length >= 2 ? [...extra, ...data.players.filter(p => !extraIds.has(p.id))].filter(p => p.name.toLowerCase().includes(ql))
     .map(p => ({ p, tag: V.tagFor(p) || '' }))
     .sort((x, y) => (y.tag === 'Client') - (x.tag === 'Client') || (!!y.tag) - (!!x.tag) || (y.p.name.toLowerCase().startsWith(ql)) - (x.p.name.toLowerCase().startsWith(ql)))
     .slice(0, 10) : [];
