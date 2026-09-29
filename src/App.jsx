@@ -7251,8 +7251,8 @@ function TeamOutlook({ team, data, tagOf, isMobile, onClose, onOpenPlayer }) {
     return out;
   };
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14 };
-  const stat = (label, value) => value ? (
-    <div>
+  const stat = (label, value, hint) => value ? (
+    <div title={hint}>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{label}</div>
       <div style={{ fontSize: 15, fontWeight: 700, color: G.text, marginTop: 4 }}>{value}</div>
     </div>
@@ -7269,11 +7269,10 @@ function TeamOutlook({ team, data, tagOf, isMobile, onClose, onOpenPlayer }) {
             <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 3 }}>{[info.conf, ({ P4: 'Power 4', G5: 'Group of 5', FCS: 'FCS', D2: 'Division II' })[info.tier], info.coach ? `HC ${info.coach}${info.record ? ` (${info.record})` : ''}` : ''].filter(Boolean).join(' · ')}</div>
           </div>
         </div>
-        <div style={{ ...card, padding: 16, marginTop: 16, display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(6, 1fr)", gap: 16 }}>
+        <div style={{ ...card, padding: 16, marginTop: 16, display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: 16 }}>
           {stat('SP+ rank', info.sp ? `#${info.sp}` : '')}
           {stat('Talent rank', info.talentRank ? `#${info.talentRank}` : '')}
-          {stat('Returning production', info.retPct ? `${info.retPct}%` : '')}
-          {stat('Returning passing', info.retPass ? `${info.retPass}%` : '')}
+          {stat('Returning production', info.retPct ? `${info.retPct}%` : '', 'Share of last season’s offensive production (passing, rushing, receiving — weighted by points added) from players still on the roster')}
           {stat('Roster', `${roster.length} players`)}
           {stat(`${data.hsClass} commits`, commits.length ? `${commits.length}` : '0')}
         </div>
