@@ -7417,6 +7417,22 @@ function pxFitRank(data, p, prefs) {
   return { rows, avail, D, C, auto, spTarget: spNear(D), grp, h };
 }
 
+// A team's factor breakdown for one player (Team Fit rows and the team
+// page's "Fit for …" card).
+function PxFitFactors({ t, w }) {
+  return PX_FIT_FACTORS.filter(([k]) => t.f[k] && (w[k] || 0) > 0).map(([k, label]) => (
+    <span key={k} title={`${label}: ${Math.round(t.f[k][0])}/100${t.f[k][1] ? ` — ${t.f[k][1]}` : ''}`} style={{ display: "inline-flex", flexDirection: "column", gap: 4, minWidth: 84 }}>
+      <span style={{ fontSize: 11.5, color: G.textSecondary, whiteSpace: "nowrap" }}>{t.f[k][1] || label}</span>
+      <span style={{ height: 4, borderRadius: 2, background: G.surfaceBorderLight, overflow: "hidden" }}>
+        <span style={{ display: "block", width: `${Math.max(3, t.f[k][0])}%`, height: "100%", borderRadius: 2, background: t.f[k][0] >= 70 ? G.green : G.textTertiary }} />
+      </span>
+    </span>
+  ));
+}
+// The fit a team page was opened from (Team Fit row click) — the page shows
+// the same numbers for that player.
+const PX_FIT_CTX = { cur: null };
+const PX_FIT_LABEL_COLOR = { Reach: G.yellow, Match: G.green, Safe: G.textSecondary };
 // Shared per-player priorities (FitPrefs tab: playerId | name | prefs JSON).
 function useFitPrefs(p, user) {
   const tab = useAdminTab('fitprefs');
@@ -7465,7 +7481,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
     catch (e) { setSaving(`Couldn’t save — ${e.message}`); }
   };
   const summary = PX_FIT_PRESETS.find(([, w]) => presetOn(w));
-  const labelColor = { Reach: G.yellow, Match: G.green, Safe: G.textSecondary };
+  const labelColor = PX_FIT_LABEL_COLOR;
   const showEdit = wide || editOpen;
   const prioritiesCard = (
       <div style={wide ? { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 } : { background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 12 }}>
@@ -7512,7 +7528,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   );
   const list = (<>
       {res && res.rows.slice(0, shown).map((t, i) => (
-        <div key={t.name} onClick={() => onOpenTeam && onOpenTeam(t.name)}
+        <div key={t.name} onClick={() => { if (!onOpenTeam) return; PX_FIT_CTX.cur = { team: t.name, p, row: t, rank: i + 1, of: res.rows.length, w: prefs.w, armed: true }; onOpenTeam(t.name); }}
           onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
           style={{ padding: "12px 8px", borderRadius: 8, cursor: onOpenTeam ? "pointer" : "default", borderBottom: `1px solid ${G.surfaceBorder}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -7531,14 +7547,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
             </span>
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, paddingLeft: 32 }}>
-            {PX_FIT_FACTORS.filter(([k]) => t.f[k] && (prefs.w[k] || 0) > 0).map(([k, label]) => (
-              <span key={k} title={`${label}: ${Math.round(t.f[k][0])}/100${t.f[k][1] ? ` — ${t.f[k][1]}` : ''}`} style={{ display: "inline-flex", flexDirection: "column", gap: 4, minWidth: 84 }}>
-                <span style={{ fontSize: 11.5, color: G.textSecondary, whiteSpace: "nowrap" }}>{t.f[k][1] || label}</span>
-                <span style={{ height: 4, borderRadius: 2, background: G.surfaceBorderLight, overflow: "hidden" }}>
-                  <span style={{ display: "block", width: `${Math.max(3, t.f[k][0])}%`, height: "100%", borderRadius: 2, background: t.f[k][0] >= 70 ? G.green : G.textTertiary }} />
-                </span>
-              </span>
-            ))}
+            <PxFitFactors t={t} w={prefs.w} />
           </div>
         </div>
       ))}
@@ -7586,7 +7595,16 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
   const [q, setQ] = useState('');
   const [only, setOnly] = useState('');
   const [sorts, setSorts] = useState({});
-  useEffect(() => { setQ(''); setOnly(''); setSorts({}); }, [team]);
+  // Opened from a Team Fit row: show that player's fit here (once — the
+  // Teams list or a later visit opens the plain page).
+  const takeFit = () => { const c = PX_FIT_CTX.cur; if (c && c.team === team && c.armed) { c.armed = false; return c; } return null; };
+  const [fitCtx, setFitCtx] = useState(takeFit);
+  const lastTeam = useRef(team);
+  useEffect(() => {
+    if (lastTeam.current === team) return;
+    lastTeam.current = team;
+    setQ(''); setOnly(''); setSorts({}); setFitCtx(takeFit());
+  }, [team]); // eslint-disable-line react-hooks/exhaustive-deps
   const pk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
   const roster = useMemo(() => (data ? data.players.filter(x => !x.isHs && x.team === team) : []), [data, team]);
   const commits = useMemo(() => (data ? data.players.filter(x => x.isHs && x.commit === team) : []), [data, team]);
@@ -7646,6 +7664,37 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
         {stat('Roster', `${roster.length} players`)}
         {stat(`${data.hsClass} commits`, commits.length ? `${commits.length}` : '0')}
       </div>
+
+      {fitCtx && (() => {
+        const { p: fp, row, rank, of } = fitCtx;
+        const grpHere = allGroups.includes(fp.grp);
+        return (
+          <div style={{ ...card, padding: 16, marginTop: 16, border: `1px solid ${G.greenBorder}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <Avatar name={fp.name} photoUrl={fp.photo || (fp.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${fp.id}.png`)} size={40} faceZoom />
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>Fit for</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: G.text }}>{fp.name}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: PX_FIT_LABEL_COLOR[row.label] }}>{row.label}</span>
+                </div>
+                <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>#{rank} of {of} teams on {fp.name.split(' ')[0]}’s Team Fit · {[fp.pos, fp.isHs ? `HS '${String(fp.hsClass).slice(2)}` : fp.team].filter(Boolean).join(' · ')}</div>
+              </div>
+              <span style={{ textAlign: "right" }}>
+                <span style={{ display: "block", fontSize: 23, fontWeight: 800, color: row.fit >= 75 ? G.green : G.text, fontVariantNumeric: "tabular-nums", lineHeight: 1.05 }}>{row.fit}</span>
+                <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>fit</span>
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12 }}><PxFitFactors t={row} w={fitCtx.w} /></div>
+            <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+              {grpHere && pxPill(only === fp.grp, `Show only the ${fp.grp} room`, () => setOnly(only === fp.grp ? '' : fp.grp), 'fitgrp')}
+              <button onClick={() => window.history.back()} style={{ background: "none", border: "none", padding: "4px 8px", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>← Back to Team Fit</button>
+              <span style={{ flex: 1 }} />
+              <button onClick={() => { setFitCtx(null); PX_FIT_CTX.cur = null; }} style={{ background: "none", border: "none", padding: "4px 8px", color: G.textTertiary, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Hide</button>
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "24px 0 4px" }}>
         {pxPill(!only, 'All positions', () => setOnly(''), '_all')}
