@@ -6235,7 +6235,7 @@ const PX_STATS = [
 ];
 const PX_STAT_LABEL = Object.fromEntries(PX_STATS);
 const PX_DEFAULT_SORT = { QB: 'passYds', RB: 'rushYds', WR: 'recYds', TE: 'recYds', DL: 'sacks', LB: 'tkl', DB: 'tkl', 'K/P': 'fgm' };
-const PX_EMPTY = { q: '', team: '', groups: [], tiers: [], conf: '', classes: [], htMin: 0, htMax: 0, wtMin: '', wtMax: '', st: '', near: '', miles: 0, hs: '', stars: 0, spTop: 0, scope: 'season', rules: [], cols: null, outperf: false, hideOurs: false };
+const PX_EMPTY = { q: '', team: '', groups: [], tiers: [], conf: '', classes: [], htMin: 0, htMax: 0, wtMin: '', wtMax: '', st: '', near: '', miles: 0, hs: '', stars: 0, spTop: 0, scope: 'season', rules: [], cols: null, outperf: false };
 // One production number per position group (this season), used to rank a
 // player against everyone at his position (Production percentile) and to
 // weigh how much of a room's output is leaving. Deliberately simple and
@@ -6497,7 +6497,6 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
     for (const p of data.players) {
       if (f.team && p.team !== f.team) continue;
       if (f.outperf && !(!p.isHs && p.prodPct >= 80 && (p.tier === 'G5' || p.tier === 'FCS' || p.tier === 'D2' || !p.sp || p.sp > 50))) continue;
-      if (f.hideOurs && tagFor(p)) continue;
       if (f.groups.length && !f.groups.includes(p.grp)) continue;
       if (f.tiers.length && !f.tiers.includes(p.tier)) continue;
       if (f.conf && p.conf !== f.conf) continue;
@@ -6623,8 +6622,8 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
             <span style={{ fontSize: 11.5, color: G.textTertiary, marginRight: 2 }}>Quick search:</span>
-            <button onClick={() => { setF({ ...PX_EMPTY, tiers: ['G5', 'FCS'], classes: [1, 2, 3], outperf: true, hideOurs: true }); setTyped(''); setSort({ col: 'prod', dir: 'desc' }); setShown(100); }}
-              title="Group of 5 and FCS players with eligibility left, producing in the top 20% at their position on a team outside the SP+ top 50 — not already clients or on the board"
+            <button onClick={() => { setF({ ...PX_EMPTY, tiers: ['G5', 'FCS'], classes: [1, 2, 3], outperf: true }); setTyped(''); setSort({ col: 'prod', dir: 'desc' }); setShown(100); }}
+              title="Group of 5 and FCS players with eligibility left, producing in the top 20% at their position on a team outside the SP+ top 50"
               style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "4px 11px", color: G.green, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Transfer candidates</button>
             {tags}
           </div>
@@ -6702,7 +6701,6 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginRight: 4 }}>Stats</span>
             {chip(f.outperf, 'Outperforming team', () => set('outperf', !f.outperf), 'op')}
-            {chip(f.hideOurs, 'Hide clients & board', () => set('hideOurs', !f.hideOurs), 'ho')}
             {chip(f.scope === 'season', `${data.season} season`, () => set('scope', 'season'), 'sc-s')}
             {chip(f.scope === 'career', `Career${data.careerSeasons.length > 1 ? ` (${data.careerSeasons[0]}–${data.careerSeasons[data.careerSeasons.length - 1]})` : ''}`, () => set('scope', 'career'), 'sc-c')}
             <span style={{ width: 8 }} />
