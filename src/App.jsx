@@ -6706,7 +6706,7 @@ function loadProspectData(canBuild, onBuilding) {
     const raw = JSON.parse(await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).text());
     // File predates the team-context fields (portal, usage, coaches…) —
     // rebuild quietly; the next visit gets them.
-    if ((!raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('games')) && canBuild && !PROSPECTS.building) {
+    if ((!raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('draft')) && canBuild && !PROSPECTS.building) {
       PROSPECTS.building = true;
       build(1).finally(() => { PROSPECTS.building = false; });
     }
@@ -7186,43 +7186,236 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
 // Where a player's position is opening up: every team ranked by the share of
 // its room's production that's likely leaving (seniors/5th-years plus
 // next-cycle portal entries), minus incoming high school commits.
-function TeamFit({ p, data, onOpenTeam }) {
+// ── Team fit model ───────────────────────────────────────────────────────────
+// Every team gets a 0–100 score per factor; the player's priorities (0–3 per
+// factor, shared by all agents via the FitPrefs tab) weight them into one fit
+// score. Level aims at where the player's production says they belong: an
+// elite year at a top school keeps them at the top, a weak year points down
+// to teams where they'd start.
+// Academic tiers — generic, from national university rankings (approximate).
+// 1 = elite, 2 = strong, 3 = good; anyone unlisted is 4 (standard).
+const PX_ACADEMIC = (() => {
+  const m = {};
+  [[1, 'Stanford,Notre Dame,Northwestern,Duke,Vanderbilt,Rice,California,UCLA,Michigan,USC,Georgia Tech,Virginia,North Carolina,Harvard,Yale,Princeton,Columbia,Cornell,Brown,Dartmouth,Pennsylvania,Georgetown'],
+   [2, 'Wake Forest,Boston College,Florida,Texas,Wisconsin,Illinois,Georgia,Washington,Ohio State,Maryland,Purdue,Rutgers,Virginia Tech,Texas A&M,Minnesota,Florida State,Miami,Pittsburgh,Tulane,SMU,Syracuse,Indiana,Michigan State,Penn State,Iowa,Army,Navy,Air Force,Clemson,BYU,Baylor,UConn,Lehigh,Lafayette,Bucknell,Colgate,Holy Cross,Fordham,William & Mary,Villanova,Richmond,UC Davis,Delaware'],
+   [3, 'Arizona State,Arizona,Colorado,Oregon,Utah,Iowa State,NC State,Auburn,Alabama,Tennessee,South Carolina,Kansas,Kansas State,Oklahoma,Missouri,Nebraska,Kentucky,LSU,Louisville,Cincinnati,Temple,Houston,Oregon State,Washington State,Colorado State,TCU,Texas Tech,Oklahoma State,Arkansas,Ole Miss,Mississippi State,West Virginia,Buffalo,Miami (OH),James Madison,San Diego State,UCF,South Florida,Utah State,Boise State,Stony Brook,New Hampshire,Maine,Dayton,San Diego,Montana,Montana State,Elon,Furman,Wofford,Davidson']]
+    .forEach(([t, list]) => list.split(',').forEach(n => { m[n] = t; }));
+  return m;
+})();
+const PX_ACAD_LABEL = { 1: 'Elite academics', 2: 'Strong academics', 3: 'Good academics', 4: 'Standard academics' };
+const PX_STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, DB: 4, 'K/P': 1, ATH: 1 };
+const PX_FIT_FACTORS = [
+  ['opp', 'Playing time', 'Would they start: how their production compares with the players who return there, plus how much of the position’s production is leaving (net of commits)'],
+  ['level', 'Level', 'How close the team’s strength (SP+) is to the level the player’s production has earned — or the direction you set'],
+  ['nfl', 'NFL development', 'Players the school sent to the NFL draft at this position in the last five drafts'],
+  ['home', 'Close to home', 'Distance from hometown to campus'],
+  ['acad', 'Academics', 'Generic academic tier from national rankings'],
+  ['scheme', 'Scheme', 'Offense only: how pass-heavy the offense is (receivers, TEs, QBs) or run-heavy (backs)'],
+];
+const PX_FIT_WEIGHT_LABEL = ['Ignore', 'Some', 'Important', 'Top'];
+const PX_FIT_DEFAULT = { w: { opp: 3, level: 3, nfl: 2, home: 1, acad: 1, scheme: 1 }, level: 'auto', tiers: ['P4', 'G5', 'FCS'] };
+const PX_FIT_PRESETS = [
+  ['Balanced', PX_FIT_DEFAULT.w],
+  ['NFL-first', { opp: 2, level: 3, nfl: 3, home: 0, acad: 0, scheme: 2 }],
+  ['Start anywhere', { opp: 3, level: 1, nfl: 1, home: 1, acad: 0, scheme: 1 }],
+  ['Stay close', { opp: 2, level: 2, nfl: 1, home: 3, acad: 1, scheme: 0 }],
+  ['Academics', { opp: 2, level: 2, nfl: 1, home: 1, acad: 3, scheme: 0 }],
+];
+const PX_FIT_LEVELS = [['auto', 'Auto'], ['up', 'Move up'], ['stay', 'Same level'], ['down', 'Move down']];
+
+function pxFitRank(data, p, prefs) {
   const grp = p.grp || pxGroupOf(p.pos);
-  const [tiers, setTiers] = useState(['P4', 'G5']);
-  const [shown, setShown] = useState(15);
-  const rows = useMemo(() => (grp ? pxTeamNeeds(data, grp) : []).filter(t => tiers.includes(t.tier) && t.name !== p.team), [data, grp, tiers, p.team]);
-  if (!grp) return <div style={{ fontSize: 13, color: G.textTertiary, padding: "14px 0" }}>No position on file.</div>;
-  const chip = (t, l) => {
-    const on = tiers.includes(t);
-    return <button key={t} onClick={() => setTiers(on ? tiers.filter(x => x !== t) : [...tiers, t])}
-      style={{ padding: "4px 10px", borderRadius: 99, border: `1px solid ${on ? G.green : G.surfaceBorder}`, background: on ? G.greenSubtle : "transparent", color: on ? G.green : G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{l}</button>;
+  if (!grp) return null;
+  const info = data.teamInfo;
+  const N = Object.values(info).filter(t => t.sp > 0).length || 136;
+  const tPct = (t) => (t && t.sp ? Math.round(100 * (1 - (t.sp - 1) / N)) : t && t.tier === 'G5' ? 12 : 5);
+  const spNear = (pct) => Math.max(1, Math.round((1 - pct / 100) * N) + 1);
+  // Level target
+  const P = p.prodPct || 0;
+  const C = p.isHs ? null : tPct(info[p.team]);
+  const starsD = { 5: 95, 4: 80, 3: 55, 2: 30 };
+  const auto = p.isHs ? (starsD[p.stars] || 40) : P ? Math.max(3, Math.min(99, C + (P - 50))) : C;
+  const base = p.isHs ? auto : C;
+  const D = prefs.level === 'up' ? Math.min(99, base + 25) : prefs.level === 'down' ? Math.max(3, base - 25) : prefs.level === 'stay' ? base : auto;
+  // Who returns at the position, per team (seniors and next-cycle portal
+  // entries are leaving).
+  const pk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
+  const nextOut = new Set((data.portal || []).filter(e => e.cycle === data.season + 1).map(e => `${e.origin}|${pk(e.name)}`));
+  const returners = {};
+  data.players.forEach(pl => {
+    if (pl.isHs || pl.grp !== grp || !pl.team || pl === p) return;
+    if (pxLeaving(pl) || nextOut.has(`${pl.team}|${pk(pl.name)}`)) return;
+    (returners[pl.team] = returners[pl.team] || []).push(pl.prodPct || 0);
+  });
+  const hasDraft = Object.values(info).some(t => t.draft !== undefined);
+  const hasLoc = Object.values(info).some(t => t.lat);
+  const rates = Object.values(info).map(t => t.passRate || 0).filter(x => x > 0).sort((x, y) => x - y);
+  const schemeOk = rates.length > 20 && ['QB', 'WR', 'TE', 'RB'].includes(grp);
+  const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk };
+  const S0 = PX_STARTERS[grp] || 1;
+  const rows = pxTeamNeeds(data, grp).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
+    const ti = info[t.name] || {};
+    const f = {};
+    // Playing time
+    const needScore = Math.max(0, Math.min(100, t.share * 100 * 1.2 + t.portalOut * 8 - t.commits * 6));
+    let slot = 0;
+    if (P) {
+      slot = (returners[t.name] || []).filter(x => x > P).length + 1;
+      const st = slot <= S0 ? 100 : slot === S0 + 1 ? 70 : slot === S0 + 2 ? 45 : 20;
+      f.opp = [0.6 * st + 0.4 * needScore, `${slot <= S0 ? 'Projected starter' : `Projected ${grp}${slot}`} · ${Math.round(t.share * 100)}% of ${grp} production leaving`];
+    } else {
+      f.opp = [needScore, `${Math.round(t.share * 100)}% of ${grp} production leaving${t.commits ? ` · ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`];
+    }
+    // Level
+    const T = tPct(ti), diff = T - D;
+    const sig = diff > 0 ? 14 : 22;
+    const label = diff > 12 ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
+    f.level = [100 * Math.exp(-((diff / sig) ** 2)), ti.sp ? `SP+ #${ti.sp}` : PX_TIER_NAME[ti.tier] || ''];
+    if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
+    if (avail.home) {
+      if (ti.lat) { const d = pxMiles(p, { lat: ti.lat, lng: ti.lng }); f.home = [d <= 150 ? 100 : Math.max(0, 100 - (d - 150) / 13.5), `${Math.round(d).toLocaleString()} mi from home`]; }
+      else f.home = [0, 'Location unknown'];
+    }
+    const tier = PX_ACADEMIC[t.name] || 4;
+    f.acad = [({ 1: 100, 2: 70, 3: 45, 4: 20 })[tier], PX_ACAD_LABEL[tier]];
+    if (avail.scheme) {
+      if (ti.passRate) { const pp = pxMidPct(rates, ti.passRate); f.scheme = [grp === 'RB' ? 100 - pp : pp, `${Math.round(ti.passRate * 100)}% pass plays`]; }
+      else f.scheme = [50, ''];
+    }
+    let num = 0, den = 0;
+    PX_FIT_FACTORS.forEach(([k]) => { const w = (prefs.w || {})[k] || 0; if (f[k] && w > 0) { num += w * f[k][0]; den += w; } });
+    return { ...t, fit: den ? Math.round(num / den) : 0, f, label, slot };
+  }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
+  return { rows, avail, D, C, auto, spTarget: spNear(D), grp };
+}
+
+// Shared per-player priorities (FitPrefs tab: playerId | name | prefs JSON).
+function useFitPrefs(p, user) {
+  const tab = useAdminTab('fitprefs');
+  const h = (tab.data && tab.data.headers) || [];
+  const col = (n) => h.findIndex(x => x.toLowerCase() === n.toLowerCase());
+  const row = tab.data ? tab.data.rows.find(r => r.cells[col('playerId')] === String(p.id)) : null;
+  let saved = null;
+  try { saved = row ? JSON.parse(row.cells[col('prefs')] || 'null') : null; } catch { saved = null; }
+  const meta = row ? { by: row.cells[col('updatedBy')], at: row.cells[col('updatedAt')] } : null;
+  const save = async (prefs) => {
+    const values = { playerId: String(p.id), name: p.name, prefs: JSON.stringify(prefs), updatedBy: (user && user.name) || 'Team', updatedAt: new Date().toISOString().slice(0, 10) };
+    const body = row ? { action: 'tab-update', tab: 'fitprefs', row: row._row, values } : { action: 'tab-append', tab: 'fitprefs', values };
+    const r = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json());
+    if (r.error) throw new Error(r.error);
+    tab.reload();
   };
+  return { saved, meta, save, loading: tab.loading && !tab.data };
+}
+
+function TeamFit({ p, data, onOpenTeam, user }) {
+  const grp = p.grp || pxGroupOf(p.pos);
+  const store = useFitPrefs(p, user);
+  const [draft, setDraft] = useState(null); // unsaved edits
+  const [shown, setShown] = useState(15);
+  const [saving, setSaving] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  useEffect(() => { setDraft(null); setShown(15); setEditOpen(false); }, [p.id]);
+  const prefs = { ...PX_FIT_DEFAULT, ...(store.saved || {}), ...(draft || {}), w: { ...PX_FIT_DEFAULT.w, ...((store.saved || {}).w || {}), ...((draft || {}).w || {}) } };
+  const res = useMemo(() => (grp ? pxFitRank(data, p, prefs) : null), [data, p, grp, JSON.stringify(prefs)]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!grp) return <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No position on file.</div>;
+  const set = (o) => setDraft(d => ({ ...(d || {}), ...o, w: { ...((d || {}).w || {}), ...(o.w || {}) } }));
+  const dirty = !!draft;
+  const first = (p.name || '').split(' ')[0];
+  const seg = (on) => ({ fontFamily: ff, fontSize: 11.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: "none", cursor: "pointer", background: on ? G.surface : 'transparent', color: on ? G.text : G.textTertiary, boxShadow: on ? G.cardShadow : 'none', whiteSpace: "nowrap" });
+  const segWrap = { display: "inline-flex", gap: 2, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: 2 };
+  const presetOn = (w) => PX_FIT_FACTORS.every(([k]) => (prefs.w[k] || 0) === (w[k] || 0));
+  const autoWord = p.isHs ? `${p.stars ? `${p.stars}★` : 'unrated'} recruit` : p.prodPct ? `${pxOrd(p.prodPct)} percentile production at ${p.team}` : `current level (${p.team})`;
+  const levelLine = res && (prefs.level === 'auto'
+    ? `Aiming at teams around SP+ #${res.spTarget}, based on ${autoWord}.`
+    : `Aiming at teams around SP+ #${res.spTarget} (${PX_FIT_LEVELS.find(x => x[0] === prefs.level)[1].toLowerCase()} from ${p.isHs ? 'their recruiting level' : p.team}).`);
+  const save = async () => {
+    setSaving('saving');
+    try { await store.save({ w: prefs.w, level: prefs.level, tiers: prefs.tiers }); setDraft(null); setSaving('saved'); setTimeout(() => setSaving(''), 2000); }
+    catch (e) { setSaving(`Couldn’t save — ${e.message}`); }
+  };
+  const summary = PX_FIT_PRESETS.find(([, w]) => presetOn(w));
+  const labelColor = { Reach: G.yellow, Match: G.green, Safe: G.textSecondary };
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ fontSize: 12.5, color: G.textSecondary, lineHeight: 1.5 }}>
-        Teams where the <b style={{ color: G.text }}>{grp}</b> room is losing the most production after this season, net of incoming commits.
+      {/* Priorities */}
+      <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{first}’s priorities</span>
+          <span style={{ fontSize: 12, color: G.textSecondary }}>{summary ? summary[0] : 'Custom'} · {PX_FIT_LEVELS.find(x => x[0] === prefs.level)[1]} level</span>
+          <span style={{ flex: 1 }} />
+          {store.meta && !dirty && <span style={{ fontSize: 11.5, color: G.textTertiary }}>Set by {store.meta.by} · {store.meta.at}</span>}
+          {!store.meta && !dirty && !store.loading && <span style={{ fontSize: 11.5, color: G.textTertiary }}>Defaults</span>}
+          <button onClick={() => setEditOpen(o => !o)} style={{ background: "none", border: "none", color: G.green, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: ff, padding: 0 }}>{editOpen ? 'Done' : 'Edit'}</button>
+        </div>
+        {editOpen && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12 }}>
+              {PX_FIT_PRESETS.map(([name, w]) => pxPill(presetOn(w), name, () => set({ w }), name))}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {PX_FIT_FACTORS.map(([k, label, hint]) => (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }} title={hint}>
+                  <span style={{ flex: 1, minWidth: 110, fontSize: 13, color: res && !res.avail[k] ? G.textTertiary : G.textSecondary }}>
+                    {label}{res && !res.avail[k] ? <span style={{ fontSize: 11.5 }}> · {k === 'scheme' ? 'offense only' : k === 'home' && p.lat === 0 ? 'no hometown on file' : 'after the next data refresh'}</span> : null}
+                  </span>
+                  <span style={segWrap}>{PX_FIT_WEIGHT_LABEL.map((l, i) => <button key={l} onClick={() => set({ w: { [k]: i } })} style={seg((prefs.w[k] || 0) === i)}>{l}</button>)}</span>
+                </div>
+              ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                <span style={{ flex: 1, minWidth: 110, fontSize: 13, color: G.textSecondary }}>Level direction</span>
+                <span style={segWrap}>{PX_FIT_LEVELS.map(([k, l]) => <button key={k} onClick={() => set({ level: k })} style={seg(prefs.level === k)}>{l}</button>)}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ flex: 1, minWidth: 110, fontSize: 13, color: G.textSecondary }}>Divisions</span>
+                <span style={{ display: "flex", gap: 4 }}>{['P4', 'G5', 'FCS'].map(t => pxPill((prefs.tiers || []).includes(t), PX_TIER_NAME[t], () => set({ tiers: (prefs.tiers || []).includes(t) ? prefs.tiers.filter(x => x !== t) : [...(prefs.tiers || []), t] }), t))}</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              {saving && saving !== 'saving' && <span style={{ fontSize: 12, color: saving === 'saved' ? G.green : G.red }}>{saving === 'saved' ? 'Saved for everyone' : saving}</span>}
+              {dirty && <button onClick={() => setDraft(null)} style={{ background: "none", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", color: G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Reset</button>}
+              <button onClick={save} disabled={!dirty || saving === 'saving'} style={{ background: dirty ? G.green : G.surface, border: "none", borderRadius: 8, padding: "6px 12px", color: dirty ? "#fff" : G.textTertiary, fontSize: 12, fontWeight: 700, cursor: dirty ? "pointer" : "default", fontFamily: ff }}>{saving === 'saving' ? 'Saving…' : 'Save for everyone'}</button>
+            </div>
+          </div>
+        )}
+        {res && <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 8 }}>{levelLine}</div>}
       </div>
-      <div style={{ display: "flex", gap: 5, margin: "10px 0 6px" }}>{chip('P4', 'Power 4')}{chip('G5', 'Group of 5')}{chip('FCS', 'FCS')}</div>
-      {rows.slice(0, shown).map((t, i) => (
+
+      {/* Ranked teams */}
+      {res && res.rows.slice(0, shown).map((t, i) => (
         <div key={t.name} onClick={() => onOpenTeam && onOpenTeam(t.name)}
           onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-          style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderRadius: 8, cursor: onOpenTeam ? "pointer" : "default", borderBottom: `1px solid ${G.surfaceBorder}` }}>
-          <span style={{ width: 18, textAlign: "right", fontSize: 11.5, fontWeight: 700, color: G.textTertiary }}>{i + 1}</span>
-          {t.logo ? <TeamLogo url={t.logo} size={22} /> : <span style={{ width: 22 }} />}
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
-            <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>{[t.conf, t.sp ? `SP+ #${t.sp}` : ''].filter(Boolean).join(' · ')}</span>
-          </span>
-          <span style={{ textAlign: "right", flexShrink: 0 }}>
-            <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: t.share >= 0.5 ? G.green : G.text }}>{t.byCount ? `${t.leaving} of ${t.roomSize} leaving` : `${Math.round(t.share * 100)}% of production leaving`}</span>
-            <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>
-              {[!t.byCount && `${t.leaving} of ${t.roomSize} likely leaving`, t.portalOut ? `${t.portalOut} in portal` : '', t.commits ? `+${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}
+          style={{ padding: "12px 8px", borderRadius: 8, cursor: onOpenTeam ? "pointer" : "default", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ width: 20, textAlign: "right", fontSize: 11.5, fontWeight: 700, color: G.textTertiary }}>{i + 1}</span>
+            {t.logo ? <TeamLogo url={t.logo} size={24} /> : <span style={{ width: 24 }} />}
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
+                <span title="Reach: a step above the level the player has earned · Match: about right · Safe: below it" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: labelColor[t.label] }}>{t.label}</span>
+              </span>
+              <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{[t.conf, t.sp ? `SP+ #${t.sp}` : ''].filter(Boolean).join(' · ')}</span>
             </span>
-          </span>
+            <span style={{ textAlign: "right", flexShrink: 0 }}>
+              <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: t.fit >= 75 ? G.green : G.text, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>{t.fit}</span>
+              <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>fit</span>
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, paddingLeft: 32 }}>
+            {PX_FIT_FACTORS.filter(([k]) => t.f[k] && (prefs.w[k] || 0) > 0).map(([k, label]) => (
+              <span key={k} title={`${label}: ${Math.round(t.f[k][0])}/100${t.f[k][1] ? ` — ${t.f[k][1]}` : ''}`} style={{ display: "inline-flex", flexDirection: "column", gap: 4, minWidth: 84 }}>
+                <span style={{ fontSize: 11.5, color: G.textSecondary, whiteSpace: "nowrap" }}>{t.f[k][1] || label}</span>
+                <span style={{ height: 4, borderRadius: 2, background: G.surfaceBorderLight, overflow: "hidden" }}>
+                  <span style={{ display: "block", width: `${Math.max(3, t.f[k][0])}%`, height: "100%", borderRadius: 2, background: t.f[k][0] >= 70 ? G.green : G.textTertiary }} />
+                </span>
+              </span>
+            ))}
+          </div>
         </div>
       ))}
-      {rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 10, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
-      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 10, lineHeight: 1.5 }}>“Leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data, so some may return) plus next-cycle portal entries once that window opens.</div>
+      {res && res.rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 12, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
+      {res && !res.rows.length && <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No teams match — turn on another division.</div>}
+      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>Fit = the factors above, weighted by {first}’s priorities. “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
     </div>
   );
 }
@@ -7232,6 +7425,8 @@ function TeamFit({ p, data, onOpenTeam }) {
 // the same thing. Deep components ask the app shell to navigate by event.
 const openTeamPage = (team) => { if (team) window.dispatchEvent(new CustomEvent('mh:open-team', { detail: team })); };
 const openSportsPage = (page) => window.dispatchEvent(new CustomEvent('mh:open-page', { detail: page }));
+// A client's full profile page, from any recruiting tool (by ESPN id or name).
+const openClientProfile = (p) => window.dispatchEvent(new CustomEvent('mh:open-client', { detail: { espnId: p.isHs ? '' : String(p.id || ''), name: p.name } }));
 
 // A team's roster by position room: per-stat sortable columns, class, size,
 // production percentile and next-year status, plus portal movement and
@@ -7694,7 +7889,7 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
   );
   return (
     <div style={pxPageWrap(isMobile)}>
-      {pxTitle(isMobile, 'Team Fit', 'Find the teams where a player’s position is opening up')}
+      {pxTitle(isMobile, 'Team Fit', 'Best-fit teams for a player: playing time, level, NFL development, home, academics and scheme')}
       <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, marginTop: 16 }}>
         <div style={{ position: "relative", maxWidth: 520 }}>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search any college player or high school senior…" style={{ ...inputBase, padding: "10px 14px", fontSize: 13.5 }} />
@@ -7727,9 +7922,10 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
               <div style={{ fontSize: 18, fontWeight: 800, color: G.text, letterSpacing: "-0.02em" }}>{pick.name}</div>
               <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 2 }}>{[pick.pos, pick.isHs ? pick.hs : pick.team, pick.prodPct ? `${pick.prodPct}th percentile production` : ''].filter(Boolean).join(' · ')}</div>
             </div>
-            <button onClick={() => V.setOpen(pick)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Open profile</button>
+            <button onClick={() => V.setOpen(pick)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Quick view</button>
+            {V.tagFor(pick) === 'Client' && <button onClick={() => openClientProfile(pick)} style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "7px 12px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Client profile →</button>}
           </div>
-          <TeamFit p={pick} data={data} onOpenTeam={(t) => V.setTeam(t)} />
+          <TeamFit p={pick} data={data} onOpenTeam={(t) => V.setTeam(t)} user={user} />
         </div>
       ) : (
         <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 18 }}>Pick a client or search for a player to see his best-fit teams.</div>
@@ -7939,6 +8135,11 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
             const text = p.url247 ? '247Sports profile ↗' : espn ? 'ESPN profile ↗' : 'Find on 247Sports ↗';
             return <a href={href} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 6, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 11px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>{text}</a>;
           })()}
+          {tag === 'Client' && (
+            <button onClick={() => { onClose(); openClientProfile(p); }}
+              onMouseEnter={e => e.currentTarget.style.background = G.greenBorder} onMouseLeave={e => e.currentTarget.style.background = G.greenSubtle}
+              style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "6px 12px", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Client profile →</button>
+          )}
           <button onClick={onClose} title="Close (Esc)" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 10px", color: G.textSecondary, cursor: "pointer", fontSize: 13, fontFamily: ff }}>✕</button>
         </div>
         <div style={{ overflowY: "auto", flex: 1, padding: "8px 24px 32px" }}>
@@ -7993,7 +8194,7 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
             {data.players && p.grp && !p.boardOnly && (
               <div style={{ marginTop: 22 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 4 }}>Team fit</div>
-                <TeamFit p={p} data={data} onOpenTeam={onOpenTeam} />
+                <TeamFit p={p} data={data} onOpenTeam={onOpenTeam} user={user} />
               </div>
             )}
           </>) : (<>
@@ -8019,7 +8220,7 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
           </div>
 
           {tab === 'fit' ? (
-            <TeamFit p={p} data={data} onOpenTeam={onOpenTeam} />
+            <TeamFit p={p} data={data} onOpenTeam={onOpenTeam} user={user} />
           ) : tab === 'overview' ? (
             groups.length === 0 ? (
               <div style={{ fontSize: 13, color: G.textTertiary, padding: "18px 0" }}>No recorded stats{data.careerSeasons.length > 1 ? ` since ${data.careerSeasons[0]}` : ' this season'}.</div>
@@ -10172,9 +10373,17 @@ function App() {
       if (viewRef.current === 'detail') { setSelected(null); setViewState('roster'); }
     };
     const onPage = (e) => goSportsPageRef.current(e.detail);
+    const onClient = (e) => {
+      const { espnId, name } = e.detail || {};
+      const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
+      const list = clientNavRef.current.athletes || [];
+      const a = (espnId && list.find(x => String(x.espnId || '') === espnId)) || list.find(x => nk(x.name) === nk(name));
+      if (a) clientNavRef.current.setView('detail', a);
+    };
     window.addEventListener('mh:open-team', onTeam);
     window.addEventListener('mh:open-page', onPage);
-    return () => { window.removeEventListener('mh:open-team', onTeam); window.removeEventListener('mh:open-page', onPage); };
+    window.addEventListener('mh:open-client', onClient);
+    return () => { window.removeEventListener('mh:open-team', onTeam); window.removeEventListener('mh:open-page', onPage); window.removeEventListener('mh:open-client', onClient); };
   }, []);
   // Music employee section (Tyler-only while it's broken in): 'home' / 'roster'.
   const [musicPage, setMusicPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
@@ -10212,6 +10421,8 @@ function App() {
       }
     }
   };
+  const clientNavRef = useRef({});
+  clientNavRef.current = { athletes, setView };
   // The side (music/sports) whose sidebar stays up while viewing All.
   const [lastSide, setLastSide] = useState(() => (domain === 'all' ? 'music' : domain));
   const setDomain = (d, page) => {

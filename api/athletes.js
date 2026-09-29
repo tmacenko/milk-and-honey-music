@@ -650,6 +650,9 @@ const ADMIN_TABS = {
   stathistory: { title: 'StatHistory', writable: false },     // robot snapshots — depth/rank trend tracking
   todos: { title: 'Todos', writable: true, autoCreate: ['text', 'createdBy', 'createdAt', 'done'],
     ensureCols: ['sortOrder'] }, // dashboard notes; sortOrder = drag-reorder position (fractional; blank sorts by row = creation order)
+  // Team Fit priorities per player (shared by all agents): playerId = CFBD/ESPN
+  // id (or 'r…' for a high school recruit), prefs = JSON {w, level, tiers}.
+  fitprefs: { title: 'FitPrefs', writable: true, autoCreate: ['playerId', 'name', 'prefs', 'updatedBy', 'updatedAt'] },
   // Brand deal tracker — one row per deal; clients is a comma list of roster
   // names; fileId/fileName point at the deal file in Box (copied into each
   // tagged player's folder at upload time).
