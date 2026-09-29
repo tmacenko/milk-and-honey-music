@@ -7911,7 +7911,6 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
   const [q, setQ] = useState('');
   const [hi, setHi] = useState(0);
   const [listTab, setListTab] = useState('clients');
-  const [showAll, setShowAll] = useState(false);
   const prefsTab = useAdminTab('fitprefs');
   // Starting lists: our clients (college by ESPN id, HS seniors by name) and
   // the recruiting board. Players in the portal and those with priorities set
@@ -8014,23 +8013,22 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
         ((prefsTab.data && prefsTab.data.rows) || []).forEach(r => { prefBy[r.cells[pc('playerId')]] = r.cells[pc('updatedBy')] || 'Set'; });
         const inPortal = (p) => !p.isHs && portal.has(`${p.team}|${pk(p.name)}`);
         const rows = (lists[listTab] || []).slice().sort((x, y) => inPortal(y) - inPortal(x) || (!!prefBy[y.id]) - (!!prefBy[x.id]) || (y.prodPct || 0) - (x.prodPct || 0) || x.name.localeCompare(y.name));
-        const visible = showAll ? rows : rows.slice(0, 10);
-        const th = (t, right) => <th style={{ textAlign: right ? "right" : "left", padding: "8px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{t}</th>;
+        const th = (t, right) => <th style={{ position: "sticky", top: 0, zIndex: 1, background: G.surface, textAlign: right ? "right" : "left", padding: "8px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{t}</th>;
         const td = (right, extra) => ({ padding: "8px 12px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", textAlign: right ? "right" : "left", fontVariantNumeric: "tabular-nums", ...extra });
         return (
           <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, marginTop: 16, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 16px 8px", flexWrap: "wrap" }}>
-              {pxPill(listTab === 'clients', `Clients (${lists.clients.length})`, () => { setListTab('clients'); setShowAll(false); }, 'c')}
-              {pxPill(listTab === 'board', `Recruiting board (${lists.board.length})`, () => { setListTab('board'); setShowAll(false); }, 'b')}
+              {pxPill(listTab === 'clients', `Clients (${lists.clients.length})`, () => setListTab('clients'), 'c')}
+              {pxPill(listTab === 'board', `Recruiting board (${lists.board.length})`, () => setListTab('board'), 'b')}
               <span style={{ flex: 1 }} />
               <span style={{ fontSize: 11.5, color: G.textTertiary }}>Pick a player to rank their best-fit teams — or search above</span>
             </div>
             {rows.length === 0 ? <div style={{ padding: "24px 16px", fontSize: 13, color: G.textTertiary }}>No {listTab === 'clients' ? 'clients' : 'board players'} matched to the college database yet.</div> : (
-              <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+              <div className="mh-hscroll" style={{ overflow: "auto", maxHeight: isMobile ? 420 : 480 }}>
                 <table style={{ borderCollapse: "collapse", width: "100%" }}>
                   <thead><tr>{th('Player')}{th('Pos')}{th('School')}{th('Class')}{th('Prod %ile', true)}{th('Team SP+', true)}{th('Priorities')}{th('Status')}</tr></thead>
                   <tbody>
-                    {visible.map((p, i) => {
+                    {rows.map((p, i) => {
                       const zebra = i % 2 ? G.surfaceRaised : "transparent";
                       return (
                         <tr key={p.id} onClick={() => choose(p)} style={{ cursor: "pointer", background: zebra }}
@@ -8049,9 +8047,6 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
                   </tbody>
                 </table>
               </div>
-            )}
-            {rows.length > 10 && (
-              <button onClick={() => setShowAll(v => !v)} style={{ display: "block", margin: "8px 16px 16px", background: "none", border: "none", padding: 0, color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>{showAll ? 'Show fewer' : `Show all ${rows.length}`}</button>
             )}
           </div>
         );
