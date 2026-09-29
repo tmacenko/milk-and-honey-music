@@ -7235,7 +7235,7 @@ const PX_ACAD_LABEL = { 1: 'Elite academics', 2: 'Strong academics', 3: 'Good ac
 const PX_STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, DB: 4, 'K/P': 1, ATH: 1 };
 const PX_FIT_FACTORS = [
   ['opp', 'Playing time', 'Would they start: how their production compares with the players who return there, plus how much of the position’s production is leaving (net of commits)'],
-  ['level', 'Level', 'Whether the program is at or above the level the player has earned (production and current team; for recruits, stars, national rank and their commitment). Program level = SP+ this season blended with last season, roster talent, and a conference nudge (Power 4 highest). Stronger programs score full marks until they become a big reach; weaker ones lose points'],
+  ['level', 'Level', 'Whether the program is at or above the level the player has earned (production and current team; for recruits, stars, national rank and their commitment). Program level = SP+ this season blended with last season, plus a conference nudge (Power 4 highest). Stronger programs score full marks until they become a big reach; weaker ones lose points'],
   ['nfl', 'NFL development', 'Players the school sent to the NFL draft at this position in the last five drafts'],
   ['home', 'Close to home', 'Distance from hometown to campus'],
   ['acad', 'Academics', 'Generic academic tier from national rankings'],
@@ -7255,14 +7255,13 @@ const PX_FIT_PRESETS = [
 
 // Program level (0–100, higher = stronger) for the fit model's Level factor:
 // SP+ this season blended with last season (last season weighs more until
-// this one has games), 70/30 with roster talent, plus a small conference
-// nudge (Power 4 +6, AAC / Mountain West +2) so brand counts without
+// this one has games), plus a small conference nudge (Power 4 +6, AAC / Mountain West +2) so brand counts without
 // letting a bad P4 team outrank a great G5 one. FBS programs are ranked 1…N.
 function pxProgram(data) {
   if (data._prog) return data._prog;
   const ts = Object.values(data.teamInfo);
   const cnt = (k) => ts.filter(t => t[k] > 0).length || 1;
-  const N = cnt('sp'), NP = cnt('spPrev'), NT = cnt('talentRank');
+  const N = cnt('sp'), NP = cnt('spPrev');
   const rp = (r, n) => 100 * (1 - (r - 1) / n);
   const G5B = { 'American Athletic': 2, 'Mountain West': 2 };
   const pct = {};
@@ -7270,11 +7269,10 @@ function pxProgram(data) {
     const wc = Math.min(1, (t.games || 0) / 12);
     const cur = t.sp ? rp(t.sp, N) : null, prev = t.spPrev ? rp(t.spPrev, NP) : null;
     const sp = cur != null && prev != null ? wc * cur + (1 - wc) * prev : cur != null ? cur : prev;
-    const tal = t.talentRank ? rp(t.talentRank, NT) : null;
-    let v = sp != null && tal != null ? 0.7 * sp + 0.3 * tal : sp != null ? sp : tal;
+    let v = sp;
     if (v == null) { pct[t.name] = t.tier === 'G5' ? 12 : 5; return; }
     v += t.tier === 'P4' ? 6 : (G5B[t.conf] || 0);
-    pct[t.name] = Math.max(1, Math.min(100, v));
+    pct[t.name] = Math.max(1, v); // may pass 100 with the nudge — keeps the top ordered
   });
   const rank = {};
   ts.filter(t => t.tier === 'P4' || t.tier === 'G5').sort((a, b) => pct[b.name] - pct[a.name]).forEach((t, i) => { rank[t.name] = i + 1; });
