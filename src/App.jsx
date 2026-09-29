@@ -7226,7 +7226,7 @@ const PX_ACAD_LABEL = { 1: 'Elite academics', 2: 'Strong academics', 3: 'Good ac
 const PX_STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, DB: 4, 'K/P': 1, ATH: 1 };
 const PX_FIT_FACTORS = [
   ['opp', 'Playing time', 'Would they start: how their production compares with the players who return there, plus how much of the position’s production is leaving (net of commits)'],
-  ['level', 'Level', 'How close the team’s strength (SP+) is to the level the player’s production has earned — or the direction you set'],
+  ['level', 'Level', 'Whether the team is at or above the level the player has earned (production and current team; for recruits, stars and their commitment). Stronger teams score full marks until they become a big reach; weaker teams lose points'],
   ['nfl', 'NFL development', 'Players the school sent to the NFL draft at this position in the last five drafts'],
   ['home', 'Close to home', 'Distance from hometown to campus'],
   ['acad', 'Academics', 'Generic academic tier from national rankings'],
@@ -7241,7 +7241,7 @@ const PX_FIT_PRESETS = [
   ['Stay close', { opp: 2, level: 2, nfl: 1, home: 3, acad: 1, scheme: 0 }],
   ['Academics', { opp: 2, level: 2, nfl: 1, home: 1, acad: 3, scheme: 0 }],
 ];
-const PX_FIT_LEVELS = [['auto', 'Auto'], ['up', 'Move up'], ['stay', 'Same level'], ['down', 'Move down']];
+const PX_FIT_LEVELS = [['auto', 'Auto'], ['top', 'Highest possible'], ['up', 'Move up'], ['stay', 'Same level'], ['down', 'Move down']];
 
 function pxFitRank(data, p, prefs) {
   const grp = p.grp || pxGroupOf(p.pos);
@@ -7253,10 +7253,13 @@ function pxFitRank(data, p, prefs) {
   // Level target
   const P = p.prodPct || 0;
   const C = p.isHs ? null : tPct(info[p.team]);
-  const starsD = { 5: 95, 4: 80, 3: 55, 2: 30 };
-  const auto = p.isHs ? (starsD[p.stars] || 40) : P ? Math.max(3, Math.min(99, C + (P - 50))) : C;
+  // Recruits: stars set a floor, and a commitment is a stronger signal of
+  // level (it means a real offer) — whichever is higher.
+  const starsD = { 5: 97, 4: 85, 3: 65, 2: 40 };
+  const commitPct = p.isHs && p.commit && info[p.commit] ? tPct(info[p.commit]) : 0;
+  const auto = p.isHs ? Math.max(starsD[p.stars] || 45, commitPct) : P ? Math.max(3, Math.min(99, C + (P - 50))) : C;
   const base = p.isHs ? auto : C;
-  const D = prefs.level === 'up' ? Math.min(99, base + 25) : prefs.level === 'down' ? Math.max(3, base - 25) : prefs.level === 'stay' ? base : auto;
+  const D = prefs.level === 'top' ? 99 : prefs.level === 'up' ? Math.min(99, base + 25) : prefs.level === 'down' ? Math.max(3, base - 25) : prefs.level === 'stay' ? base : auto;
   // Who returns at the position, per team (seniors and next-cycle portal
   // entries are leaving).
   const pk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -7288,9 +7291,12 @@ function pxFitRank(data, p, prefs) {
     }
     // Level
     const T = tPct(ti), diff = T - D;
-    const sig = diff > 0 ? 14 : 22;
-    const label = diff > 12 ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
-    f.level = [100 * Math.exp(-((diff / sig) ** 2)), ti.sp ? `SP+ #${ti.sp}` : PX_TIER_NAME[ti.tier] || ''];
+    // The target is a floor, not a bullseye: at or above it scores full
+    // marks until the team is a big reach (15+ points up), then eases off
+    // gently; below it drops faster.
+    const label = diff > 25 ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
+    const lv = diff >= 0 ? Math.exp(-((Math.max(0, diff - 15) / 30) ** 2)) : Math.exp(-((diff / 18) ** 2));
+    f.level = [100 * lv, ti.sp ? `SP+ #${ti.sp}` : PX_TIER_NAME[ti.tier] || ''];
     if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
     if (avail.home) {
       if (ti.lat) { const d = pxMiles(p, { lat: ti.lat, lng: ti.lng }); f.home = [d <= 150 ? 100 : Math.max(0, 100 - (d - 150) / 13.5), `${Math.round(d).toLocaleString()} mi from home`]; }
@@ -7345,10 +7351,12 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const seg = (on) => ({ fontFamily: ff, fontSize: 11.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: "none", cursor: "pointer", background: on ? G.surface : 'transparent', color: on ? G.text : G.textTertiary, boxShadow: on ? G.cardShadow : 'none', whiteSpace: "nowrap" });
   const segWrap = { display: "inline-flex", gap: 2, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: 2 };
   const presetOn = (w) => PX_FIT_FACTORS.every(([k]) => (prefs.w[k] || 0) === (w[k] || 0));
-  const autoWord = p.isHs ? `${p.stars ? `${p.stars}★` : 'unrated'} recruit` : p.prodPct ? `${pxOrd(p.prodPct)} percentile production at ${p.team}` : `current level (${p.team})`;
+  const autoWord = p.isHs ? `${p.stars ? `${p.stars}★` : 'unrated'} recruit${p.commit ? ` committed to ${p.commit}` : ''}` : p.prodPct ? `${pxOrd(p.prodPct)} percentile production at ${p.team}` : `current level (${p.team})`;
   const levelLine = res && (prefs.level === 'auto'
-    ? `Aiming at teams around SP+ #${res.spTarget}, based on ${autoWord}.`
-    : `Aiming at teams around SP+ #${res.spTarget} (${PX_FIT_LEVELS.find(x => x[0] === prefs.level)[1].toLowerCase()} from ${p.isHs ? 'their recruiting level' : p.team}).`);
+    ? `Aiming at SP+ #${res.spTarget} or better, based on ${autoWord}.`
+    : prefs.level === 'top'
+      ? 'Aiming as high as possible — the strongest programs score best on level.'
+      : `Aiming at SP+ #${res.spTarget} or better (${PX_FIT_LEVELS.find(x => x[0] === prefs.level)[1].toLowerCase()} from ${p.isHs ? 'their recruiting level' : p.team}).`);
   const save = async () => {
     setSaving('saving');
     try { await store.save({ w: prefs.w, level: prefs.level, tiers: prefs.tiers }); setDraft(null); setSaving('saved'); setTimeout(() => setSaving(''), 2000); }
@@ -7411,7 +7419,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
-                <span title="Reach: a step above the level the player has earned · Match: about right · Safe: below it" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: labelColor[t.label] }}>{t.label}</span>
+                <span title="Reach: well above the level the player has earned · Match: at or a bit above it · Safe: below it" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: labelColor[t.label] }}>{t.label}</span>
               </span>
               <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{[t.conf, t.sp ? `SP+ #${t.sp}` : ''].filter(Boolean).join(' · ')}</span>
             </span>
