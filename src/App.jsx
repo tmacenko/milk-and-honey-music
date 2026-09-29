@@ -6267,7 +6267,8 @@ function loadProspectData(canBuild, onBuilding) {
     const S = {}; raw.stats.forEach((c, i) => { S[c] = i; });
     const cityIndex = {}, confs = new Set(), states = new Set();
     const players = raw.players.map(p => {
-      const t = raw.teams[p[C.team]] || [];
+      const hs = p[C.kind] === 'hs';
+      const t = hs ? [] : (raw.teams[p[C.team]] || []);
       if (t[0]) confs.add(t[0]);
       if (p[C.st]) states.add(p[C.st]);
       if (p[C.city] && p[C.st] && p[C.lat]) cityIndex[`${p[C.city]}, ${p[C.st]}`.toLowerCase()] = { lat: p[C.lat], lng: p[C.lng], label: `${p[C.city]}, ${p[C.st]}` };
@@ -6275,17 +6276,18 @@ function loadProspectData(canBuild, onBuilding) {
         id: p[C.id], name: `${p[C.first]} ${p[C.last]}`.trim(), team: p[C.team], pos: p[C.pos], grp: pxGroupOf(p[C.pos]),
         ht: p[C.ht], wt: p[C.wt], yr: p[C.yr], city: p[C.city], st: p[C.st], lat: p[C.lat], lng: p[C.lng],
         hs: p[C.hs], stars: p[C.stars], natRank: p[C.natRank],
-        conf: t[0] || '', tier: t[1] || '', sp: t[2] || 0, logo: t[4] || '',
+        conf: t[0] || '', tier: hs ? 'HS' : (t[1] || ''), sp: t[2] || 0, logo: t[4] || '',
         season: p[C.season] || null, career: p[C.career] || null,
+        isHs: hs, hsClass: hs ? p[C.recClass] : 0, commit: hs ? p[C.commit] || '' : '', commitLogo: hs && p[C.commit] ? ((raw.teams[p[C.commit]] || [])[4] || '') : '',
       };
     });
     const hsCount = {};
     players.forEach(p => { if (p.hs) hsCount[p.hs] = (hsCount[p.hs] || 0) + 1; });
     PROSPECTS.data = {
-      ts: raw.ts, season: raw.season, careerSeasons: raw.careerSeasons || [], S, players,
+      ts: raw.ts, season: raw.season, hsClass: raw.hsClass || 0, careerSeasons: raw.careerSeasons || [], S, players,
       confs: [...confs].sort(), states: [...states].sort(), cityIndex,
       cities: Object.values(cityIndex).map(c => c.label).sort(),
-      teams: Object.entries(raw.teams).map(([name, t]) => ({ name, conf: t[0], logo: t[4] })).sort((a, b) => a.name.localeCompare(b.name)),
+      teams: Object.entries(raw.teams).filter(([name]) => players.some(pl => pl.team === name)).map(([name, t]) => ({ name, conf: t[0], logo: t[4] })).sort((a, b) => a.name.localeCompare(b.name)),
       highSchools: Object.keys(hsCount).sort((a, b) => hsCount[b] - hsCount[a]),
     };
     return PROSPECTS.data;
@@ -6344,16 +6346,26 @@ function ProspectSearch({ isMobile, user, athletes }) {
   }, []);
 
   const board = useAdminTab('recruiting');
+  // Keyed by ESPN id for college players; high schoolers have no ESPN id
+  // yet, so they match by name ('n:' keys).
   const ours = useMemo(() => {
     const m = {};
-    (athletes || []).forEach(a => { if (a.espnId) m[String(a.espnId)] = 'Client'; });
+    const nk = (x) => 'n:' + String(x || '').toLowerCase().replace(/[^a-z]/g, '');
+    (athletes || []).forEach(a => { if (a.espnId) m[String(a.espnId)] = 'Client'; if (a.level === 'High School' && a.name) m[nk(a.name)] = 'Client'; });
     const d = board.data;
     if (d) {
       const ei = d.headers.findIndex(h => /^espnid$/i.test(String(h).trim()));
-      if (ei >= 0) d.rows.forEach(r => { const id = String(r.cells[ei] || '').trim(); if (id && !m[id]) m[id] = 'On board'; });
+      const ni = d.headers.findIndex(h => /^player\s*name$|^name$/i.test(String(h).trim()));
+      d.rows.forEach(r => {
+        const id = ei >= 0 ? String(r.cells[ei] || '').trim() : '';
+        if (id && !m[id]) m[id] = 'On board';
+        const n = ni >= 0 ? nk(r.cells[ni]) : '';
+        if (n.length > 4 && !m[n]) m[n] = 'On board';
+      });
     }
     return m;
   }, [athletes, board.data]);
+  const tagFor = (p) => ours[p.isHs ? 'n:' + p.name.toLowerCase().replace(/[^a-z]/g, '') : p.id];
 
   // Search suggestions: the same text could be a name, a school, a hometown
   // or a high school — let the person say which instead of mixing them.
@@ -6421,6 +6433,8 @@ function ProspectSearch({ isMobile, user, athletes }) {
         case 'conf': return p.conf || ''; case 'ht': return p.ht || 0; case 'wt': return p.wt || 0;
         case 'home': return `${p.st} ${p.city}`; case 'hs': return p.hs || '~';
         case 'stars': return p.stars || 0; case 'sp': return p.sp || 999;
+        case 'rank': return p.natRank || 99999;
+        case 'commit': return p.commit || '~';
         default: return null;
       }
     };
@@ -6435,6 +6449,10 @@ function ProspectSearch({ isMobile, user, athletes }) {
   }, [data, fRaw, q, sort]); // eslint-disable-line
 
   const clickSort = (col) => setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col.startsWith('stat:') || ['stars', 'ht', 'wt', 'yr'].includes(col) ? 'desc' : 'asc' });
+  // Recruit view: national rank matters, college stats don't.
+  const hsOnly = f.tiers.length > 0 && f.tiers.every(t => t === 'HS');
+  const showRank = f.tiers.includes('HS');
+  const shownStatCols = hsOnly ? [] : statCols;
   const activeFilters = JSON.stringify({ ...f, cols: null }) !== JSON.stringify({ ...PX_EMPTY, cols: null });
 
   const label = (t) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 6 }}>{t}</div>;
@@ -6482,7 +6500,7 @@ function ProspectSearch({ isMobile, user, athletes }) {
     <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Prospect Search</div>
-        {data && <div style={{ fontSize: 13, color: G.textTertiary }}>{data.players.length.toLocaleString()} FBS + FCS players · {data.season} season</div>}
+        {data && <div style={{ fontSize: 13, color: G.textTertiary }}>{data.players.filter(x => !x.isHs).length.toLocaleString()} FBS + FCS players{data.hsClass && data.players.some(x => x.isHs) ? ` + ${data.players.filter(x => x.isHs).length.toLocaleString()} high school seniors (class of ${data.hsClass})` : ''} · {data.season} season</div>}
       </div>
 
       {!data && (
@@ -6520,7 +6538,7 @@ function ProspectSearch({ isMobile, user, athletes }) {
             </div>
             <div>
               {label('Level')}
-              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{PX_TIERS.filter(([t]) => t !== 'D2' || data.players.some(p => p.tier === 'D2')).map(([t, l]) => chip(f.tiers.includes(t), l, () => toggleIn('tiers', t), t))}</div>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{[...PX_TIERS, ...(data.hsClass ? [['HS', `High school '${String(data.hsClass).slice(2)}`]] : [])].filter(([t]) => t !== 'D2' || data.players.some(p => p.tier === 'D2')).map(([t, l]) => chip(f.tiers.includes(t), l, () => toggleIn('tiers', t), t))}</div>
             </div>
             <div>
               {label('Conference')}
@@ -6635,7 +6653,9 @@ function ProspectSearch({ isMobile, user, athletes }) {
               <thead><tr>
                 {th('name', 'Player', false, { position: "sticky", left: 0, zIndex: 2 })}{th('pos', 'Pos')}{th('yr', 'Class')}{th('team', 'School')}
                 {th('ht', 'Ht', true)}{th('wt', 'Wt', true)}{th('home', 'Hometown')}{th('stars', '★', true)}
-                {statCols.map(k => th('stat:' + k, PX_COL[k] || k, true, { borderLeft: k === statCols[0] ? `1px solid ${G.surfaceBorder}` : undefined }))}
+                {showRank && th('rank', 'Natl rank', true)}
+                {hsOnly && th('commit', 'Committed to')}
+                {shownStatCols.map(k => th('stat:' + k, PX_COL[k] || k, true, { borderLeft: k === shownStatCols[0] ? `1px solid ${G.surfaceBorder}` : undefined }))}
               </tr></thead>
               <tbody>
                 {results.slice(0, shown).map((p, i, arr) => {
@@ -6643,26 +6663,32 @@ function ProspectSearch({ isMobile, user, athletes }) {
                   const rowBg = isOpen ? G.greenSubtle : G.surface;
                   const td = { padding: "8px 12px", fontSize: 13, color: G.textSecondary, borderBottom: i < arr.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle", background: rowBg };
                   const v = f.scope === 'career' ? p.career : p.season;
-                  const tag = ours[p.id];
+                  const tag = tagFor(p);
                   return (
                     <tr key={p.id} onClick={() => setOpen(p)} style={{ cursor: "pointer" }}
                       onMouseEnter={e => { if (!isOpen) [...e.currentTarget.cells].forEach(c => { c.style.background = G.surfaceRaised; }); }}
                       onMouseLeave={e => { [...e.currentTarget.cells].forEach(c => { c.style.background = rowBg; }); }}>
                       <td style={{ ...td, color: G.text, fontWeight: 700, position: "sticky", left: 0, zIndex: 1 }}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
-                          <Avatar name={p.name} photoUrl={`https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={26} faceZoom />
+                          <Avatar name={p.name} photoUrl={p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={26} faceZoom />
                           {p.name}
                           {tag && <span style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 7px" }}>{tag}</span>}
                         </span>
                       </td>
                       <td style={td}>{p.pos || '—'}</td>
-                      <td style={td}>{PX_CLASS[Math.min(p.yr || 0, 5)] || '—'}</td>
-                      <td style={td}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>{p.logo && <TeamLogo url={p.logo} size={18} />}{p.team}</span></td>
+                      <td style={td}>{p.isHs ? `HS '${String(p.hsClass).slice(2)}` : PX_CLASS[Math.min(p.yr || 0, 5)] || '—'}</td>
+                      <td style={{ ...td, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {p.isHs
+                          ? <span>{p.hs}{!hsOnly && p.commit && <span style={{ color: G.textTertiary }}> → {p.commit}</span>}</span>
+                          : <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>{p.logo && <TeamLogo url={p.logo} size={18} />}{p.team}</span>}
+                      </td>
                       <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{pxHt(p.ht) || '—'}</td>
                       <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{p.wt || '—'}</td>
                       <td style={td}>{p.city ? `${p.city}, ${p.st}` : '—'}</td>
                       <td style={{ ...td, textAlign: "right", color: p.stars >= 4 ? G.green : G.textSecondary, fontWeight: p.stars ? 700 : 400 }}>{p.stars || '—'}</td>
-                      {statCols.map((k, ci) => {
+                      {showRank && <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: p.natRank ? G.text : G.textTertiary, fontWeight: p.natRank ? 700 : 400 }}>{p.natRank ? `#${p.natRank}` : '—'}</td>}
+                      {hsOnly && <td style={td}>{p.commit ? <span style={{ display: "inline-flex", alignItems: "center", gap: 7, color: G.text }}>{p.commitLogo && <TeamLogo url={p.commitLogo} size={18} />}{p.commit}</span> : <span style={{ color: G.textTertiary }}>Uncommitted</span>}</td>}
+                      {shownStatCols.map((k, ci) => {
                         const n = v ? fmtStat(v[data.S[k]]) : 0;
                         return <td key={k} style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: n ? G.text : G.textTertiary, fontWeight: n ? 700 : 400, borderLeft: ci === 0 ? `1px solid ${G.surfaceBorder}` : undefined }}>{n || '—'}</td>;
                       })}
@@ -6680,11 +6706,11 @@ function ProspectSearch({ isMobile, user, athletes }) {
           </div>
         )}
         <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 14 }}>
-          Data from CollegeFootballData.com, refreshed weekly{data.ts ? ` · updated ${new Date(data.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}. High school and stars exist for recruited players only.
+          Data from CollegeFootballData.com, refreshed weekly{data.ts ? ` · updated ${new Date(data.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}. High school and stars exist for recruited players only; high school seniors have no game stats.
         </div>
       </>)}
 
-      {open && data && <ProspectPanel p={open} data={data} tag={ours[open.id]} isMobile={isMobile} onClose={() => setOpen(null)} />}
+      {open && data && <ProspectPanel p={open} data={data} tag={tagFor(open)} isMobile={isMobile} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -6719,26 +6745,39 @@ function ProspectPanel({ p, data, tag, isMobile, onClose }) {
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 190, background: "transparent" }} />
       <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: isMobile ? "100%" : 560, zIndex: 200, background: G.surface, boxShadow: G.shadowLg, borderLeft: `1px solid ${G.surfaceBorder}`, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 14px 0" }}>
-          <a href={`https://www.espn.com/college-football/player/_/id/${p.id}`} target="_blank" rel="noopener noreferrer"
-            style={{ display: "flex", alignItems: "center", gap: 6, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 11px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>ESPN profile ↗</a>
+          <a href={p.isHs ? `https://www.google.com/search?q=${encodeURIComponent(`${p.name} ${p.hs} football 247Sports`)}` : `https://www.espn.com/college-football/player/_/id/${p.id}`} target="_blank" rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", gap: 6, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 11px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>{p.isHs ? 'Find on 247Sports ↗' : 'ESPN profile ↗'}</a>
           <button onClick={onClose} title="Close (Esc)" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 10px", color: G.textSecondary, cursor: "pointer", fontSize: 13, fontFamily: ff }}>✕</button>
         </div>
         <div style={{ overflowY: "auto", flex: 1, padding: "8px 24px 32px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ position: "relative", flexShrink: 0 }}>
-              <Avatar name={p.name} photoUrl={`https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={76} faceZoom />
-              {p.logo && <span style={{ position: "absolute", right: -6, bottom: -4 }}><TeamLogo url={p.logo} size={28} /></span>}
+              <Avatar name={p.name} photoUrl={p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={76} faceZoom />
+              {(p.isHs ? p.commitLogo : p.logo) && <span style={{ position: "absolute", right: -6, bottom: -4 }}><TeamLogo url={p.isHs ? p.commitLogo : p.logo} size={28} /></span>}
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.15 }}>{p.name}</div>
-              <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>{[p.pos, p.team, p.conf].filter(Boolean).join(' · ')}</div>
+              <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>{p.isHs ? [p.pos, p.hs, p.city ? `${p.city}, ${p.st}` : ''].filter(Boolean).join(' · ') : [p.pos, p.team, p.conf].filter(Boolean).join(' · ')}</div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                {p.tier && <span style={{ fontSize: 11, fontWeight: 700, color: G.textSecondary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 99, padding: "2px 9px" }}>{({ P4: 'FBS · Power 4', G5: 'FBS · Group of 5', FCS: 'FCS', D2: 'Division II' })[p.tier] || p.tier}</span>}
+                {p.tier && <span style={{ fontSize: 11, fontWeight: 700, color: G.textSecondary, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 99, padding: "2px 9px" }}>{({ P4: 'FBS · Power 4', G5: 'FBS · Group of 5', FCS: 'FCS', D2: 'Division II', HS: `High school · class of ${p.hsClass}` })[p.tier] || p.tier}</span>}
                 {tag && <span style={{ fontSize: 11, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 9px" }}>{tag}</span>}
               </div>
             </div>
           </div>
 
+          {p.isHs ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px 12px", marginTop: 22 }}>
+              {fact('Position', p.pos)}
+              {fact('Height', pxHt(p.ht))}
+              {fact('Weight', p.wt ? `${p.wt} lbs` : '')}
+              {fact('Class', `HS class of ${p.hsClass}`)}
+              {fact('Hometown', p.city ? `${p.city}, ${p.st}` : '')}
+              {fact('High school', p.hs)}
+              {fact('Recruiting', p.stars ? '★'.repeat(p.stars) : '')}
+              {fact('National rank', p.natRank ? `#${p.natRank}` : '')}
+              {fact('Committed to', p.commit || 'Uncommitted')}
+            </div>
+          ) : (<>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px 12px", marginTop: 22 }}>
             {fact('Position', p.pos)}
             {fact('Height', pxHt(p.ht))}
@@ -6783,6 +6822,8 @@ function ProspectPanel({ p, data, tag, isMobile, onClose }) {
               <SportsStatsTab athlete={{ espnId: p.id, level: 'College', name: p.name }} isMobile={isMobile} pad={0} />
             </div>
           )}
+          </>)}
+          {p.isHs && <div style={{ fontSize: 12.5, color: G.textTertiary, marginTop: 22, lineHeight: 1.5 }}>High school game stats aren’t published in a searchable form, so recruits are searchable by profile only: position, size, hometown, high school, stars and rank.</div>}
         </div>
       </div>
     </>
