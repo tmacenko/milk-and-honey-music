@@ -7235,7 +7235,7 @@ const PX_ACAD_LABEL = { 1: 'Elite academics', 2: 'Strong academics', 3: 'Good ac
 const PX_STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, DB: 4, 'K/P': 1, ATH: 1 };
 const PX_FIT_FACTORS = [
   ['opp', 'Playing time', 'Would they start: how their production compares with the players who return there, plus how much of the position’s production is leaving (net of commits)'],
-  ['level', 'Level', 'Whether the program is at or above the level the player has earned (production and current team; for recruits, stars, national rank and their commitment). Program level = SP+ this season blended with last season, plus a conference nudge (Power 4 highest). Stronger programs score full marks until they become a big reach; weaker ones lose points'],
+  ['level', 'Program level', 'How strong the program is — SP+ this season blended with last season, plus a conference nudge (Power 4 highest). Stronger is always better here; set how much playing somewhere big matters to the player. (Realism — whether they could get there — is handled separately by Aim.)'],
   ['nfl', 'NFL development', 'Players the school sent to the NFL draft at this position in the last five drafts'],
   ['home', 'Close to home', 'Distance from hometown to campus'],
   ['acad', 'Academics', 'Generic academic tier from national rankings'],
@@ -7248,13 +7248,13 @@ const PX_FIT_WEIGHT_LABEL = ['Ignore', 'Some', 'Important', 'Top'];
 // top priority has its whole fit pulled down (down to ×0.55 at zero), so
 // it can't ride the other factors into the top of the list.
 const PX_FIT_WEIGHT = [0, 1, 3, 6];
-const PX_FIT_DEFAULT = { w: { opp: 3, level: 3, nfl: 2, home: 1, acad: 1, scheme: 1, build: 1, coach: 1 }, level: 'auto', tiers: ['P4', 'G5', 'FCS'] };
+const PX_FIT_DEFAULT = { w: { opp: 2, level: 2, nfl: 2, home: 1, acad: 1, scheme: 1, build: 1, coach: 1 }, level: 'real', tiers: ['P4', 'G5', 'FCS'] };
 const PX_FIT_PRESETS = [
   ['Balanced', PX_FIT_DEFAULT.w],
-  ['NFL-first', { opp: 2, level: 3, nfl: 3, home: 0, acad: 0, scheme: 2, build: 1, coach: 1 }],
-  ['Start anywhere', { opp: 3, level: 1, nfl: 1, home: 1, acad: 0, scheme: 1, build: 1, coach: 1 }],
-  ['Stay close', { opp: 2, level: 2, nfl: 1, home: 3, acad: 1, scheme: 0, build: 1, coach: 1 }],
-  ['Academics', { opp: 2, level: 2, nfl: 1, home: 1, acad: 3, scheme: 0, build: 1, coach: 1 }],
+  ['NFL-first', { opp: 2, level: 2, nfl: 3, home: 0, acad: 0, scheme: 1, build: 1, coach: 1 }],
+  ['Start anywhere', { opp: 3, level: 0, nfl: 1, home: 1, acad: 0, scheme: 1, build: 1, coach: 1 }],
+  ['Stay close', { opp: 2, level: 1, nfl: 1, home: 3, acad: 1, scheme: 0, build: 1, coach: 1 }],
+  ['Academics', { opp: 2, level: 1, nfl: 1, home: 1, acad: 3, scheme: 0, build: 1, coach: 1 }],
 ];
 
 // Program level (0–100, higher = stronger) for the fit model's Level factor:
@@ -7324,7 +7324,11 @@ function pxTeamCtx(data) {
   };
   return data._teamCtx;
 }
-const PX_FIT_LEVELS = [['auto', 'Auto'], ['top', 'Highest possible'], ['up', 'Move up'], ['stay', 'Same level'], ['down', 'Move down']];
+// Aim = how much reach schools are discounted (realism is separate from how
+// much the player values program level). Older saved prefs used a level
+// direction — mapped onto the nearest aim.
+const PX_FIT_AIMS = [['real', 'Realistic'], ['stretch', 'Stretch'], ['any', 'Anything']];
+const pxAimOf = (v) => (v === 'stretch' || v === 'any' ? v : v === 'up' || v === 'top' ? 'stretch' : 'real');
 
 function pxFitRank(data, p, prefs) {
   const grp = p.grp || pxGroupOf(p.pos);
@@ -7343,8 +7347,10 @@ function pxFitRank(data, p, prefs) {
   const n = p.natRank || 0;
   const rankD = !n ? 0 : n <= 50 ? 97 : n <= 150 ? 90 : n <= 300 ? 82 : n <= 500 ? 74 : 0;
   const auto = p.isHs ? Math.max(starsD[p.stars] || 45, rankD, commitPct) : P ? Math.max(3, Math.min(99, C + (P - 50))) : C;
-  const base = p.isHs ? auto : C;
-  const D = prefs.level === 'top' ? 99 : prefs.level === 'up' ? Math.min(99, base + 25) : prefs.level === 'down' ? Math.max(3, base - 25) : prefs.level === 'stay' ? base : auto;
+  // D = the level the player has earned; reaches above it get discounted
+  // (Aim sets how much).
+  const D = auto;
+  const aim = pxAimOf(prefs.level);
   // Who returns at the position, per team (seniors and next-cycle portal
   // entries are leaving).
   const h = p.isHs && p.hsClass ? Math.max(1, p.hsClass - data.season) : 1;
@@ -7387,17 +7393,16 @@ function pxFitRank(data, p, prefs) {
     }
     // Level
     const T = tPct(ti), diff = T - D;
-    // The target is a floor, not a bullseye: at or above it scores full
-    // marks until the team is a big reach (15+ points up), then eases off
-    // gently; below it drops faster.
-    // Recruits need an offer, so a big step above their level is less
-    // realistic than for a productive transfer — steeper reach for them.
+    // Program level: stronger is always better (weight = how much it matters).
+    f.level = [Math.max(0, Math.min(100, T)), prog.rank[t.name] ? `Program #${prog.rank[t.name]}` : PX_TIER_NAME[ti.tier] || ''];
+    // Realism: teams well above the earned level are discounted as a whole.
+    // Recruits need an offer, so theirs starts sooner and falls faster than
+    // a productive transfer's; Stretch allows 10 (recruits) / 15 more points;
+    // Anything none.
     const reachAt = p.isHs ? 15 : 25;
     const label = diff > reachAt ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
-    const lv = diff < 0 ? Math.exp(-((diff / 18) ** 2))
-      : p.isHs ? Math.exp(-((Math.max(0, diff - 8) / 14) ** 2))
-      : Math.exp(-((Math.max(0, diff - 15) / 30) ** 2));
-    f.level = [100 * lv, prog.rank[t.name] ? `Program #${prog.rank[t.name]}` : PX_TIER_NAME[ti.tier] || ''];
+    const free = (p.isHs ? 8 : 15) + (aim === 'stretch' ? (p.isHs ? 10 : 15) : 0);
+    const realism = aim === 'any' ? 1 : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : 30)) ** 2)));
     if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
     // Distance score is a smooth curve: 25 mi ≈ 93, 145 ≈ 66, 250 ≈ 49, 500 ≈ 24, 1,000 ≈ 6.
     if (avail.home) {
@@ -7430,7 +7435,7 @@ function pxFitRank(data, p, prefs) {
       num += w * f[k][0]; den += w;
       if (lvl === 3) gate *= 0.55 + 0.45 * (f[k][0] / 100);
     });
-    return { ...t, fit: den ? Math.round((num / den) * gate) : 0, f, label, slot };
+    return { ...t, fit: den ? Math.round((num / den) * gate * realism) : 0, f, label, slot, realism };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
   return { rows, avail, D, C, auto, spTarget: spNear(D), grp, h };
 }
@@ -7489,14 +7494,11 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const segWrap = { display: "inline-flex", gap: 2, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: 2 };
   const presetOn = (w) => PX_FIT_FACTORS.every(([k]) => (prefs.w[k] || 0) === (w[k] || 0));
   const autoWord = p.isHs ? `${p.stars ? `${p.stars}★` : 'unrated'}${p.natRank ? ` (#${p.natRank} national)` : ''} recruit${p.commit ? ` committed to ${p.commit}` : ''}` : p.prodPct ? `${pxOrd(p.prodPct)} percentile production at ${p.team}` : `current level (${p.team})`;
-  const levelLine = res && (prefs.level === 'auto'
-    ? `Aiming at programs ranked #${res.spTarget} or better, based on ${autoWord}.`
-    : prefs.level === 'top'
-      ? 'Aiming as high as possible — the strongest programs score best on level.'
-      : `Aiming at programs ranked #${res.spTarget} or better (${PX_FIT_LEVELS.find(x => x[0] === prefs.level)[1].toLowerCase()} from ${p.isHs ? 'their recruiting level' : p.team}).`);
+  const aimNow = pxAimOf(prefs.level);
+  const levelLine = res && `Earned level: about program #${res.spTarget}, based on ${autoWord}. ${aimNow === 'any' ? 'Aim: anything — reach schools aren’t discounted.' : aimNow === 'stretch' ? 'Aim: stretch — schools well above it are discounted less.' : 'Schools well above it are discounted as reaches.'}`;
   const save = async () => {
     setSaving('saving');
-    try { await store.save({ w: prefs.w, level: prefs.level, tiers: prefs.tiers }); setDraft(null); setSaving('saved'); setTimeout(() => setSaving(''), 2000); }
+    try { await store.save({ w: prefs.w, level: pxAimOf(prefs.level), tiers: prefs.tiers }); setDraft(null); setSaving('saved'); setTimeout(() => setSaving(''), 2000); }
     catch (e) { setSaving(`Couldn’t save — ${e.message}`); }
   };
   const summary = PX_FIT_PRESETS.find(([, w]) => presetOn(w));
@@ -7506,7 +7508,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
       <div style={wide ? { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 } : { background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{first}’s priorities</span>
-          <span style={{ fontSize: 12, color: G.textSecondary }}>{summary ? summary[0] : 'Custom'} · {PX_FIT_LEVELS.find(x => x[0] === prefs.level)[1]} level</span>
+          <span style={{ fontSize: 12, color: G.textSecondary }}>{summary ? summary[0] : 'Custom'} · {PX_FIT_AIMS.find(x => x[0] === aimNow)[1]} aim</span>
           <span style={{ flex: 1 }} />
           {store.meta && !dirty && <span style={{ fontSize: 11.5, color: G.textTertiary }}>Set by {store.meta.by} · {store.meta.at}</span>}
           {!store.meta && !dirty && !store.loading && <span style={{ fontSize: 11.5, color: G.textTertiary }}>Defaults</span>}
@@ -7527,8 +7529,8 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
                 </div>
               ))}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                <span style={{ flex: 1, minWidth: 110, fontSize: 13, color: G.textSecondary }}>Level direction</span>
-                <span style={segWrap}>{PX_FIT_LEVELS.map(([k, l]) => <button key={k} onClick={() => set({ level: k })} style={seg(prefs.level === k)}>{l}</button>)}</span>
+                <span title="How much schools above the level the player has earned are discounted. Realistic: reaches count for less. Stretch: bigger reaches allowed. Anything: no discount." style={{ flex: 1, minWidth: 110, fontSize: 13, color: G.textSecondary }}>Aim</span>
+                <span style={segWrap}>{PX_FIT_AIMS.map(([k, l]) => <button key={k} onClick={() => set({ level: k })} style={seg(aimNow === k)}>{l}</button>)}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ flex: 1, minWidth: 110, fontSize: 13, color: G.textSecondary }}>Divisions</span>
@@ -7565,7 +7567,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
-                <span title="Reach: well above the level the player has earned · Match: at or a bit above it · Safe: below it" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: labelColor[t.label] }}>{t.label}</span>
+                <span title="Reach: well above the level the player has earned (discounted unless Aim is Anything) · Match: at or a bit above it · Safe: below it" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: labelColor[t.label] }}>{t.label}</span>
               </span>
               <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{[t.conf, t.sp ? `SP+ #${t.sp}` : ''].filter(Boolean).join(' · ')}</span>
             </span>
