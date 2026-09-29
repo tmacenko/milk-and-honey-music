@@ -558,12 +558,30 @@ function buildChatHtml(msgText) {
 function MultiSelectCombo({ value, onChange, options, placeholder }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const [pos, setPos] = useState(null);
   const ref = useRef();
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQ(''); } };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+  // The list is fixed-positioned against the trigger: forms put this inside
+  // collapsible sections and scrolling panels that clip overflow, which hid
+  // the list below the search box. Opens upward when there's no room below,
+  // and follows the trigger while anything scrolls.
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      if (!ref.current) return;
+      const r = ref.current.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom, want = 270;
+      setPos({ left: r.left, width: r.width, ...(below < want && r.top > below ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); };
+  }, [open]);
   const selected = (value || '').split(',').map(s => s.trim()).filter(Boolean);
   // Keep any already-saved values selectable even if they're not in the sheet list.
   const all = Array.from(new Set([...options, ...selected])).sort((a, b) => a.localeCompare(b));
@@ -582,8 +600,8 @@ function MultiSelectCombo({ value, onChange, options, placeholder }) {
         </span>
         <span style={{ fontSize: 9, color: G.textTertiary, flexShrink: 0 }}>▾</span>
       </div>
-      {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, zIndex: 60, boxShadow: G.shadowLg, overflow: "hidden" }}>
+      {open && pos && (
+        <div style={{ position: "fixed", left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, zIndex: 1000, boxShadow: G.shadowLg, overflow: "hidden" }}>
           <div style={{ padding: 8, borderBottom: `1px solid ${G.surfaceBorder}` }}>
             <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Type to search..."
               style={{ width: "100%", boxSizing: "border-box", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "8px 10px", fontSize: 13, color: G.text, fontFamily: ff, outline: "none" }} />
