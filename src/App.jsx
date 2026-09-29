@@ -7244,6 +7244,10 @@ const PX_FIT_FACTORS = [
   ['coach', 'Coach stability', 'Estimated hot-seat risk: performance (SP+) vs roster talent, win-loss this season and last, SP+ trend and years in charge (first- and second-year coaches get time). A coaching change usually reshuffles the roster'],
 ];
 const PX_FIT_WEIGHT_LABEL = ['Ignore', 'Some', 'Important', 'Top'];
+// What each setting weighs. "Top" also gates: a team that scores badly on a
+// top priority has its whole fit pulled down (down to ×0.55 at zero), so
+// it can't ride the other factors into the top of the list.
+const PX_FIT_WEIGHT = [0, 1, 3, 6];
 const PX_FIT_DEFAULT = { w: { opp: 3, level: 3, nfl: 2, home: 1, acad: 1, scheme: 1, build: 1, coach: 1 }, level: 'auto', tiers: ['P4', 'G5', 'FCS'] };
 const PX_FIT_PRESETS = [
   ['Balanced', PX_FIT_DEFAULT.w],
@@ -7356,6 +7360,7 @@ function pxFitRank(data, p, prefs) {
   const hasLoc = Object.values(info).some(t => t.lat);
   const rates = Object.values(info).map(t => t.passRate || 0).filter(x => x > 0).sort((x, y) => x - y);
   const schemeOk = rates.length > 20 && ['QB', 'WR', 'TE', 'RB'].includes(grp);
+  const rateMed = rates.length ? rates[Math.floor(rates.length / 2)] : 0.5;
   const ctx = pxTeamCtx(data);
   const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk, build: ctx.hasBuild, coach: ctx.hasCoach };
   const S0 = PX_STARTERS[grp] || 1;
@@ -7385,8 +7390,13 @@ function pxFitRank(data, p, prefs) {
     // The target is a floor, not a bullseye: at or above it scores full
     // marks until the team is a big reach (15+ points up), then eases off
     // gently; below it drops faster.
-    const label = diff > 25 ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
-    const lv = diff >= 0 ? Math.exp(-((Math.max(0, diff - 15) / 30) ** 2)) : Math.exp(-((diff / 18) ** 2));
+    // Recruits need an offer, so a big step above their level is less
+    // realistic than for a productive transfer — steeper reach for them.
+    const reachAt = p.isHs ? 15 : 25;
+    const label = diff > reachAt ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
+    const lv = diff < 0 ? Math.exp(-((diff / 18) ** 2))
+      : p.isHs ? Math.exp(-((Math.max(0, diff - 8) / 14) ** 2))
+      : Math.exp(-((Math.max(0, diff - 15) / 30) ** 2));
     f.level = [100 * lv, prog.rank[t.name] ? `Program #${prog.rank[t.name]}` : PX_TIER_NAME[ti.tier] || ''];
     if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
     // Distance score is a smooth curve: 25 mi ≈ 93, 145 ≈ 66, 250 ≈ 49, 500 ≈ 24, 1,000 ≈ 6.
@@ -7397,7 +7407,9 @@ function pxFitRank(data, p, prefs) {
     const tier = PX_ACADEMIC[t.name] || 4;
     f.acad = [({ 1: 100, 2: 70, 3: 45, 4: 20 })[tier], PX_ACAD_LABEL[tier]];
     if (avail.scheme) {
-      if (ti.passRate) { const pp = pxMidPct(rates, ti.passRate); f.scheme = [grp === 'RB' ? 100 - pp : pp, `${Math.round(ti.passRate * 100)}% pass plays`]; }
+      // Distance from the median pass rate (±15 points = the extremes), so
+      // a 48% vs 51% offense reads as the near-tie it is.
+      if (ti.passRate) { const dv = Math.max(-1, Math.min(1, (ti.passRate - rateMed) / 0.15)) * 50; f.scheme = [50 + (grp === 'RB' ? -dv : dv), `${Math.round(ti.passRate * 100)}% pass plays`]; }
       else f.scheme = [50, ''];
     }
     const tc = ctx.byTeam[t.name] || {};
@@ -7411,9 +7423,14 @@ function pxFitRank(data, p, prefs) {
       if (tc.coach) f.coach = [100 - tc.coach.risk, `${tc.coach.label}${tc.coach.tenure ? ` · HC yr ${tc.coach.tenure}` : ''}`];
       else f.coach = [50, ''];
     }
-    let num = 0, den = 0;
-    PX_FIT_FACTORS.forEach(([k]) => { const w = (prefs.w || {})[k] || 0; if (f[k] && w > 0) { num += w * f[k][0]; den += w; } });
-    return { ...t, fit: den ? Math.round(num / den) : 0, f, label, slot };
+    let num = 0, den = 0, gate = 1;
+    PX_FIT_FACTORS.forEach(([k]) => {
+      const lvl = (prefs.w || {})[k] || 0, w = PX_FIT_WEIGHT[lvl] || 0;
+      if (!f[k] || !w) return;
+      num += w * f[k][0]; den += w;
+      if (lvl === 3) gate *= 0.55 + 0.45 * (f[k][0] / 100);
+    });
+    return { ...t, fit: den ? Math.round((num / den) * gate) : 0, f, label, slot };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
   return { rows, avail, D, C, auto, spTarget: spNear(D), grp, h };
 }
@@ -7460,7 +7477,8 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const [shown, setShown] = useState(15);
   const [saving, setSaving] = useState('');
   const [editOpen, setEditOpen] = useState(false);
-  useEffect(() => { setDraft(null); setShown(15); setEditOpen(false); }, [p.id]);
+  const [teamQ, setTeamQ] = useState('');
+  useEffect(() => { setDraft(null); setShown(15); setEditOpen(false); setTeamQ(''); }, [p.id]);
   const prefs = { ...PX_FIT_DEFAULT, ...(store.saved || {}), ...(draft || {}), w: { ...PX_FIT_DEFAULT.w, ...((store.saved || {}).w || {}), ...((draft || {}).w || {}) } };
   const res = useMemo(() => (grp ? pxFitRank(data, p, prefs) : null), [data, p, grp, JSON.stringify(prefs)]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!grp) return <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No position on file.</div>;
@@ -7527,8 +7545,17 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
         {res && <div style={{ fontSize: 12, color: G.textTertiary, marginTop: 8 }}>{levelLine}</div>}
       </div>
   );
+  const tq = teamQ.trim().toLowerCase();
+  const listed = !res ? [] : tq
+    ? res.rows.map((t, i) => [t, i]).filter(([t]) => t.name.toLowerCase().includes(tq) || String(t.conf || '').toLowerCase().includes(tq))
+    : res.rows.slice(0, shown).map((t, i) => [t, i]);
+  const teamSearch = (
+    <input value={teamQ} onChange={e => setTeamQ(e.target.value)} placeholder="Find a team in the ranking…"
+      style={{ ...inputBase, width: wide ? 220 : "100%", padding: "6px 10px", fontSize: 12.5, marginTop: wide ? 0 : 12 }} />
+  );
   const list = (<>
-      {res && res.rows.slice(0, shown).map((t, i) => (
+      {tq && res && !listed.length && <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 8px" }}>No ranked team matches “{teamQ.trim()}” — it may be in a division that’s turned off.</div>}
+      {listed.map(([t, i]) => (
         <div key={t.name} onClick={() => { if (!onOpenTeam) return; PX_FIT_CTX.cur = { team: t.name, p, row: t, rank: i + 1, of: res.rows.length, w: prefs.w, armed: true }; onOpenTeam(t.name); }}
           onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
           style={{ padding: "12px 8px", borderRadius: 8, cursor: onOpenTeam ? "pointer" : "default", borderBottom: `1px solid ${G.surfaceBorder}` }}>
@@ -7552,9 +7579,9 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
           </div>
         </div>
       ))}
-      {res && res.rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 12, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
+      {res && !tq && res.rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 12, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
       {res && !res.rows.length && <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No teams match — turn on another division.</div>}
-      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>Fit = the factors above, weighted by {first}’s priorities. “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
+      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>Fit = the factors above, weighted by {first}’s priorities (Some ×1, Important ×3, Top ×6 — and a team that scores poorly on a Top priority is pulled down overall). “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
   </>);
   if (wide) {
     return (
@@ -7563,7 +7590,10 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
         <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: "16px 16px 20px", minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, padding: "0 8px 8px" }}>
             <span style={{ fontSize: 15, fontWeight: 800, color: G.text }}>Best-fit teams</span>
-            {res && <span style={{ fontSize: 11.5, color: G.textTertiary }}>{res.rows.length} teams ranked · click one for its roster</span>}
+            <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {res && <span style={{ fontSize: 11.5, color: G.textTertiary }}>{res.rows.length} teams ranked · click one for its roster</span>}
+              {teamSearch}
+            </span>
           </div>
           {list}
         </div>
@@ -7574,6 +7604,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
     <div style={{ marginTop: 12 }}>
       {side}
       {prioritiesCard}
+      {teamSearch}
       {list}
     </div>
   );
