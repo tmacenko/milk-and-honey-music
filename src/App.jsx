@@ -2799,11 +2799,12 @@ function RankHistoryChart({ points }) {
 function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
   const hist = useAdminTab('stathistory');
   const [px, setPx] = useState(PROSPECTS.data);
+  const [pxFailed, setPxFailed] = useState(false);
   const [offerSort, setOfferSort] = useState('fit');
   useEffect(() => {
     if (px) return;
     let on = true;
-    loadProspectData(false).then(d => on && setPx(d)).catch(() => {});
+    loadProspectData(false).then(d => on && setPx(d)).catch(() => on && setPxFailed(true));
     return () => { on = false; };
   }, [px]);
   useProspectsRefreshed(setPx);
@@ -2987,8 +2988,9 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
     </div>
   );
 
+  if ((!px && !pxFailed) || hist.loading || store.loading || marks.loading) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[120, [300, 300], 240]} />;
   return (
-    <div style={{ padding: `24px ${pad}px 32px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
+    <div style={{ padding: `24px ${pad}px 32px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg, ...REVEAL }}>
       {snapshot}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 20, alignItems: "stretch" }}>
         {bestFits}
@@ -3005,21 +3007,23 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
 function useClientFitPlayer(a) {
   const hist = useAdminTab('stathistory');
   const [px, setPx] = useState(PROSPECTS.data);
+  const [pxFailed, setPxFailed] = useState(false);
   useEffect(() => {
     if (px) return;
     let on = true;
-    loadProspectData(false).then(d => on && setPx(d)).catch(() => {});
+    loadProspectData(false).then(d => on && setPx(d)).catch(() => on && setPxFailed(true));
     return () => { on = false; };
   }, [px]);
   useProspectsRefreshed(setPx);
   const r247 = useMemo(() => pxR247((hist.data && hist.data.rows) || []), [hist.data]);
   const p = useMemo(() => (px ? pxClientPlayer(px, a, r247) : null), [px, a, r247]);
-  return { px, p, hist };
+  const ready = (!!px || pxFailed) && !hist.loading;
+  return { px, p, hist, ready };
 }
 const pxDealNum = (v) => { const n = parseFloat(String(v || '').replace(/[$,\s]/g, '')); return Number.isFinite(n) ? n : 0; };
 
 function ClientDealTab({ a, isMobile, pad }) {
-  const { px, p } = useClientFitPlayer(a);
+  const { px, p, ready } = useClientFitPlayer(a);
   const hs = a.level === 'High School';
   const deal = pxDealNum(a.contractYearly);
   const role = p ? pxCurrentRole(p) : '';
@@ -3032,8 +3036,9 @@ function ClientDealTab({ a, isMobile, pad }) {
     const where = deal < value.lo ? ['below', G.red] : deal > value.hi ? ['above', G.green] : ['within', G.text];
     verdict = <span>Current deal is <b style={{ color: where[1] }}>{where[0]}</b> the estimated range ({pct > 0 ? '+' : ''}{pct}% vs the midpoint){where[0] === 'below' ? ' — room to renegotiate if his role holds.' : '.'}</span>;
   }
+  if (!ready) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[[124, 124], 280]} />;
   return (
-    <div style={{ padding: `24px ${pad}px 32px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
+    <div style={{ padding: `24px ${pad}px 32px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg, ...REVEAL }}>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
         <div style={card}>
           <div style={eyebrow}>Current deal</div>
@@ -3043,7 +3048,7 @@ function ClientDealTab({ a, isMobile, pad }) {
         <div style={card}>
           <div style={eyebrow}>{hs ? 'Est. freshman value' : `Est. market at ${p && p.team ? p.team : 'current school'}`}</div>
           <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{value ? pxMoneyRange(value) : '—'}</div>
-          <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{value ? (verdict || `${PX_ROLE_LABEL[value.role].replace(/^\w/, c => c.toUpperCase())} · ${value.conf} confidence.`) : px ? 'Not enough on file to estimate.' : 'Loading…'}</div>
+          <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{value ? (verdict || `${PX_ROLE_LABEL[value.role].replace(/^\w/, c => c.toUpperCase())} · ${value.conf} confidence.`) : px ? 'Not enough on file to estimate.' : 'Player database unavailable right now.'}</div>
         </div>
       </div>
       {p && px && <PxValueCard p={p} data={px} isMobile={isMobile} fitsOnly />}
@@ -3054,10 +3059,13 @@ function ClientDealTab({ a, isMobile, pad }) {
 
 // Team Fit tab on a client profile.
 function ClientTeamFitTab({ a, isMobile, pad, user }) {
-  const { px, p } = useClientFitPlayer(a);
+  const { px, p, ready } = useClientFitPlayer(a);
+  const prefsTab = useAdminTab('fitprefs');
+  const notesTab = useAdminTab('fitnotes');
+  if (!ready || prefsTab.loading || notesTab.loading) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[64, 460]} />;
   return (
-    <div style={{ padding: `8px ${pad}px 32px`, background: G.bg }}>
-      {!px ? <div style={{ padding: "40px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
+    <div style={{ padding: `8px ${pad}px 32px`, background: G.bg, ...REVEAL }}>
+      {!px ? <div style={{ padding: "40px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Player database unavailable right now — try again in a minute.</div>
         : !p ? <div style={{ padding: "40px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{a.level === 'College' ? 'Link their ESPN profile to rank teams for them.' : `Team Fit covers recruits up to the class of ${px.season + 2} with a position and class on file.`}</div>
         : <TeamFit p={p} data={px} onOpenTeam={openTeamPage} user={user} wide={!isMobile} />}
     </div>
@@ -3239,8 +3247,9 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
     </div>
   ));
   // Hierarchy: marketability → trend → size → deals → profile attributes.
+  if (hist.loading || hist247.loading) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[[160, 160], 320]} />;
   return (
-    <div style={{ padding: `20px ${pad}px`, background: G.bg, display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ padding: `20px ${pad}px`, background: G.bg, display: "flex", flexDirection: "column", gap: 14, ...REVEAL }}>
       <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "5fr 7fr", gap: 14, alignItems: "stretch" }}>
         {scoreCard}
         {chartCard}
@@ -3279,15 +3288,72 @@ function PillRow({ label, items }) {
 // JSON in the browser (their API sends open CORS headers) using the espnId the
 // nightly sync already found. Cached per athlete for the session.
 const ESPN_STATS_CACHE = {};
+const ESPN_STATS_PENDING = {};
+// Everything the Performance tab shows from ESPN, in one promise (cached per
+// player; the profile starts it on open so the tab is ready when clicked):
+// season tables, this season's game log + every earlier season's, the
+// next/previous game card, and a fresh game's box-score line.
+function loadEspnStats(espnId, league) {
+  if (!espnId) return Promise.resolve(null);
+  if (ESPN_STATS_CACHE[espnId]) return Promise.resolve(ESPN_STATS_CACHE[espnId]);
+  if (ESPN_STATS_PENDING[espnId]) return ESPN_STATS_PENDING[espnId];
+  const base = `https://site.web.api.espn.com/apis/common/v3/sports/football/${league}/athletes/${espnId}`;
+  const get = (u) => fetch(u).then(r => r.json()).catch(() => null);
+  ESPN_STATS_PENDING[espnId] = (async () => {
+    const [stats, log, ov] = await Promise.all([get(`${base}/stats`), get(`${base}/gamelog`), get(`${base}/overview`)]);
+    if (!stats && !log && !ov) return null;
+    const cur = String((((log || {}).filters || []).find(f => f.name === 'season') || {}).value || '');
+    const past = ((((log || {}).filters || []).find(f => f.name === 'season') || {}).options || []).map(o => String(o.value)).filter(y => y && y !== cur);
+    // Fresh games (this week's preseason) finish before ESPN's last-5 feed
+    // rolls them in — the game's own box score has the line immediately.
+    const box = (async () => {
+      try {
+        const ev = (((ov || {}).nextGame || {}).league || {}).events?.[0];
+        const isFinal = /final/i.test(ev?.fullStatus?.type?.shortDetail || '');
+        const inRecent = (((ov || {}).gameLog || {}).statistics || []).some(gr => (gr.events || []).some(x => String(x.eventId) === String(ev?.id)));
+        if (!ev || !isFinal || inRecent) return null;
+        const sum = await get(`https://site.web.api.espn.com/apis/site/v2/sports/football/${league}/summary?event=${ev.id}`);
+        const groups = [];
+        (((sum || {}).boxscore || {}).players || []).forEach(team => (team.statistics || []).forEach(cat => {
+          const hit = (cat.athletes || []).find(x => String((x.athlete || {}).id) === String(espnId));
+          if (hit) groups.push({ name: cat.displayName || cat.name || '', pairs: (cat.labels || []).map((l, i) => `${hit.stats?.[i] ?? ''} ${l}`) });
+        }));
+        return groups.length ? groups : null;
+      } catch { return null; }
+    })();
+    const [boxGroups, ...pastLogs] = await Promise.all([box, ...past.map(y => get(`${base}/gamelog?season=${y}`))]);
+    const logs = {};
+    past.forEach((y, i) => { if (pastLogs[i]) logs[y] = pastLogs[i]; });
+    ESPN_STATS_CACHE[espnId] = { stats, log, ov, boxGroups, logs };
+    return ESPN_STATS_CACHE[espnId];
+  })().finally(() => { delete ESPN_STATS_PENDING[espnId]; });
+  return ESPN_STATS_PENDING[espnId];
+}
+// Placeholder while a profile tab's data arrives: card-shaped blocks roughly
+// where the content lands, so the tab appears whole instead of piece by piece.
+// blocks: heights; an array entry is a row of side-by-side cards.
+function TabSkeleton({ pad, isMobile, blocks = [120, 300] }) {
+  const bone = (h, k) => <div key={k} style={{ height: h, borderRadius: 14, background: G.surface, boxShadow: G.cardShadow, border: `1px solid ${G.cardBorder}`, animation: "mhPulse 1.4s ease-in-out infinite", minWidth: 0 }} />;
+  return (
+    <div aria-busy="true" aria-label="Loading" style={{ padding: pad === 0 ? 0 : `20px ${pad}px 32px`, display: "flex", flexDirection: "column", gap: 16, background: G.bg }}>
+      {blocks.map((h, i) => (Array.isArray(h)
+        ? <div key={i} style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: `repeat(${h.length}, minmax(0, 1fr))`, gap: 16 }}>{h.map((x, j) => bone(x, j))}</div>
+        : bone(h, i)))}
+    </div>
+  );
+}
+const REVEAL = { animation: "fadeIn .2s ease-out" };
+
 function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
   // College clients: production vs. peers from the prospect database
   // (ESPN id == CFBD id). Never triggers a build.
   const wantPx = !!(withReport && a.level === 'College' && a.espnId);
   const [pxData, setPxData] = useState(PROSPECTS.data);
+  const [pxFailed, setPxFailed] = useState(false);
   useEffect(() => {
     if (!wantPx || pxData) return;
     let on = true;
-    loadProspectData(false).then(d => on && setPxData(d)).catch(() => {});
+    loadProspectData(false).then(d => on && setPxData(d)).catch(() => on && setPxFailed(true));
     return () => { on = false; };
   }, [wantPx, pxData]);
   useProspectsRefreshed(setPxData);
@@ -3310,40 +3376,9 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
       .then(j => { c.logs[yearSel] = j || {}; setLogTick(t => t + 1); });
   }, [a.espnId, yearSel, league]);
   useEffect(() => {
-    if (!a.espnId || ESPN_STATS_CACHE[a.espnId]) return;
+    if (!a.espnId) return;
     let dead = false;
-    (async () => {
-      const base = `https://site.web.api.espn.com/apis/common/v3/sports/football/${league}/athletes/${a.espnId}`;
-      const [stats, log, ov] = await Promise.all([
-        fetch(`${base}/stats`).then(r => r.json()).catch(() => null),
-        fetch(`${base}/gamelog`).then(r => r.json()).catch(() => null),
-        // The overview feed carries what the season tables don't have yet:
-        // the previous/next game card (preseason included) + last-5 lines.
-        fetch(`${base}/overview`).then(r => r.json()).catch(() => null),
-      ]);
-      if (dead) return;
-      if (!stats && !log && !ov) { setFailed(true); return; }
-      // Fresh games (this week's preseason) finish before ESPN's last-5 feed
-      // rolls them in — the game's own box score has the line immediately.
-      let boxGroups = null;
-      try {
-        const ev = (((ov || {}).nextGame || {}).league || {}).events?.[0];
-        const isFinal = /final/i.test(ev?.fullStatus?.type?.shortDetail || '');
-        const inRecent = (((ov || {}).gameLog || {}).statistics || []).some(gr => (gr.events || []).some(x => String(x.eventId) === String(ev?.id)));
-        if (ev && isFinal && !inRecent) {
-          const sum = await fetch(`https://site.web.api.espn.com/apis/site/v2/sports/football/${league}/summary?event=${ev.id}`).then(r => r.json());
-          const groups = [];
-          ((sum.boxscore || {}).players || []).forEach(team => (team.statistics || []).forEach(cat => {
-            const hit = (cat.athletes || []).find(x => String((x.athlete || {}).id) === String(a.espnId));
-            if (hit) groups.push({ name: cat.displayName || cat.name || '', pairs: (cat.labels || []).map((l, i) => `${hit.stats?.[i] ?? ''} ${l}`) });
-          }));
-          if (groups.length) boxGroups = groups;
-        }
-      } catch { /* card renders without a line */ }
-      if (dead) return;
-      ESPN_STATS_CACHE[a.espnId] = { stats, log, ov, boxGroups };
-      setData(ESPN_STATS_CACHE[a.espnId]);
-    })();
+    loadEspnStats(a.espnId, league).then(d => { if (dead) return; if (d) setData(d); else setFailed(true); });
     return () => { dead = true; };
   }, [a.espnId, league]);
 
@@ -3353,14 +3388,14 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
 
   if (!a.espnId) return <div style={{ padding: `40px ${pad}px`, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No ESPN profile linked yet — add their ESPN ID in the edit form and stats appear here.</div>;
   const report = pxP ? <ProductionReport p={pxP} data={pxData} narrow={isMobile} /> : null;
-  const shell = (msg) => (
-    <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
+  // Everything appears together: ESPN and (college) production vs peers.
+  if ((!data && !failed) || (wantPx && !pxData && !pxFailed)) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[88, 300, [260, 260]]} />;
+  if (failed) return (
+    <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 16, background: G.bg, ...REVEAL }}>
+      <div style={{ padding: "20px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Couldn’t reach ESPN just now — try again in a minute.</div>
       {report}
-      <div style={{ padding: "20px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{msg}</div>
     </div>
   );
-  if (failed) return shell('Couldn’t reach ESPN just now — try again in a minute.');
-  if (!data) return shell('Loading stats from ESPN…');
 
   const espnUrl = `https://www.espn.com/${league === 'nfl' ? 'nfl' : 'college-football'}/player/stats/_/id/${a.espnId}`;
   // A column that's zero/empty everywhere (a receiver's rushing, a
@@ -3574,7 +3609,7 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
   }
 
   return (
-    <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 16, background: G.bg }}>
+    <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 16, background: G.bg, ...REVEAL }}>
       {!statsCard && !gameCard && (
         <div style={{ padding: 30, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>ESPN doesn't have stat lines for {a.name} yet — they'll appear here once games are logged.</div>
       )}
@@ -3585,10 +3620,32 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
   );
 }
 
-function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user }) {
+// Which profile tab to land on, given the page the profile was opened from
+// (Marketing → Marketing, Contracts → Deal, Team Fit → Team Fit, recruiting
+// and team pages → Performance / Recruiting). Falls back to Overview.
+function profileTabFor(from, a) {
+  const nfl = a.level === 'NFL', hs = a.level === 'High School';
+  const has = (k) => (nfl ? ['overview', 'marketing', a.espnId && 'stats'] : ['overview', hs ? 'recruiting' : a.espnId && 'stats', 'teamfit', 'deal', 'marketing']).includes(k);
+  const want = {
+    marketing: 'marketing', branddeals: 'marketing',
+    contracts: 'deal',
+    teamfit: 'teamfit',
+    recruiting: hs ? 'recruiting' : 'stats', prospects: hs ? 'recruiting' : 'stats', portal: 'stats', teams: 'stats', team: 'stats', player: hs ? 'recruiting' : 'stats',
+  }[from];
+  return want && has(want) ? want : 'overview';
+}
+
+function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fromPage }) {
   const [bioExp, setBioExp] = useState(false);
-  // Staff profile pages: Overview (everything below) + Stats (ESPN pull).
-  const [page, setPage] = useState('overview');
+  // Staff profile tabs; opens on the one that matches where you came from.
+  const [page, setPage] = useState(() => (companyView ? profileTabFor(fromPage, a) : 'overview'));
+  // Start every tab's data on open, so switching tabs shows finished pages.
+  useEffect(() => {
+    if (!companyView) return;
+    if (a.espnId) loadEspnStats(a.espnId, a.level === 'NFL' ? 'nfl' : 'college-football');
+    if (a.level !== 'NFL') loadProspectData(false).catch(() => {});
+    ['socialhistory', 'stathistory', ...(a.level !== 'NFL' ? ['fitprefs', 'fitnotes'] : [])].forEach(k => prefetchAdminTab(k));
+  }, [companyView, a.espnId, a.level]);
   const team = a.nflTeam || a.college || '';
   const typeLine = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join('  ·  ');
   const socialBtns = [
@@ -4720,6 +4777,8 @@ function SocialContractModules({ athlete: a, isMobile, only }) {
       {right ? <div style={{ fontSize: 11, color: G.textTertiary }}>{right}</div> : null}
     </div>
   );
+  const nMods = ['social', 'contract', 'market', 'docs'].filter(k => show(k) && (k !== 'docs' || BOX_DOCS_ENABLED)).length;
+  if (hist.loading || hist247.loading) return <TabSkeleton pad={0} isMobile={isMobile} blocks={[Array(nMods).fill(180)]} />;
   return (
     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${['social', 'contract', 'market', 'docs'].filter(k => show(k) && (k !== 'docs' || BOX_DOCS_ENABLED)).length}, minmax(0, 1fr))`, gap: 12 }}>
       {show('social') && <div style={mod}>
@@ -6279,6 +6338,20 @@ function OnboardLinksModal({ onClose }) {
 // These render raw sheet tabs served by /api/athletes?tab=… so the UI always
 // matches whatever columns the sheet actually has.
 const adminTabCache = {};
+// One request per tab at a time: a profile's prefetch and the tabs that
+// mount while it's in flight share it instead of each fetching.
+const adminTabInflight = {};
+function fetchAdminTab(key, api = 'athletes', fresh = false) {
+  const ck = `${api}:${key}`;
+  if (!fresh && adminTabInflight[ck]) return adminTabInflight[ck];
+  const pr = fetch(`/api/${api}?tab=${key}${fresh ? '&fresh=1' : ''}`)
+    .then(r => r.json())
+    .then(d => { if (d.error) throw new Error(d.error); adminTabCache[ck] = d; return d; })
+    .finally(() => { if (adminTabInflight[ck] === pr) delete adminTabInflight[ck]; });
+  adminTabInflight[ck] = pr;
+  return pr;
+}
+const prefetchAdminTab = (key, api = 'athletes') => { if (!adminTabCache[`${api}:${key}`]) fetchAdminTab(key, api).catch(() => {}); };
 function useAdminTab(key, api = 'athletes', enabled = true) {
   // Serve the last fetch instantly on remount (no loading flash when hopping
   // between pages) and refresh quietly in the background. `api` picks the
@@ -6292,9 +6365,8 @@ function useAdminTab(key, api = 'athletes', enabled = true) {
     if (!adminTabCache[ck]) setLoading(true);
     // fresh=1 bypasses the server's 60s sheet cache — used for the reload
     // right after a write so the writer always sees their own change.
-    fetch(`/api/${api}?tab=${key}${fresh ? '&fresh=1' : ''}`)
-      .then(r => r.json())
-      .then(d => { if (d.error) throw new Error(d.error); adminTabCache[ck] = d; setData(d); setErr(null); })
+    fetchAdminTab(key, api, !!fresh)
+      .then(d => { setData(d); setErr(null); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
   }, [key, api, ck, enabled]);
@@ -8252,7 +8324,7 @@ function useFitNotes(p, user) {
     if (r.error) throw new Error(r.error);
     tab.reload();
   };
-  return { byTeam, set, ready: !!tab.data };
+  return { byTeam, set, ready: !!tab.data, loading: tab.loading && !tab.data };
 }
 // Popover to mark a school for a player.
 function FitMarkMenu({ team, cur, onSave, onClose }) {
@@ -12779,6 +12851,7 @@ function App() {
         @keyframes chatDot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
         @keyframes modalIn{from{opacity:0;transform:translateY(10px) scale(0.98)}to{opacity:1;transform:none}}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+        @keyframes mhPulse{0%,100%{opacity:1}50%{opacity:.55}}
         *{-webkit-font-smoothing:antialiased}
         input,textarea,select{caret-color:${G.green}}
         input:focus,textarea:focus,select:focus{border-color:${G.green}!important;outline:none}
@@ -12936,7 +13009,7 @@ function App() {
           ) : domain === 'sports' ? (
             <>
               {!error && athletesLoaded && view === 'detail' && selected && (
-                <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} user={currentUser} />
+                <SportsDetail key={selected.name} athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} user={currentUser} fromPage={domain === 'sports' ? sportsPage : ''} />
               )}
               {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} decks={sportsDecks || DECKS}
