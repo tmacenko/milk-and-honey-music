@@ -11781,6 +11781,8 @@ function UsagePage({ isMobile, staff, user }) {
   // agent list is only a fallback.
   const directory = data && data.staff && data.staff.length ? data.staff : (staff || []).map(n => ({ name: n, role: '' }));
   const never = directory.filter(x => !seen.has(x.name.toLowerCase()));
+  // Division as set in the Staff tab (not guessed from what they clicked).
+  const divisionOf = (name) => { const d = directory.find(x => x.name.toLowerCase() === String(name || '').toLowerCase()); return d && d.division ? d.division.charAt(0).toUpperCase() + d.division.slice(1).toLowerCase() : ''; };
   const neverGroups = [['admin', 'Admins'], ['agent', 'Agents'], ['marketing', 'Marketing'], ['manager', 'Music managers'], ['records', 'Records'], ['assistant', 'Assistants'], ['', 'Other']]
     .map(([r, l]) => [l, never.filter(x => (r ? x.role === r : !['admin', 'agent', 'marketing', 'manager', 'records', 'assistant'].includes(x.role))).map(x => x.name)])
     .filter(([, names]) => names.length);
@@ -11928,7 +11930,7 @@ function UsagePage({ isMobile, staff, user }) {
                         <td style={{ ...td, color: G.text }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <Avatar name={u.name} size={28} />
-                            <div><div style={{ fontWeight: 600 }}>{u.name}</div><div style={{ fontSize: 11.5, color: G.textTertiary }}>{[u.role && u.role.charAt(0).toUpperCase() + u.role.slice(1), u.side].filter(Boolean).join(' · ')}</div></div>
+                            <div><div style={{ fontWeight: 600 }}>{u.name}</div><div style={{ fontSize: 11.5, color: G.textTertiary }}>{[u.role && u.role.charAt(0).toUpperCase() + u.role.slice(1), divisionOf(u.name)].filter(Boolean).join(' · ')}</div></div>
                           </div>
                         </td>
                         <td style={{ ...td, textAlign: "right", color: G.text }}>{u.daysActive}</td>
