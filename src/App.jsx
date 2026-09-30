@@ -2999,6 +2999,7 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
         {history}
       </div>
       {offerBoard}
+      {p && px && <PxValueCard p={p} data={px} isMobile={isMobile} />}
     </div>
   );
 }
@@ -3418,6 +3419,7 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
   // each scrolling inside its own card instead of stretching the page.
   return (
     <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
+      {pxP && <PxValueCard p={pxP} data={pxData} isMobile={isMobile} />}
       {report && <div style={{ marginBottom: 12 }}>{report}</div>}
       {gameCard}
       {catCards.length === 0 && !logCard && !gameCard && (
@@ -7514,6 +7516,7 @@ const PX_FIT_FACTORS = [
   ['acad', 'Academics', 'Generic academic tier from national rankings'],
   ['scheme', 'Scheme', 'Offense only: how pass-heavy the offense is (receivers, TEs, QBs) or run-heavy (backs)'],
   ['build', 'Roster building', 'How the team added players the last two years. Recruits: teams that sign and develop high schoolers score higher than ones that reload through the portal. College players: the reverse — teams that take transfers'],
+  ['pay', 'Earning potential', 'Estimated market value for this player at the school — their budget (The Athletic), the conference’s spending on the position (Opendorse) and the role they’d have (starter / backup / freshman), scaled to ESPN’s 2026 position prices. A reference range, not a salary'],
   ['coach', 'Coach stability', 'Estimated hot-seat risk: performance (SP+) vs roster talent, win-loss this season and last, SP+ trend and years in charge (first- and second-year coaches get time). A coaching change usually reshuffles the roster'],
 ];
 const PX_FIT_WEIGHT_LABEL = ['Ignore', 'Some', 'Important', 'Top'];
@@ -7521,13 +7524,13 @@ const PX_FIT_WEIGHT_LABEL = ['Ignore', 'Some', 'Important', 'Top'];
 // top priority has its whole fit pulled down (down to ×0.55 at zero), so
 // it can't ride the other factors into the top of the list.
 const PX_FIT_WEIGHT = [0, 1, 3, 6];
-const PX_FIT_DEFAULT = { w: { opp: 2, level: 2, nfl: 2, home: 1, acad: 1, scheme: 1, build: 1, coach: 1 }, level: 'real', tiers: ['P4', 'G5', 'FCS'] };
+const PX_FIT_DEFAULT = { w: { opp: 2, level: 2, nfl: 2, home: 1, acad: 1, scheme: 1, build: 1, coach: 1, pay: 1 }, level: 'real', tiers: ['P4', 'G5', 'FCS'] };
 const PX_FIT_PRESETS = [
   ['Balanced', PX_FIT_DEFAULT.w],
-  ['NFL-first', { opp: 2, level: 2, nfl: 3, home: 0, acad: 0, scheme: 1, build: 1, coach: 1 }],
-  ['Start anywhere', { opp: 3, level: 0, nfl: 1, home: 1, acad: 0, scheme: 1, build: 1, coach: 1 }],
-  ['Stay close', { opp: 2, level: 1, nfl: 1, home: 3, acad: 1, scheme: 0, build: 1, coach: 1 }],
-  ['Academics', { opp: 2, level: 1, nfl: 1, home: 1, acad: 3, scheme: 0, build: 1, coach: 1 }],
+  ['NFL-first', { opp: 2, level: 2, nfl: 3, home: 0, acad: 0, scheme: 1, build: 1, coach: 1, pay: 1 }],
+  ['Start anywhere', { opp: 3, level: 0, nfl: 1, home: 1, acad: 0, scheme: 1, build: 1, coach: 1, pay: 1 }],
+  ['Stay close', { opp: 2, level: 1, nfl: 1, home: 3, acad: 1, scheme: 0, build: 1, coach: 1, pay: 1 }],
+  ['Academics', { opp: 2, level: 1, nfl: 1, home: 1, acad: 3, scheme: 0, build: 1, coach: 1, pay: 1 }],
 ];
 
 // Program level (0–100, higher = stronger) for the fit model's Level factor:
@@ -7639,6 +7642,95 @@ function pxPath(data, team, grp, kind) {
   }
   return { rate, raw: a[ni] ? a[hi] / a[ni] : null, n: a[ni], hits: a[hi], left: kind === 'fr' ? a[2] : 0, natRate, pct: pxMidPct(data._pathSorted[ck], rate) };
 }
+// ── Estimated market value (internal only) ──────────────────────────────────
+// No public player-by-player pay data exists, so this triangulates three
+// published estimates (Sept 2026 files in Tyler's Downloads):
+//  • The Athletic, "Does your college football roster cost $8M or $50M?"
+//    (Sept 16, 2026) — 2026 roster budgets for 68 P4 schools + Notre Dame;
+//  • Opendorse, "College Football Kickoff" (Aug 2025) — each conference's
+//    split of its budget by position group, and average pay for P4 starters,
+//    Group of 6 starters and backups by position;
+//  • ESPN, "What every position costs" (2026) — GM/agent price ranges.
+// Value at a school = ESPN's typical P4 starter price for the position
+// × (school budget ÷ P4 average)^0.8 × (conference's share for the position ÷
+// the average share) × role (backups and G5 from Opendorse's ratios) ×
+// production. Always a range — a negotiating reference, not a salary.
+const PX_BUDGETS = { // $M [low, high], The Athletic 2026
+  'Ohio State': [49, 54], Oregon: [48, 54], Texas: [45, 55], LSU: [47, 50], 'Texas A&M': [45, 50], Miami: [44, 50], 'Notre Dame': [41, 48],
+  'Ole Miss': [39, 45], Tennessee: [41, 43], Alabama: [38, 42], 'Texas Tech': [38, 42], USC: [37, 40], Indiana: [36, 40], Michigan: [36, 40],
+  Florida: [31, 41], 'South Carolina': [32, 35], Auburn: [31, 35], Nebraska: [31, 35], Georgia: [31, 34], Oklahoma: [28, 34], Clemson: [29, 32],
+  'Penn State': [29, 32], Wisconsin: [27, 31], Missouri: [27, 30], UCLA: [26, 30], 'Mississippi State': [25, 30], 'Virginia Tech': [25, 30],
+  'Florida State': [23, 30], Vanderbilt: [25, 28], 'Georgia Tech': [23, 26], Kentucky: [23, 26], 'NC State': [22, 26], Arkansas: [22, 25],
+  Louisville: [22, 25], TCU: [22, 25], Maryland: [21, 25], 'Michigan State': [21, 25], Northwestern: [21, 25], Washington: [21, 25],
+  BYU: [20, 25], 'North Carolina': [20, 25], California: [20, 24], Virginia: [20, 24], SMU: [21, 23], Baylor: [20, 23], Rutgers: [20, 23],
+  'Arizona State': [19, 23], Illinois: [19, 23], 'Kansas State': [19, 22], Minnesota: [18, 22], Utah: [18, 22], 'West Virginia': [18, 22],
+  Syracuse: [17, 22], Colorado: [18, 21], Iowa: [17, 21], Pittsburgh: [16, 20], Purdue: [16, 20], Stanford: [16, 20], 'Wake Forest': [16, 20],
+  UCF: [15, 20], Houston: [15, 19], 'Oklahoma State': [15, 19], Kansas: [15, 17], Arizona: [13, 18], 'Iowa State': [13, 17], Cincinnati: [14, 16],
+  Duke: [12, 15], 'Boston College': [8, 13],
+};
+const PX_BUDGET_AVG = (() => { const v = Object.values(PX_BUDGETS).map(([a, b]) => (a + b) / 2); return v.reduce((x, y) => x + y, 0) / v.length; })();
+const PX_POS_SHARE = { // % of the budget by position group, Opendorse
+  ACC: { QB: 19.4, RB: 10.6, WR: 16.3, TE: 5.3, OL: 17.0, DL: 15.5, LB: 6.8, DB: 7.8, 'K/P': 1.3 },
+  'Big Ten': { QB: 14.4, RB: 9.7, WR: 16.8, TE: 4.8, OL: 15.5, DL: 11.2, LB: 12.1, DB: 13.1, 'K/P': 2.4 },
+  'Big 12': { QB: 23.1, RB: 10.8, WR: 11.5, TE: 6.6, OL: 10.5, DL: 10.2, LB: 10.6, DB: 14.4, 'K/P': 2.3 },
+  SEC: { QB: 15.1, RB: 7.6, WR: 15.9, TE: 3.5, OL: 14.4, DL: 15.5, LB: 13.5, DB: 13.6, 'K/P': 0.9 },
+};
+const PX_POS_SHARE_AVG = (() => { const o = {}; Object.keys(PX_POS_SHARE.SEC).forEach(g => { o[g] = Object.values(PX_POS_SHARE).reduce((x, c) => x + c[g], 0) / 4; }); return o; })();
+// ESPN 2026 typical range for a P4 starter [low, mid, high].
+const PX_VALUE_ANCHOR = {
+  QB: [1e6, 2e6, 3e6], RB: [3e5, 5.5e5, 8e5], WR: [4e5, 7e5, 1e6], TE: [3e5, 4.5e5, 6e5], OL: [5e5, 7.5e5, 1e6],
+  EDGE: [5e5, 8.5e5, 1.2e6], DT: [5e5, 7.5e5, 1e6], DL: [5e5, 8e5, 1.1e6], LB: [3e5, 5e5, 7e5],
+  CB: [4e5, 6.5e5, 9e5], S: [3e5, 6e5, 9e5], DB: [3.5e5, 6.25e5, 9e5], 'K/P': [5e4, 1.1e5, 2e5], ATH: [4e5, 6e5, 9e5],
+};
+// Opendorse average pay vs a P4 starter at the same position.
+const PX_G6_RATIO = { QB: 0.135, RB: 0.33, WR: 0.28, TE: 0.35, OL: 0.325, DL: 0.31, LB: 0.345, DB: 0.317, 'K/P': 0.54, ATH: 0.3 };
+const PX_BACKUP_RATIO = { QB: 0.105, RB: 0.21, WR: 0.15, TE: 0.23, OL: 0.18, DL: 0.22, LB: 0.19, DB: 0.2, 'K/P': 0.24, ATH: 0.17 };
+const pxMoney = (v) => (v >= 995000 ? `$${(v / 1e6).toFixed(1).replace(/\.0$/, '')}M` : `$${Math.max(10, Math.round(v / 1e4) * 10)}K`);
+const pxMoneyRange = (v) => `${pxMoney(v.lo)}–${pxMoney(v.hi)}`;
+// role: 'starter' | 'backup' | 'recruit'. team null = a typical P4 school.
+function pxValue(data, p, team, role) {
+  const grp = p.grp || pxGroupOf(p.pos);
+  if (!grp) return null;
+  const fg = pxFitGroup(p.pos) || grp;
+  const anchor = PX_VALUE_ANCHOR[fg] || PX_VALUE_ANCHOR[grp];
+  if (!anchor) return null;
+  const ti = team ? data.teamInfo[team] || {} : { tier: 'P4' };
+  let school = 1, conf = 'medium';
+  const bud = team ? PX_BUDGETS[team] : null;
+  if (ti.tier === 'P4' || bud) {
+    const shares = PX_POS_SHARE[ti.conf];
+    const shareF = shares && shares[grp] ? shares[grp] / PX_POS_SHARE_AVG[grp] : 1;
+    // Sub-linear: bigger budgets also buy more depth, so a starter's pay
+    // doesn't scale one-for-one with the budget.
+    school = (!team ? 1 : bud ? ((bud[0] + bud[1]) / 2 / PX_BUDGET_AVG) ** 0.8 : 0.7) * shareF;
+  } else if (ti.tier === 'G5') {
+    const T = pxProgram(data).pct[team] || 20;
+    school = (PX_G6_RATIO[grp] || 0.3) * Math.max(0.8, Math.min(1.3, 0.75 + T / 100));
+    conf = 'low';
+  } else {
+    school = (PX_G6_RATIO[grp] || 0.3) * 0.35;
+    conf = 'very low';
+  }
+  let roleF = 1;
+  const P = p.prodPct || 0;
+  if (role === 'recruit') {
+    const n = p.natRank || 0;
+    roleF = (n && n <= 32) || p.stars >= 5 ? 2 : n && n <= 100 ? 1.1 : n && n <= 300 ? 0.55 : p.stars >= 4 ? 0.45 : p.stars === 3 ? 0.2 : 0.1;
+    if (conf === 'medium') conf = 'low';
+  } else if (role === 'backup') {
+    roleF = ti.tier === 'P4' || !team ? PX_BACKUP_RATIO[grp] || 0.2 : 0.5;
+  } else {
+    // Production, with a steeper top end — the market pays stars far more
+    // than solid starters.
+    roleF = P ? 0.6 + 0.8 * (P / 100) + (P >= 90 ? (P - 90) * 0.06 : 0) : 0.9;
+  }
+  const mid = anchor[1] * school * roleF;
+  const w = conf === 'medium' ? [0.75, 1.3] : [0.6, 1.5];
+  return { lo: mid * w[0], mid, hi: mid * w[1], conf, role, anchorMid: anchor[1] };
+}
+// A player's role at their current school (depth chart, else production).
+const pxCurrentRole = (p) => (p.isHs ? 'recruit' : (p.depth && p.depth[0] === 1) || (p.prodPct || 0) >= 40 ? 'starter' : 'backup');
+
 // Backtest of this model on the 2023–25 transfer cycles (~5,900 transfers
 // found at their new school the next season): share who became regulars
 // (enough playing time to be scored) and above-median producers, by the
@@ -7706,7 +7798,7 @@ function pxFitRank(data, p, prefs, notes) {
   const schemeOk = rates.length > 20 && ['QB', 'WR', 'TE', 'RB'].includes(grp);
   const rateMed = rates.length ? rates[Math.floor(rates.length / 2)] : 0.5;
   const ctx = pxTeamCtx(data);
-  const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk, build: ctx.hasBuild, coach: ctx.hasCoach };
+  const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk, build: ctx.hasBuild, coach: ctx.hasCoach, pay: true };
   const S0 = PX_STARTERS[fg] || PX_STARTERS[grp] || 1;
   const hasDepth = !!data.depthTs;
   const gone = h > 1 ? `gone by ${data.season + h}` : 'leaving';
@@ -7797,6 +7889,10 @@ function pxFitRank(data, p, prefs, notes) {
       if (ti.passRate) { const dv = Math.max(-1, Math.min(1, (ti.passRate - rateMed) / 0.15)) * 50; f.scheme = [50 + (grp === 'RB' ? -dv : dv), `${Math.round(ti.passRate * 100)}% pass plays`]; }
       else f.scheme = [50, ''];
     }
+    // Estimated value here, in the role they'd have.
+    const role = p.isHs ? 'recruit' : P ? (slot && slot <= S0 ? 'starter' : 'backup') : (f.opp[0] >= 70 ? 'starter' : 'backup');
+    const value = pxValue(data, p, t.name, role);
+    if (value) f.pay = [Math.max(0, Math.min(100, 50 + 50 * Math.log2(value.mid / value.anchorMid))), `${pxMoneyRange(value)}${role === 'recruit' ? ' freshman' : ` as ${role}`}`];
     const tc = ctx.byTeam[t.name] || {};
     if (avail.build) {
       if (tc.reliance != null) {
@@ -7819,7 +7915,7 @@ function pxFitRank(data, p, prefs, notes) {
     const fitRaw = den ? (num / den) * gate * realism * (isOffer ? 1.1 : 1) : 0;
     // Factors that are only a placeholder for this team (no data behind them).
     const thin = PX_FIT_FACTORS.filter(([fk]) => f[fk] && ((prefs.w || {})[fk] || 0) > 0 && (!f[fk][1] || f[fk][1] === 'Location unknown')).map(([, l]) => l);
-    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, offered: offered.has(t.name), interested: !!(mark && mark.status === 'interested'), mark: mark || null, thin };
+    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, value, offered: offered.has(t.name), interested: !!(mark && mark.status === 'interested'), mark: mark || null, thin };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
   const ruledOut = allRows.filter(t => t.mark && t.mark.status === 'notfit');
   const rows = allRows.filter(t => !(t.mark && t.mark.status === 'notfit'));
@@ -7834,7 +7930,7 @@ function pxFitRank(data, p, prefs, notes) {
 // A team's factor breakdown for one player (Team Fit rows and the team
 // page's "Fit for …" card).
 function PxFitFactors({ t, w }) {
-  return PX_FIT_FACTORS.filter(([k]) => t.f[k] && (w[k] || 0) > 0).map(([k, label]) => (
+  return PX_FIT_FACTORS.filter(([k]) => k !== 'pay' && t.f[k] && (w[k] || 0) > 0).map(([k, label]) => (
     <span key={k} title={`${label}: ${Math.round(t.f[k][0])}/100${t.f[k][1] ? ` — ${t.f[k][1]}` : ''}`} style={{ display: "inline-flex", flexDirection: "column", gap: 4, minWidth: 84 }}>
       <span style={{ fontSize: 11.5, color: G.textSecondary, whiteSpace: "nowrap" }}>{t.f[k][1] || label}</span>
       <span style={{ height: 4, borderRadius: 2, background: G.surfaceBorderLight, overflow: "hidden" }}>
@@ -8157,6 +8253,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, paddingLeft: 32 }}>
             <PxFitFactors t={t} w={prefs.w} />
           </div>
+          {t.value && <div title={`Estimated from ${PX_BUDGETS[t.name] ? `${t.name}’s 2026 roster budget (The Athletic, $${PX_BUDGETS[t.name][0]}–${PX_BUDGETS[t.name][1]}M)` : t.tier === 'G5' ? 'Group of 6 pay levels (Opendorse)' : 'FCS — very little public pay data'}, the conference’s spending on the position (Opendorse) and ESPN’s 2026 position prices. Confidence: ${t.value.conf}.`} style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Est. market value here: <b style={{ color: G.text }}>{pxMoneyRange(t.value)}</b> {t.value.role === 'recruit' ? 'as a freshman' : `as a ${t.value.role}`}{t.value.conf !== 'medium' ? <span style={{ color: G.textTertiary }}> · {t.value.conf} confidence</span> : null}</div>}
           {t.outlook && <div title="From a backtest of this model on 2023–25 transfers: players with similar production who landed at a school this high on their fit list" style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Past transfers like this: <b style={{ color: G.text }}>{t.outlook[0]}%</b> became regulars · <b style={{ color: G.text }}>{t.outlook[1]}%</b> above-median producers</div>}
           {t.thin && t.thin.length > 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 8, paddingLeft: 32 }}>Limited data: {t.thin.join(', ')}</div>}
         </div>
@@ -8545,6 +8642,52 @@ function pxHeadCell(sort, setSort, col, text, right, firstDir = 'desc') {
   );
 }
 
+// Estimated market value card (player pages, client Stats / Recruiting tabs).
+// Staff-only surfaces — never on public or partner pages.
+function PxValueCard({ p, data, isMobile }) {
+  const fit = useMemo(() => (p && data && data.teamInfo ? pxFitRank(data, p, PX_FIT_DEFAULT) : null), [p, data]);
+  if (!p || !data || !data.teamInfo) return null;
+  const here = p.isHs ? pxValue(data, p, null, 'recruit') : p.team ? pxValue(data, p, p.team, pxCurrentRole(p)) : null;
+  if (!here) return null;
+  const top = fit ? fit.rows.filter(t => t.value && t.fit >= 55).sort((a, b) => b.value.mid - a.value.mid).slice(0, 3) : [];
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20 };
+  const bud = !p.isHs && PX_BUDGETS[p.team];
+  return (
+    <div style={card}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: G.text }}>Estimated market value</div>
+        <span style={{ fontSize: 11.5, color: G.textTertiary }}>Internal reference · {here.conf} confidence</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1.4fr)", gap: 24, marginTop: 16 }}>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{p.isHs ? 'Typical P4 freshman offer' : `At ${p.team}`}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, fontVariantNumeric: "tabular-nums", lineHeight: 1.05 }}>{pxMoneyRange(here)}</div>
+          <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>
+            {p.isHs ? `Based on ${[p.stars ? `${p.stars}★` : '', p.natRank ? `#${p.natRank} national` : ''].filter(Boolean).join(', ') || 'their recruiting profile'} at an average P4 budget.`
+              : `As a ${here.role}${p.prodPct ? `, ${pxOrd(p.prodPct)} percentile production` : ''}${bud ? ` · ${p.team} budget $${bud[0]}–${bud[1]}M` : ''}.`}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>Best-paying good fits</div>
+          {top.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 8 }}>No Good-fit schools to price yet.</div> : top.map(t => (
+            <div key={t.name} onClick={() => openTeamPage(t.name)}
+              onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 8px", margin: "4px -8px 0", borderRadius: 8, cursor: "pointer" }}>
+              {t.logo ? <TeamLogo url={t.logo} size={24} /> : <span style={{ width: 24 }} />}
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>{pxFitTier(t.fit)[0]} · as a {t.value.role === 'recruit' ? 'freshman' : t.value.role}</span>
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: G.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{pxMoneyRange(t.value)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 16, lineHeight: 1.5 }}>Triangulated from The Athletic’s 2026 roster budgets, Opendorse’s position splits and pay by role, and ESPN’s 2026 position prices — a negotiating reference, not a known salary. Elite outliers can go well above the range; Group of 5 and FCS estimates rest on much thinner data.</div>
+    </div>
+  );
+}
+
 // Full player page: anyone on the board (or in the database) gets the same
 // tools a client profile has — overview with production vs peers, recruiting
 // (247 rankings, offers, best fits), stats, and the full Team Fit.
@@ -8615,6 +8758,7 @@ function PlayerPage({ pid, isMobile, user, athletes, staff }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 24 }}>
           <div style={{ ...card, display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: "20px 16px" }}>{facts.map(([k, v]) => fact(k, v))}</div>
           {ops && ops.data && <div style={{ maxWidth: 640 }}><RecruitBlock p={p} ops={ops} staff={staff} user={user} /></div>}
+          <PxValueCard p={p} data={data} isMobile={isMobile} />
           {!p.isHs && <ProductionReport p={p} data={data} narrow={isMobile} />}
         </div>
       )}
