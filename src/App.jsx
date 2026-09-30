@@ -3718,8 +3718,14 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
-                <TeamLogo url={a.teamLogo} size={26} />
-                {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: banner ? "#fff" : G.text, fontWeight: 500 }}>{typeLine}</span>}
+                {companyView && a.level === 'College' && a.college
+                  ? <button onClick={() => openTeamByName(a.college)} title={`Open ${a.college}'s team page`} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex" }}><TeamLogo url={a.teamLogo} size={26} /></button>
+                  : <TeamLogo url={a.teamLogo} size={26} />}
+                {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: banner ? "#fff" : G.text, fontWeight: 500 }}>
+                  {companyView && a.level === 'College' && a.college
+                    ? <>{[a.position, a.jerseyNumber && `#${a.jerseyNumber}`].filter(Boolean).join('  ·  ')}{(a.position || a.jerseyNumber) ? '  ·  ' : ''}<TeamLink name={a.college} onOpen={() => openTeamByName(a.college)} /></>
+                    : typeLine}
+                </span>}
                 {companyView && !isFreeAgent(a) && (rosterTagFor(a) || a.depthRank > 0) && (
                   <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: rosterTagFor(a) ? (rosterTagFor(a).warn ? G.yellow : G.textSecondary) : a.depthRank === 1 ? G.green : G.textSecondary, background: !rosterTagFor(a) && a.depthRank === 1 ? G.greenSubtle : (banner ? "rgba(255,255,255,0.07)" : G.surfaceRaised), border: `1px solid ${!rosterTagFor(a) && a.depthRank === 1 ? G.greenBorder : (banner ? "rgba(255,255,255,0.18)" : G.surfaceBorder)}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
                     {rosterTagFor(a) ? rosterTagFor(a).full : `${a.depthRank === 1 ? 'Starter' : a.depthRank === 2 ? '2nd string' : a.depthRank === 3 ? '3rd string' : `${a.depthRank}th string`}${a.depthPos ? ` · ${a.depthPos}` : ''}`}
@@ -8614,6 +8620,19 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
 // "roster outlook" link — from a player, the Teams list, the board — lands on
 // the same thing. Deep components ask the app shell to navigate by event.
 const openTeamPage = (team) => { if (team) window.dispatchEvent(new CustomEvent('mh:open-team', { detail: team })); };
+// A team name (as typed on a client record) → its team page, matched to the
+// player database's spelling first ("Indiana University" → Indiana).
+const openTeamByName = (name) => loadProspectData(false).then(d => openTeamPage(pxTeamByName(d, name) || name)).catch(() => openTeamPage(name));
+// Inline team name that opens the team page: reads as text, turns green and
+// underlines on hover.
+function TeamLink({ name, onOpen, color }) {
+  return (
+    <button onClick={onOpen} title={`Open ${name}'s team page`}
+      onMouseEnter={e => { e.currentTarget.style.color = G.green; e.currentTarget.style.textDecoration = 'underline'; }}
+      onMouseLeave={e => { e.currentTarget.style.color = color || 'inherit'; e.currentTarget.style.textDecoration = 'none'; }}
+      style={{ background: "none", border: "none", padding: 0, font: "inherit", color: color || "inherit", cursor: "pointer", textUnderlineOffset: 3 }}>{name}</button>
+  );
+}
 const openSportsPage = (page) => window.dispatchEvent(new CustomEvent('mh:open-page', { detail: page }));
 // A client's full profile page, from any recruiting tool (by ESPN id or name).
 const openClientProfile = (p) => window.dispatchEvent(new CustomEvent('mh:open-client', { detail: { espnId: p.isHs ? '' : String(p.id || ''), name: p.name } }));
@@ -9062,14 +9081,18 @@ function PlayerPage({ pid, isMobile, user, athletes, staff }) {
       <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 16, flexWrap: "wrap" }}>
         <div style={{ position: "relative", flexShrink: 0 }}>
           <Avatar name={p.name} photoUrl={photo} size={isMobile ? 72 : 96} faceZoom />
-          {logo && <span style={{ position: "absolute", right: -4, bottom: -4 }}><TeamLogo url={logo} size={32} /></span>}
+          {logo && (() => { const t = p.isHs ? p.commit : p.team; return t
+            ? <button onClick={() => openTeamPage(t)} title={`Open ${t}'s team page`} style={{ position: "absolute", right: -4, bottom: -4, background: "none", border: "none", padding: 0, cursor: "pointer" }}><TeamLogo url={logo} size={32} /></button>
+            : <span style={{ position: "absolute", right: -4, bottom: -4 }}><TeamLogo url={logo} size={32} /></span>; })()}
         </div>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <h1 style={{ fontSize: isMobile ? 28 : 34, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, margin: 0, lineHeight: 1.1 }}>{p.name}</h1>
             {tag && <span style={{ fontSize: 11, fontWeight: 700, color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "3px 10px" }}>{tag}</span>}
           </div>
-          <div style={{ fontSize: 15, color: G.textSecondary, marginTop: 8 }}>{p.isHs ? [p.pos, p.hs || a.college, p.hsClass ? `Class of ${p.hsClass}` : ''].filter(Boolean).join(' · ') : [p.pos, p.team, p.conf].filter(Boolean).join(' · ')}</div>
+          <div style={{ fontSize: 15, color: G.textSecondary, marginTop: 8 }}>{p.isHs
+            ? <>{[p.pos, p.hs || a.college, p.hsClass ? `Class of ${p.hsClass}` : ''].filter(Boolean).join(' · ')}{p.commit && <> · Committed to <TeamLink name={p.commit} onOpen={() => openTeamPage(p.commit)} /></>}</>
+            : [p.pos, p.team && <TeamLink key="t" name={p.team} onOpen={() => openTeamPage(p.team)} />, p.conf].filter(Boolean).reduce((acc, x, i) => (i ? [...acc, ' · ', x] : [x]), [])}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {tag === 'Client' && <button onClick={() => openClientProfile(p)} style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "7px 12px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Client profile →</button>}
