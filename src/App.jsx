@@ -3018,57 +3018,6 @@ function useClientFitPlayer(a) {
 }
 const pxDealNum = (v) => { const n = parseFloat(String(v || '').replace(/[$,\s]/g, '')); return Number.isFinite(n) ? n : 0; };
 
-// Overview's at-a-glance strip: the handful of numbers an agent wants first.
-function ClientGlance({ a, isMobile }) {
-  const { px, p, hist } = useClientFitPlayer(a);
-  const last = useLastGameLine(a, a.level === 'College');
-  const hs = a.level === 'High School';
-  const k = String(a.name || '').toLowerCase().trim();
-  const snaps = ((hist.data && hist.data.rows) || []).map(r => r.cells || []).filter(c => String(c[1] || '').toLowerCase().trim() === k && (c[6] || c[11]))
-    .sort((x, y) => String(x[0]).localeCompare(String(y[0])));
-  const cur = snaps[snaps.length - 1], first = snaps[0];
-  const reach = [a.igFollowers, a.twitterFollowers, a.tiktokFollowers].reduce((t, v) => t + countFrom(v), 0);
-  const deal = pxDealNum(a.contractYearly);
-  const role = p ? pxCurrentRole(p) : '';
-  const value = p ? (hs ? pxValue(px, p, null, 'recruit') : p.team ? pxValue(px, p, p.team, role) : null) : null;
-  const offers = pxParseOffers(a.offers247).filter(o => o[1]).length;
-  const tile = (label, value2, sub, key) => (
-    <div key={key || label} style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{label}</div>
-      <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.02em", color: G.text, marginTop: 8, lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{value2 || '—'}</div>
-      {sub && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
-    </div>
-  );
-  const natNow = cur ? +(cur[11] || cur[6]) : 0;
-  const natThen = first ? +(first[11] && cur && cur[11] ? first[11] : first[6]) : 0;
-  const move = natNow && natThen && first !== cur ? natThen - (cur[11] && first[11] ? natNow : +cur[6]) : 0;
-  const tiles = hs ? [
-    tile('247', cur ? `${cur[10] || cur[5] || '—'}★` : '', natNow ? `#${natNow} national${move ? ` · ${move > 0 ? '▲' : '▼'} ${Math.abs(move)}` : ''}` : 'Read nightly from 247', '247'),
-    tile('Offers', offers ? String(offers) : '', a.committedTo ? `Committed · ${a.committedTo}` : 'Uncommitted', 'offers'),
-    tile('Est. freshman value', value ? pxMoneyRange(value) : '', value ? 'at an average P4 budget' : '', 'value'),
-    tile('Social reach', reach ? bigNum(reach) : '', 'followers', 'reach'),
-    tile('Class', a.classOf ? String(a.classOf) : '', a.college || a.school || '', 'class'),
-  ] : [
-    tile('Role', role ? pxRoleName[role] : '', p && p.depth ? (p.depth[1] === 'RES' ? 'Reserve list' : `${p.depth[1]} ${p.depth[0]}`) : '', 'role'),
-    tile('Production', p && p.prodPct ? pxOrd(p.prodPct) : '', p && p.prodPct ? `percentile · ${PX_BUCKET_LABEL[p.scoreBucket] || ''}` : 'Not enough snaps to score yet', 'prod'),
-    tile('Deal', deal ? pxMoney(deal) : '', value ? `Est. market ${pxMoneyRange(value)}` : '', 'deal'),
-    tile('Social reach', reach ? bigNum(reach) : '', 'followers', 'reach'),
-    tile('Last game', last ? (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: G.textTertiary }}>{last.vs}</span>
-        {last.logo ? <img src={last.logo} alt={last.opp} title={last.opp} style={{ width: 28, height: 28, objectFit: "contain" }} /> : <span>{last.opp}</span>}
-        <span style={{ color: last.result === 'W' ? G.green : last.result === 'L' ? G.red : G.text }}>{last.result}</span>
-      </span>
-    ) : '', last ? last.text : 'No game in the last 10 days', 'last'),
-  ];
-  return (
-    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: isMobile ? 16 : 20, display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : `repeat(${tiles.length}, minmax(0, 1fr))`, gap: isMobile ? 16 : 20 }}>
-      {tiles}
-    </div>
-  );
-}
-
-// Deal tab: the current deal against the estimated market, plus documents.
 function ClientDealTab({ a, isMobile, pad }) {
   const { px, p } = useClientFitPlayer(a);
   const hs = a.level === 'High School';
@@ -3749,7 +3698,6 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user }) 
           <ClientDealTab a={a} isMobile={isMobile} pad={pad} />
         ) : (
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
-          {companyView && a.level !== 'NFL' && <ClientGlance a={a} isMobile={isMobile} />}
           {a.bio && (
             <div>
               <p style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{isMobile ? bioText : a.bio}</p>
