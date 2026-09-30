@@ -2862,16 +2862,11 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
   const offered = offers.filter(o => o.offered);
   const interestOnly = offers.filter(o => !o.offered);
   const committed = offers.find(o => /commit|signed|enrolled/i.test(o.status));
-  const hotOrder = (o) => (/commit|signed|enrolled/i.test(o.status) ? 0 : /hot/i.test(o.status) ? 1 : /warm/i.test(o.status) ? 2 : 3);
+  // Committed school first; interest levels aren't shown or used.
+  const hotOrder = (o) => (/commit|signed|enrolled/i.test(o.status) ? 0 : 1);
   const sortedOffers = offered.slice().sort((x, y) => hotOrder(x) - hotOrder(y) || (offerSort === 'fit'
     ? ((y.fit && y.fit.fit) || 0) - ((x.fit && x.fit.fit) || 0)
     : (x.rank || 999) - (y.rank || 999)));
-  const statusChip = (st) => {
-    // Only meaningful interest levels — 247's Cool / Cold / None are noise.
-    if (!/warm|hot|commit|signed|enrolled/i.test(st || '')) return null;
-    const c = /commit|signed|enrolled/i.test(st) ? [G.green, G.greenSubtle, G.greenBorder] : /hot/i.test(st) ? [G.red, 'transparent', G.red] : [G.yellow, 'transparent', G.yellow];
-    return <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: c[0], background: c[1], border: `1px solid ${c[2]}`, borderRadius: 99, padding: "1px 8px", whiteSpace: "nowrap" }}>{st}</span>;
-  };
 
   // ── Snapshot strip ──
   const starsN = cur ? parseInt(cur.compStars || cur.stars, 10) || 0 : 0;
@@ -2953,7 +2948,6 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.name || o.school}</span>
-          {statusChip(o.status)}
         </div>
         <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {[o.rank ? `Program #${o.rank}` : o.t ? PX_TIER_NAME[o.t.tier] || '' : '', o.visit ? `Visit ${o.visit}` : ''].filter(Boolean).join(' · ')}
@@ -2982,7 +2976,7 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
             <span style={eyebrow}>Interest, no offer yet</span>
             {interestOnly.map(o => (
               <span key={o.school} onClick={() => o.name && openTeamPage(o.name)} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, color: G.textSecondary, cursor: o.name ? "pointer" : "default" }}>
-                {logoEl(o.t, 20)}{o.name || o.school}{statusChip(o.status)}
+                {logoEl(o.t, 20)}{o.name || o.school}
               </span>
             ))}
           </div>
