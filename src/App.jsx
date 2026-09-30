@@ -2368,6 +2368,7 @@ function buildLastGameLine(log) {
   }
   return {
     pre: `${ev.atVs === 'at' ? '@' : 'vs'} ${(ev.opponent || {}).abbreviation || ''}`.trim(),
+    vs: ev.atVs === 'at' ? '@' : 'vs', logo: (ev.opponent || {}).logo || '', opp: (ev.opponent || {}).abbreviation || '',
     result: ev.gameResult || '',
     // Blockers and anyone without counting stats still get the score instead.
     text: parts.join(', ') || ev.score || '',
@@ -3016,15 +3017,10 @@ function useClientFitPlayer(a) {
   return { px, p, hist };
 }
 const pxDealNum = (v) => { const n = parseFloat(String(v || '').replace(/[$,\s]/g, '')); return Number.isFinite(n) ? n : 0; };
-const pxRoleName = { starter: 'Starter', rotation: 'Rotation', backup: 'Rotation', reserve: 'Reserve', recruit: 'Recruit' };
 
 // Overview's at-a-glance strip: the handful of numbers an agent wants first.
 function ClientGlance({ a, isMobile }) {
   const { px, p, hist } = useClientFitPlayer(a);
-  const store = useFitPrefs(p, null);
-  const marks = useFitNotes(p, null);
-  const prefs = pxMergePrefs(store.saved);
-  const fit = useMemo(() => (px && p && p.grp ? pxFitRank(px, p, prefs, marks.byTeam) : null), [px, p, JSON.stringify(prefs), JSON.stringify(marks.byTeam)]); // eslint-disable-line react-hooks/exhaustive-deps
   const last = useLastGameLine(a, a.level === 'College');
   const hs = a.level === 'High School';
   const k = String(a.name || '').toLowerCase().trim();
@@ -3032,7 +3028,6 @@ function ClientGlance({ a, isMobile }) {
     .sort((x, y) => String(x[0]).localeCompare(String(y[0])));
   const cur = snaps[snaps.length - 1], first = snaps[0];
   const reach = [a.igFollowers, a.twitterFollowers, a.tiktokFollowers].reduce((t, v) => t + countFrom(v), 0);
-  const top = fit && fit.rows[0];
   const deal = pxDealNum(a.contractYearly);
   const role = p ? pxCurrentRole(p) : '';
   const value = p ? (hs ? pxValue(px, p, null, 'recruit') : p.team ? pxValue(px, p, p.team, role) : null) : null;
@@ -3050,7 +3045,6 @@ function ClientGlance({ a, isMobile }) {
   const tiles = hs ? [
     tile('247', cur ? `${cur[10] || cur[5] || '—'}★` : '', natNow ? `#${natNow} national${move ? ` · ${move > 0 ? '▲' : '▼'} ${Math.abs(move)}` : ''}` : 'Read nightly from 247', '247'),
     tile('Offers', offers ? String(offers) : '', a.committedTo ? `Committed · ${a.committedTo}` : 'Uncommitted', 'offers'),
-    tile('Top fit', top ? top.name : '', top ? `${pxFitTier(top.fit)[0]} · ${top.fit}` : '', 'fit'),
     tile('Est. freshman value', value ? pxMoneyRange(value) : '', value ? 'at an average P4 budget' : '', 'value'),
     tile('Social reach', reach ? bigNum(reach) : '', 'followers', 'reach'),
     tile('Class', a.classOf ? String(a.classOf) : '', a.college || a.school || '', 'class'),
@@ -3058,12 +3052,17 @@ function ClientGlance({ a, isMobile }) {
     tile('Role', role ? pxRoleName[role] : '', p && p.depth ? (p.depth[1] === 'RES' ? 'Reserve list' : `${p.depth[1]} ${p.depth[0]}`) : '', 'role'),
     tile('Production', p && p.prodPct ? pxOrd(p.prodPct) : '', p && p.prodPct ? `percentile · ${PX_BUCKET_LABEL[p.scoreBucket] || ''}` : 'Not enough snaps to score yet', 'prod'),
     tile('Deal', deal ? pxMoney(deal) : '', value ? `Est. market ${pxMoneyRange(value)}` : '', 'deal'),
-    tile('Top fit', top ? top.name : '', top ? `${pxFitTier(top.fit)[0]} · ${top.fit}` : '', 'fit'),
     tile('Social reach', reach ? bigNum(reach) : '', 'followers', 'reach'),
-    tile('Last game', last ? `${last.pre} ${last.result}` : '', last ? last.text : 'No game in the last 10 days', 'last'),
+    tile('Last game', last ? (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: G.textTertiary }}>{last.vs}</span>
+        {last.logo ? <img src={last.logo} alt={last.opp} title={last.opp} style={{ width: 28, height: 28, objectFit: "contain" }} /> : <span>{last.opp}</span>}
+        <span style={{ color: last.result === 'W' ? G.green : last.result === 'L' ? G.red : G.text }}>{last.result}</span>
+      </span>
+    ) : '', last ? last.text : 'No game in the last 10 days', 'last'),
   ];
   return (
-    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: isMobile ? 16 : 20, display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(6, minmax(0, 1fr))", gap: isMobile ? 16 : 20 }}>
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: isMobile ? 16 : 20, display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : `repeat(${tiles.length}, minmax(0, 1fr))`, gap: isMobile ? 16 : 20 }}>
       {tiles}
     </div>
   );
@@ -3098,7 +3097,7 @@ function ClientDealTab({ a, isMobile, pad }) {
           <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{value ? (verdict || `${PX_ROLE_LABEL[value.role].replace(/^\w/, c => c.toUpperCase())} · ${value.conf} confidence.`) : px ? 'Not enough on file to estimate.' : 'Loading…'}</div>
         </div>
       </div>
-      {p && px && <PxValueCard p={p} data={px} isMobile={isMobile} />}
+      {p && px && <PxValueCard p={p} data={px} isMobile={isMobile} fitsOnly />}
       {BOX_DOCS_ENABLED && <div style={{ maxWidth: isMobile ? "none" : 480 }}><DocsModule person={a.name} kind="sports" /></div>}
     </div>
   );
@@ -3531,7 +3530,6 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
   // each scrolling inside its own card instead of stretching the page.
   return (
     <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
-      {report && <div style={{ marginBottom: 12 }}>{report}</div>}
       {gameCard}
       {catCards.length === 0 && !logCard && !gameCard && (
         <div style={{ padding: 30, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>ESPN doesn't have stat lines for {a.name} yet — they'll appear here once games are logged.</div>
@@ -3545,6 +3543,7 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
         )}
       </div>
       <div><a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>Full stats on ESPN →</a></div>
+      {report && <div style={{ marginTop: 12 }}>{report}</div>}
     </div>
   );
 }
@@ -6744,6 +6743,24 @@ function pxRankList(list, def) {
   return { ranked, sorted };
 }
 const pxOrd = (n) => { const v = n % 100; return `${n}${v >= 11 && v <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] || 'th'}`; };
+// Same view for a player under the scoring minimum (too few snaps yet): their
+// per-game numbers placed among the qualified players — a limited sample.
+function pxLimitedView(data, p, scope) {
+  const b = p.scoreBucket, def = PX_SCORE_DEFS[b];
+  if (!def || !p.season || p.isHs) return null;
+  const S = data.S;
+  const s = (k) => (S[k] !== undefined ? p.season[S[k]] || 0 : 0);
+  const gl = Object.values(data.teamInfo).map(t => t.games || 0).filter(x => x > 0).sort((x, y) => x - y);
+  const gp = Math.max(1, (data.teamInfo[p.team] || {}).games || (gl.length ? gl[Math.floor(gl.length / 2)] : 4));
+  const vals = def.parts.map(pt => { const v = pt[2](p, s, gp); return Number.isFinite(v) ? v : null; });
+  if (!vals.some(v => v)) return null;
+  const all = ((data.scoreBuckets || {})[b]) || [];
+  const list = scope === 'tier' ? all.filter(r => r.p.tier === p.tier) : scope === 'conf' ? all.filter(r => r.p.conf === p.conf) : all;
+  if (!list.length) return null;
+  const { ranked, sorted } = pxRankList([...list, { p, vals }], def);
+  const i = ranked.findIndex(r => r.p === p);
+  return i < 0 ? null : { me: ranked[i], rank: ranked.length - i, n: ranked.length, sorted, limited: true };
+}
 // A player ranked against one peer group: 'all', 'tier' (same level) or
 // 'conf' (same conference).
 function pxPeerView(data, p, scope) {
@@ -6830,8 +6847,8 @@ function ProductionReport({ p, data, narrow, inPanel }) {
   const [distJ, setDistJ] = useState(null);
   const [hoverBin, setHoverBin] = useState(null);
   useEffect(() => { setScope('all'); setDistJ(null); }, [p.id]);
-  const view = useMemo(() => (p.prodPct && data.scoreBuckets ? pxPeerView(data, p, scope) : null), [p, data, scope]);
-  const share = useMemo(() => (p.prodPct && data.players ? pxTeamShare(data, p) : null), [p, data]);
+  const view = useMemo(() => (!data.scoreBuckets ? null : p.prodPct ? pxPeerView(data, p, scope) : pxLimitedView(data, p, scope)), [p, data, scope]);
+  const share = useMemo(() => (view && data.players ? pxTeamShare(data, p) : null), [p, data, view]);
   if (p.isHs || p.boardOnly) return null;
   const card = { background: inPanel ? G.surfaceRaised : G.surface, border: `1px solid ${inPanel ? G.surfaceBorder : G.cardBorder}`, boxShadow: inPanel ? 'none' : G.cardShadow, borderRadius: 14, padding: 16, minWidth: 0 };
   const label = (t, extra) => (
@@ -6840,7 +6857,7 @@ function ProductionReport({ p, data, narrow, inPanel }) {
       {extra}
     </div>
   );
-  if (!p.prodPct || !view) {
+  if (!view) {
     return p.scoreNote ? <div style={{ ...card, marginTop: inPanel ? 18 : 0, fontSize: 13, color: G.textTertiary }}>{p.scoreNote}</div> : null;
   }
   const b = p.scoreBucket, def = PX_SCORE_DEFS[b];
@@ -6861,7 +6878,8 @@ function ProductionReport({ p, data, narrow, inPanel }) {
       <div style={{ marginTop: 16 }}><PxMeter pct={pct} /></div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, color: G.textSecondary }}>Rank <b style={{ color: G.text, fontVariantNumeric: "tabular-nums" }}>#{view.rank}</b> of {view.n}</span>
-        {scope === 'all' && (
+        {view.limited && <span style={{ fontSize: 11.5, fontWeight: 700, color: G.yellow }}>Limited sample — under the usual minimum ({def.min})</span>}
+        {scope === 'all' && !view.limited && (
           p.outperf >= 40
             ? <span title={`Production percentile ${p.prodPct} vs team strength ${p.teamStrength} (SP+ percentile)`} style={{ fontSize: 11.5, fontWeight: 700, color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "4px 8px" }}>Outperforming team · +{p.outperf}</span>
             : <span style={{ fontSize: 11.5, color: G.textTertiary }}>Team strength {p.teamStrength ? `${pxOrd(p.teamStrength)} pct (SP+)` : 'outside FBS'} · <span style={{ color: p.outperf > 0 ? G.green : p.outperf < 0 ? G.red : G.textTertiary, fontWeight: 700 }}>{p.outperf > 0 ? '+' : ''}{p.outperf}</span></span>
@@ -7883,6 +7901,7 @@ const pxCurrentRole = (p) => {
   return 'reserve';
 };
 const PX_ROLE_LABEL = { starter: 'as a starter', rotation: 'in the rotation', backup: 'in the rotation', reserve: 'as a reserve', recruit: 'as a freshman' };
+const pxRoleName = { starter: 'Starter', rotation: 'Rotation', backup: 'Rotation', reserve: 'Reserve', recruit: 'Recruit' };
 
 // Backtest of this model on the 2023–25 transfer cycles (~5,900 transfers
 // found at their new school the next season): share who became regulars
@@ -7955,9 +7974,13 @@ function pxFitRank(data, p, prefs, notes) {
   const S0 = PX_STARTERS[fg] || PX_STARTERS[grp] || 1;
   const hasDepth = !!data.depthTs;
   const gone = h > 1 ? `gone by ${data.season + h}` : 'leaving';
-  const allRows = pxTeamNeeds(data, grp, h, fg).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
+  // The current school is one of the options: staying where they start and
+  // produce is often the best fit (e.g. a starting Georgia corner).
+  const curRole = !p.isHs && p.team ? pxCurrentRole(p) : '';
+  const allRows = pxTeamNeeds(data, grp, h, fg).filter(t => t.name === p.team || (prefs.tiers || []).includes(t.tier)).map(t => {
     const ti = info[t.name] || {};
     const f = {};
+    const isCur = !!curRole && t.name === p.team;
     // Playing time
     // Two+ years out, most of today's production is gone everywhere — judge
     // the opening by who'll still be in the room (today's younger players and
@@ -7993,7 +8016,9 @@ function pxFitRank(data, p, prefs, notes) {
     // Pathway: how that school's freshmen (for recruits) or incoming
     // transfers (for college players) at the position actually got on the
     // field in recent seasons.
-    const path = pxPath(data, t.name, grp, p.isHs ? 'fr' : 'tr');
+    // Staying: playing time is the role they already have.
+    if (isCur) f.opp = [curRole === 'starter' ? 95 : curRole === 'rotation' ? 65 : 35, `Current school · ${pxRoleName[curRole]}${p.depth && p.depth[1] !== 'RES' ? ` (${p.depth[1]} ${p.depth[0]})` : ''}`];
+    const path = isCur ? null : pxPath(data, t.name, grp, p.isHs ? 'fr' : 'tr');
     if (path) {
       f.opp[0] = (p.isHs ? 0.65 : 0.75) * f.opp[0] + (p.isHs ? 0.35 : 0.25) * path.pct;
       f.opp[1] += path.n
@@ -8011,7 +8036,7 @@ function pxFitRank(data, p, prefs, notes) {
     const reachAt = p.isHs ? 15 : 25;
     // Recruits with an offer list: anything clearly above their best offer is a reach.
     const aboveOffers = p.isHs && offerPcts.length >= 3 && !offered.has(t.name) && T > offerPcts[0] + 5;
-    const label = aboveOffers || diff > reachAt ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
+    const label = isCur ? 'Current' : aboveOffers || diff > reachAt ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
     // Backtest: productive transfers who moved well above their earned level
     // produced far less often (39% vs 50–57%), so the reach discount starts
     // sooner and falls faster than it used to.
@@ -8025,7 +8050,7 @@ function pxFitRank(data, p, prefs, notes) {
     // interest, so the discount starts right there (Stretch allows 10).
     const byOffers = p.isHs && offerPcts.length >= 3;
     const over = T - Math.max(D, offerPcts[0] || 0) - (aim === 'stretch' ? 10 : 0);
-    const realism = aim === 'any' || isOffer ? 1
+    const realism = aim === 'any' || isOffer || isCur ? 1
       : byOffers ? (over <= 0 ? 1 : Math.max(0.35, Math.exp(-((over / 10) ** 2))))
       : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : P ? 22 : 30)) ** 2)));
     if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
@@ -8043,7 +8068,7 @@ function pxFitRank(data, p, prefs, notes) {
       else f.scheme = [50, ''];
     }
     // Estimated value here, in the role they'd have.
-    const role = p.isHs ? 'recruit' : P ? (slot && slot <= S0 ? 'starter' : slot && slot <= S0 + 2 ? 'rotation' : 'reserve') : (f.opp[0] >= 70 ? 'starter' : f.opp[0] >= 45 ? 'rotation' : 'reserve');
+    const role = isCur ? curRole : p.isHs ? 'recruit' : P ? (slot && slot <= S0 ? 'starter' : slot && slot <= S0 + 2 ? 'rotation' : 'reserve') : (f.opp[0] >= 70 ? 'starter' : f.opp[0] >= 45 ? 'rotation' : 'reserve');
     const value = pxValue(data, p, t.name, role);
     if (value) f.pay = [Math.max(0, Math.min(100, 50 + 50 * Math.log2(value.mid / value.anchorMid))), `${pxMoneyRange(value)} ${PX_ROLE_LABEL[role]}`];
     const tc = ctx.byTeam[t.name] || {};
@@ -8065,16 +8090,20 @@ function pxFitRank(data, p, prefs, notes) {
       if (lvl === 3) gate *= 0.55 + 0.45 * (f[k][0] / 100);
     });
     // An offer = the school wants them: a modest ×1.1 lift (capped at 100).
-    const fitRaw = den ? (num / den) * gate * realism * (isOffer ? 1.1 : 1) : 0;
+    // Staying where they start carries none of a move's risk (even top-fit
+    // transfers became regulars only ~63% of the time in the backtest), so
+    // the current school gets a continuity edge when they're starting.
+    const stay = isCur ? (curRole === 'starter' ? 1.1 : curRole === 'rotation' ? 1 : 0.95) : 1;
+    const fitRaw = den ? (num / den) * gate * realism * (isOffer ? 1.1 : 1) * stay : 0;
     // Factors that are only a placeholder for this team (no data behind them).
     const thin = PX_FIT_FACTORS.filter(([fk]) => f[fk] && ((prefs.w || {})[fk] || 0) > 0 && (!f[fk][1] || f[fk][1] === 'Location unknown')).map(([, l]) => l);
-    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, value, offered: offered.has(t.name), interested: !!(mark && mark.status === 'interested'), mark: mark || null, thin };
+    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, value, current: isCur, offered: offered.has(t.name), interested: !!(mark && mark.status === 'interested'), mark: mark || null, thin };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
   const ruledOut = allRows.filter(t => t.mark && t.mark.status === 'notfit');
   const rows = allRows.filter(t => !(t.mark && t.mark.status === 'notfit'));
   // College players: how similar past transfers did at a school this high on
   // their list (the backtest is transfers only — recruits get none).
-  if (!p.isHs) rows.forEach((t, i) => { t.outlook = pxOutlook(P, 100 * (1 - i / rows.length)); });
+  if (!p.isHs) rows.forEach((t, i) => { if (!t.current) t.outlook = pxOutlook(P, 100 * (1 - i / rows.length)); });
   const gms = Object.values(info).map(x => x.games || 0).filter(x => x > 0).sort((x, y) => x - y);
   const early = !gms.length || gms[Math.floor(gms.length / 2)] < 6;
   return { rows, ruledOut, avail, D, C, auto, spTarget: spNear(D), grp, h, offers: offered.size, early, fg };
@@ -8095,7 +8124,7 @@ function PxFitFactors({ t, w }) {
 // The fit a team page was opened from (Team Fit row click) — the page shows
 // the same numbers for that player.
 const PX_FIT_CTX = { cur: null };
-const PX_FIT_LABEL_COLOR = { Reach: G.yellow, Match: G.green, Safe: G.textSecondary };
+const PX_FIT_LABEL_COLOR = { Reach: G.yellow, Match: G.green, Safe: G.textSecondary, Current: G.green };
 // Plain-language band for a fit score — the number is a guide, not a
 // measurement, so the band is what to read.
 const pxFitTier = (n) => (n >= 70 ? ['Strong fit', G.green] : n >= 55 ? ['Good fit', G.text] : n >= 40 ? ['Possible', G.textSecondary] : ['Long shot', G.textTertiary]);
@@ -8797,14 +8826,41 @@ function pxHeadCell(sort, setSort, col, text, right, firstDir = 'desc') {
 
 // Estimated market value card (player pages, client Stats / Recruiting tabs).
 // Staff-only surfaces — never on public or partner pages.
-function PxValueCard({ p, data, isMobile }) {
+function PxValueCard({ p, data, isMobile, fitsOnly }) {
   const fit = useMemo(() => (p && data && data.teamInfo ? pxFitRank(data, p, PX_FIT_DEFAULT) : null), [p, data]);
   if (!p || !data || !data.teamInfo) return null;
   const here = p.isHs ? pxValue(data, p, null, 'recruit') : p.team ? pxValue(data, p, p.team, pxCurrentRole(p)) : null;
   if (!here) return null;
-  const top = fit ? fit.rows.filter(t => t.value && t.fit >= 55).sort((a, b) => b.value.mid - a.value.mid).slice(0, 3) : [];
+  const top = fit ? fit.rows.filter(t => t.value && t.fit >= 55 && !t.current).sort((a, b) => b.value.mid - a.value.mid).slice(0, fitsOnly ? 6 : 3) : [];
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20 };
   const bud = !p.isHs && PX_BUDGETS[p.team];
+  if (fitsOnly) {
+    return (
+      <div style={card}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: G.text }}>Other good fits — estimated value</div>
+          <span style={{ fontSize: 11.5, color: G.textTertiary }}>Highest-paying schools rated Good fit or better</span>
+        </div>
+        {top.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 12 }}>No other Good-fit schools to price yet.</div> : (
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: "0 24px", marginTop: 8 }}>
+            {top.map(t => (
+              <div key={t.name} onClick={() => openTeamPage(t.name)}
+                onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 8px", margin: "4px -8px 0", borderRadius: 8, cursor: "pointer" }}>
+                {t.logo ? <TeamLogo url={t.logo} size={24} /> : <span style={{ width: 24 }} />}
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
+                  <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>{pxFitTier(t.fit)[0]} · {PX_ROLE_LABEL[t.value.role]}</span>
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: G.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{pxMoneyRange(t.value)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 16, lineHeight: 1.5 }}>Triangulated from The Athletic’s 2026 roster budgets, Opendorse’s position splits and pay by role, and ESPN’s 2026 position prices — a negotiating reference, not a known salary.</div>
+      </div>
+    );
+  }
   return (
     <div style={card}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
