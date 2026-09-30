@@ -7713,23 +7713,51 @@ function pxValue(data, p, team, role) {
   }
   let roleF = 1;
   const P = p.prodPct || 0;
-  if (role === 'recruit') {
+  const p4 = ti.tier === 'P4' || !team;
+  // Freshman deals follow the recruiting profile, steeply: top-100 recruits
+  // get six-to-seven figures (ESPN), while most of a roster — two-thirds of
+  // P4 players earn under $10K (Opendorse) — is 3★s near the minimum.
+  const recruitF = () => {
     const n = p.natRank || 0;
-    roleF = (n && n <= 32) || p.stars >= 5 ? 2 : n && n <= 100 ? 1.1 : n && n <= 300 ? 0.55 : p.stars >= 4 ? 0.45 : p.stars === 3 ? 0.2 : 0.1;
+    return n ? 2.2 * Math.exp(-n / 130) + 0.02 : p.stars >= 5 ? 1.8 : p.stars === 4 ? 0.3 : p.stars === 3 ? 0.04 : 0.02;
+  };
+  if (role === 'recruit') {
+    roleF = recruitF();
     if (conf === 'medium') conf = 'low';
-  } else if (role === 'backup') {
-    roleF = ti.tier === 'P4' || !team ? PX_BACKUP_RATIO[grp] || 0.2 : 0.4;
+  } else if (role === 'rotation' || role === 'backup') {
+    // The #2 who plays: Opendorse's average backup pay.
+    roleF = p4 ? PX_BACKUP_RATIO[grp] || 0.2 : 0.4;
+  } else if (role === 'reserve') {
+    // Deeper on the chart (or not on it): near-minimum deals.
+    roleF = (p4 ? PX_BACKUP_RATIO[grp] || 0.2 : 0.4) * 0.4;
   } else {
     // Production, with a steeper top end — the market pays stars far more
     // than solid starters (flatter outside the P4, where budgets cap it).
     roleF = !P ? 0.9 : ti.tier === 'P4' || !team ? 0.6 + 0.8 * (P / 100) + (P >= 90 ? (P - 90) * 0.06 : 0) : 0.75 + 0.5 * (P / 100);
   }
+  // A true freshman who isn't starting is paid on his recruiting profile —
+  // that's what his deal was signed on (a 4★ third-stringer out-earns a 3★
+  // one). Second-years keep a quarter of it as a floor.
+  if (!p.isHs && role !== 'starter' && role !== 'recruit') {
+    if (p.yr === 1) roleF = recruitF();
+    else if (p.yr === 2) roleF = Math.max(roleF, recruitF() * 0.25);
+  }
   const mid = anchor[1] * school * roleF;
   const w = conf === 'medium' ? [0.75, 1.3] : [0.6, 1.5];
   return { lo: mid * w[0], mid, hi: mid * w[1], conf, role, anchorMid: anchor[1] };
 }
+// Depth-chart rank, ignoring Ourlads' reserves list ("RES" isn't a spot on
+// the two-deep).
+const pxDepthRank = (p) => (p.depth && p.depth[1] !== 'RES' ? p.depth[0] : 0);
 // A player's role at their current school (depth chart, else production).
-const pxCurrentRole = (p) => (p.isHs ? 'recruit' : (p.depth && p.depth[0] === 1) || (p.prodPct || 0) >= 40 ? 'starter' : 'backup');
+const pxCurrentRole = (p) => {
+  if (p.isHs) return 'recruit';
+  const d = pxDepthRank(p);
+  if (d === 1 || (p.prodPct || 0) >= 40) return 'starter';
+  if (d === 2 || p.prodPct) return 'rotation';
+  return 'reserve';
+};
+const PX_ROLE_LABEL = { starter: 'as a starter', rotation: 'in the rotation', backup: 'in the rotation', reserve: 'as a reserve', recruit: 'as a freshman' };
 
 // Backtest of this model on the 2023–25 transfer cycles (~5,900 transfers
 // found at their new school the next season): share who became regulars
@@ -7790,7 +7818,7 @@ function pxFitRank(data, p, prefs, notes) {
   data.players.forEach(pl => {
     if (pl.isHs || pl.grp !== grp || !pl.team || pl === p || !pxSameRoom(fg, pl)) return;
     if ((pl.yr || 0) >= 5 - h || nextOut.has(`${pl.team}|${pk(pl.name)}`)) return;
-    (returners[pl.team] = returners[pl.team] || []).push({ pct: pl.prodPct || 0, dr: pl.depth ? pl.depth[0] : 0 });
+    (returners[pl.team] = returners[pl.team] || []).push({ pct: pl.prodPct || 0, dr: pxDepthRank(pl) });
   });
   const hasDraft = Object.values(info).some(t => t.draft !== undefined);
   const hasLoc = Object.values(info).some(t => t.lat);
@@ -7890,9 +7918,9 @@ function pxFitRank(data, p, prefs, notes) {
       else f.scheme = [50, ''];
     }
     // Estimated value here, in the role they'd have.
-    const role = p.isHs ? 'recruit' : P ? (slot && slot <= S0 ? 'starter' : 'backup') : (f.opp[0] >= 70 ? 'starter' : 'backup');
+    const role = p.isHs ? 'recruit' : P ? (slot && slot <= S0 ? 'starter' : slot && slot <= S0 + 2 ? 'rotation' : 'reserve') : (f.opp[0] >= 70 ? 'starter' : f.opp[0] >= 45 ? 'rotation' : 'reserve');
     const value = pxValue(data, p, t.name, role);
-    if (value) f.pay = [Math.max(0, Math.min(100, 50 + 50 * Math.log2(value.mid / value.anchorMid))), `${pxMoneyRange(value)}${role === 'recruit' ? ' freshman' : ` as ${role}`}`];
+    if (value) f.pay = [Math.max(0, Math.min(100, 50 + 50 * Math.log2(value.mid / value.anchorMid))), `${pxMoneyRange(value)} ${PX_ROLE_LABEL[role]}`];
     const tc = ctx.byTeam[t.name] || {};
     if (avail.build) {
       if (tc.reliance != null) {
@@ -8253,7 +8281,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, paddingLeft: 32 }}>
             <PxFitFactors t={t} w={prefs.w} />
           </div>
-          {t.value && <div title={`Estimated from ${PX_BUDGETS[t.name] ? `${t.name}’s 2026 roster budget (The Athletic, $${PX_BUDGETS[t.name][0]}–${PX_BUDGETS[t.name][1]}M)` : t.tier === 'G5' ? 'Group of 6 pay levels (Opendorse)' : 'FCS — very little public pay data'}, the conference’s spending on the position (Opendorse) and ESPN’s 2026 position prices. Confidence: ${t.value.conf}.`} style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Est. market value here: <b style={{ color: G.text }}>{pxMoneyRange(t.value)}</b> {t.value.role === 'recruit' ? 'as a freshman' : `as a ${t.value.role}`}{t.value.conf !== 'medium' ? <span style={{ color: G.textTertiary }}> · {t.value.conf} confidence</span> : null}</div>}
+          {t.value && <div title={`Estimated from ${PX_BUDGETS[t.name] ? `${t.name}’s 2026 roster budget (The Athletic, $${PX_BUDGETS[t.name][0]}–${PX_BUDGETS[t.name][1]}M)` : t.tier === 'G5' ? 'Group of 6 pay levels (Opendorse)' : 'FCS — very little public pay data'}, the conference’s spending on the position (Opendorse) and ESPN’s 2026 position prices. Confidence: ${t.value.conf}.`} style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Est. market value here: <b style={{ color: G.text }}>{pxMoneyRange(t.value)}</b> {PX_ROLE_LABEL[t.value.role]}{t.value.conf !== 'medium' ? <span style={{ color: G.textTertiary }}> · {t.value.conf} confidence</span> : null}</div>}
           {t.outlook && <div title="From a backtest of this model on 2023–25 transfers: players with similar production who landed at a school this high on their fit list" style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Past transfers like this: <b style={{ color: G.text }}>{t.outlook[0]}%</b> became regulars · <b style={{ color: G.text }}>{t.outlook[1]}%</b> above-median producers</div>}
           {t.thin && t.thin.length > 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 8, paddingLeft: 32 }}>Limited data: {t.thin.join(', ')}</div>}
         </div>
@@ -8448,7 +8476,7 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
           switch (c) {
             case 'yr': return x.yr || 0; case 'ht': return x.ht || 0; case 'wt': return x.wt || 0; case 'stars': return x.stars || 0;
             case 'usage': return x.usage ? x.usage[0] : 0; case 'prod': return x.prodPct || 0; case 'next': return nextOf(x);
-            case 'depth': return x.depth ? x.depth[0] : 99;
+            case 'depth': return x.depth ? (x.depth[1] === 'RES' ? 90 + x.depth[0] : x.depth[0]) : 99;
             default: return x.name;
           }
         });
@@ -8505,7 +8533,7 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
                           </span>
                         </td>
                         <td style={td()}>{PX_CLASS[Math.min(x.yr || 0, 5)] || '—'}</td>
-                        {showDepth && <td style={td(false, { color: x.depth && x.depth[0] === 1 ? G.text : G.textSecondary, fontWeight: x.depth && x.depth[0] === 1 ? 700 : 400 })} title={x.depth ? `${x.depth[1]} — ${pxOrd(x.depth[0])} on the depth chart (Ourlads)` : 'Not on the depth chart'}>{x.depth ? `${x.depth[1]} ${x.depth[0]}` : '—'}</td>}
+                        {showDepth && <td style={td(false, { color: x.depth && x.depth[0] === 1 ? G.text : G.textSecondary, fontWeight: x.depth && x.depth[0] === 1 ? 700 : 400 })} title={x.depth ? `${x.depth[1]} — ${pxOrd(x.depth[0])} on the depth chart (Ourlads)` : 'Not on the depth chart'}>{x.depth ? (x.depth[1] === 'RES' ? 'Reserve' : `${x.depth[1]} ${x.depth[0]}`) : '—'}</td>}
                         <td style={td(true)}>{pxHt(x.ht) || '—'}</td>
                         <td style={td(true)}>{x.wt || '—'}</td>
                         <td style={td(true, { color: x.stars >= 4 ? G.green : G.textSecondary, fontWeight: x.stars ? 700 : 400 })}>{x.stars || '—'}</td>
@@ -8664,7 +8692,7 @@ function PxValueCard({ p, data, isMobile }) {
           <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, fontVariantNumeric: "tabular-nums", lineHeight: 1.05 }}>{pxMoneyRange(here)}</div>
           <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>
             {p.isHs ? `Based on ${[p.stars ? `${p.stars}★` : '', p.natRank ? `#${p.natRank} national` : ''].filter(Boolean).join(', ') || 'their recruiting profile'} at an average P4 budget.`
-              : `As a ${here.role}${p.prodPct ? `, ${pxOrd(p.prodPct)} percentile production` : ''}${bud ? ` · ${p.team} budget $${bud[0]}–${bud[1]}M` : ''}.`}
+              : `${PX_ROLE_LABEL[here.role].replace(/^\w/, c => c.toUpperCase())}${p.prodPct ? `, ${pxOrd(p.prodPct)} percentile production` : ''}${bud ? ` · ${p.team} budget $${bud[0]}–${bud[1]}M` : ''}.`}
           </div>
         </div>
         <div>
@@ -8676,7 +8704,7 @@ function PxValueCard({ p, data, isMobile }) {
               {t.logo ? <TeamLogo url={t.logo} size={24} /> : <span style={{ width: 24 }} />}
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
-                <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>{pxFitTier(t.fit)[0]} · as a {t.value.role === 'recruit' ? 'freshman' : t.value.role}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>{pxFitTier(t.fit)[0]} · {PX_ROLE_LABEL[t.value.role]}</span>
               </span>
               <span style={{ fontSize: 13, fontWeight: 700, color: G.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{pxMoneyRange(t.value)}</span>
             </div>
@@ -8721,7 +8749,7 @@ function PlayerPage({ pid, isMobile, user, athletes, staff }) {
   const offers = pxParseOffers(a.offers247).filter(o => o[1]).length;
   const facts = p.isHs
     ? [['Position', p.pos], ['High school', p.hs || a.college], ['Class', p.hsClass ? `${p.hsClass}` : ''], ['Hometown', p.city ? `${p.city}, ${p.st}` : a.hometown], ['247', [p.stars ? `${p.stars}★` : '', p.natRank ? `#${p.natRank} national` : ''].filter(Boolean).join(' · ')], ['Offers', offers ? String(offers) : ''], ['Committed', p.commit || 'Uncommitted'], ['Height / weight', [pxHt(p.ht), p.wt ? `${p.wt} lbs` : ''].filter(Boolean).join(' · ')]]
-    : [['Position', p.pos], ['Team', p.team], ['Class', PX_CLASS[Math.min(p.yr || 0, 5)]], ['Hometown', p.city ? `${p.city}, ${p.st}` : ''], ['Height / weight', [pxHt(p.ht), p.wt ? `${p.wt} lbs` : ''].filter(Boolean).join(' · ')], ['Team SP+', p.sp ? `#${p.sp}` : ''], ['Depth chart', p.depth ? `${p.depth[1]} ${p.depth[0]}` : ''], ['Recruited', p.stars ? `${p.stars}★${p.natRank ? ` · #${p.natRank} natl` : ''}` : '']];
+    : [['Position', p.pos], ['Team', p.team], ['Class', PX_CLASS[Math.min(p.yr || 0, 5)]], ['Hometown', p.city ? `${p.city}, ${p.st}` : ''], ['Height / weight', [pxHt(p.ht), p.wt ? `${p.wt} lbs` : ''].filter(Boolean).join(' · ')], ['Team SP+', p.sp ? `#${p.sp}` : ''], ['Depth chart', p.depth ? (p.depth[1] === 'RES' ? 'Reserve' : `${p.depth[1]} ${p.depth[0]}`) : ''], ['Recruited', p.stars ? `${p.stars}★${p.natRank ? ` · #${p.natRank} natl` : ''}` : '']];
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20 };
   const linkBtn = (href, label) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>{label}</a>;
   return (
