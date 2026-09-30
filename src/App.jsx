@@ -8688,12 +8688,17 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
     return out;
   };
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14 };
-  const stat = (label, value, hint) => value ? (
+  const stat = (label, value, hint, sub) => value ? (
     <div title={hint}>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{label}</div>
       <div style={{ fontSize: 15, fontWeight: 700, color: G.text, marginTop: 4 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{sub}</div>}
     </div>
   ) : null;
+  // Player budget: The Athletic's 2026 estimate (68 schools, mostly Power 4)
+  // — shown only where they published one, never guessed.
+  const budget = PX_BUDGETS[team];
+  const budgetRank = budget ? Object.values(PX_BUDGETS).filter(([a, b]) => a + b > budget[0] + budget[1]).length + 1 : 0;
   const sv = (x, k) => (x.season && x.season[S[k]]) || 0;
   const num = (v) => (v ? Math.round(v * 10) / 10 : '—');
   const td = (right, extra) => ({ padding: "8px 12px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", textAlign: right ? "right" : "left", fontVariantNumeric: "tabular-nums", ...extra });
@@ -8708,7 +8713,8 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
           <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>{[info.conf, PX_TIER_NAME[info.tier], info.coach ? `HC ${info.coach}${info.record ? ` (${info.record})` : ''}` : ''].filter(Boolean).join(' · ')}</div>
         </div>
       </div>
-      <div style={{ ...card, padding: 16, marginTop: 16, display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: 16 }}>
+      <div style={{ ...card, padding: 16, marginTop: 16, display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : `repeat(${budget ? 6 : 5}, 1fr)`, gap: 16 }}>
+        {stat('Est. player budget', budget ? `$${budget[0]}–${budget[1]}M` : '', 'The Athletic’s 2026 estimate of what the school spends on players (revenue share + NIL). A published estimate, not an official figure.', budget ? `#${budgetRank} of ${Object.keys(PX_BUDGETS).length} · The Athletic` : '')}
         {stat('SP+ rank', info.sp ? `#${info.sp}` : '')}
         {stat('Talent rank', info.talentRank ? `#${info.talentRank}` : '')}
         {stat('Returning production', info.retPct ? `${info.retPct}%` : '', 'Share of last season’s offensive production (passing, rushing, receiving — weighted by points added) from players still on the roster')}
