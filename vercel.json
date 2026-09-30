@@ -25,6 +25,9 @@
     },
     "api/prospects.js": {
       "maxDuration": 300
+    },
+    "api/usage.js": {
+      "maxDuration": 60
     }
   },
   "crons": [

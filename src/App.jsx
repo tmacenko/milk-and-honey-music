@@ -3639,6 +3639,13 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
   const [bioExp, setBioExp] = useState(false);
   // Staff profile tabs; opens on the one that matches where you came from.
   const [page, setPage] = useState(() => (companyView ? profileTabFor(fromPage, a) : 'overview'));
+  // Usage log: the tab a profile opens on, then each tab switch.
+  const usageFirst = useRef(true);
+  useEffect(() => {
+    if (!companyView) return;
+    mhTrack(usageFirst.current ? 'profile' : 'tab', { c: a.name, tab: page, pg: 'sports' });
+    usageFirst.current = false;
+  }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
   // Start every tab's data on open, so switching tabs shows finished pages.
   useEffect(() => {
     if (!companyView) return;
@@ -11636,6 +11643,269 @@ function parseNflTeams(data) {
   return teams;
 }
 
+// ── Dashboard usage tracking ────────────────────────────────────────────────
+// Staff sessions batch what they open (pages, client profiles, profile tabs)
+// plus seconds of real use (tab visible + input within the last minute) and
+// send it to /api/usage every two minutes and when the tab is hidden. Only
+// the owner (USAGE_OWNERS, checked again on the server) sees the Usage page.
+const USAGE_OWNERS = ['tyler@milkhoneyla.com'];
+const isUsageOwner = (u) => !!(u && u.email && USAGE_OWNERS.includes(String(u.email).toLowerCase()));
+const USAGE = { q: [], active: 0, lastInput: Date.now(), on: false };
+function mhTrack(ty, o) {
+  if (!USAGE.on) return;
+  const last = USAGE.q[USAGE.q.length - 1];
+  const ev = { t: Date.now(), ty, ...(o || {}) };
+  // Same page twice in a row (re-renders) counts once.
+  if (last && last.ty === ev.ty && last.pg === ev.pg && last.c === ev.c && last.tab === ev.tab && ev.t - last.t < 5000) return;
+  USAGE.q.push(ev);
+  if (USAGE.q.length >= 150) usageFlush(false);
+}
+function usageFlush(leaving) {
+  if (!USAGE.on || (!USAGE.q.length && USAGE.active < 15)) return;
+  const body = JSON.stringify({ events: USAGE.q.splice(0), active: Math.round(USAGE.active) });
+  USAGE.active = 0;
+  try {
+    if (leaving && navigator.sendBeacon) { navigator.sendBeacon('/api/usage', new Blob([body], { type: 'application/json' })); return; }
+  } catch { /* fall through to fetch */ }
+  fetch('/api/usage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+}
+function usageStart() {
+  if (USAGE.on) return;
+  USAGE.on = true;
+  const poke = () => { USAGE.lastInput = Date.now(); };
+  ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(e => window.addEventListener(e, poke, { passive: true, capture: true }));
+  setInterval(() => { if (document.visibilityState === 'visible' && Date.now() - USAGE.lastInput < 60000) USAGE.active += 15; }, 15000);
+  setInterval(() => usageFlush(false), 120000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') usageFlush(true); });
+  window.addEventListener('pagehide', () => usageFlush(true));
+  mhTrack('open');
+}
+
+const USAGE_PAGE_NAMES = {
+  home: 'Home', roster: 'Roster', branddeals: 'Brand Deals', marketing: 'Social', gifting: 'Gifting', recruiting: 'Recruiting Board',
+  prospects: 'Prospect Search', teams: 'Teams', team: 'Team page', player: 'Player page', portal: 'Transfer Portal', teamfit: 'Team Fit',
+  contracts: 'Contracts', resources: 'Resources', notes: 'Notes', schedule: 'Schedule', usage: 'Usage',
+};
+const USAGE_TAB_NAMES = { overview: 'Overview', stats: 'Performance', recruiting: 'Recruiting', teamfit: 'Team Fit', deal: 'Deal', marketing: 'Marketing' };
+const usagePageLabel = (k) => {
+  const s = String(k || '');
+  if (s.startsWith('profile:')) return `Client profile · ${USAGE_TAB_NAMES[s.slice(8)] || s.slice(8)}`;
+  const [dom, pg] = s.split('/');
+  return `${dom === 'music' ? 'Music' : dom === 'all' ? 'All' : 'Sports'} · ${USAGE_PAGE_NAMES[pg] || pg || 'Home'}`;
+};
+const usageMins = (sec) => { const m = Math.round((sec || 0) / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
+const usageAgo = (t) => {
+  if (!t) return 'Never';
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 2) return 'Just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? 'Yesterday' : `${d}d ago`;
+};
+
+function UsagePage({ isMobile, staff, user }) {
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  const [sort, setSort] = useState(['active', -1]);
+  const [open, setOpen] = useState('');
+  const [hoverDay, setHoverDay] = useState(null);
+  useEffect(() => {
+    let on = true;
+    setErr('');
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+    fetch(`/api/usage?days=${days}&tz=${encodeURIComponent(tz)}`).then(r => r.json())
+      .then(d => { if (!on) return; if (d.error) setErr(d.error); else setData(d); })
+      .catch(() => on && setErr('Couldn’t load usage.'));
+    return () => { on = false; };
+  }, [days]);
+  if (!isUsageOwner(user)) return null;
+
+  const pad = isMobile ? 16 : 32;
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, minWidth: 0 };
+  const eyebrow = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary };
+  const loadingNow = !data || data.days !== days;
+
+  // Day list for the range (local calendar days, oldest → newest).
+  const dayList = [];
+  for (let i = days - 1; i >= 0; i--) { const d = new Date(Date.now() - i * 86400000); dayList.push(d.toLocaleDateString('en-CA')); }
+  const users = (data && data.users) || [];
+  const seen = new Set(users.map(u => String(u.name || '').toLowerCase()));
+  const never = (staff || []).filter(n => !seen.has(String(n).toLowerCase()));
+  const perDay = dayList.map(d => {
+    const on = users.filter(u => u.byDay[d] && (u.byDay[d].active >= 60 || u.byDay[d].events >= 3));
+    return { d, n: on.length, sec: on.reduce((t, u) => t + u.byDay[d].active, 0), names: on.map(u => u.name) };
+  });
+  const totalSec = users.reduce((t, u) => t + u.active, 0);
+  const personDays = perDay.reduce((t, x) => t + x.n, 0);
+  const activePeople = users.filter(u => u.daysActive > 0).length;
+  const maxN = Math.max(1, ...perDay.map(x => x.n));
+
+  const key = (u) => {
+    switch (sort[0]) {
+      case 'name': return String(u.name || '').toLowerCase();
+      case 'days': return u.daysActive;
+      case 'sessions': return u.sessions;
+      case 'last': return u.last || 0;
+      default: return u.active;
+    }
+  };
+  const rows = [...users].sort((x, y) => { const a = key(x), b = key(y); return (a < b ? -1 : a > b ? 1 : 0) * sort[1]; });
+  const th = (k, l, right) => (
+    <th onClick={() => setSort(s => [k, s[0] === k ? -s[1] : (k === 'name' ? 1 : -1)])}
+      style={{ textAlign: right ? "right" : "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sort[0] === k ? G.text : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, cursor: "pointer", whiteSpace: "nowrap", userSelect: "none" }}>
+      {l}{sort[0] === k ? (sort[1] < 0 ? ' ↓' : ' ↑') : ''}
+    </th>
+  );
+  const td = { padding: "10px 12px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
+  const tile = (label, value, sub) => (
+    <div style={{ ...card, padding: 16 }}>
+      <div style={eyebrow}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", color: G.text, marginTop: 6, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+  const spark = (u) => {
+    const recent = dayList.slice(-Math.min(days, 30));
+    const mx = Math.max(60, ...recent.map(d => (u.byDay[d] || {}).active || 0));
+    return (
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 1, height: 20, width: 90 }}>
+        {recent.map(d => { const v = (u.byDay[d] || {}).active || 0; return <div key={d} title={`${d} · ${usageMins(v)}`} style={{ flex: 1, height: v ? Math.max(2, Math.round((v / mx) * 20)) : 1, background: v ? G.green : G.surfaceBorder, borderRadius: 1 }} />; })}
+      </div>
+    );
+  };
+  const detail = (u) => {
+    const maxP = Math.max(1, ...u.pages.map(x => x[1]));
+    const evLabel = (e) => e.ty === 'view' ? usagePageLabel(e.pg) : e.ty === 'profile' ? `Opened ${e.c || 'a client'} · ${USAGE_TAB_NAMES[e.tab] || 'Overview'}` : `${e.c || 'Client'} · ${USAGE_TAB_NAMES[e.tab] || e.tab}`;
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 16, padding: "12px 12px 20px" }}>
+        <div>
+          <div style={{ ...eyebrow, marginBottom: 8 }}>Most used</div>
+          {u.pages.length ? u.pages.map(([k, n]) => (
+            <div key={k} style={{ marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: G.text, gap: 8 }}><span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{usagePageLabel(k)}</span><span style={{ color: G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{n}</span></div>
+              <div style={{ height: 4, borderRadius: 2, background: G.surfaceRaised, marginTop: 4 }}><div style={{ width: `${(n / maxP) * 100}%`, height: "100%", borderRadius: 2, background: G.green }} /></div>
+            </div>
+          )) : <div style={{ fontSize: 12.5, color: G.textTertiary }}>No pages recorded.</div>}
+        </div>
+        <div>
+          <div style={{ ...eyebrow, marginBottom: 8 }}>Clients opened</div>
+          {u.clients.length ? u.clients.map(([c, n]) => (
+            <div key={c} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: G.text, padding: "4px 0", gap: 8 }}><span>{c}</span><span style={{ color: G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{n}×</span></div>
+          )) : <div style={{ fontSize: 12.5, color: G.textTertiary }}>None in this range.</div>}
+        </div>
+        <div>
+          <div style={{ ...eyebrow, marginBottom: 8 }}>Recent activity</div>
+          <div style={{ maxHeight: 260, overflowY: "auto" }}>
+            {u.recent.map((e, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, fontSize: 12.5, padding: "4px 0", color: G.text }}>
+                <span style={{ color: G.textTertiary, width: 124, flexShrink: 0, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{new Date(e.t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{evLabel(e)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding: `24px ${pad}px 40px`, display: "flex", flexDirection: "column", gap: 20, maxWidth: 1400 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.1 }}>Dashboard usage</div>
+          <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>Only visible to you · active time counts minutes someone is actually using the app (tab open and in use)</div>
+        </div>
+        <div style={{ display: "flex", gap: 4, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: 4 }}>
+          {[[7, '7 days'], [30, '30 days'], [90, '90 days']].map(([k, l]) => (
+            <button key={k} onClick={() => setDays(k)}
+              onMouseEnter={e => { if (days !== k) e.currentTarget.style.color = G.text; }}
+              onMouseLeave={e => { if (days !== k) e.currentTarget.style.color = G.textSecondary; }}
+              style={{ fontFamily: ff, fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: days === k ? G.surface : 'transparent', color: days === k ? G.text : G.textSecondary, boxShadow: days === k ? G.cardShadow : 'none', whiteSpace: "nowrap" }}>{l}</button>
+          ))}
+        </div>
+      </div>
+      {err ? <div style={{ ...card, padding: 24, textAlign: "center", fontSize: 13, color: G.textTertiary }}>{err}</div>
+        : loadingNow ? <TabSkeleton pad={0} isMobile={isMobile} blocks={[[92, 92, 92, 92], 180, 360]} />
+        : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, ...REVEAL }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))", gap: 16 }}>
+            {tile('Active people', activePeople, `of ${Math.max(activePeople, (staff || []).length)} staff`)}
+            {tile('Active time', usageMins(totalSec), `last ${days} days`)}
+            {tile('Avg per day active', personDays ? usageMins(totalSec / personDays) : '—', 'per person, on days they used it')}
+            {tile('Busiest day', perDay.reduce((b, x) => (x.n > b.n ? x : b), { n: 0 }).n ? `${maxN} people` : '—', (() => { const b = perDay.reduce((m, x) => (x.n > m.n ? x : m), { n: 0, d: '' }); return b.d ? new Date(b.d + 'T12:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : ''; })())}
+          </div>
+          <div style={{ ...card, padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
+              <div style={eyebrow}>People active per day</div>
+              <div style={{ fontSize: 11.5, color: G.textSecondary, minHeight: 14, textAlign: "right" }}>
+                {hoverDay != null && perDay[hoverDay] ? `${new Date(perDay[hoverDay].d + 'T12:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${perDay[hoverDay].n} ${perDay[hoverDay].n === 1 ? 'person' : 'people'} · ${usageMins(perDay[hoverDay].sec)}${perDay[hoverDay].names.length ? ' — ' + perDay[hoverDay].names.slice(0, 6).join(', ') + (perDay[hoverDay].names.length > 6 ? '…' : '') : ''}` : 'Hover a day'}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 110 }} onMouseLeave={() => setHoverDay(null)}>
+              {perDay.map((x, i) => (
+                <div key={x.d} onMouseEnter={() => setHoverDay(i)} style={{ flex: 1, height: "100%", display: "flex", alignItems: "flex-end", cursor: "default" }}>
+                  <div style={{ width: "100%", height: x.n ? `${Math.max(4, (x.n / maxN) * 100)}%` : 2, background: x.n ? G.green : G.surfaceBorder, opacity: hoverDay == null || hoverDay === i ? 1 : 0.45, borderRadius: x.n ? "4px 4px 0 0" : 1 }} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: G.textTertiary, marginTop: 6 }}>
+              <span>{new Date(dayList[0] + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span><span>Today</span>
+            </div>
+          </div>
+          <div style={{ ...card, overflow: "hidden" }}>
+            <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr>
+                  {th('name', 'Person')}
+                  {th('days', 'Days active', true)}
+                  {th('active', 'Active time', true)}
+                  {th('sessions', 'Sessions', true)}
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}` }}>Most used</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}` }}>Trend</th>
+                  {th('last', 'Last seen', true)}
+                </tr></thead>
+                <tbody>
+                  {rows.map((u, i) => (
+                    <React.Fragment key={u.email || u.name}>
+                      <tr onClick={() => setOpen(o => (o === u.name ? '' : u.name))}
+                        onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = i % 2 ? G.surfaceRaised : "transparent"; }}
+                        style={{ background: i % 2 ? G.surfaceRaised : "transparent", cursor: "pointer" }}>
+                        <td style={{ ...td, color: G.text }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <Avatar name={u.name} size={28} />
+                            <div><div style={{ fontWeight: 600 }}>{u.name}</div>{u.role && <div style={{ fontSize: 11.5, color: G.textTertiary, textTransform: "capitalize" }}>{u.role}</div>}</div>
+                          </div>
+                        </td>
+                        <td style={{ ...td, textAlign: "right", color: G.text }}>{u.daysActive}</td>
+                        <td style={{ ...td, textAlign: "right", color: G.text, fontWeight: 700 }}>{usageMins(u.active)}</td>
+                        <td style={{ ...td, textAlign: "right" }}>{u.sessions}</td>
+                        <td style={td}>{u.pages[0] ? usagePageLabel(u.pages[0][0]) : '—'}</td>
+                        <td style={td}>{spark(u)}</td>
+                        <td style={{ ...td, textAlign: "right" }}>{usageAgo(u.last)}</td>
+                      </tr>
+                      {open === u.name && <tr><td colSpan={7} style={{ borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>{detail(u)}</td></tr>}
+                    </React.Fragment>
+                  ))}
+                  {!rows.length && <tr><td colSpan={7} style={{ ...td, textAlign: "center", padding: 28, color: G.textTertiary }}>No activity recorded yet — it starts collecting as people use the app.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            {never.length > 0 && (
+              <div style={{ padding: "12px 16px", borderTop: `1px solid ${G.surfaceBorder}`, fontSize: 12.5, color: G.textSecondary, lineHeight: 1.6 }}>
+                <span style={{ ...eyebrow, marginRight: 8 }}>No activity ({never.length})</span>{never.join(' · ')}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResourcesPage({ isMobile, decks }) {
   const nfl = useAdminTab('nflteams');
   const regs = useAdminTab('stateregs');
@@ -11895,6 +12165,16 @@ function App() {
   }, []);
   // Music employee section (Tyler-only while it's broken in): 'home' / 'roster'.
   const [musicPage, setMusicPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
+  // Usage tracking (staff sessions only — never public/b2b): start once
+  // signed in, then log each page and profile opened.
+  useEffect(() => { if (authKnown && authConfigured && isAdmin) usageStart(); }, [authKnown, authConfigured, isAdmin]);
+  const usageSel = view === 'detail' && selected ? selected.name : '';
+  useEffect(() => {
+    if (!isAdmin) return;
+    // Sports profiles log themselves (with the tab they land on).
+    if (usageSel) { if (domain !== 'sports') mhTrack('profile', { c: usageSel, pg: domain }); return; }
+    mhTrack('view', { pg: `${domain}/${domain === 'sports' ? sportsPage : domain === 'music' ? musicPage : 'home'}` });
+  }, [isAdmin, authKnown, authConfigured, domain, sportsPage, musicPage, usageSel]);
   // Every navigation (side, page, or opened profile) lands at the top — in a
   // single-page app the window would otherwise keep the last page's scroll.
   // Keyed on the profile's name, not the object, so a save that refreshes
@@ -12609,11 +12889,13 @@ function App() {
     { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
+    ...(isUsageOwner(currentUser) ? [{ key: 'usage', label: 'Usage', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' }] : []),
   ];
   const NAV_MUSIC = [
     { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
     { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
     { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
+    ...(isUsageOwner(currentUser) ? [{ key: 'usage', label: 'Usage', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' }] : []),
   ];
   const [onboardLinksOpen, setOnboardLinksOpen] = useState(false);
   // Expand/collapse state for sidebar groups; a group with the active page
@@ -12642,6 +12924,8 @@ function App() {
   };
   const navClick = (it) => {
     if (it.modal) { setOnboardLinksOpen(true); return; }
+    // Usage lives on the sports side; reachable from either sidebar.
+    if (it.key === 'usage' && domain !== 'sports') { setDomain('sports', 'usage'); return; }
     if (domain === 'all') {
       if (it.key === 'roster' && lastSide === 'sports') setAgentFilter('All');
       setDomain(lastSide, it.key);
@@ -13043,6 +13327,7 @@ function App() {
               {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'gifting' && <GiftingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
+              {view === 'roster' && navActive && sportsPage === 'usage' && <UsagePage isMobile={isMobile} staff={sportsStaff} user={currentUser} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
                   {sportsLevelBar}
