@@ -18,7 +18,7 @@ const TYPES = new Set(['open', 'view', 'profile', 'tab']);
 const utcDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : undefined);
 
-// The whole staff directory (name + role only — never emails or passwords),
+// The whole staff directory (name + role + status only — never emails),
 // so the page can list everyone who hasn't used the app, music and sports.
 async function staffDirectory() {
   try {
@@ -28,8 +28,10 @@ async function staffDirectory() {
     const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({ iss: key.client_email, scope: 'https://www.googleapis.com/auth/spreadsheets.readonly', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 })}`;
     const sig = crypto.sign('RSA-SHA256', Buffer.from(unsigned), key.private_key).toString('base64url');
     const tok = (await (await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${sig}` }) })).json()).access_token;
-    const d = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${process.env.SPORTS_SHEET_ID}/values/${encodeURIComponent("'Staff'!A:B")}`, { headers: { Authorization: `Bearer ${tok}` } })).json();
-    return (d.values || []).slice(1).map(r => ({ name: String(r[0] || '').trim(), role: String(r[1] || '').trim().toLowerCase() })).filter(x => x.name);
+    const d = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${process.env.SPORTS_SHEET_ID}/values/${encodeURIComponent("'Staff'!A:D")}`, { headers: { Authorization: `Bearer ${tok}` } })).json();
+    // Column D = Status; former employees (kept for their records) drop out.
+    return (d.values || []).slice(1).filter(r => !/^former$/i.test(String(r[3] || '').trim()))
+      .map(r => ({ name: String(r[0] || '').trim(), role: String(r[1] || '').trim().toLowerCase() })).filter(x => x.name);
   } catch { return []; }
 }
 

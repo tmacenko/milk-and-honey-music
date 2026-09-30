@@ -11777,8 +11777,8 @@ function UsagePage({ isMobile, staff, user }) {
   // agent list is only a fallback.
   const directory = data && data.staff && data.staff.length ? data.staff : (staff || []).map(n => ({ name: n, role: '' }));
   const never = directory.filter(x => !seen.has(x.name.toLowerCase()));
-  const neverGroups = [['admin', 'Admins'], ['agent', 'Agents'], ['marketing', 'Marketing'], ['manager', 'Music managers'], ['', 'Other']]
-    .map(([r, l]) => [l, never.filter(x => (r ? x.role === r : !['admin', 'agent', 'marketing', 'manager'].includes(x.role))).map(x => x.name)])
+  const neverGroups = [['admin', 'Admins'], ['agent', 'Agents'], ['marketing', 'Marketing'], ['manager', 'Music managers'], ['records', 'Records'], ['assistant', 'Assistants'], ['', 'Other']]
+    .map(([r, l]) => [l, never.filter(x => (r ? x.role === r : !['admin', 'agent', 'marketing', 'manager', 'records', 'assistant'].includes(x.role))).map(x => x.name)])
     .filter(([, names]) => names.length);
   const perDay = dayList.map(d => {
     const on = users.filter(u => u.byDay[d] && (u.byDay[d].active >= 60 || u.byDay[d].events >= 3));

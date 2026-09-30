@@ -1314,7 +1314,7 @@ module.exports = async (req, res) => {
             ['AppData', 'Staff (app edit form) + onboarding form', 'Enrichment: bio, photos, Public flag, status, interests, brands, targets, hometown, measurables, onboardedAt'],
             ['AutoSync', 'Robots only (daily crons)', 'IG/TikTok/X follower counts + Ourlads depthRank/depthPos — do not edit by hand'],
             ['Onboarding', 'Onboarding form (audit log)', 'Every submission, signed + recruit, timestamped — never edited'],
-            ['Staff', 'Admins', 'Team logins: Name, Password, Role, Agent Key, Title, Email'],
+            ['Staff', 'Admins', 'Company directory (music + sports): name, Role, Email, Status (Active / Former — former staff keep their records but no login)'],
             ['Recruiting Info', 'Staff (app Recruiting page)', 'Active recruiting board'],
             ['NFL Team Info', 'Staff (by hand)', 'Team facility addresses + front-office contacts (app Resources page)'],
             ['State Registration', 'Staff (by hand)', 'Agent registration status by state (app Resources page)'],
