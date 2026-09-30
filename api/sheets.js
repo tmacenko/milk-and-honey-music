@@ -210,6 +210,15 @@ async function sheetGetRaw(token, range) {
 // concurrent staff don't multiply Google quota usage; writes clear it.
 const { makeCachedGet, clearSheetCache } = require('../lib/sheetcache');
 const sheetGet = makeCachedGet(sheetGetRaw, 'music');
+// Company directory read (sports sheet's Staff tab: name | Role | Email |
+// Status | Division), cached like every other read.
+const staffDirGet = makeCachedGet(async (token) => {
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${process.env.SPORTS_SHEET_ID}/values/${encodeURIComponent("'Staff'!A:E")}`, { headers: { Authorization: `Bearer ${token}` } });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
+  return d;
+}, 'staffdir');
+
 
 async function sheetUpdate(token, range, values) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
@@ -614,7 +623,22 @@ module.exports = async (req, res) => {
       const outClients = (configured && !admin && publicColumnExists)
         ? clients.filter(c => c.public)
         : clients;
-      return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists, user: authState(req).user,
+      // The signed-in person's division (company directory = the sports
+      // sheet's Staff tab) — decides which music pages a Sports-only
+      // person sees. Cached with the other reads.
+      let division = '';
+      const me = authState(req).user;
+      if (me && me.name && process.env.SPORTS_SHEET_ID) {
+        try {
+          const dirRows = (await staffDirGet(token)).values || [];
+          const head = (dirRows[0] || []).map(h => String(h || '').trim().toLowerCase());
+          const di = head.indexOf('division');
+          const row = dirRows.slice(1).find(r => String(r[0] || '').trim().toLowerCase() === me.name.trim().toLowerCase());
+          division = di >= 0 && row ? String(row[di] || '').trim().toLowerCase() : '';
+        } catch { /* no division → full access, as before */ }
+      }
+      return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists, user: me,
+        access: { division },
         toolEmails: (!configured || admin) ? TOOL_EMAILS : undefined });
     }
 

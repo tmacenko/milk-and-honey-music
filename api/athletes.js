@@ -1525,7 +1525,7 @@ module.exports = async (req, res) => {
 
     return res.json({
       athletes, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists,
-      access: { contracts: canContracts },
+      access: { contracts: canContracts, division },
       user: authState(req).user,
       // Staff directory (names only) feeds the Lead Agent dropdown in the edit
       // form — internal, so only sent to logged-in company sessions. Decks

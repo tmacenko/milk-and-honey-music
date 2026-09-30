@@ -3631,9 +3631,9 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
 // Which profile tab to land on, given the page the profile was opened from
 // (Marketing → Marketing, Contracts → Deal, Team Fit → Team Fit, recruiting
 // and team pages → Performance / Recruiting). Falls back to Overview.
-function profileTabFor(from, a, canContracts = true) {
+function profileTabFor(from, a, canContracts = true, limited = false) {
   const nfl = a.level === 'NFL', hs = a.level === 'High School';
-  const has = (k) => (nfl ? ['overview', 'marketing', a.espnId && 'stats'] : ['overview', hs ? 'recruiting' : a.espnId && 'stats', 'teamfit', canContracts && 'deal', 'marketing']).includes(k);
+  const has = (k) => (nfl ? ['overview', 'marketing', a.espnId && 'stats'] : ['overview', hs ? 'recruiting' : a.espnId && 'stats', !limited && 'teamfit', canContracts && 'deal', 'marketing']).includes(k);
   const want = {
     marketing: 'marketing', branddeals: 'marketing',
     contracts: 'deal',
@@ -3643,10 +3643,10 @@ function profileTabFor(from, a, canContracts = true) {
   return want && has(want) ? want : 'overview';
 }
 
-function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fromPage, canContracts = true }) {
+function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fromPage, canContracts = true, limited = false }) {
   const [bioExp, setBioExp] = useState(false);
   // Staff profile tabs; opens on the one that matches where you came from.
-  const [page, setPage] = useState(() => (companyView ? profileTabFor(fromPage, a, canContracts) : 'overview'));
+  const [page, setPage] = useState(() => (companyView ? profileTabFor(fromPage, a, canContracts && !limited, limited) : 'overview'));
   // Usage log: the tab a profile opens on, then each tab switch.
   const usageFirst = useRef(true);
   useEffect(() => {
@@ -3718,11 +3718,11 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
-                {companyView && a.level === 'College' && a.college
+                {companyView && !limited && a.level === 'College' && a.college
                   ? <button onClick={() => openTeamByName(a.college)} title={`Open ${a.college}'s team page`} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex" }}><TeamLogo url={a.teamLogo} size={26} /></button>
                   : <TeamLogo url={a.teamLogo} size={26} />}
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: banner ? "#fff" : G.text, fontWeight: 500 }}>
-                  {companyView && a.level === 'College' && a.college
+                  {companyView && !limited && a.level === 'College' && a.college
                     ? <>{[a.position, a.jerseyNumber && `#${a.jerseyNumber}`].filter(Boolean).join('  ·  ')}{(a.position || a.jerseyNumber) ? '  ·  ' : ''}<TeamLink name={a.college} onOpen={() => openTeamByName(a.college)} /></>
                     : typeLine}
                 </span>}
@@ -3753,7 +3753,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
           <div style={{ display: "flex", gap: 24, padding: `0 ${pad}px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>
             {(a.level === 'NFL'
               ? [['overview', 'Overview'], ['marketing', 'Marketing'], ...(a.espnId ? [['stats', 'Stats']] : [])]
-              : [['overview', 'Overview'], a.level === 'High School' ? ['recruiting', 'Recruiting'] : a.espnId && ['stats', 'Performance'], ['teamfit', 'Team Fit'], canContracts && ['deal', 'Deal'], ['marketing', 'Marketing']].filter(Boolean)
+              : [['overview', 'Overview'], a.level === 'High School' ? ['recruiting', 'Recruiting'] : a.espnId && ['stats', 'Performance'], !limited && ['teamfit', 'Team Fit'], canContracts && !limited && ['deal', 'Deal'], ['marketing', 'Marketing']].filter(Boolean)
             ).map(([k, l]) => (
               <button key={k} onClick={() => setPage(k)}
                 onMouseEnter={e => { if (page !== k) e.currentTarget.style.color = G.textSecondary; }}
@@ -3770,9 +3770,9 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
           <SportsRecruitingTab athlete={a} isMobile={isMobile} pad={pad} />
         ) : companyView && a.espnId && page === 'stats' ? (
           <SportsStatsTab athlete={a} isMobile={isMobile} pad={pad} withReport />
-        ) : companyView && a.level !== 'NFL' && page === 'teamfit' ? (
+        ) : companyView && !limited && a.level !== 'NFL' && page === 'teamfit' ? (
           <ClientTeamFitTab a={a} isMobile={isMobile} pad={pad} user={user} />
-        ) : companyView && canContracts && a.level !== 'NFL' && page === 'deal' ? (
+        ) : companyView && canContracts && !limited && a.level !== 'NFL' && page === 'deal' ? (
           <ClientDealTab a={a} isMobile={isMobile} pad={pad} />
         ) : (
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
@@ -11686,6 +11686,10 @@ function parseNflTeams(data) {
 // send it to /api/usage every two minutes and when the tab is hidden. Only
 // the owner (USAGE_OWNERS, checked again on the server) sees the Usage page.
 const USAGE_OWNERS = ['tyler@milkhoneyla.com'];
+// Division access (Staff tab → Division): Music-only people get the sports
+// side's Home + Roster (and Home's see-all pages); Sports-only people the
+// same on the music side. 'Both' (and anyone not in the directory) sees all.
+const CROSS_SIDE_PAGES = ['home', 'roster', 'schedule', 'notes', 'tracklists', 'usage'];
 const isUsageOwner = (u) => !!(u && u.email && USAGE_OWNERS.includes(String(u.email).toLowerCase()));
 const USAGE = { q: [], active: 0, lastInput: Date.now(), on: false };
 function mhTrack(ty, o) {
@@ -12137,6 +12141,9 @@ function App() {
   const [sportsStaff, setSportsStaff] = useState([]);
   // Contracts are hidden from Music-division staff (the server also withholds the data).
   const [canContracts, setCanContracts] = useState(true);
+  const [division, setDivisionState] = useState(() => { try { return localStorage.getItem('mh_div') || ''; } catch { return ''; } });
+  const setDivision = (d) => { if (d === undefined) return; setDivisionState(d || ''); try { localStorage.setItem('mh_div', d || ''); } catch { /* private mode */ } };
+  const sportsLimited = division === 'music', musicLimited = division === 'sports';
   // Decks with live Box cover thumbnails (API-resolved); DECKS is the fallback.
   const [sportsDecks, setSportsDecks] = useState(null);
   const [sportsLevels, setSportsLevels] = useState([...ALL_LEVELS]);
@@ -12176,6 +12183,7 @@ function App() {
   // sidebar sections instead of leaving the site. URL carries ?page= so a
   // refresh lands back on the same section.
   const goSportsPage = (key) => {
+    if (sportsLimited && !CROSS_SIDE_PAGES.includes(key)) key = 'home';
     if (key === sportsPage && view !== 'detail') return;
     window.history.pushState({ view: 'roster', domain: 'sports', sportsPage: key }, '', key === 'home' ? '/sports' : `/sports?page=${key}`);
     setSportsPage(key);
@@ -12219,6 +12227,10 @@ function App() {
   }, []);
   // Music employee section (Tyler-only while it's broken in): 'home' / 'roster'.
   const [musicPage, setMusicPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
+  // What actually renders: a page someone's division doesn't include (an old
+  // link, a team/player page opened from a profile) falls back to Home.
+  const effSportsPage = !sportsLimited || CROSS_SIDE_PAGES.includes(sportsPage) ? sportsPage : 'home';
+  const effMusicPage = !musicLimited || CROSS_SIDE_PAGES.includes(musicPage) ? musicPage : 'home';
   // Usage tracking (staff sessions only — never public/b2b): start once
   // signed in, then log each page and profile opened.
   useEffect(() => { if (authKnown && authConfigured && isAdmin) usageStart(); }, [authKnown, authConfigured, isAdmin]);
@@ -12242,6 +12254,7 @@ function App() {
     document.documentElement.scrollTop = 0;
   }, [domain, sportsPage, musicPage, view, selectedKey, teamParam, playerParam]);
   const goMusicPage = (key) => {
+    if (musicLimited && !CROSS_SIDE_PAGES.includes(key)) key = 'home';
     if (key === musicPage && view !== 'detail') return;
     window.history.pushState({ view: 'roster', domain: 'music', musicPage: key }, '', key === 'home' ? '/' : `/?page=${key}`);
     setMusicPage(key);
@@ -12385,7 +12398,7 @@ function App() {
     const fresh = rosterFreshRef.current; rosterFreshRef.current = false;
     fetch(fresh ? '/api/athletes?fresh=1' : '/api/athletes')
       .then(r => r.json())
-      .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); setCanContracts(!d.access || d.access.contracts !== false); if (d.decks) setSportsDecks(d.decks); setAthletesLoaded(true); })
+      .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); setCanContracts(!d.access || d.access.contracts !== false); if (d.access) setDivision(d.access.division); if (d.decks) setSportsDecks(d.decks); setAthletesLoaded(true); })
       .catch(() => setAthletesLoaded(true));
   }, [gateUnlocked, domain, athletesLoaded]);
   // Keep the loaded roster fresh across users: quiet refetch when the tab
@@ -12398,7 +12411,7 @@ function App() {
       inFlight = true;
       fetch('/api/athletes')
         .then(r => r.json())
-        .then(d => { if (d.athletes) { setAthletes(d.athletes); setSportsStaff(d.staff || []); setCanContracts(!d.access || d.access.contracts !== false); } })
+        .then(d => { if (d.athletes) { setAthletes(d.athletes); setSportsStaff(d.staff || []); setCanContracts(!d.access || d.access.contracts !== false); if (d.access) setDivision(d.access.division); } })
         .catch(() => {})
         .finally(() => { inFlight = false; });
     };
@@ -12457,7 +12470,7 @@ function App() {
       .catch(() => { /* the roster fetch below still answers auth */ });
     fetch('/api/sheets')
       .then(r => r.json())
-      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setCurrentUser(d.user || null); setToolEmails(d.toolEmails || {}); setAuthConfigured(!!d.authConfigured); setLoading(false); setAuthKnown(true); })
+      .then(d => { setClients(d.clients || []); setLogos(d.logos || {}); setStaff(d.staff || {}); setIsAdmin(!!d.isAdmin); setCurrentUser(d.user || null); setToolEmails(d.toolEmails || {}); if (d.access) setDivision(d.access.division); setAuthConfigured(!!d.authConfigured); setLoading(false); setAuthKnown(true); })
       .catch(e => { setError(e.message); setLoading(false); setAuthKnown(true); });
   }, [gateUnlocked]);
 
@@ -12996,7 +13009,10 @@ function App() {
   // removed 2026-09-22 once the music home matured).
   const musicNavActive = domain === 'music' && isAdmin && view !== 'detail';
   const navSide = domain === 'all' ? lastSide : domain;
-  const navItems = navSide === 'sports' ? NAV_SPORTS : NAV_MUSIC;
+  // Other-side sidebars shrink to the pages that division can open.
+  const limitNav = (items) => items.map(it => (it.children ? { ...it, children: it.children.filter(c => CROSS_SIDE_PAGES.includes(c.key)) } : it))
+    .filter(it => (it.children ? it.children.length > 0 : CROSS_SIDE_PAGES.includes(it.key)));
+  const navItems = navSide === 'sports' ? (sportsLimited ? limitNav(NAV_SPORTS) : NAV_SPORTS) : (musicLimited ? limitNav(NAV_MUSIC) : NAV_MUSIC);
   const navPage = domain === 'all' ? 'roster' : (navSide === 'sports' ? (sportsPage === 'team' ? 'teams' : sportsPage === 'player' ? 'recruiting' : sportsPage) : musicPage);
   // Roster search/filter/export controls only make sense on the roster itself
   // (and always for public sessions). Both domains wait for the auth answer so
@@ -13347,41 +13363,41 @@ function App() {
           ) : domain === 'sports' ? (
             <>
               {!error && athletesLoaded && view === 'detail' && selected && (
-                <SportsDetail key={selected.name} athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} canContracts={canContracts} user={currentUser} fromPage={domain === 'sports' ? sportsPage : ''} />
+                <SportsDetail key={selected.name} athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} canContracts={canContracts} limited={sportsLimited} user={currentUser} fromPage={domain === 'sports' ? sportsPage : ''} />
               )}
-              {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
+              {!error && athletesLoaded && view === 'roster' && navActive && effSportsPage === 'home' && (
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} canContracts={canContracts} decks={sportsDecks || DECKS}
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => goSportsPage('roster')}
                   onShowStarters={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('Starters'); goSportsPage('roster'); }}
                   onShowMine={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setAgentFilter(currentUser?.name || 'All'); goSportsPage('roster'); }}
                   onGoBrandDeals={() => goSportsPage('branddeals')}
-                  onGoMarketing={() => goSportsPage('marketing')}
+                  onGoMarketing={sportsLimited ? undefined : () => goSportsPage('marketing')}
                   onGoRecruiting={() => goSportsPage('recruiting')}
                   onGoSchedule={() => goSportsPage('schedule')}
                   onGoNotes={() => goSportsPage('notes')} />
               )}
-              {view === 'roster' && navActive && sportsPage === 'notes' && <NotesPage isMobile={isMobile} user={currentUser} />}
-              {view === 'roster' && navActive && sportsPage === 'schedule' && (
+              {view === 'roster' && navActive && effSportsPage === 'notes' && <NotesPage isMobile={isMobile} user={currentUser} />}
+              {view === 'roster' && navActive && effSportsPage === 'schedule' && (
                 <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
                   <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Schedule</div>
                   <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>Every game and birthday in the next 7 days</div>
                   <ThisWeekendModule athletes={athletes} user={currentUser} isMobile={isMobile} onOpenAthlete={(a) => setView('detail', a)} fullPage />
                 </div>
               )}
-              {view === 'roster' && navActive && sportsPage === 'contracts' && canContracts && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
-              {view === 'roster' && navActive && sportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
-              {view === 'roster' && navActive && sportsPage === 'prospects' && <ProspectSearch isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
-              {view === 'roster' && navActive && sportsPage === 'teams' && <TeamsPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
-              {view === 'roster' && navActive && sportsPage === 'team' && <TeamPage team={teamParam} isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
-              {view === 'roster' && navActive && sportsPage === 'player' && <PlayerPage pid={playerParam} isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
-              {view === 'roster' && navActive && sportsPage === 'portal' && <PortalPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
-              {view === 'roster' && navActive && sportsPage === 'teamfit' && <TeamFitPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
-              {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => { rosterFreshRef.current = true; setAthletesLoaded(false); }} />}
-              {view === 'roster' && navActive && sportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
-              {view === 'roster' && navActive && sportsPage === 'gifting' && <GiftingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
-              {view === 'roster' && navActive && sportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
-              {view === 'roster' && navActive && sportsPage === 'usage' && <UsagePage isMobile={isMobile} staff={sportsStaff} user={currentUser} />}
+              {view === 'roster' && navActive && effSportsPage === 'contracts' && canContracts && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && effSportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && effSportsPage === 'prospects' && <ProspectSearch isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
+              {view === 'roster' && navActive && effSportsPage === 'teams' && <TeamsPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
+              {view === 'roster' && navActive && effSportsPage === 'team' && <TeamPage team={teamParam} isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
+              {view === 'roster' && navActive && effSportsPage === 'player' && <PlayerPage pid={playerParam} isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
+              {view === 'roster' && navActive && effSportsPage === 'portal' && <PortalPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
+              {view === 'roster' && navActive && effSportsPage === 'teamfit' && <TeamFitPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
+              {view === 'roster' && navActive && effSportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => { rosterFreshRef.current = true; setAthletesLoaded(false); }} />}
+              {view === 'roster' && navActive && effSportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && effSportsPage === 'gifting' && <GiftingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && effSportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
+              {view === 'roster' && navActive && effSportsPage === 'usage' && <UsagePage isMobile={isMobile} staff={sportsStaff} user={currentUser} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
                   {sportsLevelBar}
@@ -13412,31 +13428,31 @@ function App() {
               {!loading && !error && view === 'detail' && selected && (
                 <ClientDetail key={selected.name} client={selected} logos={logos} staff={staff} isMobile={isMobile} isAdmin={isAdmin} fromPage={domain === 'music' ? musicPage : ''} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
               )}
-              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'home' && (
+              {!loading && !error && view === 'roster' && musicNavActive && effMusicPage === 'home' && (
                 <MusicDashboard clients={clients} isMobile={isMobile} user={currentUser}
                   onOpenClient={(c) => setView('detail', c)}
                   onGoRoster={() => { clearCustomGroup(); setFilterTypes([]); goMusicPage('roster'); }}
                   onFilterType={(t) => { clearCustomGroup(); setFilterTypes([t]); goMusicPage('roster'); }}
-                  onGoMarketing={() => goMusicPage('marketing')}
+                  onGoMarketing={musicLimited ? undefined : () => goMusicPage('marketing')}
                   onGoSchedule={() => goMusicPage('schedule')}
                   onGoNotes={() => goMusicPage('notes')}
                   onGoTracklists={() => goMusicPage('tracklists')} />
               )}
-              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'notes' && <NotesPage isMobile={isMobile} user={currentUser} />}
-              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'tracklists' && (
+              {!loading && !error && view === 'roster' && musicNavActive && effMusicPage === 'notes' && <NotesPage isMobile={isMobile} user={currentUser} />}
+              {!loading && !error && view === 'roster' && musicNavActive && effMusicPage === 'tracklists' && (
                 <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
                   <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>1001Tracklists</div>
                   <TracklistsModule clients={clients} isMobile={isMobile} onOpenClient={(c) => setView('detail', c)} fullPage />
                 </div>
               )}
-              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'schedule' && (
+              {!loading && !error && view === 'roster' && musicNavActive && effMusicPage === 'schedule' && (
                 <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
                   <div style={{ fontSize: isMobile ? 21 : 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Schedule</div>
                   <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>Every artist show in the next 14 days</div>
                   <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={(c) => setView('detail', c)} user={currentUser} fullPage />
                 </div>
               )}
-              {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'marketing' && (
+              {!loading && !error && view === 'roster' && musicNavActive && effMusicPage === 'marketing' && (
                 <MusicMarketingPage isMobile={isMobile} clients={clients} onOpenClient={(c) => setView('detail', c)} />
               )}
               {!loading && !error && view === 'roster' && rosterControlsOn && (
