@@ -2367,8 +2367,8 @@ function buildLastGameLine(log) {
     parts = [`${num('Punts')} Punts`, ...(num('Gross Avg Punt Yards') > 0 ? [`${by['Gross Avg Punt Yards']} Avg`] : [])];
   }
   return {
-    pre: `${ev.atVs === 'at' ? '@' : 'vs'} ${(ev.opponent || {}).abbreviation || ''}`.trim(),
-    vs: ev.atVs === 'at' ? '@' : 'vs', logo: (ev.opponent || {}).logo || '', opp: (ev.opponent || {}).abbreviation || '',
+    pre: `${(ev.atVs === 'at' || ev.atVs === '@') ? '@' : 'vs'} ${(ev.opponent || {}).abbreviation || ''}`.trim(),
+    vs: (ev.atVs === 'at' || ev.atVs === '@') ? '@' : 'vs', logo: (ev.opponent || {}).logo || '', opp: (ev.opponent || {}).abbreviation || '',
     result: ev.gameResult || '',
     // Blockers and anyone without counting stats still get the score instead.
     text: parts.join(', ') || ev.score || '',
@@ -3346,6 +3346,20 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
   const league = a.level === 'NFL' ? 'nfl' : 'college-football';
   const [data, setData] = useState(ESPN_STATS_CACHE[a.espnId] || null);
   const [failed, setFailed] = useState(false);
+  // Stats card: which season's game log is showing ('career' = one row per
+  // season). Past seasons' logs load on demand and cache with the player.
+  const [yearSel, setYearSel] = useState('');
+  const [, setLogTick] = useState(0);
+  useEffect(() => { setYearSel(''); }, [a.espnId]);
+  useEffect(() => {
+    const c = ESPN_STATS_CACHE[a.espnId];
+    if (!c || !yearSel || yearSel === 'career' || (c.logs || {})[yearSel] !== undefined) return;
+    c.logs = c.logs || {};
+    c.logs[yearSel] = null;
+    fetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/${league}/athletes/${a.espnId}/gamelog?season=${yearSel}`)
+      .then(r => r.json()).catch(() => ({}))
+      .then(j => { c.logs[yearSel] = j || {}; setLogTick(t => t + 1); });
+  }, [a.espnId, yearSel, league]);
   useEffect(() => {
     if (!a.espnId || ESPN_STATS_CACHE[a.espnId]) return;
     let dead = false;
@@ -3387,15 +3401,6 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
   const prettySlug = (s) => String(s || '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   const thStyle = { textAlign: "right", padding: "9px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" };
   const tdStyle = { textAlign: "right", padding: "8px 10px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
-  const sectionCard = (title, table, note, maxH) => (
-    <div key={title} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "14px 16px 0" }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{title}</div>
-        {note && <div style={{ fontSize: 11, color: G.textTertiary }}>{note}</div>}
-      </div>
-      <div className="mh-hscroll" style={{ overflowX: "auto", padding: "6px 6px 8px", ...(maxH ? { maxHeight: maxH, overflowY: "auto" } : {}) }}>{table}</div>
-    </div>
-  );
 
   if (!a.espnId) return <div style={{ padding: `40px ${pad}px`, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No ESPN profile linked yet — add their ESPN ID in the edit form and stats appear here.</div>;
   const report = pxP ? <ProductionReport p={pxP} data={pxData} narrow={isMobile} /> : null;
@@ -3410,138 +3415,157 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
 
   const espnUrl = `https://www.espn.com/${league === 'nfl' ? 'nfl' : 'college-football'}/player/stats/_/id/${a.espnId}`;
   // A column that's zero/empty everywhere (a receiver's rushing, a
-  // non-kicker's field goals) is noise — every table drops those.
+  // non-kicker's field goals) is noise — the table drops those.
   const isZero = (v) => /^(|-|--|0|0\.0+|0-0|0\.0+%|0%)$/.test(String(v ?? '').trim());
-  const liveCols = (n, rows) => Array.from({ length: n }, (_, i) => i).filter(i => rows.some(r => !isZero((r || [])[i])));
 
-  // Career / season-by-season tables, one per stat category.
-  const teams = (data.stats || {}).teams || {};
-  const cats = ((data.stats || {}).categories || []).filter(c => (c.statistics || []).length);
+  // Season tables (ESPN /stats), one per category. Scoring only repeats
+  // touchdowns next to another category (kickers aside), so it's skipped then.
+  const allCats = ((data.stats || {}).categories || []).filter(c => (c.statistics || []).length);
+  const cats = allCats.length > 1 ? allCats.filter(c => !/scoring/i.test(c.name || c.displayName || '')) : allCats;
   const glossary = {};
   ((data.stats || {}).glossary || []).forEach(g => { glossary[g.abbreviation] = g.displayName; });
-  // Scoring only repeats touchdowns next to another table (kickers aside,
-  // whose kicking table carries it) — shown only when it's all there is.
-  const tableCats = cats.length > 1 ? cats.filter(c => !/scoring/i.test(c.name || c.displayName || '')) : cats;
-  const catCards = tableCats.map(c => {
-    const seasons = [...(c.statistics || [])].sort((x, y) => (y.season?.year || 0) - (x.season?.year || 0));
-    const cols = liveCols((c.labels || []).length, seasons.map(x => x.stats));
-    if (!cols.length) return null;
-    return sectionCard(c.displayName || c.name, (
-      <table style={{ borderCollapse: "collapse", width: "100%" }}>
-        <thead><tr>
-          <th style={{ ...thStyle, textAlign: "left" }}>Season</th>
-          <th style={{ ...thStyle, textAlign: "left" }}>Team</th>
-          {cols.map(i => <th key={i} style={thStyle} title={glossary[c.labels[i]] || (c.displayNames || [])[i] || ''}>{c.labels[i]}</th>)}
-        </tr></thead>
-        <tbody>
-          {seasons.map((x, r) => (
-            <tr key={r} style={{ background: r % 2 ? G.surfaceRaised : "transparent" }}>
-              <td style={{ ...tdStyle, textAlign: "left", color: G.text, fontWeight: 600 }}>{x.season?.year || x.season?.displayName || ''}</td>
-              <td style={{ ...tdStyle, textAlign: "left" }}>{(teams[x.teamId] || {}).abbreviation || prettySlug(x.teamSlug)}</td>
-              {cols.map(j => <td key={j} style={tdStyle}>{(x.stats || [])[j]}</td>)}
-            </tr>
-          ))}
-          {(c.totals || []).length > 0 && seasons.length > 1 && (
-            <tr style={{ borderTop: `1px solid ${G.surfaceBorder}` }}>
-              <td style={{ ...tdStyle, textAlign: "left", color: G.text, fontWeight: 700 }}>Career</td>
-              <td style={tdStyle} />
-              {cols.map(j => <td key={j} style={{ ...tdStyle, color: G.text, fontWeight: 700 }}>{c.totals[j]}</td>)}
-            </tr>
-          )}
-        </tbody>
-      </table>
-    ));
-  }).filter(Boolean);
+  const teamAbbr = (id, slug) => { const t = Object.values((data.stats || {}).teams || {}).find(x => String(x.id) === String(id)); return (t && t.abbreviation) || prettySlug(slug); };
+  // One stat's season value by ESPN name (receivingYards…), from whichever
+  // category carries it.
+  const seasonVal = (year, name) => {
+    for (const c of cats) {
+      const i = (c.names || []).indexOf(name);
+      const row = (c.statistics || []).find(x => (x.season?.year || 0) === year);
+      if (i >= 0 && row) return (row.stats || [])[i];
+    }
+    return undefined;
+  };
 
-  // Game log — flatten every season type's events, newest first.
-  const log = data.log || {};
-  const games = [];
-  (log.seasonTypes || []).forEach(t => (t.categories || []).forEach(c => (c.events || []).forEach(ev => {
-    const meta = (log.events || {})[ev.eventId] || {};
-    games.push({ ...meta, stats: ev.stats || [], typeName: t.displayName || '' });
-  })));
-  games.sort((x, y) => String(y.gameDate || '').localeCompare(String(x.gameDate || '')));
-  const logCols = liveCols((log.labels || []).length, games.map(g => g.stats));
-  // Which stat group each column belongs to (Receiving / Rushing…), for the
-  // group header row when more than one survives.
-  const colGroup = [];
-  (log.categories || []).forEach(c => { for (let k = 0; k < (c.count || 0); k++) colGroup.push(c.displayName || c.name || ''); });
-  const groupSpans = [];
-  logCols.forEach(i => { const g = colGroup[i] || ''; const last = groupSpans[groupSpans.length - 1]; if (last && last.g === g) last.n++; else groupSpans.push({ g, n: 1 }); });
+  const flatten = (lg) => {
+    const out = [];
+    ((lg || {}).seasonTypes || []).forEach(t => (t.categories || []).forEach(c => (c.events || []).forEach(ev => {
+      out.push({ ...(((lg || {}).events || {})[ev.eventId] || {}), stats: ev.stats || [], post: /post/i.test(t.displayName || '') });
+    })));
+    return out.sort((x, y) => String(y.gameDate || '').localeCompare(String(x.gameDate || '')));
+  };
+  const curLog = data.log || {};
+  const curYear = Number(((curLog.filters || []).find(f => f.name === 'season') || {}).value) || Math.max(0, ...cats.flatMap(c => (c.statistics || []).map(x => x.season?.year || 0)));
+  const years = [...new Set([
+    ...((curLog.filters || []).find(f => f.name === 'season') || { options: [] }).options.map(o => Number(o.value)),
+    ...cats.flatMap(c => (c.statistics || []).map(x => x.season?.year || 0)),
+  ].filter(Boolean))].sort((x, y) => y - x);
+  const sel = yearSel || (curYear ? String(curYear) : 'career');
+  const selLog = sel === String(curYear) ? curLog : (data.logs || {})[sel];
   const shortDate = (d) => { const x = d ? new Date(d) : null; return x && !isNaN(x) ? x.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''; };
-  const logCard = games.length > 0 && sectionCard('Game log', (
-    <table style={{ borderCollapse: "collapse", width: "100%" }}>
-      <thead>
-        {groupSpans.length > 1 && (
-          <tr>
-            <th colSpan={3} />
-            {groupSpans.map((x, k) => <th key={k} colSpan={x.n} style={{ ...thStyle, textAlign: "center", borderBottom: "none", paddingBottom: 0, color: G.textSecondary }}>{x.g}</th>)}
-          </tr>
-        )}
-        <tr>
-          <th style={{ ...thStyle, textAlign: "left" }}>Date</th>
-          <th style={{ ...thStyle, textAlign: "left" }}>Opponent</th>
-          <th style={{ ...thStyle, textAlign: "left" }}>Result</th>
-          {logCols.map((i, k) => <th key={i} style={{ ...thStyle, ...(k && colGroup[i] !== colGroup[logCols[k - 1]] ? { borderLeft: `1px solid ${G.surfaceBorder}` } : {}) }} title={((log.displayNames || [])[i]) || ''}>{log.labels[i]}</th>)}
-        </tr>
-      </thead>
-      <tbody>
-        {games.map((g, r) => (
-          <tr key={r} style={{ background: r % 2 ? G.surfaceRaised : "transparent" }}>
-            <td style={{ ...tdStyle, textAlign: "left" }}>{shortDate(g.gameDate)}</td>
-            <td style={{ ...tdStyle, textAlign: "left", color: G.text }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 16, fontSize: 11.5, color: G.textTertiary }}>{g.atVs === 'at' ? '@' : 'vs'}</span>
-                {(g.opponent || {}).logo && <img src={g.opponent.logo} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} />}
-                <span style={{ fontWeight: 600 }}>{(g.opponent || {}).abbreviation || ''}</span>
-              </span>
-            </td>
-            <td style={{ ...tdStyle, textAlign: "left" }}>
-              <span style={{ fontWeight: 700, color: g.gameResult === 'W' ? G.green : g.gameResult === 'L' ? G.red : G.textSecondary }}>{g.gameResult || ''}</span>
-              {g.score && <span style={{ marginLeft: 6 }}>{g.score}</span>}
-            </td>
-            {logCols.map((j, k) => <td key={j} style={{ ...tdStyle, color: G.text, ...(k && colGroup[j] !== colGroup[logCols[k - 1]] ? { borderLeft: `1px solid ${G.surfaceBorder}` } : {}) }}>{g.stats[j]}</td>)}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  ), games[0]?.typeName, games.length > 14 && !isMobile ? 560 : undefined);
 
-  // This season at a glance: the headline numbers (label over value) for up
-  // to two stat groups, plus yards by game from the log.
-  const curYear = Math.max(0, ...cats.flatMap(c => (c.statistics || []).map(x => x.season?.year || 0)));
-  const nonScoring = cats.filter(c => !/scoring/i.test(c.name || c.displayName || ''));
-  const seasonGroups = (nonScoring.length ? nonScoring : cats).map(c => {
-    const row = (c.statistics || []).find(x => (x.season?.year || 0) === curYear);
-    if (!row) return null;
-    const cells = (c.labels || []).map((l, i) => ({ l, v: (row.stats || [])[i], t: glossary[l] || (c.displayNames || [])[i] || l })).filter(x => !isZero(x.v)).slice(0, 6);
-    return cells.length ? { name: c.displayName || c.name || '', cells } : null;
-  }).filter(Boolean).slice(0, 2);
-  // Bars: the first yards stat that has any (tackles for defenders).
-  const barStat = (re) => (log.names || []).findIndex((n, i) => re.test(n) && games.some(g => !isZero(g.stats[i])));
-  const ydsIdx = barStat(/Yards$/) >= 0 ? barStat(/Yards$/) : barStat(/^totalTackles$/);
-  const ydsName = ydsIdx >= 0 ? (log.displayNames || [])[ydsIdx] || 'Yards' : '';
-  const seasonCard = (seasonGroups.length > 0 || ydsIdx >= 0) && (
-    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{curYear ? `${curYear} season` : 'This season'}</div>
-        <a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: G.green, textDecoration: "none", fontWeight: 600 }}>Full stats on ESPN →</a>
-      </div>
-      {seasonGroups.map(grp => (
-        <div key={grp.name}>
-          {seasonGroups.length > 1 && <div style={{ fontSize: 11.5, fontWeight: 600, color: G.textSecondary, marginBottom: 8 }}>{grp.name}</div>}
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${isMobile ? 3 : grp.cells.length}, minmax(0, 1fr))`, gap: 12 }}>
-            {grp.cells.map(x => (
-              <div key={x.l} title={x.t} style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{x.l}</div>
-                <div style={{ fontSize: 23, fontWeight: 700, color: G.text, letterSpacing: "-0.02em", lineHeight: 1.15, fontVariantNumeric: "tabular-nums" }}>{x.v}</div>
-              </div>
-            ))}
-          </div>
+  // Columns: { key, label, title, group, pick(row) }.
+  let cols = [], rows = [], totalRow = null, lead = [];
+  if (sel === 'career') {
+    cats.forEach(c => (c.labels || []).forEach((l, i) => cols.push({ label: l, title: glossary[l] || (c.displayNames || [])[i] || '', group: c.displayName || c.name || '', cat: c, i })));
+    const seasonRows = [...new Set(cats.flatMap(c => (c.statistics || []).map(x => `${x.season?.year || 0}|${x.teamId}|${x.teamSlug || ''}`)))]
+      .map(k => { const [y, id, slug] = k.split('|'); return { y: +y, id, slug }; }).sort((x, y) => y.y - x.y);
+    rows = seasonRows.map(r => ({
+      lead: [String(r.y), teamAbbr(r.id, r.slug)],
+      vals: cols.map(col => { const row = (col.cat.statistics || []).find(x => (x.season?.year || 0) === r.y && String(x.teamId) === String(r.id)); return row ? (row.stats || [])[col.i] : ''; }),
+    }));
+    if (rows.length > 1) totalRow = { label: 'Career', vals: cols.map(col => (col.cat.totals || [])[col.i]) };
+    lead = ['Season', 'Team'];
+  } else if (selLog) {
+    const games = flatten(selLog);
+    const grp = [];
+    (selLog.categories || []).forEach(c => { for (let k = 0; k < (c.count || 0); k++) grp.push(c.displayName || c.name || ''); });
+    cols = (selLog.labels || []).map((l, i) => ({ label: l, title: ((selLog.displayNames || [])[i]) || '', group: grp[i] || '', name: (selLog.names || [])[i], i }));
+    rows = games.map(g => ({
+      lead: [shortDate(g.gameDate), g, g],
+      vals: cols.map(col => g.stats[col.i]),
+      post: g.post,
+    }));
+    // Season line on top: ESPN's season totals; a stat they don't total
+    // (fumbles) is summed from the games when it's a plain count.
+    const y = Number(sel);
+    totalRow = { label: `${sel} season`, vals: cols.map(col => {
+      const v = seasonVal(y, col.name);
+      if (v !== undefined) return v;
+      const nums = games.map(g => g.stats[col.i]);
+      return nums.every(x => /^\d+$/.test(String(x || '0'))) ? String(nums.reduce((t, x) => t + (parseInt(x, 10) || 0), 0)) : '';
+    }) };
+    lead = ['Date', 'Opponent', 'Result'];
+  }
+  const live = cols.map((c, k) => rows.some(r => !isZero(r.vals[k])) || (totalRow && !isZero(totalRow.vals[k]))).map((on, k) => (on ? k : -1)).filter(k => k >= 0);
+  const spans = [];
+  live.forEach(k => { const g = cols[k].group; const last = spans[spans.length - 1]; if (last && last.g === g) last.n++; else spans.push({ g, n: 1 }); });
+  const edge = (idx) => (idx > 0 && cols[live[idx]].group !== cols[live[idx - 1]].group ? { borderLeft: `1px solid ${G.surfaceBorder}` } : {});
+  const loadingSel = sel !== 'career' && sel !== String(curYear) && !selLog;
+
+  const opts = [...years.map(String), ...(cats.length ? ['career'] : [])];
+  const statsCard = (opts.length > 0 || rows.length > 0) && (
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "12px 16px" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{sel === 'career' ? 'Career · by season' : 'Game by game'}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          {opts.length > 1 && (
+            <div className="mh-hscroll" style={{ display: "flex", gap: 4, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: 4, overflowX: "auto", maxWidth: "100%" }}>
+              {opts.map(k => (
+                <button key={k} onClick={() => setYearSel(k)}
+                  onMouseEnter={e => { if (sel !== k) e.currentTarget.style.color = G.text; }}
+                  onMouseLeave={e => { if (sel !== k) e.currentTarget.style.color = G.textSecondary; }}
+                  style={{ fontFamily: ff, fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: sel === k ? G.surface : 'transparent', color: sel === k ? G.text : G.textSecondary, boxShadow: sel === k ? G.cardShadow : 'none', whiteSpace: "nowrap" }}>{k === 'career' ? 'Career' : k}</button>
+              ))}
+            </div>
+          )}
+          <a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: G.green, textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap" }}>ESPN →</a>
         </div>
-      ))}
-      {ydsIdx >= 0 && games.length > 1 && (
-        <GameBars label={ydsName} games={[...games].reverse().map(g => ({ v: parseFloat(g.stats[ydsIdx]) || 0, opp: (g.opponent || {}).abbreviation || '', logo: (g.opponent || {}).logo || '', atVs: g.atVs, date: shortDate(g.gameDate) }))} />
+      </div>
+      {loadingSel ? (
+        <div style={{ padding: "24px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading {sel}…</div>
+      ) : !live.length ? (
+        <div style={{ padding: "24px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No stats logged for {sel === 'career' ? 'any season' : sel} yet.</div>
+      ) : (
+        <div className="mh-hscroll" style={{ overflowX: "auto", padding: "0 6px 8px" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              {spans.length > 1 && (
+                <tr>
+                  <th colSpan={lead.length} />
+                  {spans.map((x, k) => <th key={k} colSpan={x.n} style={{ ...thStyle, textAlign: "center", borderBottom: "none", paddingBottom: 0, color: G.textSecondary, ...(k ? { borderLeft: `1px solid ${G.surfaceBorder}` } : {}) }}>{x.g}</th>)}
+                </tr>
+              )}
+              <tr>
+                {lead.map(l => <th key={l} style={{ ...thStyle, textAlign: "left" }}>{l}</th>)}
+                {live.map((k, idx) => <th key={k} style={{ ...thStyle, ...edge(idx) }} title={cols[k].title}>{cols[k].label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {totalRow && (
+                <tr style={{ borderBottom: `1px solid ${G.surfaceBorder}` }}>
+                  <td colSpan={lead.length} style={{ ...tdStyle, textAlign: "left", color: G.text, fontWeight: 700 }}>{totalRow.label}</td>
+                  {live.map((k, idx) => <td key={k} style={{ ...tdStyle, color: G.text, fontWeight: 700, ...edge(idx) }}>{totalRow.vals[k]}</td>)}
+                </tr>
+              )}
+              {rows.map((r, n) => (
+                <tr key={n} style={{ background: n % 2 ? G.surfaceRaised : "transparent" }}>
+                  {sel === 'career' ? (
+                    <>
+                      <td style={{ ...tdStyle, textAlign: "left", color: G.text, fontWeight: 600 }}>{r.lead[0]}</td>
+                      <td style={{ ...tdStyle, textAlign: "left" }}>{r.lead[1]}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td style={{ ...tdStyle, textAlign: "left" }}>{r.lead[0]}{r.post && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: G.textTertiary }}>POST</span>}</td>
+                      <td style={{ ...tdStyle, textAlign: "left", color: G.text }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 16, fontSize: 11.5, color: G.textTertiary }}>{(r.lead[1].atVs === 'at' || r.lead[1].atVs === '@') ? '@' : 'vs'}</span>
+                          {(r.lead[1].opponent || {}).logo && <img src={r.lead[1].opponent.logo} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} />}
+                          <span style={{ fontWeight: 600 }}>{(r.lead[1].opponent || {}).abbreviation || ''}</span>
+                        </span>
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "left" }}>
+                        <span style={{ fontWeight: 700, color: r.lead[2].gameResult === 'W' ? G.green : r.lead[2].gameResult === 'L' ? G.red : G.textSecondary }}>{r.lead[2].gameResult || ''}</span>
+                        {r.lead[2].score && <span style={{ marginLeft: 6 }}>{r.lead[2].score}</span>}
+                      </td>
+                    </>
+                  )}
+                  {live.map((k, idx) => <td key={k} style={{ ...tdStyle, color: G.text, ...edge(idx) }}>{r.vals[k]}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -3602,62 +3626,12 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
 
   return (
     <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 16, background: G.bg }}>
-      {catCards.length === 0 && !logCard && !gameCard && (
+      {!statsCard && !gameCard && (
         <div style={{ padding: 30, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>ESPN doesn't have stat lines for {a.name} yet — they'll appear here once games are logged.</div>
       )}
-      {(seasonCard || gameCard) && (
-        <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: seasonCard && gameCard ? "3fr 2fr" : "1fr", gap: 16, alignItems: "stretch" }}>
-          {seasonCard}
-          {gameCard}
-        </div>
-      )}
-      {logCard && catCards.length > 0 && !isMobile && logCols.length <= 7 ? (
-        // A narrow game log sits beside the season tables.
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)", gap: 16, alignItems: "start" }}>
-          {logCard}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>{catCards}</div>
-        </div>
-      ) : (
-        <>
-          {logCard}
-          {catCards.length > 0 && (
-            <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: catCards.length > 1 ? "repeat(auto-fit, minmax(360px, 1fr))" : "1fr", gap: 16, alignItems: "start" }}>
-              {catCards}
-            </div>
-          )}
-        </>
-      )}
-      {!seasonCard && <div><a href={espnUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>Full stats on ESPN →</a></div>}
+      {gameCard}
+      {statsCard}
       {report && <div style={{ marginTop: 16 }}>{report}</div>}
-    </div>
-  );
-}
-
-// Per-game bars for one stat (yards), oldest → newest. Hover a bar for the
-// game; the best game carries its number.
-function GameBars({ label, games }) {
-  const [hi, setHi] = useState(null);
-  const max = Math.max(1, ...games.map(g => g.v));
-  const best = games.reduce((b, g, i) => (g.v > games[b].v ? i : b), 0);
-  const H = 64;
-  const cur = hi != null ? games[hi] : null;
-  return (
-    <div style={{ paddingTop: 12, borderTop: `1px solid ${G.surfaceBorder}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label} by game</div>
-        <div style={{ fontSize: 11.5, color: G.textSecondary, fontVariantNumeric: "tabular-nums", minHeight: 14 }}>{cur ? `${cur.date} · ${cur.atVs === 'at' ? '@' : 'vs'} ${cur.opp} · ${cur.v}` : ''}</div>
-      </div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 2 }} onMouseLeave={() => setHi(null)}>
-        {games.map((g, i) => (
-          <div key={i} onMouseEnter={() => setHi(i)} style={{ flex: 1, maxWidth: 56, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "default" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: G.textSecondary, height: 12, fontVariantNumeric: "tabular-nums" }}>{i === best && hi == null ? g.v : ''}</div>
-            <div style={{ height: H, width: "100%", display: "flex", alignItems: "flex-end", padding: "0 3px" }}>
-              <div style={{ width: "100%", height: Math.max(2, Math.round((g.v / max) * H)), background: G.green, opacity: hi == null || hi === i ? 1 : 0.45, borderRadius: "4px 4px 0 0", transition: "opacity .12s" }} />
-            </div>
-            {g.logo ? <img src={g.logo} alt={g.opp} title={g.opp} style={{ width: 16, height: 16, objectFit: "contain" }} /> : <div style={{ fontSize: 10, color: G.textTertiary }}>{g.opp}</div>}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
