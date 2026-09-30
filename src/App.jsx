@@ -2867,7 +2867,8 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
     ? ((y.fit && y.fit.fit) || 0) - ((x.fit && x.fit.fit) || 0)
     : (x.rank || 999) - (y.rank || 999)));
   const statusChip = (st) => {
-    if (!st || /cool|cold/i.test(st)) return null;
+    // Only meaningful interest levels — 247's Cool / Cold / None are noise.
+    if (!/warm|hot|commit|signed|enrolled/i.test(st || '')) return null;
     const c = /commit|signed|enrolled/i.test(st) ? [G.green, G.greenSubtle, G.greenBorder] : /hot/i.test(st) ? [G.red, 'transparent', G.red] : [G.yellow, 'transparent', G.yellow];
     return <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: c[0], background: c[1], border: `1px solid ${c[2]}`, borderRadius: 99, padding: "1px 8px", whiteSpace: "nowrap" }}>{st}</span>;
   };
