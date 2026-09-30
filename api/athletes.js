@@ -509,6 +509,19 @@ async function refreshEspnAutoSync(token, name, espnId, level) {
   if (ups.length) await sheetBatchUpdate(token, ups);
 }
 
+// Contracts are off-limits to Music-division staff (Staff tab: Division
+// column). These fields are dropped from what they're sent, and their saves
+// never touch them — so an edit from a music session can't blank a deal.
+const CONTRACT_FIELDS = ['contractYearly', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl'];
+function divisionFrom(staffRows, user) {
+  if (!user || !user.name) return '';
+  const head = (staffRows[0] || []).map(h => String(h || '').trim().toLowerCase());
+  const di = head.indexOf('division');
+  if (di < 0) return '';
+  const row = staffRows.slice(1).find(r => String(r[0] || '').trim().toLowerCase() === user.name.trim().toLowerCase());
+  return row ? String(row[di] || '').trim().toLowerCase() : '';
+}
+
 async function saveAthlete(token, body) {
   const a = body.athlete || {};
   const originalName = String(body.originalName || a.name || '').trim();
@@ -1374,7 +1387,13 @@ module.exports = async (req, res) => {
         return res.json({ success: true });
       }
 
-      await saveAthlete(token, req.body || {});
+      const saveBody = req.body || {};
+      const saver = authState(req).user;
+      if (saver && saveBody.athlete) {
+        const staffRows = (await sheetGet(token, "'Staff'!A:E").catch(() => ({ values: [] }))).values || [];
+        if (divisionFrom(staffRows, saver) === 'music') CONTRACT_FIELDS.forEach(f => { delete saveBody.athlete[f]; });
+      }
+      await saveAthlete(token, saveBody);
       return res.json({ success: true });
     } catch (err) {
       console.error('Athlete save error:', err.message);
@@ -1459,7 +1478,7 @@ module.exports = async (req, res) => {
       sheetGet(token, 'Highschool!A:S'),
       sheetGet(token, 'AppData!A:AZ'),
       sheetGet(token, "'AutoSync'!A:AZ").catch(() => ({ values: [] })), // pre-migration tolerance
-      sheetGet(token, "'Staff'!A:B").catch(() => ({ values: [] })),    // name + role only — never the password/email columns
+      sheetGet(token, "'Staff'!A:E").catch(() => ({ values: [] })),    // name, role, (email), status, division — only names ever leave the server
       getDecks().catch(() => null),
     ]);
     // Sports-facing agent lists (edit-form picker, page filters) only offer
@@ -1499,9 +1518,14 @@ module.exports = async (req, res) => {
     if (configured && !admin) {
       athletes = (publicColumnExists ? athletes.filter(a => a.public) : athletes).map(pickPublic);
     }
+    // Music-division staff: no contract data.
+    const division = divisionFrom(staffD.values || [], authState(req).user);
+    const canContracts = division !== 'music';
+    if (!canContracts) athletes.forEach(a => CONTRACT_FIELDS.forEach(f => { delete a[f]; }));
 
     return res.json({
       athletes, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists,
+      access: { contracts: canContracts },
       user: authState(req).user,
       // Staff directory (names only) feeds the Lead Agent dropdown in the edit
       // form — internal, so only sent to logged-in company sessions. Decks

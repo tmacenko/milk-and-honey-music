@@ -839,7 +839,7 @@ function ClientForm({ initial, onSave, onCancel, staff, clients }) {
 // ── Athlete edit form (sports) ────────────────────────────────────────────────
 // Identity fields write to the athlete's level tab; enrichment fields write to
 // AppData (matched by name server-side). Mirrors the music ClientForm UX.
-function AthleteForm({ initial, onSave, onCancel, staffNames }) {
+function AthleteForm({ initial, onSave, onCancel, staffNames, canContracts = true }) {
   const [form, setForm] = useState({ ...initial });
   const [saving, setSaving] = useState(false);
   const [photoHint, setPhotoHint] = useState(false);
@@ -1125,7 +1125,7 @@ function AthleteForm({ initial, onSave, onCancel, staffNames }) {
             {lockInput('tiktokFollowers', 'TikTok Followers', 'tiktokFollowers', 'Auto-refreshed nightly')}
           </>)}
 
-          {section('contract', 'Contract', <>
+          {canContracts && section('contract', 'Contract', <>
             {isNFL ? (
               <div style={{ gridColumn: "1/-1" }}>
                 {lockInput('contract', 'Contract ($ / year)', 'contractYearly', 'Auto-pulled from Spotrac')}
@@ -3631,9 +3631,9 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
 // Which profile tab to land on, given the page the profile was opened from
 // (Marketing → Marketing, Contracts → Deal, Team Fit → Team Fit, recruiting
 // and team pages → Performance / Recruiting). Falls back to Overview.
-function profileTabFor(from, a) {
+function profileTabFor(from, a, canContracts = true) {
   const nfl = a.level === 'NFL', hs = a.level === 'High School';
-  const has = (k) => (nfl ? ['overview', 'marketing', a.espnId && 'stats'] : ['overview', hs ? 'recruiting' : a.espnId && 'stats', 'teamfit', 'deal', 'marketing']).includes(k);
+  const has = (k) => (nfl ? ['overview', 'marketing', a.espnId && 'stats'] : ['overview', hs ? 'recruiting' : a.espnId && 'stats', 'teamfit', canContracts && 'deal', 'marketing']).includes(k);
   const want = {
     marketing: 'marketing', branddeals: 'marketing',
     contracts: 'deal',
@@ -3643,10 +3643,10 @@ function profileTabFor(from, a) {
   return want && has(want) ? want : 'overview';
 }
 
-function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fromPage }) {
+function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fromPage, canContracts = true }) {
   const [bioExp, setBioExp] = useState(false);
   // Staff profile tabs; opens on the one that matches where you came from.
-  const [page, setPage] = useState(() => (companyView ? profileTabFor(fromPage, a) : 'overview'));
+  const [page, setPage] = useState(() => (companyView ? profileTabFor(fromPage, a, canContracts) : 'overview'));
   // Usage log: the tab a profile opens on, then each tab switch.
   const usageFirst = useRef(true);
   useEffect(() => {
@@ -3753,7 +3753,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
           <div style={{ display: "flex", gap: 24, padding: `0 ${pad}px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>
             {(a.level === 'NFL'
               ? [['overview', 'Overview'], ['marketing', 'Marketing'], ...(a.espnId ? [['stats', 'Stats']] : [])]
-              : [['overview', 'Overview'], a.level === 'High School' ? ['recruiting', 'Recruiting'] : a.espnId && ['stats', 'Performance'], ['teamfit', 'Team Fit'], ['deal', 'Deal'], ['marketing', 'Marketing']].filter(Boolean)
+              : [['overview', 'Overview'], a.level === 'High School' ? ['recruiting', 'Recruiting'] : a.espnId && ['stats', 'Performance'], ['teamfit', 'Team Fit'], canContracts && ['deal', 'Deal'], ['marketing', 'Marketing']].filter(Boolean)
             ).map(([k, l]) => (
               <button key={k} onClick={() => setPage(k)}
                 onMouseEnter={e => { if (page !== k) e.currentTarget.style.color = G.textSecondary; }}
@@ -3772,7 +3772,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
           <SportsStatsTab athlete={a} isMobile={isMobile} pad={pad} withReport />
         ) : companyView && a.level !== 'NFL' && page === 'teamfit' ? (
           <ClientTeamFitTab a={a} isMobile={isMobile} pad={pad} user={user} />
-        ) : companyView && a.level !== 'NFL' && page === 'deal' ? (
+        ) : companyView && canContracts && a.level !== 'NFL' && page === 'deal' ? (
           <ClientDealTab a={a} isMobile={isMobile} pad={pad} />
         ) : (
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
@@ -3796,7 +3796,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
               ))}
             </div>
           )}
-          {companyView && (a.level === 'NFL' ? <SocialContractModules athlete={a} isMobile={isMobile} /> : <SocialContractModules athlete={a} isMobile={isMobile} only={['social', 'market']} />)}
+          {companyView && (a.level === 'NFL' ? <SocialContractModules athlete={a} isMobile={isMobile} only={canContracts ? undefined : ['social', 'market', 'docs']} /> : <SocialContractModules athlete={a} isMobile={isMobile} only={['social', 'market']} />)}
           {(() => {
             // Chip modules live on the Marketing tab for staff; the public
             // one-pager keeps its partner-visible pair here.
@@ -5435,7 +5435,7 @@ function TodoNotesList({ items, onComplete, onReorder }) {
   ));
 }
 
-function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, onGoBrandDeals, onGoSchedule, onGoNotes, user, decks }) {
+function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShowStarters, onShowMine, onGoMarketing, onGoRecruiting, onGoBrandDeals, onGoSchedule, onGoNotes, user, decks, canContracts = true }) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Agents see THEIR book everywhere: every stat and tile computes over their
@@ -5490,7 +5490,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       if (!(a.shirtSize || a.hoodieSize || a.shoeSize)) m.push('Sizes');
       if (a.level === 'High School' && !a.profileUrl247) m.push('247 link');
       const noDeal = isFreeAgent(a);
-      if (a.level !== 'High School' && !noDeal && !(a.contractYearly || a.contractAav)) m.push('Contract $');
+      if (canContracts && a.level !== 'High School' && !noDeal && !(a.contractYearly || a.contractAav)) m.push('Contract $');
       return m;
     };
     const incomplete = scoped.map(a => ({ a, missing: missingOf(a) }))
@@ -5511,7 +5511,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
       splits: { ig: pct(ig), tt: pct(tt), x: pct(x) },
       upcoming: bdays.filter(b => (b.date - today) / 86400000 <= 30),
     };
-  }, [scoped, mineList]);
+  }, [scoped, mineList, canContracts]);
   const [showIncomplete, setShowIncomplete] = useState(false);
   // Manual to-dos (shared Todos sheet tab) + a standing nudge when fresh
   // onboarding submissions arrived this week.
@@ -12135,6 +12135,8 @@ function App() {
   const [athletesLoaded, setAthletesLoaded] = useState(false);
   // Staff directory (names only) from /api/athletes — feeds the Lead Agent dropdown.
   const [sportsStaff, setSportsStaff] = useState([]);
+  // Contracts are hidden from Music-division staff (the server also withholds the data).
+  const [canContracts, setCanContracts] = useState(true);
   // Decks with live Box cover thumbnails (API-resolved); DECKS is the fallback.
   const [sportsDecks, setSportsDecks] = useState(null);
   const [sportsLevels, setSportsLevels] = useState([...ALL_LEVELS]);
@@ -12383,7 +12385,7 @@ function App() {
     const fresh = rosterFreshRef.current; rosterFreshRef.current = false;
     fetch(fresh ? '/api/athletes?fresh=1' : '/api/athletes')
       .then(r => r.json())
-      .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); if (d.decks) setSportsDecks(d.decks); setAthletesLoaded(true); })
+      .then(d => { setAthletes(d.athletes || []); setSportsStaff(d.staff || []); setCanContracts(!d.access || d.access.contracts !== false); if (d.decks) setSportsDecks(d.decks); setAthletesLoaded(true); })
       .catch(() => setAthletesLoaded(true));
   }, [gateUnlocked, domain, athletesLoaded]);
   // Keep the loaded roster fresh across users: quiet refetch when the tab
@@ -12396,7 +12398,7 @@ function App() {
       inFlight = true;
       fetch('/api/athletes')
         .then(r => r.json())
-        .then(d => { if (d.athletes) { setAthletes(d.athletes); setSportsStaff(d.staff || []); } })
+        .then(d => { if (d.athletes) { setAthletes(d.athletes); setSportsStaff(d.staff || []); setCanContracts(!d.access || d.access.contracts !== false); } })
         .catch(() => {})
         .finally(() => { inFlight = false; });
     };
@@ -12938,7 +12940,7 @@ function App() {
         { key: 'teamfit', label: 'Team Fit', icon: 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 16a4 4 0 100-8 4 4 0 000 8zM12 12h.01' },
       ],
     },
-    { key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' },
+    ...(canContracts ? [{ key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' }] : []),
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
     ...(isUsageOwner(currentUser) ? [{ key: 'usage', label: 'Usage', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' }] : []),
@@ -13345,10 +13347,10 @@ function App() {
           ) : domain === 'sports' ? (
             <>
               {!error && athletesLoaded && view === 'detail' && selected && (
-                <SportsDetail key={selected.name} athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} user={currentUser} fromPage={domain === 'sports' ? sportsPage : ''} />
+                <SportsDetail key={selected.name} athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} canContracts={canContracts} user={currentUser} fromPage={domain === 'sports' ? sportsPage : ''} />
               )}
               {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
-                <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} decks={sportsDecks || DECKS}
+                <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} canContracts={canContracts} decks={sportsDecks || DECKS}
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => goSportsPage('roster')}
                   onShowStarters={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('Starters'); goSportsPage('roster'); }}
@@ -13367,7 +13369,7 @@ function App() {
                   <ThisWeekendModule athletes={athletes} user={currentUser} isMobile={isMobile} onOpenAthlete={(a) => setView('detail', a)} fullPage />
                 </div>
               )}
-              {view === 'roster' && navActive && sportsPage === 'contracts' && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && sportsPage === 'contracts' && canContracts && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && sportsPage === 'prospects' && <ProspectSearch isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'teams' && <TeamsPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
@@ -13476,7 +13478,7 @@ function App() {
       {editing && <ClientForm initial={editing} onSave={saveClient} onCancel={() => setEditing(null)} staff={staff} clients={clients} />}
 
       {/* Athlete edit modal (sports) */}
-      {editingAthlete && <AthleteForm initial={editingAthlete} staffNames={sportsStaff} onSave={saveAthlete} onCancel={() => setEditingAthlete(null)} />}
+      {editingAthlete && <AthleteForm initial={editingAthlete} staffNames={sportsStaff} canContracts={canContracts} onSave={saveAthlete} onCancel={() => setEditingAthlete(null)} />}
 
       {/* Internal AI chat — company sessions only (context spans both rosters + all tabs). */}
       {CHAT_ENABLED && !loading && isAdmin && authKnown && <FloatingChat isMobile={isMobile} />}
