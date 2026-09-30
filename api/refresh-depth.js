@@ -732,8 +732,8 @@ module.exports = async (req, res) => {
             hs247.composite = (hs247.composite || 0) + 1;
           }
           // Offers: 247's recruitment interests list → AutoSync offers247 as
-          // JSON [[school, offered 1/0, status], …] (status: Cool/Warm/Hot/
-          // Committed…). Only written when the page parses.
+          // JSON [[school, offered 1/0, status, visit?], …] (status: Cool/Warm/
+          // Hot/Committed…; visit only when 247 lists one). Only written when the page parses.
           const iUrl = interestUrls[nameKey(t.name)];
           if (iUrl && offersCol >= 0) {
             try {
@@ -741,7 +741,7 @@ module.exports = async (req, res) => {
               const list = parseInterests(ih);
               if (list.length) {
                 const rowN = await ensureAutoRow(t.name);
-                if (rowN) { hsUpdates.push({ range: `'AutoSync'!${colLetter(offersCol)}${rowN}`, values: [[JSON.stringify(list.map(x => [x.school, x.offer ? 1 : 0, x.status]))]] }); hs247.offers = (hs247.offers || 0) + 1; }
+                if (rowN) { hsUpdates.push({ range: `'AutoSync'!${colLetter(offersCol)}${rowN}`, values: [[JSON.stringify(list.map(x => (x.visit ? [x.school, x.offer ? 1 : 0, x.status, x.visit] : [x.school, x.offer ? 1 : 0, x.status])))]] }); hs247.offers = (hs247.offers || 0) + 1; }
               }
             } catch (e) { hs247.errors.push(`${t.name} offers: ${e.message}`); }
           }

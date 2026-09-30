@@ -2747,6 +2747,180 @@ function GrowthChart({ points, metric, isMobile }) {
   );
 }
 
+// ── Recruiting tab (high school clients, staff only) ────────────────────────
+// 247 rankings with movement since tracking began, the national-rank history,
+// and the offer board (logos, program level, interest, visits) — from the
+// nightly StatHistory snapshots and AutoSync offers247.
+const pxEspnLogo = (url) => { const m = String(url || '').match(/\/logos\/\d+\/(\d+)\.png/); return m ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${m[1]}.png` : url; };
+const PX_INTEREST_ORDER = { committed: 0, enrolled: 0, signed: 0, hot: 1, warm: 2, cool: 3, cold: 4 };
+function RankHistoryChart({ points }) {
+  // points: [{ date, v }] — v = national rank (lower is better, so the axis
+  // is flipped: up = better).
+  const [hover, setHover] = useState(null);
+  const ref = useRef(null);
+  if (points.length < 2) return <div style={{ fontSize: 13, color: G.textTertiary, padding: "24px 0" }}>Rank history builds up from the nightly snapshots — check back in a few days.</div>;
+  const vs = points.map(p => p.v);
+  const lo = Math.min(...vs), hi = Math.max(...vs);
+  const padR = Math.max(3, Math.round((hi - lo) * 0.15));
+  const top = Math.max(1, lo - padR), bot = hi + padR;
+  const t0 = new Date(points[0].date).getTime(), t1 = new Date(points[points.length - 1].date).getTime();
+  const X = (d) => (t1 === t0 ? 50 : ((new Date(d).getTime() - t0) / (t1 - t0)) * 100);
+  const Y = (v) => ((v - top) / (bot - top || 1)) * 100;
+  const path = points.map((p, i) => `${i ? 'L' : 'M'}${X(p.date).toFixed(2)},${Y(p.v).toFixed(2)}`).join(' ');
+  const fmtD = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const onMove = (e) => {
+    const r = ref.current.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * 100;
+    let best = 0; points.forEach((p, i) => { if (Math.abs(X(p.date) - x) < Math.abs(X(points[best].date) - x)) best = i; });
+    setHover(best);
+  };
+  const hp = hover != null ? points[hover] : points[points.length - 1];
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: G.textSecondary, marginBottom: 8, minHeight: 20 }}>
+        <b style={{ color: G.text, fontVariantNumeric: "tabular-nums" }}>#{hp.v}</b> national · {fmtD(hp.date)}
+      </div>
+      <div ref={ref} onMouseMove={onMove} onMouseLeave={() => setHover(null)} style={{ position: "relative", height: 140, cursor: "crosshair" }}>
+        {[0, 50, 100].map(g => <div key={g} style={{ position: "absolute", left: 0, right: 0, top: `${g}%`, borderTop: `1px solid ${G.surfaceBorder}` }} />)}
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
+          <path d={path} fill="none" stroke={G.green} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+        </svg>
+        <div style={{ position: "absolute", left: `${X(hp.date)}%`, top: `${Y(hp.v)}%`, width: 8, height: 8, margin: "-4px 0 0 -4px", borderRadius: 4, background: G.green, boxShadow: `0 0 0 2px ${G.surface}` }} />
+        {hover != null && <div style={{ position: "absolute", left: `${X(hp.date)}%`, top: 0, bottom: 0, borderLeft: `1px dashed ${G.textTertiary}`, pointerEvents: "none" }} />}
+        <span style={{ position: "absolute", right: 0, top: -2, transform: "translateY(-100%)", fontSize: 10, color: G.textTertiary }}>#{top}</span>
+        <span style={{ position: "absolute", right: 0, bottom: -2, transform: "translateY(100%)", fontSize: 10, color: G.textTertiary }}>#{bot}</span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: G.textTertiary, marginTop: 16 }}>
+        <span>{fmtD(points[0].date)}</span><span>{fmtD(points[points.length - 1].date)}</span>
+      </div>
+    </div>
+  );
+}
+function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
+  const hist = useAdminTab('stathistory');
+  const [px, setPx] = useState(PROSPECTS.data);
+  useEffect(() => {
+    if (px) return;
+    let on = true;
+    loadProspectData(false).then(d => on && setPx(d)).catch(() => {});
+    return () => { on = false; };
+  }, [px]);
+  useProspectsRefreshed(setPx);
+  const k = String(a.name || '').toLowerCase().trim();
+  // One snapshot per day: [date, name, depthRank, depthPos, rating, stars,
+  // natRank, posRank, stateRank, compRating, compStars, compNatRank].
+  const snaps = useMemo(() => ((hist.data && hist.data.rows) || [])
+    .map(r => r.cells || [])
+    .filter(c => String(c[1] || '').toLowerCase().trim() === k && (c[5] || c[6] || c[10] || c[11]))
+    .map(c => ({ date: c[0], rating: c[4], stars: c[5], nat: +c[6] || 0, pos: +c[7] || 0, state: +c[8] || 0, compRating: c[9], compStars: c[10], compNat: +c[11] || 0 }))
+    .sort((x, y) => String(x.date).localeCompare(String(y.date))), [hist.data, k]);
+  const cur = snaps[snaps.length - 1];
+  const first = snaps[0];
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, minWidth: 0 };
+  const label = (t, extra) => (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{t}</div>
+      {extra}
+    </div>
+  );
+  const fmtD = (d) => (d ? new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '');
+  // Rank change since tracking began (fewer = better → positive = moved up).
+  const delta = (key) => {
+    if (!cur || !first || !cur[key] || !first[key] || first === cur) return null;
+    const d = first[key] - cur[key];
+    return d === 0 ? <span style={{ fontSize: 11.5, color: G.textTertiary }}>no change</span>
+      : <span style={{ fontSize: 11.5, fontWeight: 700, color: d > 0 ? G.green : G.red }}>{d > 0 ? '▲' : '▼'} {Math.abs(d)}</span>;
+  };
+  const posLabel = String(a.position || '').split(/[/,\s]+/)[0] || 'Position';
+  const [city, st] = String(a.hometown || '').split(',').map(x => x.trim());
+  const stat = (l, v, d, hint) => (
+    <div title={hint}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{l}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+        <span style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.02em", color: G.text, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>{v || '—'}</span>
+        {d}
+      </div>
+    </div>
+  );
+  const compStars = cur && (cur.compStars || cur.stars);
+  const rankings = (
+    <div style={card}>
+      {label('247 rankings', cur && <span style={{ fontSize: 11.5, color: G.textTertiary }}>updated {fmtD(cur.date)}{first && first !== cur ? ` · change since ${fmtD(first.date)}` : ''}</span>)}
+      {!cur ? <div style={{ fontSize: 13, color: G.textTertiary }}>No 247 rankings yet — they’re read nightly once the player’s 247 profile link is saved.</div> : (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 16 }}>
+          {stat(cur.compRating ? 'Composite' : 'Rating', compStars ? `${compStars}★` : '', <span style={{ fontSize: 13, color: G.textSecondary, fontVariantNumeric: "tabular-nums" }}>{cur.compRating || cur.rating}</span>, cur.compRating ? '247Sports Composite (industry average)' : '247Sports rating')}
+          {stat('National', cur.compNat ? `#${cur.compNat}` : cur.nat ? `#${cur.nat}` : '', cur.compNat ? delta('compNat') : delta('nat'), cur.compNat ? '247Sports Composite national rank' : '247Sports national rank')}
+          {stat(posLabel, cur.pos ? `#${cur.pos}` : '', delta('pos'), '247Sports position rank')}
+          {stat(st || 'State', cur.state ? `#${cur.state}` : '', delta('state'), '247Sports state rank')}
+        </div>
+      )}
+    </div>
+  );
+  // National rank history: 247's own line (tracked since July) until the
+  // Composite has two weeks of its own.
+  const useComp = new Set(snaps.filter(x => x.compNat).map(x => x.date)).size >= 14;
+  const points = snaps.map(x => ({ date: x.date, v: useComp ? x.compNat : x.nat })).filter(x => x.v);
+  const history = (
+    <div style={card}>
+      {label('National rank history', <span style={{ fontSize: 11.5, color: G.textTertiary }}>{useComp ? '247 Composite' : `247Sports’ own ranking${(snaps.find(x => x.compNat) || {}).date ? ` · Composite tracked since ${fmtD(snaps.find(x => x.compNat).date)}` : ''}`} · up = better</span>)}
+      <RankHistoryChart points={points} />
+    </div>
+  );
+  // Offer board
+  const offers = pxParseOffers(a.offers247).map(o => ({ school: o[0], offered: !!o[1], status: String(o[2] || ''), visit: String(o[3] || '') }));
+  const prog = px ? pxProgram(px) : null;
+  const info = (school) => { const n = px ? pxTeamByName(px, school) : ''; return n ? { name: n, ...px.teamInfo[n], rank: prog.rank[n] || 0 } : null; };
+  const sorted = offers.map(o => ({ ...o, t: info(o.school) }))
+    .sort((x, y) => (PX_INTEREST_ORDER[x.status.toLowerCase()] ?? 5) - (PX_INTEREST_ORDER[y.status.toLowerCase()] ?? 5) || ((x.t && x.t.rank) || 999) - ((y.t && y.t.rank) || 999));
+  const offered = sorted.filter(o => o.offered), interest = sorted.filter(o => !o.offered);
+  const statusColor = (st2) => (/commit|signed|enrolled/i.test(st2) ? G.green : /hot/i.test(st2) ? G.red : /warm/i.test(st2) ? G.yellow : G.textTertiary);
+  const tile = (o) => (
+    <div key={o.school} onClick={() => o.t && openTeamPage(o.t.name)} title={o.t ? `Open ${o.t.name}’s roster outlook` : o.school}
+      onMouseEnter={e => { if (o.t) e.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+      style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, border: `1px solid ${/commit|signed/i.test(o.status) ? G.greenBorder : G.surfaceBorder}`, cursor: o.t ? "pointer" : "default", minWidth: 0 }}>
+      {o.t && o.t.logo ? <img src={pxEspnLogo(o.t.logo)} alt="" onError={e => { e.currentTarget.src = o.t.logo; }} style={{ width: 36, height: 36, objectFit: "contain", flexShrink: 0 }} />
+        : <span style={{ width: 36, height: 36, borderRadius: 8, background: G.surfaceRaised, flexShrink: 0 }} />}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.t ? o.t.name : o.school}</div>
+        <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ color: statusColor(o.status), fontWeight: 700 }}>{o.status || '—'}</span>
+          {o.t && o.t.rank ? ` · Program #${o.t.rank}` : o.t && o.t.tier ? ` · ${PX_TIER_NAME[o.t.tier] || o.t.tier}` : ''}
+          {o.visit ? ` · Visit ${o.visit}` : ''}
+        </div>
+      </div>
+    </div>
+  );
+  const grid = { display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 };
+  const openFit = () => {
+    const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
+    const hit = px ? px.players.find(p => p.isHs && nk(p.name) === nk(a.name)) : null;
+    pageStateCache['fit.pick'] = hit ? hit.id : `c:${slugOf(a.name)}`;
+    openSportsPage('teamfit');
+  };
+  const offerBoard = (
+    <div style={card}>
+      {label(`Offers${offered.length ? ` · ${offered.length}` : ''}`, <button onClick={openFit} style={{ background: "none", border: "none", padding: 0, color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Team Fit →</button>)}
+      {!offers.length ? <div style={{ fontSize: 13, color: G.textTertiary }}>No offers on file yet — read nightly from their 247Sports recruitment page.</div> : (<>
+        <div style={grid}>{offered.map(tile)}</div>
+        {interest.length > 0 && (<>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, margin: "16px 0 8px" }}>Interest, no offer yet · {interest.length}</div>
+          <div style={grid}>{interest.map(tile)}</div>
+        </>)}
+      </>)}
+      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12 }}>From 247Sports, refreshed nightly. Interest levels are 247’s (Cool / Warm / Hot). Click a school for its roster outlook.</div>
+    </div>
+  );
+  return (
+    <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 16, background: G.bg }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+        {rankings}
+        {history}
+      </div>
+      {offerBoard}
+    </div>
+  );
+}
+
 function SportsMarketingTab({ athlete: a, isMobile, pad }) {
   const hist = useAdminTab('socialhistory');
   const hist247 = useAdminTab('stathistory');
@@ -3204,7 +3378,6 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
     companyView && a.positionCoach && !isFreeAgent(a) && ['Position coach', a.positionCoach],
     a.classOf && ['Class of', a.classOf],
     a.committedTo && ['Committed', a.committedTo],
-    companyView && (() => { const o = pxParseOffers(a.offers247).filter(x => x[1]).map(x => x[0]); return o.length ? ['Offers', `${o.length} — ${o.join(', ')}`] : null; })(),
     (a.draftYear || a.draftRound || a.draftPick) && ['Draft', [a.draftYear, a.draftRound && `R${a.draftRound}`, a.draftPick && `P${a.draftPick}`].filter(Boolean).join(' ')],
   ].filter(Boolean);
   const banner = a.heroImageUrl;
@@ -3269,7 +3442,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             an ESPN link; Marketing shows for everyone. */}
         {companyView && (
           <div style={{ display: "flex", gap: 24, padding: `0 ${pad}px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>
-            {[['overview', 'Overview'], ['marketing', 'Marketing'], ...(a.espnId ? [['stats', 'Stats']] : [])].map(([k, l]) => (
+            {[['overview', 'Overview'], ['marketing', 'Marketing'], ...(a.level === 'High School' ? [['recruiting', 'Recruiting']] : []), ...(a.espnId ? [['stats', 'Stats']] : [])].map(([k, l]) => (
               <button key={k} onClick={() => setPage(k)}
                 onMouseEnter={e => { if (page !== k) e.currentTarget.style.color = G.textSecondary; }}
                 onMouseLeave={e => { if (page !== k) e.currentTarget.style.color = G.textTertiary; }}
@@ -3281,6 +3454,8 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
         )}
         {companyView && page === 'marketing' ? (
           <SportsMarketingTab athlete={a} isMobile={isMobile} pad={pad} />
+        ) : companyView && a.level === 'High School' && page === 'recruiting' ? (
+          <SportsRecruitingTab athlete={a} isMobile={isMobile} pad={pad} />
         ) : companyView && a.espnId && page === 'stats' ? (
           <SportsStatsTab athlete={a} isMobile={isMobile} pad={pad} withReport />
         ) : (
