@@ -7901,6 +7901,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const [editOpen, setEditOpen] = useState(false);
   const [teamQ, setTeamQ] = useState('');
   const [offersOnly, setOffersOnly] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState('');
   useEffect(() => { setDraft(null); setShown(15); setEditOpen(false); setTeamQ(''); }, [p.id]);
   const prefs = pxMergePrefs(store.saved, draft);
   const res = useMemo(() => (grp ? pxFitRank(data, p, prefs, marks.byTeam) : null), [data, p, grp, JSON.stringify(prefs), JSON.stringify(marks.byTeam)]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -7969,7 +7970,44 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const listed = !res ? [] : (tq || offersOnly)
     ? res.rows.map((t, i) => [t, i]).filter(([t]) => (!offersOnly || t.offered) && (!tq || t.name.toLowerCase().includes(tq) || String(t.conf || '').toLowerCase().includes(tq)))
     : res.rows.slice(0, shown).map((t, i) => [t, i]);
+  // One-page report for the player/family: priorities + top 10 with reasons.
+  // Agent marks and notes stay internal (never sent).
+  const downloadReport = async () => {
+    if (!res) return;
+    setPdfBusy('Preparing…');
+    try {
+      const prog = pxProgram(data);
+      const wl = (k) => PX_FIT_WEIGHT_LABEL[prefs.w[k] || 0];
+      const pri = PX_FIT_FACTORS.filter(([k]) => (prefs.w[k] || 0) > 0 && res.avail[k]).sort((x, y) => (prefs.w[y[0]] || 0) - (prefs.w[x[0]] || 0)).map(([k, l]) => `${l} — ${wl(k)}`).join(' · ');
+      // Level is already in each row's subtitle (Program #N).
+      const reasons = (t) => PX_FIT_FACTORS.filter(([k]) => k !== 'level' && t.f[k] && t.f[k][1] && (prefs.w[k] || 0) > 0)
+        .sort((x, y) => PX_FIT_WEIGHT[prefs.w[y[0]]] * t.f[y[0]][0] - PX_FIT_WEIGHT[prefs.w[x[0]]] * t.f[x[0]][0]).slice(0, 3).map(([k]) => t.f[k][1]);
+      const facts = p.isHs
+        ? [['247', [p.stars ? `${p.stars}-star` : '', p.natRank ? `#${p.natRank} natl` : ''].filter(Boolean).join(' · ') || '—'], ['Earned level', `Program #${res.spTarget}+`], ['Hometown', p.city ? `${p.city}, ${p.st}` : '—'], ['Offers', (p.offers || []).length ? String(p.offers.length) : '—']]
+        : [['Production', p.prodPct ? `${pxOrd(p.prodPct)} percentile` : '—'], ['Current team', p.team || '—'], ['Earned level', `Program #${res.spTarget}+`], ['Hometown', p.city ? `${p.city}, ${p.st}` : '—']];
+      const payload = {
+        action: 'fit-report-pdf',
+        player: { name: p.name, photo: p.photo || (p.isHs ? '' : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`),
+          line: [p.pos, p.isHs ? [p.hs, p.hsClass ? `Class of ${p.hsClass}` : ''].filter(Boolean).join(' · ') : [p.team, PX_CLASS[Math.min(p.yr || 0, 5)]].filter(Boolean).join(' · ')].filter(Boolean).join(' · '), facts },
+        priorities: `${pri}${pri ? ' · ' : ''}Aim: ${(PX_FIT_AIMS.find(x => x[0] === pxAimOf(prefs.level)) || [0, 'Realistic'])[1]}`,
+        rows: res.rows.slice(0, 10).map(t => ({ name: t.name, logo: t.logo ? pxEspnLogo(t.logo) : '', sub: [t.conf, prog.rank[t.name] ? `Program #${prog.rank[t.name]}` : ''].filter(Boolean).join(' · '), fit: t.fit, tier: pxFitTier(t.fit)[0], offered: t.offered, reasons: reasons(t) })),
+      };
+      const r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error('PDF failed');
+      const url = URL.createObjectURL(await r.blob());
+      const el = document.createElement('a');
+      el.href = url; el.download = `${String(p.name).replace(/[^a-z0-9]+/gi, '-')}-team-fit.pdf`; document.body.appendChild(el); el.click(); el.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setPdfBusy('Downloaded');
+      setTimeout(() => setPdfBusy(''), 2000);
+    } catch (e) { setPdfBusy('Couldn’t make the PDF'); setTimeout(() => setPdfBusy(''), 3000); }
+  };
   const teamSearch = (<>
+    {res && res.rows.length > 0 && (
+      <button onClick={downloadReport} disabled={pdfBusy === 'Preparing…'} title="One-page report for the player or family (agent notes stay internal)"
+        onMouseEnter={e => { e.currentTarget.style.background = G.surfaceBorder; }} onMouseLeave={e => { e.currentTarget.style.background = G.surfaceRaised; }}
+        style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", color: pdfBusy.startsWith('Couldn') ? G.red : G.text, fontSize: 12.5, fontWeight: 600, cursor: pdfBusy === 'Preparing…' ? "progress" : "pointer", fontFamily: ff, whiteSpace: "nowrap", marginTop: wide ? 0 : 12 }}>{pdfBusy || 'Report PDF'}</button>
+    )}
     {res && res.offers > 0 && pxPill(offersOnly, `Offered only (${res.offers})`, () => setOffersOnly(v => !v), 'offers')}
     <input value={teamQ} onChange={e => setTeamQ(e.target.value)} placeholder="Find a team in the ranking…"
       style={{ ...inputBase, width: wide ? 220 : "100%", padding: "6px 10px", fontSize: 12.5, marginTop: wide ? 0 : 12 }} />

@@ -1017,6 +1017,87 @@ async function buildAthletePdf(a) {
   return Buffer.concat(chunks);
 }
 
+// Team Fit report — one page for a player/family: who, their priorities, and
+// the top schools with fit band and the reasons behind each. Internal agent
+// marks/notes are never sent here.
+async function buildFitReportPdf(data) {
+  const W = 612, H = 792, M = 36, CW = W - M * 2;
+  const doc = new PDFDocument({ size: 'LETTER', margin: 0, bufferPages: true });
+  const chunks = []; doc.on('data', c => chunks.push(c));
+  const done = new Promise(r => doc.on('end', r));
+  const p = data.player || {};
+  const rows = (data.rows || []).slice(0, 10);
+  // Standard PDF fonts have no ★ — spell it out.
+  const clean = (x) => String(x ?? '').replace(/(\d)\s*★/g, '$1-star').replace(/★/g, '*');
+  const imgs = new Map();
+  await Promise.all([p.photo, ...rows.map(r => r.logo)].filter(Boolean).map(async u => { imgs.set(u, await pdfFetchImageBuffer(u)); }));
+  const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  doc.rect(0, 0, W, H).fill(PDF_BG);
+  doc.image(MH_LOGO_BUF, M, M, { fit: [54, 24] });
+  doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(9).text(`Team Fit report · ${dateStr}`, M, M + 7, { width: CW, align: 'right', lineBreak: false });
+  // Player header
+  let y = M + 44;
+  const avR = 26;
+  const pbuf = p.photo ? imgs.get(p.photo) : null;
+  let drew = false;
+  if (pbuf) {
+    doc.save();
+    try { const S = avR * 2 * 1.4; doc.circle(M + avR, y + avR, avR).clip(); doc.image(pbuf, M + avR - S / 2, y + avR - S / 2 + avR * 0.45, { cover: [S, S], align: 'center', valign: 'center' }); drew = true; } catch { drew = false; }
+    doc.restore();
+  }
+  if (!drew) {
+    doc.circle(M + avR, y + avR, avR).fill(PDF_SURFACE);
+    doc.fillColor(PDF_TEXT2).font('Helvetica-Bold').fontSize(16).text(pdfInitials(p.name), M, y + avR - 9, { width: avR * 2, align: 'center', lineBreak: false });
+  }
+  const tx = M + avR * 2 + 16;
+  doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(24).text(p.name || 'Player', tx, y + 2, { width: CW - (tx - M), lineBreak: false, ellipsis: true });
+  doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(11).text(p.line || '', tx, y + 32, { width: CW - (tx - M), lineBreak: false, ellipsis: true });
+  y += avR * 2 + 20;
+  // Facts
+  const facts = (p.facts || []).slice(0, 4);
+  if (facts.length) {
+    const fw = CW / facts.length;
+    facts.forEach(([l, v], i) => {
+      doc.fillColor(PDF_TEXT3).font('Helvetica-Bold').fontSize(7.5).text(clean(l).toUpperCase(), M + i * fw, y, { width: fw - 8, characterSpacing: 0.8, lineBreak: false });
+      doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(12).text(clean(v || '—'), M + i * fw, y + 12, { width: fw - 8, height: 15, lineBreak: false, ellipsis: true });
+    });
+    y += 44;
+  }
+  // Priorities
+  if (data.priorities) {
+    doc.fillColor(PDF_TEXT3).font('Helvetica-Bold').fontSize(7.5).text('WHAT MATTERS MOST', M, y, { characterSpacing: 0.8, lineBreak: false });
+    doc.fillColor(PDF_TEXT2).font('Helvetica').fontSize(9.5).text(clean(data.priorities), M, y + 12, { width: CW });
+    y = doc.y + 12;
+  }
+  doc.moveTo(M, y).lineTo(M + CW, y).lineWidth(1.5).strokeColor(PDF_GREEN).stroke();
+  y += 12;
+  doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(13).text('Best-fit schools', M, y, { lineBreak: false });
+  y += 22;
+  // Rows
+  const rowH = Math.min(52, Math.floor((H - M - 40 - y) / Math.max(1, rows.length)));
+  rows.forEach((r, i) => {
+    const ry = y + i * rowH;
+    if (i % 2 === 1) doc.rect(M, ry, CW, rowH).fill(PDF_SURFACE);
+    doc.fillColor(PDF_TEXT3).font('Helvetica-Bold').fontSize(9).text(String(i + 1), M + 4, ry + rowH / 2 - 5, { width: 14, align: 'right', lineBreak: false });
+    const lb = r.logo ? imgs.get(r.logo) : null;
+    // White tile so dark logos (Cincinnati, Duke…) read on the dark page.
+    const ls = 28, lx = M + 24, ly = ry + rowH / 2 - ls / 2;
+    doc.roundedRect(lx, ly, ls, ls, 6).fill('#ffffff');
+    if (lb) { try { doc.image(lb, lx + 3, ly + 3, { fit: [ls - 6, ls - 6], align: 'center', valign: 'center' }); } catch { /* skip logo */ } }
+    const nx = M + 60, nw = CW - 60 - 90;
+    const chips = [r.offered ? 'Offered' : ''].filter(Boolean).join(' · ');
+    doc.fillColor(PDF_TEXT).font('Helvetica-Bold').fontSize(11).text(r.name || '', nx, ry + 8, { width: nw, lineBreak: false, ellipsis: true, continued: !!chips });
+    if (chips) doc.fillColor(PDF_GREEN).font('Helvetica-Bold').fontSize(8).text(`   ${chips.toUpperCase()}`, { lineBreak: false });
+    doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(8.5).text(clean([r.sub, ...(r.reasons || [])].filter(Boolean).join('  ·  ')), nx, ry + 24, { width: nw, height: rowH - 26, ellipsis: true });
+    doc.fillColor(r.fit >= 70 ? PDF_GREEN : PDF_TEXT).font('Helvetica-Bold').fontSize(16).text(String(r.fit ?? ''), M + CW - 86, ry + 8, { width: 80, align: 'right', lineBreak: false });
+    doc.fillColor(PDF_TEXT3).font('Helvetica-Bold').fontSize(7).text(String(r.tier || '').toUpperCase(), M + CW - 86, ry + 28, { width: 80, align: 'right', characterSpacing: 0.6, lineBreak: false });
+  });
+  doc.fillColor(PDF_TEXT3).font('Helvetica').fontSize(7.5).text(data.footnote || 'Fit combines playing-time outlook, program level, NFL development, distance from home, academics, scheme, roster building and coaching stability, weighted by the player’s priorities. A guide for conversations, not a guarantee.', M, H - M - 22, { width: CW });
+  doc.end();
+  await done;
+  return Buffer.concat(chunks);
+}
+
 function sendPdf(buf, filename, res) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -1068,6 +1149,12 @@ module.exports = async function handler(req, res) {
       if (body.action === 'roster-table-pdf') {
         const pdf = await buildRosterTablePdf(body);
         const fname = (body.title || 'roster').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '-roster.pdf';
+        return sendPdf(pdf, fname, res);
+      }
+      if (body.action === 'fit-report-pdf') {
+        if (!body.player?.name) return res.status(400).json({ error: 'No player provided' });
+        const pdf = await buildFitReportPdf(body);
+        const fname = body.player.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') + '-team-fit.pdf';
         return sendPdf(pdf, fname, res);
       }
       if (body.action === 'gifting-pdf') {
