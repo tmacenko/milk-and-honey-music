@@ -18,6 +18,21 @@ const TYPES = new Set(['open', 'view', 'profile', 'tab']);
 const utcDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : undefined);
 
+// The whole staff directory (name + role only — never emails or passwords),
+// so the page can list everyone who hasn't used the app, music and sports.
+async function staffDirectory() {
+  try {
+    const key = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+    const now = Math.floor(Date.now() / 1000);
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({ iss: key.client_email, scope: 'https://www.googleapis.com/auth/spreadsheets.readonly', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 })}`;
+    const sig = crypto.sign('RSA-SHA256', Buffer.from(unsigned), key.private_key).toString('base64url');
+    const tok = (await (await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${sig}` }) })).json()).access_token;
+    const d = await (await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${process.env.SPORTS_SHEET_ID}/values/${encodeURIComponent("'Staff'!A:B")}`, { headers: { Authorization: `Bearer ${tok}` } })).json();
+    return (d.values || []).slice(1).map(r => ({ name: String(r[0] || '').trim(), role: String(r[1] || '').trim().toLowerCase() })).filter(x => x.name);
+  } catch { return []; }
+}
+
 async function inBatches(items, n, fn) {
   const out = [];
   for (let i = 0; i < items.length; i += n) out.push(...await Promise.all(items.slice(i, i + n).map(fn)));
@@ -67,6 +82,7 @@ async function handle(req, res) {
 
   // Roll finished days' batches into one file per day (a batch can only land
   // on its own UTC day, so a finished day never changes again).
+  const staffP = staffDirectory();
   const [raw, dayFiles] = await Promise.all([listBlobs('usage/raw/'), listBlobs('usage/day/')]);
   const haveDay = new Set(dayFiles.map(b => b.pathname.slice(10, 20)));
   const rawByDay = {};
@@ -138,5 +154,5 @@ async function handle(req, res) {
       recent: P.recent.sort((x, y) => y.t - x.t).slice(0, 30),
     };
   }).filter(u => u.last || u.active);
-  return res.json({ users, since, days, tz, generated: now });
+  return res.json({ users, staff: await staffP, since, days, tz, generated: now });
 }

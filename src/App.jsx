@@ -11744,7 +11744,13 @@ function UsagePage({ isMobile, staff, user }) {
   for (let i = days - 1; i >= 0; i--) { const d = new Date(Date.now() - i * 86400000); dayList.push(d.toLocaleDateString('en-CA')); }
   const users = (data && data.users) || [];
   const seen = new Set(users.map(u => String(u.name || '').toLowerCase()));
-  const never = (staff || []).filter(n => !seen.has(String(n).toLowerCase()));
+  // Full directory from the server (music + sports, with roles); the sports
+  // agent list is only a fallback.
+  const directory = data && data.staff && data.staff.length ? data.staff : (staff || []).map(n => ({ name: n, role: '' }));
+  const never = directory.filter(x => !seen.has(x.name.toLowerCase()));
+  const neverGroups = [['admin', 'Admins'], ['agent', 'Agents'], ['marketing', 'Marketing'], ['manager', 'Music managers'], ['', 'Other']]
+    .map(([r, l]) => [l, never.filter(x => (r ? x.role === r : !['admin', 'agent', 'marketing', 'manager'].includes(x.role))).map(x => x.name)])
+    .filter(([, names]) => names.length);
   const perDay = dayList.map(d => {
     const on = users.filter(u => u.byDay[d] && (u.byDay[d].active >= 60 || u.byDay[d].events >= 3));
     return { d, n: on.length, sec: on.reduce((t, u) => t + u.byDay[d].active, 0), names: on.map(u => u.name) };
@@ -11844,7 +11850,7 @@ function UsagePage({ isMobile, staff, user }) {
         : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20, ...REVEAL }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))", gap: 16 }}>
-            {tile('Active people', activePeople, `of ${Math.max(activePeople, (staff || []).length)} staff`)}
+            {tile('Active people', activePeople, `of ${Math.max(activePeople, directory.length)} staff`)}
             {tile('Active time', usageMins(totalSec), `last ${days} days`)}
             {tile('Avg per day active', personDays ? usageMins(totalSec / personDays) : '—', 'per person, on days they used it')}
             {tile('Busiest day', perDay.reduce((b, x) => (x.n > b.n ? x : b), { n: 0 }).n ? `${maxN} people` : '—', (() => { const b = perDay.reduce((m, x) => (x.n > m.n ? x : m), { n: 0, d: '' }); return b.d ? new Date(b.d + 'T12:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : ''; })())}
@@ -11907,8 +11913,13 @@ function UsagePage({ isMobile, staff, user }) {
               </table>
             </div>
             {never.length > 0 && (
-              <div style={{ padding: "12px 16px", borderTop: `1px solid ${G.surfaceBorder}`, fontSize: 12.5, color: G.textSecondary, lineHeight: 1.6 }}>
-                <span style={{ ...eyebrow, marginRight: 8 }}>No activity ({never.length})</span>{never.join(' · ')}
+              <div style={{ padding: "12px 16px 16px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={eyebrow}>No activity in this range ({never.length})</div>
+                {neverGroups.map(([l, names]) => (
+                  <div key={l} style={{ fontSize: 12.5, color: G.textSecondary, lineHeight: 1.6 }}>
+                    <span style={{ color: G.textTertiary, fontWeight: 600, marginRight: 8 }}>{l}</span>{names.join(' · ')}
+                  </div>
+                ))}
               </div>
             )}
           </div>
