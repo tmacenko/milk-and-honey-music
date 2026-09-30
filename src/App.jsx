@@ -6998,7 +6998,7 @@ function loadProspectData(canBuild, onBuilding) {
     // File predates newer fields (portal, usage, efficiency, team location
     // and draft…) — rebuild quietly in the background; open pages swap in the
     // new file when it's ready.
-    PROSPECTS.stale = !raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('recPrev') || !(raw.cols || []).includes('depth');
+    PROSPECTS.stale = !raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('recPrev') || !(raw.cols || []).includes('depth') || !raw.pathways;
     if (canBuild) pxRefreshIfStale();
     const C = {}; raw.cols.forEach((c, i) => { C[c] = i; });
     const S = {}; raw.stats.forEach((c, i) => { S[c] = i; });
@@ -7038,7 +7038,7 @@ function loadProspectData(canBuild, onBuilding) {
     const portal = (raw.portal || []).map(e => ({ name: `${e[0]} ${e[1]}`.trim(), pos: e[2], grp: pxGroupOf(e[2]), origin: e[3], dest: e[4], date: e[5], stars: e[6], elig: e[7], cycle: e[8] }));
     PROSPECTS.data = {
       teamInfo, portal, scoreBuckets,
-      ts: raw.ts, depthTs: raw.depthTs || 0, season: raw.season, hsClass: raw.hsClass || 0, careerSeasons: raw.careerSeasons || [], S, players,
+      ts: raw.ts, depthTs: raw.depthTs || 0, pathways: raw.pathways || null, season: raw.season, hsClass: raw.hsClass || 0, careerSeasons: raw.careerSeasons || [], S, players,
       confs: [...confs].sort(), states: [...states].sort(), cityIndex,
       cities: Object.values(cityIndex).map(c => c.label).sort(),
       teams: Object.entries(raw.teams).filter(([name]) => players.some(pl => pl.team === name)).map(([name, t]) => ({ name, conf: t[0], logo: t[4] })).sort((a, b) => a.name.localeCompare(b.name)),
@@ -7617,6 +7617,28 @@ const pxAimOf = (v) => (v === 'stretch' || v === 'any' ? v : v === 'up' || v ===
 // notes: { team: { status: 'interested' | 'talked' | 'notfit', note } } —
 // agents' marks (FitNotes tab). A school that's shown interest is treated
 // like an offer; "Not a fit" schools leave the ranking (returned as ruledOut).
+// Program pathways (from the build): how a school's freshmen / incoming
+// transfers at a position actually got on the field. Rates are shrunk toward
+// the national rate (6 players' worth) so a school with three signees can't
+// swing wildly. kind 'fr' = high school signees who became regulars within
+// two seasons; 'tr' = transfers who became regulars in their first season.
+function pxPath(data, team, grp, kind) {
+  const pw = data.pathways;
+  if (!pw || !grp || grp === 'OL') return null;
+  const nat = pw.nat[grp];
+  const [hi, ni] = kind === 'fr' ? [0, 1] : [3, 4];
+  if (!nat || !nat[ni]) return null;
+  const natRate = nat[hi] / nat[ni];
+  const a = ((pw.teams[team] || {})[grp]) || [0, 0, 0, 0, 0];
+  const K = 6;
+  const rate = (a[hi] + K * natRate) / (a[ni] + K);
+  data._pathSorted = data._pathSorted || {};
+  const ck = `${grp}|${kind}`;
+  if (!data._pathSorted[ck]) {
+    data._pathSorted[ck] = Object.values(pw.teams).map(t => t[grp]).filter(Boolean).map(x => (x[hi] + K * natRate) / (x[ni] + K)).sort((x, y) => x - y);
+  }
+  return { rate, raw: a[ni] ? a[hi] / a[ni] : null, n: a[ni], hits: a[hi], left: kind === 'fr' ? a[2] : 0, natRate, pct: pxMidPct(data._pathSorted[ck], rate) };
+}
 // Backtest of this model on the 2023–25 transfer cycles (~5,900 transfers
 // found at their new school the next season): share who became regulars
 // (enough playing time to be scored) and above-median producers, by the
@@ -7722,6 +7744,16 @@ function pxFitRank(data, p, prefs, notes) {
       f.opp = [needScore, h > 1
         ? `${t.staying} ${fg}${t.staying === 1 ? '' : 's'} still there in ${data.season + h}${t.commits ? ` + ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`
         : `${Math.round(t.share * 100)}% of ${fg} production ${gone}${t.commits ? ` · ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`];
+    }
+    // Pathway: how that school's freshmen (for recruits) or incoming
+    // transfers (for college players) at the position actually got on the
+    // field in recent seasons.
+    const path = pxPath(data, t.name, grp, p.isHs ? 'fr' : 'tr');
+    if (path) {
+      f.opp[0] = (p.isHs ? 0.65 : 0.75) * f.opp[0] + (p.isHs ? 0.35 : 0.25) * path.pct;
+      f.opp[1] += path.n
+        ? ` · ${p.isHs ? `${grp} signees` : 'transfers'}: ${Math.round((path.raw || 0) * 100)}% regulars ${p.isHs ? 'by yr 2' : 'yr 1'} (${path.hits}/${path.n})`
+        : ` · no recent ${p.isHs ? `${grp} signees` : `${grp} transfers`}`;
     }
     // Level
     const T = tPct(ti), diff = T - D;
@@ -8332,6 +8364,19 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
               <span style={{ fontSize: 13, color: G.textSecondary }}>
                 {[`${roomAll.length} on roster`, leaving.length ? `${leaving.length} likely leaving${total > 0 ? ` (${Math.round(leavingProd / total * 100)}% of production)` : ''}` : 'none leaving', commits.filter(x => x.grp === g).length ? `${commits.filter(x => x.grp === g).length} commit${commits.filter(x => x.grp === g).length === 1 ? '' : 's'} incoming` : ''].filter(Boolean).join(' · ')}
               </span>
+              {(() => {
+                const fr = pxPath(data, team, g, 'fr'), tr = pxPath(data, team, g, 'tr');
+                if (!fr && !tr) return null;
+                const pw = data.pathways;
+                const part = (x, label, suffix) => (x && x.n ? <span title={`National: ${Math.round(x.natRate * 100)}%`}>{label} <b style={{ color: x.raw >= x.natRate ? G.green : G.text }}>{Math.round(x.raw * 100)}%</b> {suffix} ({x.hits}/{x.n})</span> : null);
+                const bits = [
+                  part(fr, 'Freshmen:', 'regulars by year 2'),
+                  fr && fr.n ? <span key="left">{Math.round((fr.left / fr.n) * 100)}% gone by year 2</span> : null,
+                  part(tr, 'Transfers:', 'regulars in year 1'),
+                ].filter(Boolean);
+                if (!bits.length) return null;
+                return <span title={`Signing classes ${pw.classes.join(', ')} · transfer cycles ${pw.cycles.join(', ')}`} style={{ flexBasis: "100%", fontSize: 12, color: G.textSecondary }}>{bits.map((b, i) => <React.Fragment key={i}>{i ? ' · ' : ''}{b}</React.Fragment>)}</span>;
+              })()}
             </div>
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>

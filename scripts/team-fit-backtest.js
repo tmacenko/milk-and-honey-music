@@ -36,9 +36,11 @@ const store = {
 async function built(season) {
   const f = `build-${season}.json`;
   let raw = await store.get(f);
-  if (!raw) {
+  // Builds from before program pathways existed get rebuilt (with past
+  // seasons, so pathways only use seasons before the one being tested).
+  if (!raw || !raw.pathways) {
     console.error(`building season ${season}…`);
-    const { data, log } = await buildProspects({ key: KEY, store, season, pastSeasons: 0, deadline: Date.now() + 600000 });
+    const { data, log } = await buildProspects({ key: KEY, store, season, pastSeasons: 4, pastPerRun: 4, deadline: Date.now() + 1200000 });
     console.error('  ' + log.join(' | '));
     raw = data; await store.put(f, raw);
   }
@@ -54,7 +56,7 @@ function parse(raw) {
   players.forEach(p => { if (!p.isHs) p.metric = pxMetric(p.grp, p.season, S); });
   const scoreBuckets = pxScoreAll(players, S, teamInfo);
   const portal = (raw.portal || []).map(e => ({ name: `${e[0]} ${e[1]}`.trim(), pos: e[2], grp: pxGroupOf(e[2]), origin: e[3], dest: e[4], cycle: e[8] }));
-  return { S, players, teamInfo, portal, season: raw.season, depthTs: 0, scoreBuckets };
+  return { S, players, teamInfo, portal, season: raw.season, depthTs: 0, scoreBuckets, pathways: process.env.NO_PATH ? null : raw.pathways || null };
 }
 const nk = (x) => String(x || '').toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g, '').replace(/[^a-z]/g, '');
 
