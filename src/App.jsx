@@ -11749,6 +11749,130 @@ const usageAgo = (t) => {
   return d === 1 ? 'Yesterday' : `${d}d ago`;
 };
 
+// Owner-only login management (Usage page): who has a login, create/reset
+// (the server makes the password and shows it once — only a hash is kept),
+// revoke, and relink a login saved under an old spelling of someone's name.
+function StaffLogins({ isMobile }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState('');
+  const [sel, setSel] = useState({});
+  const [created, setCreated] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [relinkTo, setRelinkTo] = useState({});
+  const call = (body) => fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => r.json().then(j => { if (!r.ok || j.error) throw new Error(j.error || 'Something went wrong'); return j; }));
+  const load = () => call({ action: 'logins-list' }).then(d => { setData(d); setErr(''); }).catch(e => setErr(e.message));
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const run = (key, body, after) => { setBusy(key); setErr(''); return call(body).then(after).then(load).catch(e => setErr(e.message)).finally(() => setBusy('')); };
+  const create = (names) => run('create', { action: 'logins-create', names }, j => { setCreated(j.created || []); setCopied(false); setSel({}); });
+  const revoke = (name) => { if (window.confirm(`Revoke ${name}'s login? Their password stops working right away.`)) run('revoke:' + name, { action: 'logins-revoke', name }); };
+  const reset = (name) => { if (window.confirm(`Reset ${name}'s password? Their current one stops working.`)) create([name]); };
+
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, minWidth: 0 };
+  const eyebrow = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary };
+  const th = { textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" };
+  const td = { padding: "8px 12px", fontSize: 13, color: G.textSecondary, whiteSpace: "nowrap" };
+  const btn = (primary, disabled) => ({ fontFamily: ff, fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 8, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, border: primary ? "none" : `1px solid ${G.surfaceBorder}`, background: primary ? G.green : G.surfaceRaised, color: primary ? "#0a0a0a" : G.text, whiteSpace: "nowrap" });
+  const cap = (x) => (x ? x.charAt(0).toUpperCase() + x.slice(1) : '');
+
+  const people = (data && data.people) || [];
+  const active = people.filter(p => p.status !== 'former');
+  const former = people.filter(p => p.status === 'former');
+  const missing = active.filter(p => !p.hasLogin);
+  const selNames = Object.keys(sel).filter(k => sel[k]);
+  // A login saved under an old spelling ("Jono Sidewell") most likely belongs
+  // to the no-login person with the same first name — suggest relinking
+  // (keeps their password) and leave them out of "select all".
+  const orphanFor = (name) => ((data && data.orphans) || []).find(o => o.split(' ')[0].toLowerCase() === name.split(' ')[0].toLowerCase());
+  const suggest = (o) => (missing.find(p => p.name.split(' ')[0].toLowerCase() === o.split(' ')[0].toLowerCase()) || {}).name || '';
+  const freeNames = missing.filter(p => !orphanFor(p.name)).map(p => p.name);
+
+  const row = (p, i) => {
+    const isFormer = p.status === 'former';
+    return (
+      <tr key={p.name} style={{ background: i % 2 ? G.surfaceRaised : "transparent", opacity: isFormer ? 0.6 : 1 }}>
+        <td style={{ ...td, width: 28 }}>{!isFormer && !p.hasLogin && <input type="checkbox" checked={!!sel[p.name]} onChange={e => setSel(s => ({ ...s, [p.name]: e.target.checked }))} aria-label={`Select ${p.name}`} />}</td>
+        <td style={{ ...td, color: G.text, fontWeight: 600 }}>{p.name}</td>
+        <td style={td}>{cap(p.role)}</td>
+        <td style={td}>{p.division || '—'}</td>
+        <td style={td}>
+          {isFormer ? <span style={{ color: G.textTertiary }}>{p.hasLogin ? 'Former · blocked' : 'Former'}</span>
+            : p.hasLogin ? <span style={{ color: G.green, fontWeight: 600 }}>Has login</span>
+            : <span style={{ color: G.yellow, fontWeight: 600 }}>No login</span>}
+        </td>
+        <td style={{ ...td, textAlign: "right" }}>
+          <div style={{ display: "inline-flex", gap: 6 }}>
+            {!isFormer && !p.hasLogin && <button disabled={!!busy} onClick={() => create([p.name])} style={btn(true, !!busy)}>{busy === 'create' && sel[p.name] ? 'Creating…' : 'Create'}</button>}
+            {!isFormer && p.hasLogin && <button disabled={!!busy} onClick={() => reset(p.name)} style={btn(false, !!busy)}>Reset</button>}
+            {p.hasLogin && <button disabled={!!busy} onClick={() => revoke(p.name)} style={btn(false, !!busy)}>{busy === 'revoke:' + p.name ? 'Revoking…' : 'Revoke'}</button>}
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  return (
+    <div style={{ ...card, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: 16 }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>Staff logins</div>
+          <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>
+            {data ? `${active.length - missing.length} of ${active.length} active staff have a login · passwords are shown once when created, then only a scrambled copy is kept` : 'Loading…'}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {freeNames.length > 0 && <button disabled={!!busy} onClick={() => setSel(Object.fromEntries(freeNames.map(n => [n, true])))} style={btn(false, !!busy)}>Select all without a login ({freeNames.length})</button>}
+          <button disabled={!selNames.length || !!busy} onClick={() => create(selNames)} style={btn(true, !selNames.length || !!busy)}>{busy === 'create' ? 'Creating…' : `Create ${selNames.length || ''} login${selNames.length === 1 ? '' : 's'}`.replace('  ', ' ')}</button>
+        </div>
+      </div>
+      {err && <div style={{ margin: "0 16px 12px", fontSize: 12.5, color: G.red }}>{err}</div>}
+      {created && (
+        <div style={{ margin: "0 16px 16px", border: `1px solid ${G.greenBorder}`, background: G.greenSubtle, borderRadius: 12, padding: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{created.length ? `New password${created.length === 1 ? '' : 's'} — copy now, they won’t be shown again` : 'Nothing created'}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {created.length > 0 && <button onClick={() => { navigator.clipboard.writeText(created.map(c => `${c.name} — ${c.password}`).join('\n')).then(() => setCopied(true)).catch(() => {}); }} style={btn(true, false)}>{copied ? 'Copied ✓' : 'Copy all'}</button>}
+              <button onClick={() => setCreated(null)} style={btn(false, false)}>Done</button>
+            </div>
+          </div>
+          {created.map(c => (
+            <div key={c.name} style={{ display: "flex", gap: 16, fontSize: 13, padding: "4px 0" }}>
+              <span style={{ width: 200, color: G.text, fontWeight: 600 }}>{c.name}</span>
+              <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: G.text }}>{c.password}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {data && data.orphans && data.orphans.length > 0 && (
+        <div style={{ margin: "0 16px 16px", padding: 12, borderRadius: 12, border: `1px solid ${G.surfaceBorder}` }}>
+          <div style={{ ...eyebrow, marginBottom: 8 }}>Logins saved under a name that isn’t in the Staff tab</div>
+          {data.orphans.map(o => (
+            <div key={o} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "4px 0", fontSize: 13, color: G.text }}>
+              <span style={{ fontWeight: 600, minWidth: 160 }}>{o}</span>
+              <span style={{ color: G.textTertiary }}>keep their password, move it to</span>
+              <select value={relinkTo[o] ?? suggest(o)} onChange={e => setRelinkTo(r => ({ ...r, [o]: e.target.value }))} style={{ fontFamily: ff, fontSize: 13, padding: "4px 8px", borderRadius: 8, border: `1px solid ${G.surfaceBorder}`, background: G.surface, color: G.text }}>
+                <option value="">Choose…</option>
+                {missing.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+              </select>
+              <button disabled={!(relinkTo[o] ?? suggest(o)) || !!busy} onClick={() => run('relink', { action: 'logins-relink', from: o, to: relinkTo[o] ?? suggest(o) })} style={btn(true, !(relinkTo[o] ?? suggest(o)) || !!busy)}>{busy === 'relink' ? 'Moving…' : 'Relink'}</button>
+              <button disabled={!!busy} onClick={() => revoke(o)} style={btn(false, !!busy)}>Revoke</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {data && (
+        <div className="mh-hscroll" style={{ overflowX: "auto", maxHeight: isMobile ? "none" : 520, overflowY: "auto" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead><tr><th style={th} /><th style={th}>Person</th><th style={th}>Role</th><th style={th}>Division</th><th style={th}>Login</th><th style={{ ...th, textAlign: "right" }} /></tr></thead>
+            <tbody>{[...missing, ...active.filter(p => p.hasLogin), ...former].map(row)}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UsagePage({ isMobile, staff, user }) {
   const [days, setDays] = useState(30);
   const [data, setData] = useState(null);
@@ -11960,6 +12084,7 @@ function UsagePage({ isMobile, staff, user }) {
           </div>
         </div>
       )}
+      <StaffLogins isMobile={isMobile} />
     </div>
   );
 }

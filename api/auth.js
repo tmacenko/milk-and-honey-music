@@ -40,7 +40,9 @@ function decryptJson(str, secret) {
 async function loadAuthUsers(secret) {
   if (!BLOB_TOKEN || !BLOB_PUBLIC) return null;
   try {
-    const r = await fetch(`${BLOB_PUBLIC}/${AUTH_USERS_PATH}`, { cache: 'no-store' });
+    // Cache-busted: a login created a moment ago must work right away, and
+    // read-modify-write below must never start from a stale copy.
+    const r = await fetch(`${BLOB_PUBLIC}/${AUTH_USERS_PATH}?v=${Date.now()}`, { cache: 'no-store' });
     if (!r.ok) return null;
     return decryptJson(await r.text(), secret);
   } catch { return null; }
@@ -54,6 +56,20 @@ async function saveAuthUsers(store, secret) {
   if (!r.ok) throw new Error('Blob save failed: ' + r.status);
 }
 // Hash format: scrypt$N$r$p$salt(b64)$hash(b64)
+function hashScrypt(pw) {
+  const N = 16384, r = 8, p = 1;
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(String(pw), salt, 32, { N, r, p, maxmem: 128 * 1024 * 1024 });
+  return `scrypt$${N}$${r}$${p}$${salt.toString('base64')}$${hash.toString('base64')}`;
+}
+// Same style as the original handout: word-word-123.
+const PW_WORDS = ['amber', 'arrow', 'aspen', 'bloom', 'brook', 'cedar', 'cider', 'cliff', 'clover', 'coral', 'crest', 'delta', 'denim', 'ember', 'fable', 'fern', 'field', 'flint', 'frost', 'glade', 'grove', 'harbor', 'hazel', 'heron', 'indigo', 'inlet', 'ivory', 'jade', 'juniper', 'kayak', 'kestrel', 'lagoon', 'ledge', 'linen', 'lotus', 'lunar', 'maple', 'meadow', 'mesa', 'north', 'oak', 'orbit', 'pebble', 'pine', 'plume', 'prism', 'quill', 'raven', 'reef', 'ridge', 'river', 'sable', 'sage', 'slate', 'solar', 'spruce', 'stone', 'summit', 'tempo', 'thistle', 'timber', 'topaz', 'tulip', 'vale', 'violet', 'walnut', 'willow', 'yarrow', 'zephyr'];
+function makePassword() {
+  const w = () => PW_WORDS[crypto.randomInt(PW_WORDS.length)];
+  let a = w(), b = w();
+  while (b === a) b = w();
+  return `${a}-${b}-${crypto.randomInt(100, 1000)}`;
+}
 function verifyScrypt(pw, stored) {
   try {
     const [tag, N, r, p, salt, hash] = String(stored || '').split('$');
@@ -64,10 +80,11 @@ function verifyScrypt(pw, stored) {
   } catch { return false; }
 }
 
-// ── Individual logins: the Users tab in the sports sheet ─────────────────────
-// Columns (tolerant of casing): Name | Password | Role | Agent Key.
-// Each employee gets a unique personal password; typing it at the landing gate
-// logs them in as themselves. Managed entirely by editing the sheet.
+// ── Individual logins ───────────────────────────────────────────────────────
+// Who someone is (name, role, email, status, division) comes from the Staff
+// tab in the sports sheet; their password lives only as a hash in the
+// encrypted store above. Each password is unique — typing it at the landing
+// gate logs that person in. Logins are managed on the owner's Usage page.
 function b64url(str) { return Buffer.from(str).toString('base64url'); }
 async function getSheetsToken() {
   const key = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
@@ -107,13 +124,15 @@ async function staffDirectory() {
     if (rows.length < 2) return null;
     const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
     const col = (name) => headers.findIndex(h => h === name);
-    const nameC = col('name'), passC = col('password'), roleC = col('role'), emailC = col('email');
+    const nameC = col('name'), passC = col('password'), roleC = col('role'), emailC = col('email'), statusC = col('status'), divC = col('division');
     if (nameC < 0) return null;
     return rows.slice(1).map(row => ({
       name: String(row[nameC] || '').trim(),
       role: String(roleC >= 0 ? row[roleC] || '' : '').trim().toLowerCase() || 'agent',
       email: String(emailC >= 0 ? row[emailC] || '' : '').trim(),
       plainPw: String(passC >= 0 ? row[passC] || '' : '').trim(),
+      status: String(statusC >= 0 ? row[statusC] || '' : '').trim().toLowerCase(),
+      division: String(divC >= 0 ? row[divC] || '' : '').trim(),
     })).filter(u => u.name);
   } catch (e) {
     console.error('Staff directory error:', e.message);
@@ -141,6 +160,8 @@ async function findUser(pw, secret) {
     for (const [key, u] of Object.entries(store.users)) {
       if (u.hash && verifyScrypt(pw, u.hash)) {
         const d = byKey.get(key);
+        // Marked Former in the Staff tab → no login (their records stay).
+        if (d && d.status === 'former') return null;
         return asUser((d && d.name) || u.name || key, d);
       }
     }
@@ -186,6 +207,67 @@ module.exports = async (req, res) => {
       if (!users || typeof users !== 'object' || Array.isArray(users)) return res.status(400).json({ error: 'Missing users map' });
       await saveAuthUsers({ users, updatedAt: new Date().toISOString() }, secret);
       return res.json({ ok: true, count: Object.keys(users).length });
+    }
+
+    // ── Staff logins (owner only) ───────────────────────────────────────────
+    // List who has a login, create/reset logins (the server makes the
+    // password and returns it ONCE — only its hash is stored), revoke, and
+    // relink a login saved under an old name spelling. Existing passwords are
+    // never touched except by an explicit reset/revoke of that person.
+    if (/^logins-(list|create|revoke|relink)$/.test(action || '')) {
+      const st = authState(req);
+      const owners = String(process.env.USAGE_OWNERS || 'tyler@milkhoneyla.com').toLowerCase().split(',').map(x => x.trim());
+      if (!st.user || !owners.includes(String(st.user.email || '').toLowerCase())) return res.status(403).json({ error: 'Not authorized' });
+      const dir = (await staffDirectory()) || [];
+      const byKey = new Map(dir.map(u => [u.name.toLowerCase(), u]));
+      const store = (await loadAuthUsers(secret)) || { users: {} };
+      store.users = store.users || {};
+      const body = req.body || {};
+      if (action === 'logins-list') {
+        return res.json({
+          people: dir.map(u => ({ name: u.name, role: u.role, division: u.division, status: u.status || 'active', hasLogin: !!(store.users[u.name.toLowerCase()] || {}).hash, email: !!u.email })),
+          orphans: Object.keys(store.users).filter(k => !byKey.has(k)).map(k => store.users[k].name || k),
+        });
+      }
+      const save = async () => { store.updatedAt = new Date().toISOString(); await saveAuthUsers(store, secret); };
+      if (action === 'logins-create') {
+        const names = (Array.isArray(body.names) ? body.names : []).slice(0, 60);
+        const out = [];
+        const taken = new Set();
+        for (const n of names) {
+          const d = byKey.get(String(n || '').trim().toLowerCase());
+          if (!d || d.status === 'former') continue;
+          let pw = '';
+          // Unique across everyone: login matches on the password alone.
+          for (let i = 0; i < 20 && !pw; i++) {
+            const cand = makePassword();
+            if (taken.has(cand) || Object.values(store.users).some(u => u.hash && verifyScrypt(cand, u.hash))) continue;
+            pw = cand;
+          }
+          if (!pw) continue;
+          taken.add(pw);
+          store.users[d.name.toLowerCase()] = { name: d.name, hash: hashScrypt(pw), setAt: new Date().toISOString() };
+          out.push({ name: d.name, password: pw });
+        }
+        if (out.length) await save();
+        return res.json({ ok: true, created: out });
+      }
+      if (action === 'logins-revoke') {
+        const k = String(body.name || '').trim().toLowerCase();
+        if (!store.users[k]) return res.json({ ok: true, removed: 0 });
+        delete store.users[k];
+        await save();
+        return res.json({ ok: true, removed: 1 });
+      }
+      if (action === 'logins-relink') {
+        const from = String(body.from || '').trim().toLowerCase(), to = byKey.get(String(body.to || '').trim().toLowerCase());
+        if (!store.users[from] || !to) return res.status(400).json({ error: 'Nothing to relink' });
+        if (store.users[to.name.toLowerCase()]) return res.status(400).json({ error: `${to.name} already has a login` });
+        store.users[to.name.toLowerCase()] = { ...store.users[from], name: to.name };
+        delete store.users[from];
+        await save();
+        return res.json({ ok: true });
+      }
     }
 
     // House password only while the env var still exists, then individual
