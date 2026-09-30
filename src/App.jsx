@@ -2994,7 +2994,124 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
         {history}
       </div>
       {offerBoard}
+    </div>
+  );
+}
+
+// ── Client profile: shared prospect-data hook + the new tabs ────────────────
+// The client as a Team Fit player (college by ESPN id, high schoolers by
+// name / their record) with the data it came from.
+function useClientFitPlayer(a) {
+  const hist = useAdminTab('stathistory');
+  const [px, setPx] = useState(PROSPECTS.data);
+  useEffect(() => {
+    if (px) return;
+    let on = true;
+    loadProspectData(false).then(d => on && setPx(d)).catch(() => {});
+    return () => { on = false; };
+  }, [px]);
+  useProspectsRefreshed(setPx);
+  const r247 = useMemo(() => pxR247((hist.data && hist.data.rows) || []), [hist.data]);
+  const p = useMemo(() => (px ? pxClientPlayer(px, a, r247) : null), [px, a, r247]);
+  return { px, p, hist };
+}
+const pxDealNum = (v) => { const n = parseFloat(String(v || '').replace(/[$,\s]/g, '')); return Number.isFinite(n) ? n : 0; };
+const pxRoleName = { starter: 'Starter', rotation: 'Rotation', backup: 'Rotation', reserve: 'Reserve', recruit: 'Recruit' };
+
+// Overview's at-a-glance strip: the handful of numbers an agent wants first.
+function ClientGlance({ a, isMobile }) {
+  const { px, p, hist } = useClientFitPlayer(a);
+  const store = useFitPrefs(p, null);
+  const marks = useFitNotes(p, null);
+  const prefs = pxMergePrefs(store.saved);
+  const fit = useMemo(() => (px && p && p.grp ? pxFitRank(px, p, prefs, marks.byTeam) : null), [px, p, JSON.stringify(prefs), JSON.stringify(marks.byTeam)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const last = useLastGameLine(a, a.level === 'College');
+  const hs = a.level === 'High School';
+  const k = String(a.name || '').toLowerCase().trim();
+  const snaps = ((hist.data && hist.data.rows) || []).map(r => r.cells || []).filter(c => String(c[1] || '').toLowerCase().trim() === k && (c[6] || c[11]))
+    .sort((x, y) => String(x[0]).localeCompare(String(y[0])));
+  const cur = snaps[snaps.length - 1], first = snaps[0];
+  const reach = [a.igFollowers, a.twitterFollowers, a.tiktokFollowers].reduce((t, v) => t + countFrom(v), 0);
+  const top = fit && fit.rows[0];
+  const deal = pxDealNum(a.contractYearly);
+  const role = p ? pxCurrentRole(p) : '';
+  const value = p ? (hs ? pxValue(px, p, null, 'recruit') : p.team ? pxValue(px, p, p.team, role) : null) : null;
+  const offers = pxParseOffers(a.offers247).filter(o => o[1]).length;
+  const tile = (label, value2, sub, key) => (
+    <div key={key || label} style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{label}</div>
+      <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.02em", color: G.text, marginTop: 8, lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{value2 || '—'}</div>
+      {sub && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
+    </div>
+  );
+  const natNow = cur ? +(cur[11] || cur[6]) : 0;
+  const natThen = first ? +(first[11] && cur && cur[11] ? first[11] : first[6]) : 0;
+  const move = natNow && natThen && first !== cur ? natThen - (cur[11] && first[11] ? natNow : +cur[6]) : 0;
+  const tiles = hs ? [
+    tile('247', cur ? `${cur[10] || cur[5] || '—'}★` : '', natNow ? `#${natNow} national${move ? ` · ${move > 0 ? '▲' : '▼'} ${Math.abs(move)}` : ''}` : 'Read nightly from 247', '247'),
+    tile('Offers', offers ? String(offers) : '', a.committedTo ? `Committed · ${a.committedTo}` : 'Uncommitted', 'offers'),
+    tile('Top fit', top ? top.name : '', top ? `${pxFitTier(top.fit)[0]} · ${top.fit}` : '', 'fit'),
+    tile('Est. freshman value', value ? pxMoneyRange(value) : '', value ? 'at an average P4 budget' : '', 'value'),
+    tile('Social reach', reach ? bigNum(reach) : '', 'followers', 'reach'),
+    tile('Class', a.classOf ? String(a.classOf) : '', a.college || a.school || '', 'class'),
+  ] : [
+    tile('Role', role ? pxRoleName[role] : '', p && p.depth ? (p.depth[1] === 'RES' ? 'Reserve list' : `${p.depth[1]} ${p.depth[0]}`) : '', 'role'),
+    tile('Production', p && p.prodPct ? pxOrd(p.prodPct) : '', p && p.prodPct ? `percentile · ${PX_BUCKET_LABEL[p.scoreBucket] || ''}` : 'Not enough snaps to score yet', 'prod'),
+    tile('Deal', deal ? pxMoney(deal) : '', value ? `Est. market ${pxMoneyRange(value)}` : '', 'deal'),
+    tile('Top fit', top ? top.name : '', top ? `${pxFitTier(top.fit)[0]} · ${top.fit}` : '', 'fit'),
+    tile('Social reach', reach ? bigNum(reach) : '', 'followers', 'reach'),
+    tile('Last game', last ? `${last.pre} ${last.result}` : '', last ? last.text : 'No game in the last 10 days', 'last'),
+  ];
+  return (
+    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: isMobile ? 16 : 20, display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(6, minmax(0, 1fr))", gap: isMobile ? 16 : 20 }}>
+      {tiles}
+    </div>
+  );
+}
+
+// Deal tab: the current deal against the estimated market, plus documents.
+function ClientDealTab({ a, isMobile, pad }) {
+  const { px, p } = useClientFitPlayer(a);
+  const hs = a.level === 'High School';
+  const deal = pxDealNum(a.contractYearly);
+  const role = p ? pxCurrentRole(p) : '';
+  const value = p && px ? (hs ? pxValue(px, p, null, 'recruit') : p.team ? pxValue(px, p, p.team, role) : null) : null;
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20, minWidth: 0 };
+  const eyebrow = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary };
+  let verdict = null;
+  if (deal && value) {
+    const pct = Math.round(((deal - value.mid) / value.mid) * 100);
+    const where = deal < value.lo ? ['below', G.red] : deal > value.hi ? ['above', G.green] : ['within', G.text];
+    verdict = <span>Current deal is <b style={{ color: where[1] }}>{where[0]}</b> the estimated range ({pct > 0 ? '+' : ''}{pct}% vs the midpoint){where[0] === 'below' ? ' — room to renegotiate if his role holds.' : '.'}</span>;
+  }
+  return (
+    <div style={{ padding: `24px ${pad}px 32px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
+        <div style={card}>
+          <div style={eyebrow}>Current deal</div>
+          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{deal ? `${pxMoney(deal)} / yr` : '—'}</div>
+          <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{deal ? 'From the client record (edit it on their profile).' : 'No deal on file yet — add the yearly amount in the edit form.'}</div>
+        </div>
+        <div style={card}>
+          <div style={eyebrow}>{hs ? 'Est. freshman value' : `Est. market at ${p && p.team ? p.team : 'current school'}`}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{value ? pxMoneyRange(value) : '—'}</div>
+          <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{value ? (verdict || `${PX_ROLE_LABEL[value.role].replace(/^\w/, c => c.toUpperCase())} · ${value.conf} confidence.`) : px ? 'Not enough on file to estimate.' : 'Loading…'}</div>
+        </div>
+      </div>
       {p && px && <PxValueCard p={p} data={px} isMobile={isMobile} />}
+      {BOX_DOCS_ENABLED && <div style={{ maxWidth: isMobile ? "none" : 480 }}><DocsModule person={a.name} kind="sports" /></div>}
+    </div>
+  );
+}
+
+// Team Fit tab on a client profile.
+function ClientTeamFitTab({ a, isMobile, pad, user }) {
+  const { px, p } = useClientFitPlayer(a);
+  return (
+    <div style={{ padding: `8px ${pad}px 32px`, background: G.bg }}>
+      {!px ? <div style={{ padding: "40px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
+        : !p ? <div style={{ padding: "40px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{a.level === 'College' ? 'Link their ESPN profile to rank teams for them.' : `Team Fit covers recruits up to the class of ${px.season + 2} with a position and class on file.`}</div>
+        : <TeamFit p={p} data={px} onOpenTeam={openTeamPage} user={user} wide={!isMobile} />}
     </div>
   );
 }
@@ -3414,7 +3531,6 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
   // each scrolling inside its own card instead of stretching the page.
   return (
     <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 14, background: G.bg }}>
-      {pxP && <PxValueCard p={pxP} data={pxData} isMobile={isMobile} />}
       {report && <div style={{ marginBottom: 12 }}>{report}</div>}
       {gameCard}
       {catCards.length === 0 && !logCard && !gameCard && (
@@ -3433,7 +3549,7 @@ function SportsStatsTab({ athlete: a, isMobile, pad, withReport }) {
   );
 }
 
-function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
+function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user }) {
   const [bioExp, setBioExp] = useState(false);
   // Staff profile pages: Overview (everything below) + Stats (ESPN pull).
   const [page, setPage] = useState('overview');
@@ -3521,7 +3637,10 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
             an ESPN link; Marketing shows for everyone. */}
         {companyView && (
           <div style={{ display: "flex", gap: 24, padding: `0 ${pad}px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>
-            {[['overview', 'Overview'], ['marketing', 'Marketing'], ...(a.level === 'High School' ? [['recruiting', 'Recruiting']] : []), ...(a.espnId ? [['stats', 'Stats']] : [])].map(([k, l]) => (
+            {(a.level === 'NFL'
+              ? [['overview', 'Overview'], ['marketing', 'Marketing'], ...(a.espnId ? [['stats', 'Stats']] : [])]
+              : [['overview', 'Overview'], a.level === 'High School' ? ['recruiting', 'Recruiting'] : a.espnId && ['stats', 'Performance'], ['teamfit', 'Team Fit'], ['deal', 'Deal'], ['marketing', 'Marketing']].filter(Boolean)
+            ).map(([k, l]) => (
               <button key={k} onClick={() => setPage(k)}
                 onMouseEnter={e => { if (page !== k) e.currentTarget.style.color = G.textSecondary; }}
                 onMouseLeave={e => { if (page !== k) e.currentTarget.style.color = G.textTertiary; }}
@@ -3537,8 +3656,13 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
           <SportsRecruitingTab athlete={a} isMobile={isMobile} pad={pad} />
         ) : companyView && a.espnId && page === 'stats' ? (
           <SportsStatsTab athlete={a} isMobile={isMobile} pad={pad} withReport />
+        ) : companyView && a.level !== 'NFL' && page === 'teamfit' ? (
+          <ClientTeamFitTab a={a} isMobile={isMobile} pad={pad} user={user} />
+        ) : companyView && a.level !== 'NFL' && page === 'deal' ? (
+          <ClientDealTab a={a} isMobile={isMobile} pad={pad} />
         ) : (
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
+          {companyView && a.level !== 'NFL' && <ClientGlance a={a} isMobile={isMobile} />}
           {a.bio && (
             <div>
               <p style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{isMobile ? bioText : a.bio}</p>
@@ -3559,7 +3683,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView }) {
               ))}
             </div>
           )}
-          {companyView && <SocialContractModules athlete={a} isMobile={isMobile} />}
+          {companyView && (a.level === 'NFL' ? <SocialContractModules athlete={a} isMobile={isMobile} /> : <SocialContractModules athlete={a} isMobile={isMobile} only={['social', 'market']} />)}
           {(() => {
             // Chip modules live on the Marketing tab for staff; the public
             // one-pager keeps its partner-visible pair here.
@@ -4510,7 +4634,8 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
 // ── Socials + contract modules (athlete profile, company view only) ──────────
 // Side-by-side cards: per-platform follower rows with an up/down change arrow
 // (7-day window from SocialHistory), and the contract terms.
-function SocialContractModules({ athlete: a, isMobile }) {
+function SocialContractModules({ athlete: a, isMobile, only }) {
+  const show = (k) => !only || only.includes(k);
   const hist = useAdminTab('socialhistory');
   const hist247 = useAdminTab('stathistory');
   const key = String(a.name || '').toLowerCase().trim();
@@ -4561,8 +4686,8 @@ function SocialContractModules({ athlete: a, isMobile }) {
     </div>
   );
   return (
-    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : (BOX_DOCS_ENABLED ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr"), gap: 12 }}>
-      <div style={mod}>
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${['social', 'contract', 'market', 'docs'].filter(k => show(k) && (k !== 'docs' || BOX_DOCS_ENABLED)).length}, minmax(0, 1fr))`, gap: 12 }}>
+      {show('social') && <div style={mod}>
         {head('Social media', pd ? `${days}-day change` : '')}
         {rows.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No socials on file.</div>
           : rows.map((r, i) => (
@@ -4596,8 +4721,8 @@ function SocialContractModules({ athlete: a, isMobile }) {
             </div>
           );
         })()}
-      </div>
-      <div style={mod}>
+      </div>}
+      {show('contract') && <div style={mod}>
         {head('Contract', contract && !a.contractYearly
           ? <a href={a.contractUrl || `https://www.spotrac.com/search?q=${encodeURIComponent(a.name)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: G.green, fontWeight: 600, textDecoration: "none" }}>View Spotrac page →</a>
           : '')}
@@ -4612,8 +4737,8 @@ function SocialContractModules({ athlete: a, isMobile }) {
               ))}
             </>
           )}
-      </div>
-      <div style={mod}>
+      </div>}
+      {show('market') && <div style={mod}>
         {head('Marketability', '')}
         <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
           <span style={{ fontSize: 30, fontWeight: 800, color: G.green, letterSpacing: "-0.02em", lineHeight: 1 }}>{mkt.score}</span>
@@ -4630,8 +4755,8 @@ function SocialContractModules({ athlete: a, isMobile }) {
             </div>
           ))}
         </div>
-      </div>
-      {BOX_DOCS_ENABLED && <DocsModule person={a.name} kind="sports" />}
+      </div>}
+      {show('docs') && BOX_DOCS_ENABLED && <DocsModule person={a.name} kind="sports" />}
     </div>
   );
 }
@@ -12719,7 +12844,7 @@ function App() {
           ) : domain === 'sports' ? (
             <>
               {!error && athletesLoaded && view === 'detail' && selected && (
-                <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} />
+                <SportsDetail athlete={selected} isMobile={isMobile} hideContact={isAdmin} companyView={isAdmin} user={currentUser} />
               )}
               {!error && athletesLoaded && view === 'roster' && navActive && sportsPage === 'home' && (
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} decks={sportsDecks || DECKS}
