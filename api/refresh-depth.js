@@ -6,6 +6,7 @@
 // Auth: admin cookie OR Bearer/query CRON_SECRET (same contract as
 // refresh-socials). Query params: dryRun=1 (no writes, report matches).
 const crypto = require('crypto');
+const { nameKey, parseDepthChart, parseCollegeIndex, collegeUrlFor } = require('../lib/ourlads');
 const { authState } = require('../lib/auth');
 
 const SHEET_ID = process.env.SPORTS_SHEET_ID;
@@ -79,12 +80,6 @@ const NFL_CODES = {
   'tennessee titans': 'TEN', 'washington commanders': 'WAS',
 };
 // Sheet school names that don't literally match Ourlads' display names.
-const COLLEGE_ALIASES = {
-  'usf': 'south florida', 'usc': 'southern california', 'ole miss': 'mississippi',
-  'pitt': 'pittsburgh', 'lsu': 'lsu', 'tcu': 'tcu', 'smu': 'smu', 'byu': 'byu',
-  'ucf': 'central florida', 'miami': 'miami fl', 'uconn': 'connecticut',
-};
-
 // Residential proxy (optional, PROXY_URL) — 247sports blocks datacenter IPs
 // with 406s, same as Instagram; Ourlads and ESPN don't need it.
 let proxyDispatcher = null, proxyFetch = null;
@@ -130,63 +125,6 @@ async function fetchText(url, viaProxy = false) {
   }
   if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
   return r.text();
-}
-
-// Normalized person key: "KELCE, TRAVIS 13/3", "Henry Jr., Chris RS FR" and
-// our "Chris Henry Jr" all reduce to the same string. Trailing class tokens
-// (FR/SO/JR/SR/GR) are ambiguous with name suffixes, but that's harmless —
-// Jr/Sr suffixes are stripped in the final normalize anyway.
-function nameKey(raw) {
-  let s = String(raw || '').replace(/&[a-z#0-9]+;/gi, ' ').trim();
-  // Ourlads appends acquisition/draft codes after names — "13/3", "CF23",
-  // "U/Was", "T/SF", "W/KC" — all contain a digit or slash, names never do.
-  s = s.replace(/(\s+[^\s]*[\d/][^\s]*)+\s*$/, '');
-  // College class/status tokens, possibly stacked ("RS FR", or the "RS" left
-  // over after a transfer tag like "RS JR/TR" loses its slash part above).
-  s = s.replace(/(\s+(RS|FR|SO|JR|SR|GR|TR|HS)\.?)+\s*$/i, '');
-  const parts = s.split(',');
-  if (parts.length >= 2) s = `${parts.slice(1).join(' ')} ${parts[0]}`;
-  return s.toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, '').replace(/[^a-z]/g, '');
-}
-
-// Parse an Ourlads depth chart page -> { nameKey: { rank, pos } }.
-function parseDepthChart(html) {
-  const out = {};
-  const rows = String(html).split(/<tr[^>]*>/i).slice(1);
-  for (const row of rows) {
-    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(m => m[1]);
-    if (cells.length < 3) continue;
-    const pos = cells[0].replace(/<[^>]*>/g, '').replace(/&[a-z#0-9]+;/gi, '').trim();
-    if (!pos || pos.length > 8) continue;
-    let rank = 0;
-    for (let i = 1; i + 1 < cells.length; i += 2) {
-      const m = cells[i + 1].match(/<a[^>]*>([^<]+)<\/a>/);
-      if (!m || !m[1].trim()) continue;
-      rank++;
-      const k = nameKey(m[1]);
-      if (k && !(out[k] && out[k].rank <= rank)) out[k] = { rank, pos };
-    }
-  }
-  return out;
-}
-
-// College index -> normalized school name -> depth chart URL.
-function parseCollegeIndex(html) {
-  const map = {};
-  const re = /alt='([^']+)'[^>]*class='nfl-dc-mm-logo'[\s\S]*?href='(depth-chart\.aspx\?s=[^']+)'/g;
-  let m;
-  while ((m = re.exec(html))) {
-    const key = m[1].toLowerCase().replace(/[^a-z ]/g, '').trim();
-    map[key] = 'https://www.ourlads.com/ncaa-football-depth-charts/' + m[2].replace(/&amp;/g, '&');
-  }
-  return map;
-}
-function collegeUrlFor(map, school) {
-  let key = String(school || '').toLowerCase().replace(/\buniversity\b|\bcollege\b/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
-  if (map[key]) return map[key];                 // exact Ourlads name first (e.g. "USC")
-  if (COLLEGE_ALIASES[key] && map[COLLEGE_ALIASES[key]]) return map[COLLEGE_ALIASES[key]];
-  const hit = Object.keys(map).find(k => k === key || k.startsWith(key + ' ') || key.startsWith(k + ' '));
-  return hit ? map[hit] : null;
 }
 
 // Spotrac team contracts page → nameKey → {total, aav, gtd, years}.

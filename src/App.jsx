@@ -6998,7 +6998,7 @@ function loadProspectData(canBuild, onBuilding) {
     // File predates newer fields (portal, usage, efficiency, team location
     // and draft…) — rebuild quietly in the background; open pages swap in the
     // new file when it's ready.
-    PROSPECTS.stale = !raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('recPrev');
+    PROSPECTS.stale = !raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('recPrev') || !(raw.cols || []).includes('depth');
     if (canBuild) pxRefreshIfStale();
     const C = {}; raw.cols.forEach((c, i) => { C[c] = i; });
     const S = {}; raw.stats.forEach((c, i) => { S[c] = i; });
@@ -7019,6 +7019,7 @@ function loadProspectData(canBuild, onBuilding) {
         usage: C.usage !== undefined && p[C.usage] ? p[C.usage] : null,
         ppa: C.ppa !== undefined && p[C.ppa] ? p[C.ppa] : null,
         recClass: p[C.recClass] || 0, recType: p[C.recType] || '',
+        depth: C.depth !== undefined && p[C.depth] ? p[C.depth] : null, // Ourlads [rank, pos]
       };
     });
     const hsCount = {};
@@ -7037,7 +7038,7 @@ function loadProspectData(canBuild, onBuilding) {
     const portal = (raw.portal || []).map(e => ({ name: `${e[0]} ${e[1]}`.trim(), pos: e[2], grp: pxGroupOf(e[2]), origin: e[3], dest: e[4], date: e[5], stars: e[6], elig: e[7], cycle: e[8] }));
     PROSPECTS.data = {
       teamInfo, portal, scoreBuckets,
-      ts: raw.ts, season: raw.season, hsClass: raw.hsClass || 0, careerSeasons: raw.careerSeasons || [], S, players,
+      ts: raw.ts, depthTs: raw.depthTs || 0, season: raw.season, hsClass: raw.hsClass || 0, careerSeasons: raw.careerSeasons || [], S, players,
       confs: [...confs].sort(), states: [...states].sort(), cityIndex,
       cities: Object.values(cityIndex).map(c => c.label).sort(),
       teams: Object.entries(raw.teams).filter(([name]) => players.some(pl => pl.team === name)).map(([name, t]) => ({ name, conf: t[0], logo: t[4] })).sort((a, b) => a.name.localeCompare(b.name)),
@@ -7652,7 +7653,7 @@ function pxFitRank(data, p, prefs, notes) {
   data.players.forEach(pl => {
     if (pl.isHs || pl.grp !== grp || !pl.team || pl === p || !pxSameRoom(fg, pl)) return;
     if ((pl.yr || 0) >= 5 - h || nextOut.has(`${pl.team}|${pk(pl.name)}`)) return;
-    (returners[pl.team] = returners[pl.team] || []).push(pl.prodPct || 0);
+    (returners[pl.team] = returners[pl.team] || []).push({ pct: pl.prodPct || 0, dr: pl.depth ? pl.depth[0] : 0 });
   });
   const hasDraft = Object.values(info).some(t => t.draft !== undefined);
   const hasLoc = Object.values(info).some(t => t.lat);
@@ -7662,6 +7663,7 @@ function pxFitRank(data, p, prefs, notes) {
   const ctx = pxTeamCtx(data);
   const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk, build: ctx.hasBuild, coach: ctx.hasCoach };
   const S0 = PX_STARTERS[fg] || PX_STARTERS[grp] || 1;
+  const hasDepth = !!data.depthTs;
   const gone = h > 1 ? `gone by ${data.season + h}` : 'leaving';
   const allRows = pxTeamNeeds(data, grp, h, fg).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
     const ti = info[t.name] || {};
@@ -7675,9 +7677,19 @@ function pxFitRank(data, p, prefs, notes) {
       : Math.max(0, Math.min(100, t.share * 100 * 1.2 + t.portalOut * 8 - t.commitsW * 6));
     let slot = 0;
     if (P) {
-      slot = (returners[t.name] || []).filter(x => x > P).length + 1;
+      // Ahead of them: returners who out-produce them, plus returning
+      // starters (depth chart) with no production score to compare (e.g.
+      // linemen, or too few snaps yet).
+      slot = (returners[t.name] || []).filter(x => x.pct > P || (hasDepth && x.dr === 1 && !x.pct)).length + 1;
       const st = slot <= S0 ? 100 : slot === S0 + 1 ? 70 : slot === S0 + 2 ? 45 : 20;
       f.opp = [0.6 * st + 0.4 * needScore, `${slot <= S0 ? 'Projected starter' : `Projected ${fg}${slot}`} · ${Math.round(t.share * 100)}% of ${fg} production ${gone}`];
+    } else if (hasDepth && h === 1) {
+      // No production to compare (recruits, linemen): how many of the
+      // position's starting spots open up — current starters who aren't
+      // coming back.
+      const rs = (returners[t.name] || []).filter(x => x.dr === 1).length;
+      const open = Math.max(0, S0 - rs);
+      f.opp = [0.5 * needScore + 0.5 * (open / S0) * 100, `${open} of ${S0} ${fg} starting spot${S0 === 1 ? '' : 's'} open · ${Math.round(t.share * 100)}% of ${fg} production ${gone}`];
     } else {
       f.opp = [needScore, h > 1
         ? `${t.staying} ${fg}${t.staying === 1 ? '' : 's'} still there in ${data.season + h}${t.commits ? ` + ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`
@@ -8238,10 +8250,12 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
           switch (c) {
             case 'yr': return x.yr || 0; case 'ht': return x.ht || 0; case 'wt': return x.wt || 0; case 'stars': return x.stars || 0;
             case 'usage': return x.usage ? x.usage[0] : 0; case 'prod': return x.prodPct || 0; case 'next': return nextOf(x);
+            case 'depth': return x.depth ? x.depth[0] : 99;
             default: return x.name;
           }
         });
         const nCols = 6 + cols.length + (skill ? 1 : 0) + 1;
+        const showDepth = !!data.depthTs;
         return (
           <div key={g} style={{ ...card, marginTop: 16, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "16px 16px 8px", flexWrap: "wrap" }}>
@@ -8255,6 +8269,7 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
                 <thead><tr>
                   {pxHeadCell(sort, setSort, 'name', 'Player', false, 'asc')}
                   {pxHeadCell(sort, setSort, 'yr', 'Class')}
+                  {showDepth && pxHeadCell(sort, setSort, 'depth', 'Depth', false, 'asc')}
                   {pxHeadCell(sort, setSort, 'ht', 'Ht', true)}
                   {pxHeadCell(sort, setSort, 'wt', 'Wt', true)}
                   {pxHeadCell(sort, setSort, 'stars', '★', true)}
@@ -8279,6 +8294,7 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
                           </span>
                         </td>
                         <td style={td()}>{PX_CLASS[Math.min(x.yr || 0, 5)] || '—'}</td>
+                        {showDepth && <td style={td(false, { color: x.depth && x.depth[0] === 1 ? G.text : G.textSecondary, fontWeight: x.depth && x.depth[0] === 1 ? 700 : 400 })} title={x.depth ? `${x.depth[1]} — ${pxOrd(x.depth[0])} on the depth chart (Ourlads)` : 'Not on the depth chart'}>{x.depth ? `${x.depth[1]} ${x.depth[0]}` : '—'}</td>}
                         <td style={td(true)}>{pxHt(x.ht) || '—'}</td>
                         <td style={td(true)}>{x.wt || '—'}</td>
                         <td style={td(true, { color: x.stars >= 4 ? G.green : G.textSecondary, fontWeight: x.stars ? 700 : 400 })}>{x.stars || '—'}</td>
@@ -8295,6 +8311,7 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Avatar name={x.name} photoUrl={null} size={24} />{x.name}</span>
                       </td>
                       <td style={td()}>HS '{String(x.hsClass).slice(2)}</td>
+                      {showDepth && <td style={td()} />}
                       <td style={td(true)}>{pxHt(x.ht) || '—'}</td>
                       <td style={td(true)}>{x.wt || '—'}</td>
                       <td style={td(true, { fontWeight: 700, color: x.stars >= 4 ? G.green : G.textSecondary })}>{x.stars || '—'}</td>
