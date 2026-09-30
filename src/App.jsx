@@ -2752,7 +2752,6 @@ function GrowthChart({ points, metric, isMobile }) {
 // and the offer board (logos, program level, interest, visits) — from the
 // nightly StatHistory snapshots and AutoSync offers247.
 const pxEspnLogo = (url) => { const m = String(url || '').match(/\/logos\/\d+\/(\d+)\.png/); return m ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${m[1]}.png` : url; };
-const PX_INTEREST_ORDER = { committed: 0, enrolled: 0, signed: 0, hot: 1, warm: 2, cool: 3, cold: 4 };
 function RankHistoryChart({ points }) {
   // points: [{ date, v }] — v = national rank (lower is better, so the axis
   // is flipped: up = better).
@@ -2799,6 +2798,7 @@ function RankHistoryChart({ points }) {
 function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
   const hist = useAdminTab('stathistory');
   const [px, setPx] = useState(PROSPECTS.data);
+  const [offerSort, setOfferSort] = useState('fit');
   useEffect(() => {
     if (px) return;
     let on = true;
@@ -2807,113 +2807,194 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
   }, [px]);
   useProspectsRefreshed(setPx);
   const k = String(a.name || '').toLowerCase().trim();
+  const rows = (hist.data && hist.data.rows) || [];
   // One snapshot per day: [date, name, depthRank, depthPos, rating, stars,
   // natRank, posRank, stateRank, compRating, compStars, compNatRank].
-  const snaps = useMemo(() => ((hist.data && hist.data.rows) || [])
+  const snaps = useMemo(() => rows
     .map(r => r.cells || [])
     .filter(c => String(c[1] || '').toLowerCase().trim() === k && (c[5] || c[6] || c[10] || c[11]))
     .map(c => ({ date: c[0], rating: c[4], stars: c[5], nat: +c[6] || 0, pos: +c[7] || 0, state: +c[8] || 0, compRating: c[9], compStars: c[10], compNat: +c[11] || 0 }))
-    .sort((x, y) => String(x.date).localeCompare(String(y.date))), [hist.data, k]);
+    .sort((x, y) => String(x.date).localeCompare(String(y.date))), [hist.data, k]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Team Fit for this player, with their saved priorities.
+  const r247 = useMemo(() => pxR247(rows), [hist.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const p = useMemo(() => (px ? pxClientPlayer(px, a, r247) : null), [px, a, r247]);
+  const store = useFitPrefs(p, null);
+  const prefs = pxMergePrefs(store.saved);
+  const fit = useMemo(() => (px && p && p.grp ? pxFitRank(px, p, prefs) : null), [px, p, JSON.stringify(prefs)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fitBy = {};
+  if (fit) fit.rows.forEach((t, i) => { fitBy[t.name] = { ...t, rank: i + 1 }; });
+
   const cur = snaps[snaps.length - 1];
   const first = snaps[0];
-  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, minWidth: 0 };
-  const label = (t, extra) => (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{t}</div>
-      {extra}
+  const firstName = String(a.name || '').split(' ')[0];
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20, minWidth: 0 };
+  const eyebrow = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary };
+  const head = (t, right) => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+      <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.01em", color: G.text }}>{t}</div>
+      {right}
     </div>
+  );
+  const link = (label, onClick) => (
+    <button onClick={onClick} onMouseEnter={e => { e.currentTarget.style.opacity = 0.7; }} onMouseLeave={e => { e.currentTarget.style.opacity = 1; }}
+      style={{ background: "none", border: "none", padding: 0, color: G.green, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: ff, transition: "opacity 0.12s" }}>{label}</button>
   );
   const fmtD = (d) => (d ? new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '');
-  // Rank change since tracking began (fewer = better → positive = moved up).
   const delta = (key) => {
-    if (!cur || !first || !cur[key] || !first[key] || first === cur) return null;
+    if (!cur || !first || first === cur || !cur[key] || !first[key]) return null;
     const d = first[key] - cur[key];
-    return d === 0 ? <span style={{ fontSize: 11.5, color: G.textTertiary }}>no change</span>
-      : <span style={{ fontSize: 11.5, fontWeight: 700, color: d > 0 ? G.green : G.red }}>{d > 0 ? '▲' : '▼'} {Math.abs(d)}</span>;
+    if (!d) return null;
+    return <span title={`Since ${fmtD(first.date)}`} style={{ fontSize: 11.5, fontWeight: 700, color: d > 0 ? G.green : G.red, fontVariantNumeric: "tabular-nums" }}>{d > 0 ? '▲' : '▼'} {Math.abs(d)}</span>;
   };
+  const openFit = () => { if (p) pageStateCache['fit.pick'] = p.id; openSportsPage('teamfit'); };
+  const logoOf = (t) => (t && t.logo ? pxEspnLogo(t.logo) : '');
+  const logoEl = (t, size) => (logoOf(t)
+    ? <img src={logoOf(t)} alt="" onError={e => { e.currentTarget.src = t.logo; }} style={{ width: size, height: size, objectFit: "contain", flexShrink: 0 }} />
+    : <span style={{ width: size, height: size, borderRadius: 8, background: G.surfaceRaised, flexShrink: 0 }} />);
+
+  // ── Offers ──
+  const prog = px ? pxProgram(px) : null;
+  const offers = pxParseOffers(a.offers247).map(o => {
+    const name = px ? pxTeamByName(px, o[0]) : '';
+    return { school: o[0], offered: !!o[1], status: String(o[2] || ''), visit: String(o[3] || ''), name, t: name ? px.teamInfo[name] : null, rank: name && prog ? prog.rank[name] || 0 : 0, fit: name ? fitBy[name] : null };
+  });
+  const offered = offers.filter(o => o.offered);
+  const interestOnly = offers.filter(o => !o.offered);
+  const committed = offers.find(o => /commit|signed|enrolled/i.test(o.status));
+  const hotOrder = (o) => (/commit|signed|enrolled/i.test(o.status) ? 0 : /hot/i.test(o.status) ? 1 : /warm/i.test(o.status) ? 2 : 3);
+  const sortedOffers = offered.slice().sort((x, y) => hotOrder(x) - hotOrder(y) || (offerSort === 'fit'
+    ? ((y.fit && y.fit.fit) || 0) - ((x.fit && x.fit.fit) || 0)
+    : (x.rank || 999) - (y.rank || 999)));
+  const statusChip = (st) => {
+    if (!st || /cool|cold/i.test(st)) return null;
+    const c = /commit|signed|enrolled/i.test(st) ? [G.green, G.greenSubtle, G.greenBorder] : /hot/i.test(st) ? [G.red, 'transparent', G.red] : [G.yellow, 'transparent', G.yellow];
+    return <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: c[0], background: c[1], border: `1px solid ${c[2]}`, borderRadius: 99, padding: "1px 8px", whiteSpace: "nowrap" }}>{st}</span>;
+  };
+
+  // ── Snapshot strip ──
+  const starsN = cur ? parseInt(cur.compStars || cur.stars, 10) || 0 : 0;
   const posLabel = String(a.position || '').split(/[/,\s]+/)[0] || 'Position';
-  const [city, st] = String(a.hometown || '').split(',').map(x => x.trim());
-  const stat = (l, v, d, hint) => (
-    <div title={hint}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{l}</div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
-        <span style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.02em", color: G.text, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>{v || '—'}</span>
-        {d}
-      </div>
+  const st = (String(a.hometown || '').split(',')[1] || '').trim() || 'State';
+  const cell = (label, value, sub, key) => (
+    <div key={key || label} style={{ minWidth: 0 }}>
+      <div style={eyebrow}>{label}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>{sub}</div>}
     </div>
   );
-  const compStars = cur && (cur.compStars || cur.stars);
-  const rankings = (
+  const big = (v) => <span style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, fontVariantNumeric: "tabular-nums", lineHeight: 1.05 }}>{v}</span>;
+  const snapshot = (
+    <div style={{ ...card, padding: isMobile ? 16 : 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1.3fr repeat(3, 1fr) 1.4fr", gap: isMobile ? 20 : 24, alignItems: "start" }}>
+        {cell(cur && cur.compRating ? '247 Composite' : '247 rating', cur ? <>
+          <span style={{ fontSize: 23, letterSpacing: 2, lineHeight: 1.1 }}>{[1, 2, 3, 4, 5].map(i => <span key={i} style={{ color: i <= starsN ? G.text : G.surfaceBorderLight }}>★</span>)}</span>
+        </> : big('—'), cur ? `${cur.compRating || cur.rating} rating` : 'Read nightly from 247Sports', 'comp')}
+        {cell('National', <>{big(cur && (cur.compNat || cur.nat) ? `#${cur.compNat || cur.nat}` : '—')}{cur && (cur.compNat ? delta('compNat') : delta('nat'))}</>, null, 'nat')}
+        {cell(posLabel, <>{big(cur && cur.pos ? `#${cur.pos}` : '—')}{delta('pos')}</>, null, 'pos')}
+        {cell(st, <>{big(cur && cur.state ? `#${cur.state}` : '—')}{delta('state')}</>, null, 'state')}
+        {cell('Recruitment', committed && committed.t
+          ? <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>{logoEl(committed.t, 28)}<span style={{ fontSize: 15, fontWeight: 800, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Committed · {committed.name}</span></span>
+          : a.committedTo ? <span style={{ fontSize: 15, fontWeight: 800, color: G.text }}>Committed · {a.committedTo}</span>
+          : big(offered.length ? `${offered.length} offers` : '—'), committed || a.committedTo ? `${offered.length} offers` : 'Uncommitted', 'rec')}
+      </div>
+      {cur && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 20 }}>Updated {fmtD(cur.date)}{first && first !== cur ? ` · arrows show change since ${fmtD(first.date)}` : ''}</div>}
+    </div>
+  );
+
+  // ── Best fits (Team Fit) ──
+  const presetName = (PX_FIT_PRESETS.find(([, w]) => PX_FIT_FACTORS.every(([fk]) => (prefs.w[fk] || 0) === (w[fk] || 0))) || ['Custom'])[0];
+  const bestFits = (
     <div style={card}>
-      {label('247 rankings', cur && <span style={{ fontSize: 11.5, color: G.textTertiary }}>updated {fmtD(cur.date)}{first && first !== cur ? ` · change since ${fmtD(first.date)}` : ''}</span>)}
-      {!cur ? <div style={{ fontSize: 13, color: G.textTertiary }}>No 247 rankings yet — they’re read nightly once the player’s 247 profile link is saved.</div> : (
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 16 }}>
-          {stat(cur.compRating ? 'Composite' : 'Rating', compStars ? `${compStars}★` : '', <span style={{ fontSize: 13, color: G.textSecondary, fontVariantNumeric: "tabular-nums" }}>{cur.compRating || cur.rating}</span>, cur.compRating ? '247Sports Composite (industry average)' : '247Sports rating')}
-          {stat('National', cur.compNat ? `#${cur.compNat}` : cur.nat ? `#${cur.nat}` : '', cur.compNat ? delta('compNat') : delta('nat'), cur.compNat ? '247Sports Composite national rank' : '247Sports national rank')}
-          {stat(posLabel, cur.pos ? `#${cur.pos}` : '', delta('pos'), '247Sports position rank')}
-          {stat(st || 'State', cur.state ? `#${cur.state}` : '', delta('state'), '247Sports state rank')}
+      {head('Best fits', link('Open Team Fit →', openFit))}
+      {!p ? <div style={{ fontSize: 13, color: G.textTertiary }}>{px ? 'Not enough on file to rank teams yet — needs position and class.' : 'Loading…'}</div>
+        : !fit || !fit.rows.length ? <div style={{ fontSize: 13, color: G.textTertiary }}>No teams to rank.</div> : (<>
+          {fit.rows.slice(0, 5).map((t, i) => (
+            <div key={t.name} onClick={() => { PX_FIT_CTX.cur = { team: t.name, p, row: t, rank: i + 1, of: fit.rows.length, w: prefs.w, armed: true }; openTeamPage(t.name); }}
+              onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 8px", margin: "0 -8px", borderRadius: 8, cursor: "pointer" }}>
+              <span style={{ width: 16, textAlign: "right", fontSize: 11.5, fontWeight: 700, color: G.textTertiary }}>{i + 1}</span>
+              {logoEl(t, 28)}
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                  {t.offered && <span style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "1px 8px" }}>Offered</span>}
+                </span>
+                <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{[t.conf, prog && prog.rank[t.name] ? `Program #${prog.rank[t.name]}` : ''].filter(Boolean).join(' · ')}</span>
+              </span>
+              <span style={{ fontSize: 17, fontWeight: 800, color: t.fit >= 75 ? G.green : G.text, fontVariantNumeric: "tabular-nums" }}>{t.fit}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12 }}>{store.meta ? `${firstName}’s priorities (${presetName}) · set by ${store.meta.by}` : `Default priorities (${presetName}) — set ${firstName}’s in Team Fit`}</div>
+        </>)}
+    </div>
+  );
+
+  // ── Rank history ──
+  const useComp = new Set(snaps.filter(x => x.compNat).map(x => x.date)).size >= 14;
+  const points = snaps.map(x => ({ date: x.date, v: useComp ? x.compNat : x.nat })).filter(x => x.v);
+  const compSince = (snaps.find(x => x.compNat) || {}).date;
+  const history = (
+    <div style={card}>
+      {head('National rank', <span style={{ fontSize: 11.5, color: G.textTertiary }}>{useComp ? '247 Composite' : '247Sports’ own ranking'}</span>)}
+      <RankHistoryChart points={points} />
+      {!useComp && compSince && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 8 }}>Switches to the Composite once it has two weeks of history (tracked since {fmtD(compSince)}).</div>}
+    </div>
+  );
+
+  // ── Offer board ──
+  const segBtn = (on) => ({ fontFamily: ff, fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer", background: on ? G.surface : 'transparent', color: on ? G.text : G.textSecondary, boxShadow: on ? G.cardShadow : 'none' });
+  const tile = (o) => (
+    <div key={o.school} onClick={() => { if (!o.name) return; if (o.fit) PX_FIT_CTX.cur = { team: o.name, p, row: o.fit, rank: o.fit.rank, of: fit.rows.length, w: prefs.w, armed: true }; openTeamPage(o.name); }}
+      onMouseEnter={e => { if (o.name) e.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+      style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, border: `1px solid ${/commit|signed|enrolled/i.test(o.status) ? G.greenBorder : G.surfaceBorder}`, cursor: o.name ? "pointer" : "default", minWidth: 0, transition: "background 0.12s" }}>
+      {logoEl(o.t, 40)}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.name || o.school}</span>
+          {statusChip(o.status)}
         </div>
+        <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {[o.rank ? `Program #${o.rank}` : o.t ? PX_TIER_NAME[o.t.tier] || '' : '', o.visit ? `Visit ${o.visit}` : ''].filter(Boolean).join(' · ')}
+        </div>
+      </div>
+      {o.fit && (
+        <span title={`#${o.fit.rank} of ${fit.rows.length} on ${firstName}’s Team Fit`} style={{ textAlign: "right", flexShrink: 0 }}>
+          <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: o.fit.fit >= 75 ? G.green : G.text, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>{o.fit.fit}</span>
+          <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>fit</span>
+        </span>
       )}
     </div>
   );
-  // National rank history: 247's own line (tracked since July) until the
-  // Composite has two weeks of its own.
-  const useComp = new Set(snaps.filter(x => x.compNat).map(x => x.date)).size >= 14;
-  const points = snaps.map(x => ({ date: x.date, v: useComp ? x.compNat : x.nat })).filter(x => x.v);
-  const history = (
-    <div style={card}>
-      {label('National rank history', <span style={{ fontSize: 11.5, color: G.textTertiary }}>{useComp ? '247 Composite' : `247Sports’ own ranking${(snaps.find(x => x.compNat) || {}).date ? ` · Composite tracked since ${fmtD(snaps.find(x => x.compNat).date)}` : ''}`} · up = better</span>)}
-      <RankHistoryChart points={points} />
-    </div>
-  );
-  // Offer board
-  const offers = pxParseOffers(a.offers247).map(o => ({ school: o[0], offered: !!o[1], status: String(o[2] || ''), visit: String(o[3] || '') }));
-  const prog = px ? pxProgram(px) : null;
-  const info = (school) => { const n = px ? pxTeamByName(px, school) : ''; return n ? { name: n, ...px.teamInfo[n], rank: prog.rank[n] || 0 } : null; };
-  const sorted = offers.map(o => ({ ...o, t: info(o.school) }))
-    .sort((x, y) => (PX_INTEREST_ORDER[x.status.toLowerCase()] ?? 5) - (PX_INTEREST_ORDER[y.status.toLowerCase()] ?? 5) || ((x.t && x.t.rank) || 999) - ((y.t && y.t.rank) || 999));
-  const offered = sorted.filter(o => o.offered), interest = sorted.filter(o => !o.offered);
-  const statusColor = (st2) => (/commit|signed|enrolled/i.test(st2) ? G.green : /hot/i.test(st2) ? G.red : /warm/i.test(st2) ? G.yellow : G.textTertiary);
-  const tile = (o) => (
-    <div key={o.school} onClick={() => o.t && openTeamPage(o.t.name)} title={o.t ? `Open ${o.t.name}’s roster outlook` : o.school}
-      onMouseEnter={e => { if (o.t) e.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-      style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, border: `1px solid ${/commit|signed/i.test(o.status) ? G.greenBorder : G.surfaceBorder}`, cursor: o.t ? "pointer" : "default", minWidth: 0 }}>
-      {o.t && o.t.logo ? <img src={pxEspnLogo(o.t.logo)} alt="" onError={e => { e.currentTarget.src = o.t.logo; }} style={{ width: 36, height: 36, objectFit: "contain", flexShrink: 0 }} />
-        : <span style={{ width: 36, height: 36, borderRadius: 8, background: G.surfaceRaised, flexShrink: 0 }} />}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.t ? o.t.name : o.school}</div>
-        <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          <span style={{ color: statusColor(o.status), fontWeight: 700 }}>{o.status || '—'}</span>
-          {o.t && o.t.rank ? ` · Program #${o.t.rank}` : o.t && o.t.tier ? ` · ${PX_TIER_NAME[o.t.tier] || o.t.tier}` : ''}
-          {o.visit ? ` · Visit ${o.visit}` : ''}
-        </div>
-      </div>
-    </div>
-  );
-  const grid = { display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 };
-  const openFit = () => {
-    const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
-    const hit = px ? px.players.find(p => p.isHs && nk(p.name) === nk(a.name)) : null;
-    pageStateCache['fit.pick'] = hit ? hit.id : `c:${slugOf(a.name)}`;
-    openSportsPage('teamfit');
-  };
   const offerBoard = (
     <div style={card}>
-      {label(`Offers${offered.length ? ` · ${offered.length}` : ''}`, <button onClick={openFit} style={{ background: "none", border: "none", padding: 0, color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Team Fit →</button>)}
-      {!offers.length ? <div style={{ fontSize: 13, color: G.textTertiary }}>No offers on file yet — read nightly from their 247Sports recruitment page.</div> : (<>
-        <div style={grid}>{offered.map(tile)}</div>
-        {interest.length > 0 && (<>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary, margin: "16px 0 8px" }}>Interest, no offer yet · {interest.length}</div>
-          <div style={grid}>{interest.map(tile)}</div>
-        </>)}
+      {head(`Offers${offered.length ? ` · ${offered.length}` : ''}`, offered.length > 1 && (
+        <span style={{ display: "inline-flex", gap: 2, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: 2 }}>
+          {fit && <button onClick={() => setOfferSort('fit')} style={segBtn(offerSort === 'fit')}>Best fit</button>}
+          <button onClick={() => setOfferSort('level')} style={segBtn(offerSort === 'level' || !fit)}>Program level</button>
+        </span>
+      ))}
+      {!offers.length ? <div style={{ fontSize: 13, color: G.textTertiary }}>No offers on file yet — they’re read nightly from the player’s 247Sports recruitment page.</div> : (<>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>{sortedOffers.map(tile)}</div>
+        {interestOnly.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 20, paddingTop: 16, borderTop: `1px solid ${G.surfaceBorder}` }}>
+            <span style={eyebrow}>Interest, no offer yet</span>
+            {interestOnly.map(o => (
+              <span key={o.school} onClick={() => o.name && openTeamPage(o.name)} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, color: G.textSecondary, cursor: o.name ? "pointer" : "default" }}>
+                {logoEl(o.t, 20)}{o.name || o.school}{statusChip(o.status)}
+              </span>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 16 }}>From 247Sports, refreshed nightly. Fit uses {firstName}’s Team Fit priorities; click a school for its roster outlook.</div>
       </>)}
-      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12 }}>From 247Sports, refreshed nightly. Interest levels are 247’s (Cool / Warm / Hot). Click a school for its roster outlook.</div>
     </div>
   );
+
   return (
-    <div style={{ padding: `20px ${pad}px`, display: "flex", flexDirection: "column", gap: 16, background: G.bg }}>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
-        {rankings}
+    <div style={{ padding: `24px ${pad}px 32px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
+      {snapshot}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 20, alignItems: "stretch" }}>
+        {bestFits}
         {history}
       </div>
       {offerBoard}
@@ -7664,12 +7745,51 @@ function PxFitFactors({ t, w }) {
 // the same numbers for that player.
 const PX_FIT_CTX = { cur: null };
 const PX_FIT_LABEL_COLOR = { Reach: G.yellow, Match: G.green, Safe: G.textSecondary };
+// Latest 247 stars / national rank per name key (Composite when captured).
+function pxR247(rows) {
+  const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
+  const out = {};
+  rows.forEach(r => { const c = r.cells || []; if (c[5] || c[6] || c[10]) out[nk(c[1])] = { stars: parseInt(c[10] || c[5], 10) || 0, nat: parseInt(c[11] || c[6], 10) || 0 }; });
+  return out;
+}
+// A client as a Team Fit player: college clients by ESPN id, high schoolers by
+// name — or, when the database doesn't carry them yet (it only has the
+// current senior class), built from the client record up to two classes out
+// (hometown located via towns already in the database). High schoolers carry
+// their 247 offers.
+function pxClientPlayer(data, a, r247) {
+  const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (!data._byId) {
+    data._byId = {}; data._byName = {};
+    data.players.forEach(p => { if (p.isHs) data._byName[nk(p.name)] = p; else data._byId[p.id] = p; });
+  }
+  const teamKey = (x) => nk(String(x || '').replace(/\b(university|college|of|the)\b/gi, ''));
+  if (!data._teamKey) { data._teamKey = {}; Object.keys(data.teamInfo).forEach(n => { data._teamKey[teamKey(n)] = n; }); }
+  const htIn = (x) => { const m = String(x || '').match(/(\d)\s*['’\-\s]\s*(\d{1,2})/); return m ? +m[1] * 12 + +m[2] : (parseInt(x, 10) > 50 ? parseInt(x, 10) : 0); };
+  const fromClient = () => {
+    const cls = parseInt(a.classOf, 10);
+    if (!cls || cls <= data.season || cls > data.season + 2) return null;
+    const pos = String(a.position || '').split(/[/,\s]+/)[0].toUpperCase();
+    const [city, st] = String(a.hometown || '').split(',').map(x => x.trim());
+    const loc = city && st ? data.cityIndex[`${city}, ${st}`.toLowerCase()] : null;
+    const commit = data._teamKey[teamKey(a.committedTo)] || '';
+    const r = (r247 || {})[nk(a.name)] || {};
+    return { id: `c:${slugOf(a.name)}`, name: a.name, isHs: true, fromClient: true, photo: a.photoUrl || '', pos, grp: pxGroupOf(pos), hs: a.college || a.school || '', hsClass: cls, stars: r.stars || 0, natRank: r.nat || 0,
+      commit, commitLogo: commit ? (data.teamInfo[commit] || {}).logo || '' : '', city: city || '', st: st || '', lat: loc ? loc.lat : 0, lng: loc ? loc.lng : 0, ht: htIn(a.height), wt: parseInt(a.weight, 10) || 0, tier: 'HS' };
+  };
+  const p0 = (a.level === 'College' && a.espnId && data._byId[String(a.espnId)]) || (a.level === 'High School' && (data._byName[nk(a.name)] || fromClient())) || null;
+  if (!p0) return null;
+  const offers = a.level === 'High School' ? pxParseOffers(a.offers247).filter(o => o[1]).map(o => pxTeamByName(data, o[0])).filter(Boolean) : [];
+  return offers.length ? { ...p0, offers } : p0;
+}
+// Saved priorities merged over the defaults.
+const pxMergePrefs = (saved, draft) => ({ ...PX_FIT_DEFAULT, ...(saved || {}), ...(draft || {}), w: { ...PX_FIT_DEFAULT.w, ...((saved || {}).w || {}), ...((draft || {}).w || {}) } });
 // Shared per-player priorities (FitPrefs tab: playerId | name | prefs JSON).
 function useFitPrefs(p, user) {
   const tab = useAdminTab('fitprefs');
   const h = (tab.data && tab.data.headers) || [];
   const col = (n) => h.findIndex(x => x.toLowerCase() === n.toLowerCase());
-  const row = tab.data ? tab.data.rows.find(r => r.cells[col('playerId')] === String(p.id)) : null;
+  const row = tab.data && p ? tab.data.rows.find(r => r.cells[col('playerId')] === String(p.id)) : null;
   let saved = null;
   try { saved = row ? JSON.parse(row.cells[col('prefs')] || 'null') : null; } catch { saved = null; }
   const meta = row ? { by: row.cells[col('updatedBy')], at: row.cells[col('updatedAt')] } : null;
@@ -7693,7 +7813,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const [teamQ, setTeamQ] = useState('');
   const [offersOnly, setOffersOnly] = useState(false);
   useEffect(() => { setDraft(null); setShown(15); setEditOpen(false); setTeamQ(''); }, [p.id]);
-  const prefs = { ...PX_FIT_DEFAULT, ...(store.saved || {}), ...(draft || {}), w: { ...PX_FIT_DEFAULT.w, ...((store.saved || {}).w || {}), ...((draft || {}).w || {}) } };
+  const prefs = pxMergePrefs(store.saved, draft);
   const res = useMemo(() => (grp ? pxFitRank(data, p, prefs) : null), [data, p, grp, JSON.stringify(prefs)]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!grp) return <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No position on file.</div>;
   const set = (o) => setDraft(d => ({ ...(d || {}), ...o, w: { ...((d || {}).w || {}), ...(o.w || {}) } }));
@@ -8323,33 +8443,8 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
   // come first, then by production.
   const lists = useMemo(() => {
     if (!data) return { clients: [], board: [] };
-    const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
-    const byId = {}, byName = {};
-    data.players.forEach(p => { if (p.isHs) byName[nk(p.name)] = p; else byId[p.id] = p; });
-    // High school clients the database doesn't carry yet (it only has the
-    // current senior class): built from the client record, up to two
-    // classes out — hometown located via towns already in the database.
-    const teamKey = (x) => nk(String(x || '').replace(/\b(university|college|of|the)\b/gi, ''));
-    const teamBy = {}; Object.keys(data.teamInfo).forEach(n => { teamBy[teamKey(n)] = n; });
-    const htIn = (x) => { const m = String(x || '').match(/(\d)\s*['’\-\s]\s*(\d{1,2})/); return m ? +m[1] * 12 + +m[2] : (parseInt(x, 10) > 50 ? parseInt(x, 10) : 0); };
-    const fromClient = (a) => {
-      const cls = parseInt(a.classOf, 10);
-      if (!cls || cls <= data.season || cls > data.season + 2) return null;
-      const pos = String(a.position || '').split(/[/,\s]+/)[0].toUpperCase();
-      const [city, st] = String(a.hometown || '').split(',').map(x => x.trim());
-      const loc = city && st ? data.cityIndex[`${city}, ${st}`.toLowerCase()] : null;
-      const commit = teamBy[teamKey(a.committedTo)] || '';
-      return { id: `c:${slugOf(a.name)}`, name: a.name, isHs: true, fromClient: true, photo: a.photoUrl || '', pos, grp: pxGroupOf(pos), hs: a.college || a.school || '', hsClass: cls, stars: (r247[nk(a.name)] || {}).stars || 0, natRank: (r247[nk(a.name)] || {}).nat || 0,
-        commit, commitLogo: commit ? (data.teamInfo[commit] || {}).logo || '' : '', city: city || '', st: st || '', lat: loc ? loc.lat : 0, lng: loc ? loc.lng : 0, ht: htIn(a.height), wt: parseInt(a.weight, 10) || 0, tier: 'HS' };
-    };
-    const r247 = {};
-    ((hist.data && hist.data.rows) || []).forEach(r => { const c = r.cells || []; if (c[5] || c[6] || c[10]) r247[nk(c[1])] = { stars: parseInt(c[10] || c[5], 10) || 0, nat: parseInt(c[11] || c[6], 10) || 0 }; });
-    const clients = (athletes || []).map(a => {
-      const p0 = (a.level === 'College' && a.espnId && byId[String(a.espnId)]) || (a.level === 'High School' && (byName[nk(a.name)] || fromClient(a))) || null;
-      if (!p0) return null;
-      const offers = a.level === 'High School' ? pxParseOffers(a.offers247).filter(o => o[1]).map(o => pxTeamByName(data, o[0])).filter(Boolean) : [];
-      return { p: offers.length ? { ...p0, offers } : p0, a };
-    }).filter(Boolean);
+    const r247 = pxR247((hist.data && hist.data.rows) || []);
+    const clients = (athletes || []).map(a => { const p = pxClientPlayer(data, a, r247); return p && { p, a }; }).filter(Boolean);
     const seen = new Set(clients.map(r => r.p.id));
     const board = data.players.filter(p => !seen.has(p.id) && V.tagFor(p) === 'On board').map(p => ({ p, a: null }));
     return { clients, board };
