@@ -2921,7 +2921,7 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
                 </span>
                 <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{[t.conf, prog && prog.rank[t.name] ? `Program #${prog.rank[t.name]}` : ''].filter(Boolean).join(' · ')}</span>
               </span>
-              <span style={{ fontSize: 17, fontWeight: 800, color: t.fit >= 75 ? G.green : G.text, fontVariantNumeric: "tabular-nums" }}>{t.fit}</span>
+              <span title={pxFitTier(t.fit)[0]} style={{ fontSize: 17, fontWeight: 800, color: pxFitTier(t.fit)[1], fontVariantNumeric: "tabular-nums" }}>{t.fit}</span>
             </div>
           ))}
           <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12 }}>{store.meta ? `${firstName}’s priorities (${presetName}) · set by ${store.meta.by}` : `Default priorities (${presetName}) — set ${firstName}’s in Team Fit`}</div>
@@ -2959,8 +2959,8 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
       </div>
       {o.fit && (
         <span title={`#${o.fit.rank} of ${fit.rows.length} on ${firstName}’s Team Fit`} style={{ textAlign: "right", flexShrink: 0 }}>
-          <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: o.fit.fit >= 75 ? G.green : G.text, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>{o.fit.fit}</span>
-          <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>fit</span>
+          <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: pxFitTier(o.fit.fit)[1], fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>{o.fit.fit}</span>
+          <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, whiteSpace: "nowrap" }}>{pxFitTier(o.fit.fit)[0]}</span>
         </span>
       )}
     </div>
@@ -6497,8 +6497,8 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
 // locally — ~31k rows filter in milliseconds, no per-search API calls.
 const PROSPECTS = { data: null, promise: null, building: false };
 const PX_POS_GROUPS = [
-  ['QB', ['QB']], ['RB', ['RB', 'FB']], ['WR', ['WR']], ['TE', ['TE']],
-  ['OL', ['OL', 'OT', 'OG', 'C', 'G', 'T', 'IOL']], ['DL', ['DL', 'DE', 'DT', 'NT', 'EDGE']],
+  ['QB', ['QB', 'PRO', 'DUAL']], ['RB', ['RB', 'FB', 'APB']], ['WR', ['WR']], ['TE', ['TE']],
+  ['OL', ['OL', 'OT', 'OG', 'C', 'G', 'T', 'IOL']], ['DL', ['DL', 'DE', 'DT', 'NT', 'EDGE', 'SDE', 'WDE', 'IDL']],
   ['LB', ['LB', 'ILB', 'OLB', 'MLB']], ['DB', ['DB', 'CB', 'S', 'FS', 'SS', 'SAF']],
   ['K/P', ['K', 'P', 'PK', 'LS']], ['ATH', ['ATH']],
 ];
@@ -6531,7 +6531,7 @@ const PX_EMPTY = { q: '', team: '', groups: [], tiers: [], conf: '', classes: []
 //    so one extreme number can only move it as far as its weight allows;
 //  • the final percentile is the rank of that blend within the position.
 // Offensive linemen have no individual stats in any free source — no score.
-const PX_BUCKET = { QB: 'QB', RB: 'RB', FB: 'RB', WR: 'WR', TE: 'TE', CB: 'CB', S: 'S', FS: 'S', SS: 'S', SAF: 'S', DB: 'DB', LB: 'LB', ILB: 'LB', MLB: 'LB', OLB: 'LB', DE: 'EDGE', EDGE: 'EDGE', DT: 'DT', NT: 'DT', DL: 'DL', K: 'K', PK: 'K', P: 'P', ATH: 'ATH' };
+const PX_BUCKET = { PRO: 'QB', DUAL: 'QB', APB: 'RB', SDE: 'EDGE', WDE: 'EDGE', IDL: 'DT', QB: 'QB', RB: 'RB', FB: 'RB', WR: 'WR', TE: 'TE', CB: 'CB', S: 'S', FS: 'S', SS: 'S', SAF: 'S', DB: 'DB', LB: 'LB', ILB: 'LB', MLB: 'LB', OLB: 'LB', DE: 'EDGE', EDGE: 'EDGE', DT: 'DT', NT: 'DT', DL: 'DL', K: 'K', PK: 'K', P: 'P', ATH: 'ATH' };
 const PX_BUCKET_LABEL = { QB: 'quarterbacks', RB: 'running backs', WR: 'receivers', TE: 'tight ends', CB: 'cornerbacks', S: 'safeties', DB: 'defensive backs', LB: 'linebackers', EDGE: 'edge rushers', DT: 'defensive tackles', DL: 'defensive linemen', K: 'kickers', P: 'punters', ATH: 'athletes' };
 const pxF1 = (v) => v.toFixed(1), pxF2 = (v) => v.toFixed(2), pxPctF = (v) => `${Math.round(v * 100)}%`;
 const pxPerG = (k) => (p, s, gp) => s(k) / gp;
@@ -6899,16 +6899,17 @@ const pxLeaving = (pl) => !pl.isHs && (pl.yr || 0) >= 4; // SR / 5th year: likel
 // h = seasons until the player would arrive (1 = next fall; 2 = the fall
 // after, for the recruiting class two years out): by then, anyone with
 // 5 − h or more years in (listed class) is gone.
-function pxTeamNeeds(data, grp, h = 1) {
+function pxTeamNeeds(data, grp, h = 1, fg = grp) {
   data._needs = data._needs || {};
-  const ck = `${grp}|${h}`;
+  const ck = `${grp}|${h}|${fg}`;
   if (data._needs[ck]) return data._needs[ck];
   const byTeam = {};
   const get = (t) => (byTeam[t] = byTeam[t] || { name: t, room: [], commits: 0, commitsW: 0, portalOut: 0 });
-  // Blue-chip bodies (4★+) count extra as competition.
-  const bw = (pl) => ((pl.stars || 0) >= 4 ? 1.5 : 1);
+  // Quality counts, not just bodies: blue-chips (4★+) and proven producers
+  // (75th+ percentile) weigh extra as competition.
+  const bw = (pl) => 1 + ((pl.stars || 0) >= 4 ? 0.5 : 0) + ((pl.prodPct || 0) >= 75 ? 0.5 : 0);
   data.players.forEach(pl => {
-    if (pl.grp !== grp) return;
+    if (pl.grp !== grp || (fg !== grp && !pxSameRoom(fg, pl))) return;
     if (pl.isHs) { if (pl.commit) { const t = get(pl.commit); t.commits++; t.commitsW += bw(pl); } return; }
     if (pl.team) get(pl.team).room.push(pl);
   });
@@ -6923,7 +6924,7 @@ function pxTeamNeeds(data, grp, h = 1) {
     const score = share * 100 + t.portalOut * 8 - t.commits * 10;
     const stayers = t.room.filter(pl => !((pl.yr || 0) >= 5 - h));
     return { name: t.name, tier: info.tier || '', sp: info.sp || 0, logo: info.logo || '', conf: info.conf || '', roomSize: t.room.length, leaving: leavers.length, share, commits: t.commits, portalOut: t.portalOut, score, byCount: !(total > 0),
-      staying: stayers.length, stayW: stayers.reduce((a, pl) => a + bw(pl), 0), commitsW: t.commitsW };
+      staying: stayers.length, stayW: stayers.reduce((a, pl) => a + bw(pl), 0), commitsW: t.commitsW, fg };
   }).sort((a, b) => b.score - a.score || (a.sp || 999) - (b.sp || 999));
   data._needs[ck] = out;
   return out;
@@ -7493,7 +7494,16 @@ const PX_ACADEMIC = (() => {
   return m;
 })();
 const PX_ACAD_LABEL = { 1: 'Elite academics', 2: 'Strong academics', 3: 'Good academics', 4: 'Standard academics' };
-const PX_STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, DB: 4, 'K/P': 1, ATH: 1 };
+const PX_STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, DB: 4, 'K/P': 1, ATH: 1, EDGE: 2, DT: 2, CB: 2, S: 2 };
+// The room a player actually competes in: edge rushers vs interior linemen,
+// corners vs safeties. Teams that list everyone as a generic DL / DB count
+// toward both.
+const pxFitGroup = (pos) => { const b = PX_BUCKET[String(pos || '').toUpperCase()]; return ['EDGE', 'DT', 'CB', 'S'].includes(b) ? b : pxGroupOf(pos); };
+const pxSameRoom = (fg, pl) => {
+  if (!['EDGE', 'DT', 'CB', 'S'].includes(fg)) return pl.grp === fg || (fg === 'DL' && pl.grp === 'DL') || (fg === 'DB' && pl.grp === 'DB');
+  const g = pxFitGroup(pl.pos);
+  return g === fg || (['EDGE', 'DT'].includes(fg) && g === 'DL') || (['CB', 'S'].includes(fg) && g === 'DB');
+};
 const PX_FIT_FACTORS = [
   ['opp', 'Playing time', 'Would they start: how their production compares with the players who return there, plus how much of the position’s production is leaving (net of commits)'],
   ['level', 'Program level', 'How strong the program is — SP+ this season blended with last season, plus a conference nudge (Power 4 highest). Stronger is always better here; set how much playing somewhere big matters to the player. (Realism — whether they could get there — is handled separately by Aim.)'],
@@ -7633,9 +7643,10 @@ function pxFitRank(data, p, prefs) {
   const h = p.isHs && p.hsClass ? Math.max(1, p.hsClass - data.season) : 1;
   const pk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
   const nextOut = new Set((data.portal || []).filter(e => e.cycle === data.season + 1).map(e => `${e.origin}|${pk(e.name)}`));
+  const fg = pxFitGroup(p.pos) || grp;
   const returners = {};
   data.players.forEach(pl => {
-    if (pl.isHs || pl.grp !== grp || !pl.team || pl === p) return;
+    if (pl.isHs || pl.grp !== grp || !pl.team || pl === p || !pxSameRoom(fg, pl)) return;
     if ((pl.yr || 0) >= 5 - h || nextOut.has(`${pl.team}|${pk(pl.name)}`)) return;
     (returners[pl.team] = returners[pl.team] || []).push(pl.prodPct || 0);
   });
@@ -7646,9 +7657,9 @@ function pxFitRank(data, p, prefs) {
   const rateMed = rates.length ? rates[Math.floor(rates.length / 2)] : 0.5;
   const ctx = pxTeamCtx(data);
   const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk, build: ctx.hasBuild, coach: ctx.hasCoach };
-  const S0 = PX_STARTERS[grp] || 1;
+  const S0 = PX_STARTERS[fg] || PX_STARTERS[grp] || 1;
   const gone = h > 1 ? `gone by ${data.season + h}` : 'leaving';
-  const rows = pxTeamNeeds(data, grp, h).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
+  const rows = pxTeamNeeds(data, grp, h, fg).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
     const ti = info[t.name] || {};
     const f = {};
     // Playing time
@@ -7657,16 +7668,16 @@ function pxFitRank(data, p, prefs) {
     // the current commits, blue-chips counting extra) against a full room.
     const needScore = h > 1
       ? Math.max(0, Math.min(100, 100 * (1 - (t.stayW + t.commitsW) / (S0 * 3.5)) + t.share * 20 + t.portalOut * 5))
-      : Math.max(0, Math.min(100, t.share * 100 * 1.2 + t.portalOut * 8 - t.commits * 6));
+      : Math.max(0, Math.min(100, t.share * 100 * 1.2 + t.portalOut * 8 - t.commitsW * 6));
     let slot = 0;
     if (P) {
       slot = (returners[t.name] || []).filter(x => x > P).length + 1;
       const st = slot <= S0 ? 100 : slot === S0 + 1 ? 70 : slot === S0 + 2 ? 45 : 20;
-      f.opp = [0.6 * st + 0.4 * needScore, `${slot <= S0 ? 'Projected starter' : `Projected ${grp}${slot}`} · ${Math.round(t.share * 100)}% of ${grp} production ${gone}`];
+      f.opp = [0.6 * st + 0.4 * needScore, `${slot <= S0 ? 'Projected starter' : `Projected ${fg}${slot}`} · ${Math.round(t.share * 100)}% of ${fg} production ${gone}`];
     } else {
       f.opp = [needScore, h > 1
-        ? `${t.staying} ${grp}${t.staying === 1 ? '' : 's'} still there in ${data.season + h}${t.commits ? ` + ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`
-        : `${Math.round(t.share * 100)}% of ${grp} production ${gone}${t.commits ? ` · ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`];
+        ? `${t.staying} ${fg}${t.staying === 1 ? '' : 's'} still there in ${data.season + h}${t.commits ? ` + ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`
+        : `${Math.round(t.share * 100)}% of ${fg} production ${gone}${t.commits ? ` · ${t.commits} commit${t.commits === 1 ? '' : 's'}` : ''}`];
     }
     // Level
     const T = tPct(ti), diff = T - D;
@@ -7724,9 +7735,13 @@ function pxFitRank(data, p, prefs) {
     });
     // An offer = the school wants them: a modest ×1.1 lift (capped at 100).
     const fitRaw = den ? (num / den) * gate * realism * (isOffer ? 1.1 : 1) : 0;
-    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, offered: isOffer };
+    // Factors that are only a placeholder for this team (no data behind them).
+    const thin = PX_FIT_FACTORS.filter(([fk]) => f[fk] && ((prefs.w || {})[fk] || 0) > 0 && (!f[fk][1] || f[fk][1] === 'Location unknown')).map(([, l]) => l);
+    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, offered: isOffer, thin };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
-  return { rows, avail, D, C, auto, spTarget: spNear(D), grp, h, offers: offered.size };
+  const gms = Object.values(info).map(x => x.games || 0).filter(x => x > 0).sort((x, y) => x - y);
+  const early = !gms.length || gms[Math.floor(gms.length / 2)] < 6;
+  return { rows, avail, D, C, auto, spTarget: spNear(D), grp, h, offers: offered.size, early, fg };
 }
 
 // A team's factor breakdown for one player (Team Fit rows and the team
@@ -7745,6 +7760,9 @@ function PxFitFactors({ t, w }) {
 // the same numbers for that player.
 const PX_FIT_CTX = { cur: null };
 const PX_FIT_LABEL_COLOR = { Reach: G.yellow, Match: G.green, Safe: G.textSecondary };
+// Plain-language band for a fit score — the number is a guide, not a
+// measurement, so the band is what to read.
+const pxFitTier = (n) => (n >= 70 ? ['Strong fit', G.green] : n >= 55 ? ['Good fit', G.text] : n >= 40 ? ['Possible', G.textSecondary] : ['Long shot', G.textTertiary]);
 // Latest 247 stars / national rank per name key (Composite when captured).
 function pxR247(rows) {
   const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -7903,18 +7921,19 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
               <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{[t.conf, t.sp ? `SP+ #${t.sp}` : ''].filter(Boolean).join(' · ')}</span>
             </span>
             <span style={{ textAlign: "right", flexShrink: 0 }}>
-              <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: t.fit >= 75 ? G.green : G.text, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>{t.fit}</span>
-              <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>fit</span>
+              <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: pxFitTier(t.fit)[1], fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>{t.fit}</span>
+              <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, whiteSpace: "nowrap" }}>{pxFitTier(t.fit)[0]}</span>
             </span>
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, paddingLeft: 32 }}>
             <PxFitFactors t={t} w={prefs.w} />
           </div>
+          {t.thin && t.thin.length > 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 8, paddingLeft: 32 }}>Limited data: {t.thin.join(', ')}</div>}
         </div>
       ))}
       {res && !tq && !offersOnly && res.rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 12, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
       {res && !res.rows.length && <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No teams match — turn on another division.</div>}
-      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>Fit = the factors above, weighted by {first}’s priorities (Some ×1, Important ×3, Top ×6 — and a team that scores poorly on a Top priority is pulled down overall). “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
+      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>{res && res.early ? 'Early season: projections that lean on this year’s production firm up after about six games. ' : ''}Fit = the factors above, weighted by {first}’s priorities (Some ×1, Important ×3, Top ×6 — and a team that scores poorly on a Top priority is pulled down overall). Read the band, not the exact number: Strong fit 70+, Good fit 55–69, Possible 40–54, Long shot below 40. “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
   </>);
   if (wide) {
     return (
@@ -8046,8 +8065,8 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
                 <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>#{rank} of {of} teams on {fp.name.split(' ')[0]}’s Team Fit · {[fp.pos, fp.isHs ? `HS '${String(fp.hsClass).slice(2)}` : fp.team].filter(Boolean).join(' · ')}</div>
               </div>
               <span style={{ textAlign: "right" }}>
-                <span style={{ display: "block", fontSize: 23, fontWeight: 800, color: row.fit >= 75 ? G.green : G.text, fontVariantNumeric: "tabular-nums", lineHeight: 1.05 }}>{row.fit}</span>
-                <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>fit</span>
+                <span style={{ display: "block", fontSize: 23, fontWeight: 800, color: pxFitTier(row.fit)[1], fontVariantNumeric: "tabular-nums", lineHeight: 1.05 }}>{row.fit}</span>
+                <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, whiteSpace: "nowrap" }}>{pxFitTier(row.fit)[0]}</span>
               </span>
             </div>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12 }}><PxFitFactors t={row} w={fitCtx.w} /></div>
