@@ -12144,6 +12144,8 @@ function App() {
   const [division, setDivisionState] = useState(() => { try { return localStorage.getItem('mh_div') || ''; } catch { return ''; } });
   const setDivision = (d) => { if (d === undefined) return; setDivisionState(d || ''); try { localStorage.setItem('mh_div', d || ''); } catch { /* private mode */ } };
   const sportsLimited = division === 'music', musicLimited = division === 'sports';
+  // Editing is own-side only (the server enforces it too).
+  const canEditSide = (side) => (side === 'sports' ? !sportsLimited : side === 'music' ? !musicLimited : true);
   // Decks with live Box cover thumbnails (API-resolved); DECKS is the fallback.
   const [sportsDecks, setSportsDecks] = useState(null);
   const [sportsLevels, setSportsLevels] = useState([...ALL_LEVELS]);
@@ -13230,7 +13232,7 @@ function App() {
                 isAdmin={isAdmin} linkUrl={shareDetailUrl} linkLoading={shareDetailLoading}
                 onLink={generateDetailShareLink} onClearLink={() => setShareDetailUrl(null)} />}
               {authBtn}
-              {isAdmin && selected && <button onClick={() => domain === 'sports' ? setEditingAthlete(selected) : setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
+              {isAdmin && selected && canEditSide(domain) && <button onClick={() => domain === 'sports' ? setEditingAthlete(selected) : setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
             </div>
           ) : (
@@ -13295,7 +13297,7 @@ function App() {
                   isAdmin={isAdmin} linkUrl={shareDetailUrl} linkLoading={shareDetailLoading}
                   onLink={generateDetailShareLink} onClearLink={() => setShareDetailUrl(null)} />}
                 {authBtn}
-                {isAdmin && selected && <button onClick={() => domain === 'sports' ? setEditingAthlete(selected) : setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
+                {isAdmin && selected && canEditSide(domain) && <button onClick={() => domain === 'sports' ? setEditingAthlete(selected) : setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
                 <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
               </>
             ) : !rosterControlsOn ? (
@@ -13322,7 +13324,7 @@ function App() {
                   <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} domain={domain} />
                   {viewToggle}
                 </div>
-                {isAdmin && (
+                {isAdmin && canEditSide(domain) && (
                   <button onClick={() => domain === 'sports'
                     ? setEditingAthlete({ level: 'College', name: '', position: '', public: true, brands: [], interests: [] })
                     : setEditing({})}

@@ -218,6 +218,15 @@ const staffDirGet = makeCachedGet(async (token) => {
   if (d.error) throw new Error(d.error.message);
   return d;
 }, 'staffdir');
+async function divisionOf(token, user) {
+  if (!user || !user.name || !process.env.SPORTS_SHEET_ID) return '';
+  try {
+    const rows = (await staffDirGet(token)).values || [];
+    const di = (rows[0] || []).map(h => String(h || '').trim().toLowerCase()).indexOf('division');
+    const row = rows.slice(1).find(r => String(r[0] || '').trim().toLowerCase() === user.name.trim().toLowerCase());
+    return di >= 0 && row ? String(row[di] || '').trim().toLowerCase() : '';
+  } catch { return ''; }
+}
 
 
 async function sheetUpdate(token, range, values) {
@@ -626,17 +635,8 @@ module.exports = async (req, res) => {
       // The signed-in person's division (company directory = the sports
       // sheet's Staff tab) — decides which music pages a Sports-only
       // person sees. Cached with the other reads.
-      let division = '';
       const me = authState(req).user;
-      if (me && me.name && process.env.SPORTS_SHEET_ID) {
-        try {
-          const dirRows = (await staffDirGet(token)).values || [];
-          const head = (dirRows[0] || []).map(h => String(h || '').trim().toLowerCase());
-          const di = head.indexOf('division');
-          const row = dirRows.slice(1).find(r => String(r[0] || '').trim().toLowerCase() === me.name.trim().toLowerCase());
-          division = di >= 0 && row ? String(row[di] || '').trim().toLowerCase() : '';
-        } catch { /* no division → full access, as before */ }
-      }
+      const division = await divisionOf(token, me); // none → full access, as before
       return res.json({ clients: outClients, logos, staff, isAdmin: !configured || admin, authConfigured: configured, publicColumnExists, user: me,
         access: { division },
         toolEmails: (!configured || admin) ? TOOL_EMAILS : undefined });
@@ -647,6 +647,13 @@ module.exports = async (req, res) => {
       // Mutating actions drop this instance's sheet-read cache; the listed
       // actions are read-only (or write only to Blob) and run frequently.
       const RO_ACTIONS = ['chat', 'artist-shows', 'artist-shows-store', 'tool-secret', 'tool-secrets-store', 'tracklists'];
+      // Sports-division staff can view music clients but not change them.
+      // Open to everyone: the assistant, show/tracklist lookups, the tool
+      // password copy, and the harvest drop-off (its own secret).
+      const SHARED_ACTIONS = ['chat', 'artist-shows', 'artist-shows-store', 'tool-secret', 'tracklists'];
+      if (!SHARED_ACTIONS.includes(req.body?.action) && await divisionOf(token, authState(req).user) === 'sports') {
+        return res.status(403).json({ error: 'Sports staff can view music clients but not edit them.' });
+      }
       if (!RO_ACTIONS.includes(req.body?.action)) clearSheetCache();
       // Weekly Bandsintown harvest drop-off (runs headless on Tyler's Mac —
       // Bandsintown only serves real browsers, so the server can't fetch it).

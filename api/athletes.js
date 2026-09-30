@@ -774,8 +774,19 @@ module.exports = async (req, res) => {
   if (!SHEET_ID) return res.json({ athletes: [], isAdmin: false, authConfigured: false, notConfigured: true });
 
   if (req.method === 'POST') {
-    const { configured, admin } = authState(req);
+    const { configured, admin, user: editor } = authState(req);
     if (configured && !admin) return res.status(403).json({ error: 'Log in to edit athletes.' });
+    // Music-division staff can view sports clients but not change anything —
+    // except the shared to-do list and read-only searches.
+    {
+      const b = req.body || {};
+      const shared = b.action === 'recruit-search' || (/^tab-(update|append|delete)$/.test(b.action || '') && b.tab === 'todos');
+      if (editor && !shared) {
+        const t0 = await getToken();
+        const rows = (await sheetGet(t0, "'Staff'!A:E").catch(() => ({ values: [] }))).values || [];
+        if (divisionFrom(rows, editor) === 'music') return res.status(403).json({ error: 'Music staff can view sports clients but not edit them.' });
+      }
+    }
     // Any POST here can mutate the sheet — drop this instance's read cache so
     // follow-up reads (including the handler's own) see current data.
     if ((req.body || {}).action !== 'recruit-search') clearSheetCache();
