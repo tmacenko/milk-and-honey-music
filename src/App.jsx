@@ -7682,8 +7682,13 @@ const PX_VALUE_ANCHOR = {
   EDGE: [5e5, 8.5e5, 1.2e6], DT: [5e5, 7.5e5, 1e6], DL: [5e5, 8e5, 1.1e6], LB: [3e5, 5e5, 7e5],
   CB: [4e5, 6.5e5, 9e5], S: [3e5, 6e5, 9e5], DB: [3.5e5, 6.25e5, 9e5], 'K/P': [5e4, 1.1e5, 2e5], ATH: [4e5, 6e5, 9e5],
 };
-// Opendorse average pay vs a P4 starter at the same position.
-const PX_G6_RATIO = { QB: 0.135, RB: 0.33, WR: 0.28, TE: 0.35, OL: 0.325, DL: 0.31, LB: 0.345, DB: 0.317, 'K/P': 0.54, ATH: 0.3 };
+// Opendorse average annual pay for a Group of 6 starter, by position (2025).
+const PX_G6_STARTER = { QB: 406e3, RB: 204e3, WR: 220e3, TE: 123e3, OL: 231e3, DL: 233e3, LB: 222e3, DB: 199e3, 'K/P': 76e3, ATH: 210e3 };
+// G5 money is set by the conference, not by how good the team is: tiers by
+// conference revenue (judgment), checked against our MAC / Mountain West
+// deals (Toledo CB1 $65K, Western Michigan QB1 $200K, SDSU WR1 $150K).
+const PX_G5_CONF = { 'American Athletic': 1.25, 'Pac-12': 1.3, 'Mountain West': 1.15, 'Sun Belt': 0.95, 'Conference USA': 0.7, 'Mid-American': 0.5, 'FBS Independents': 0.8 };
+// Opendorse average pay for a backup vs a P4 starter at the same position.
 const PX_BACKUP_RATIO = { QB: 0.105, RB: 0.21, WR: 0.15, TE: 0.23, OL: 0.18, DL: 0.22, LB: 0.19, DB: 0.2, 'K/P': 0.24, ATH: 0.17 };
 const pxMoney = (v) => (v >= 995000 ? `$${(v / 1e6).toFixed(1).replace(/\.0$/, '')}M` : `$${Math.max(10, Math.round(v / 1e4) * 10)}K`);
 const pxMoneyRange = (v) => `${pxMoney(v.lo)}–${pxMoney(v.hi)}`;
@@ -7704,11 +7709,11 @@ function pxValue(data, p, team, role) {
     // doesn't scale one-for-one with the budget.
     school = (!team ? 1 : bud ? ((bud[0] + bud[1]) / 2 / PX_BUDGET_AVG) ** 0.8 : 0.7) * shareF;
   } else if (ti.tier === 'G5') {
-    const T = pxProgram(data).pct[team] || 20;
-    school = (PX_G6_RATIO[grp] || 0.3) * Math.max(0.8, Math.min(1.3, 0.75 + T / 100));
+    // Opendorse's G6 starter average for the position, by conference money.
+    school = ((PX_G6_STARTER[grp] || 2e5) / anchor[1]) * (PX_G5_CONF[ti.conf] || 0.8);
     conf = 'low';
   } else {
-    school = (PX_G6_RATIO[grp] || 0.3) * 0.35;
+    school = ((PX_G6_STARTER[grp] || 2e5) / anchor[1]) * 0.35;
     conf = 'very low';
   }
   let roleF = 1;
@@ -7718,11 +7723,11 @@ function pxValue(data, p, team, role) {
     roleF = (n && n <= 32) || p.stars >= 5 ? 2 : n && n <= 100 ? 1.1 : n && n <= 300 ? 0.55 : p.stars >= 4 ? 0.45 : p.stars === 3 ? 0.2 : 0.1;
     if (conf === 'medium') conf = 'low';
   } else if (role === 'backup') {
-    roleF = ti.tier === 'P4' || !team ? PX_BACKUP_RATIO[grp] || 0.2 : 0.5;
+    roleF = ti.tier === 'P4' || !team ? PX_BACKUP_RATIO[grp] || 0.2 : 0.4;
   } else {
     // Production, with a steeper top end — the market pays stars far more
-    // than solid starters.
-    roleF = P ? 0.6 + 0.8 * (P / 100) + (P >= 90 ? (P - 90) * 0.06 : 0) : 0.9;
+    // than solid starters (flatter outside the P4, where budgets cap it).
+    roleF = !P ? 0.9 : ti.tier === 'P4' || !team ? 0.6 + 0.8 * (P / 100) + (P >= 90 ? (P - 90) * 0.06 : 0) : 0.75 + 0.5 * (P / 100);
   }
   const mid = anchor[1] * school * roleF;
   const w = conf === 'medium' ? [0.75, 1.3] : [0.6, 1.5];
