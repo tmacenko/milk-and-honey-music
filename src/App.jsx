@@ -2819,8 +2819,9 @@ function SportsRecruitingTab({ athlete: a, isMobile, pad }) {
   const r247 = useMemo(() => pxR247(rows), [hist.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const p = useMemo(() => (px ? pxClientPlayer(px, a, r247) : null), [px, a, r247]);
   const store = useFitPrefs(p, null);
+  const marks = useFitNotes(p, null);
   const prefs = pxMergePrefs(store.saved);
-  const fit = useMemo(() => (px && p && p.grp ? pxFitRank(px, p, prefs) : null), [px, p, JSON.stringify(prefs)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fit = useMemo(() => (px && p && p.grp ? pxFitRank(px, p, prefs, marks.byTeam) : null), [px, p, JSON.stringify(prefs), JSON.stringify(marks.byTeam)]); // eslint-disable-line react-hooks/exhaustive-deps
   const fitBy = {};
   if (fit) fit.rows.forEach((t, i) => { fitBy[t.name] = { ...t, rank: i + 1 }; });
 
@@ -7612,7 +7613,10 @@ function pxTeamCtx(data) {
 const PX_FIT_AIMS = [['real', 'Realistic'], ['stretch', 'Stretch'], ['any', 'Anything']];
 const pxAimOf = (v) => (v === 'stretch' || v === 'any' ? v : v === 'up' || v === 'top' ? 'stretch' : 'real');
 
-function pxFitRank(data, p, prefs) {
+// notes: { team: { status: 'interested' | 'talked' | 'notfit', note } } —
+// agents' marks (FitNotes tab). A school that's shown interest is treated
+// like an offer; "Not a fit" schools leave the ranking (returned as ruledOut).
+function pxFitRank(data, p, prefs, notes) {
   const grp = p.grp || pxGroupOf(p.pos);
   if (!grp) return null;
   const info = data.teamInfo;
@@ -7659,7 +7663,7 @@ function pxFitRank(data, p, prefs) {
   const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk, build: ctx.hasBuild, coach: ctx.hasCoach };
   const S0 = PX_STARTERS[fg] || PX_STARTERS[grp] || 1;
   const gone = h > 1 ? `gone by ${data.season + h}` : 'leaving';
-  const rows = pxTeamNeeds(data, grp, h, fg).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
+  const allRows = pxTeamNeeds(data, grp, h, fg).filter(t => t.name !== p.team && (prefs.tiers || []).includes(t.tier)).map(t => {
     const ti = info[t.name] || {};
     const f = {};
     // Playing time
@@ -7692,7 +7696,8 @@ function pxFitRank(data, p, prefs) {
     const aboveOffers = p.isHs && offerPcts.length >= 3 && !offered.has(t.name) && T > offerPcts[0] + 5;
     const label = aboveOffers || diff > reachAt ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
     const free = (p.isHs ? 8 : 15) + (aim === 'stretch' ? (p.isHs ? 10 : 15) : 0);
-    const isOffer = offered.has(t.name);
+    const mark = (notes || {})[t.name];
+    const isOffer = offered.has(t.name) || (mark && mark.status === 'interested');
     // A recruit with a real offer list: offering schools are realistic by
     // definition; schools above their best offer haven't shown that level of
     // interest, so the discount starts right there (Stretch allows 10).
@@ -7737,11 +7742,13 @@ function pxFitRank(data, p, prefs) {
     const fitRaw = den ? (num / den) * gate * realism * (isOffer ? 1.1 : 1) : 0;
     // Factors that are only a placeholder for this team (no data behind them).
     const thin = PX_FIT_FACTORS.filter(([fk]) => f[fk] && ((prefs.w || {})[fk] || 0) > 0 && (!f[fk][1] || f[fk][1] === 'Location unknown')).map(([, l]) => l);
-    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, offered: isOffer, thin };
+    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, offered: offered.has(t.name), interested: !!(mark && mark.status === 'interested'), mark: mark || null, thin };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
+  const ruledOut = allRows.filter(t => t.mark && t.mark.status === 'notfit');
+  const rows = allRows.filter(t => !(t.mark && t.mark.status === 'notfit'));
   const gms = Object.values(info).map(x => x.games || 0).filter(x => x > 0).sort((x, y) => x - y);
   const early = !gms.length || gms[Math.floor(gms.length / 2)] < 6;
-  return { rows, avail, D, C, auto, spTarget: spNear(D), grp, h, offers: offered.size, early, fg };
+  return { rows, ruledOut, avail, D, C, auto, spTarget: spNear(D), grp, h, offers: offered.size, early, fg };
 }
 
 // A team's factor breakdown for one player (Team Fit rows and the team
@@ -7802,6 +7809,61 @@ function pxClientPlayer(data, a, r247) {
 }
 // Saved priorities merged over the defaults.
 const pxMergePrefs = (saved, draft) => ({ ...PX_FIT_DEFAULT, ...(saved || {}), ...(draft || {}), w: { ...PX_FIT_DEFAULT.w, ...((saved || {}).w || {}), ...((draft || {}).w || {}) } });
+// Agents' marks on schools per player (FitNotes tab: playerId | name | team |
+// status | note | updatedBy | updatedAt), shared by everyone.
+const PX_MARKS = [['interested', 'School interested', G.green], ['talked', 'We’ve talked', G.text], ['notfit', 'Not a fit', G.textTertiary]];
+function useFitNotes(p, user) {
+  const tab = useAdminTab('fitnotes');
+  const h = (tab.data && tab.data.headers) || [];
+  const col = (n) => h.findIndex(x => x.toLowerCase() === n.toLowerCase());
+  const mine = tab.data && p ? tab.data.rows.filter(r => r.cells[col('playerId')] === String(p.id)) : [];
+  const byTeam = {};
+  mine.forEach(r => { const st = r.cells[col('status')]; if (st) byTeam[r.cells[col('team')]] = { status: st, note: r.cells[col('note')] || '', by: r.cells[col('updatedBy')] || '', at: r.cells[col('updatedAt')] || '', row: r._row }; });
+  const set = async (team, status, note) => {
+    const existing = mine.find(r => r.cells[col('team')] === team);
+    const values = { playerId: String(p.id), name: p.name, team, status: status || '', note: note || '', updatedBy: (user && user.name) || 'Team', updatedAt: new Date().toISOString().slice(0, 10) };
+    const body = existing ? { action: 'tab-update', tab: 'fitnotes', row: existing._row, values } : { action: 'tab-append', tab: 'fitnotes', values };
+    const r = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json());
+    if (r.error) throw new Error(r.error);
+    tab.reload();
+  };
+  return { byTeam, set, ready: !!tab.data };
+}
+// Popover to mark a school for a player.
+function FitMarkMenu({ team, cur, onSave, onClose }) {
+  const [status, setStatus] = useState(cur ? cur.status : '');
+  const [note, setNote] = useState(cur ? cur.note : '');
+  const [busy, setBusy] = useState('');
+  const save = async (st) => {
+    setBusy('Saving…');
+    try { await onSave(team, st, st ? note : ''); onClose(); }
+    catch (e) { setBusy(`Couldn’t save — ${e.message}`); }
+  };
+  return (
+    <div onClick={e => e.stopPropagation()} style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 70, width: 260, background: G.surfaceGlass, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, boxShadow: G.shadowLg, padding: 12, cursor: "default" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 8 }}>{team}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {PX_MARKS.map(([k, l, c]) => (
+          <button key={k} onClick={() => setStatus(k)}
+            style={{ textAlign: "left", fontFamily: ff, fontSize: 13, fontWeight: status === k ? 700 : 500, color: status === k ? c : G.textSecondary, background: status === k ? G.surfaceRaised : 'transparent', border: `1px solid ${status === k ? G.surfaceBorderLight : 'transparent'}`, borderRadius: 8, padding: "6px 8px", cursor: "pointer" }}>{l}</button>
+        ))}
+      </div>
+      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional)…" rows={2} style={{ ...inputBase, marginTop: 8, padding: "6px 8px", fontSize: 12.5, resize: "vertical" }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+        {cur && <button onClick={() => save('')} disabled={!!busy} style={{ background: "none", border: "none", padding: 0, color: G.textTertiary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Clear</button>}
+        <span style={{ flex: 1, fontSize: 11.5, color: busy.startsWith('Couldn') ? G.red : G.textTertiary }}>{busy}</span>
+        <button onClick={onClose} style={{ background: "none", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "4px 10px", color: G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Cancel</button>
+        <button onClick={() => save(status)} disabled={!status || !!busy} style={{ background: status ? G.green : G.surfaceRaised, border: "none", borderRadius: 8, padding: "4px 10px", color: status ? "#fff" : G.textTertiary, fontSize: 12, fontWeight: 700, cursor: status ? "pointer" : "default", fontFamily: ff }}>Save</button>
+      </div>
+    </div>
+  );
+}
+const pxMarkChip = (m) => {
+  if (!m) return null;
+  const d = PX_MARKS.find(x => x[0] === m.status);
+  if (!d) return null;
+  return <span title={[`${d[1]} — ${m.by}${m.at ? `, ${m.at}` : ''}`, m.note].filter(Boolean).join('\n')} style={{ fontSize: 10, fontWeight: 700, color: d[2], background: m.status === 'interested' ? G.greenSubtle : G.surfaceRaised, border: `1px solid ${m.status === 'interested' ? G.greenBorder : G.surfaceBorder}`, borderRadius: 99, padding: "1px 8px", whiteSpace: "nowrap" }}>{d[1]}{m.note ? ' ·' : ''}</span>;
+};
 // Shared per-player priorities (FitPrefs tab: playerId | name | prefs JSON).
 function useFitPrefs(p, user) {
   const tab = useAdminTab('fitprefs');
@@ -7824,6 +7886,15 @@ function useFitPrefs(p, user) {
 function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const grp = p.grp || pxGroupOf(p.pos);
   const store = useFitPrefs(p, user);
+  const marks = useFitNotes(p, user);
+  const [menuFor, setMenuFor] = useState('');
+  const [showOut, setShowOut] = useState(false);
+  useEffect(() => {
+    if (!menuFor) return;
+    const h = () => setMenuFor('');
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [menuFor]);
   const [draft, setDraft] = useState(null); // unsaved edits
   const [shown, setShown] = useState(15);
   const [saving, setSaving] = useState('');
@@ -7832,7 +7903,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
   const [offersOnly, setOffersOnly] = useState(false);
   useEffect(() => { setDraft(null); setShown(15); setEditOpen(false); setTeamQ(''); }, [p.id]);
   const prefs = pxMergePrefs(store.saved, draft);
-  const res = useMemo(() => (grp ? pxFitRank(data, p, prefs) : null), [data, p, grp, JSON.stringify(prefs)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const res = useMemo(() => (grp ? pxFitRank(data, p, prefs, marks.byTeam) : null), [data, p, grp, JSON.stringify(prefs), JSON.stringify(marks.byTeam)]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!grp) return <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No position on file.</div>;
   const set = (o) => setDraft(d => ({ ...(d || {}), ...o, w: { ...((d || {}).w || {}), ...(o.w || {}) } }));
   const dirty = !!draft;
@@ -7917,9 +7988,18 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
                 <span style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{t.name}</span>
                 <span title="Reach: well above the level the player has earned (discounted unless Aim is Anything) · Match: at or a bit above it · Safe: below it" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: labelColor[t.label] }}>{t.label}</span>
                 {t.offered && <span title="Has offered (247Sports)" style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "1px 8px" }}>Offered</span>}
+                {pxMarkChip(t.mark)}
               </span>
               <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary, marginTop: 2 }}>{[t.conf, t.sp ? `SP+ #${t.sp}` : ''].filter(Boolean).join(' · ')}</span>
             </span>
+            {marks.ready && (
+              <span style={{ position: "relative", flexShrink: 0 }} onMouseDown={e => e.stopPropagation()}>
+                <button onClick={e => { e.stopPropagation(); setMenuFor(menuFor === t.name ? '' : t.name); }} title="Mark this school"
+                  onMouseEnter={e => { e.currentTarget.style.color = G.text; }} onMouseLeave={e => { e.currentTarget.style.color = G.textTertiary; }}
+                  style={{ background: "none", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "2px 8px", color: G.textTertiary, fontSize: 13, lineHeight: 1.2, cursor: "pointer", fontFamily: ff }}>{t.mark ? '✎' : '+'}</button>
+                {menuFor === t.name && <FitMarkMenu team={t.name} cur={t.mark} onSave={marks.set} onClose={() => setMenuFor('')} />}
+              </span>
+            )}
             <span style={{ textAlign: "right", flexShrink: 0 }}>
               <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: pxFitTier(t.fit)[1], fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>{t.fit}</span>
               <span style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, whiteSpace: "nowrap" }}>{pxFitTier(t.fit)[0]}</span>
@@ -7933,6 +8013,22 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
       ))}
       {res && !tq && !offersOnly && res.rows.length > shown && <button onClick={() => setShown(n => n + 20)} style={{ marginTop: 12, background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Show more teams</button>}
       {res && !res.rows.length && <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No teams match — turn on another division.</div>}
+      {res && res.ruledOut.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <button onClick={() => setShowOut(v => !v)} style={{ background: "none", border: "none", padding: 0, color: G.textSecondary, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>{showOut ? '▾' : '▸'} Ruled out · {res.ruledOut.length}</button>
+          {showOut && res.ruledOut.map(t => (
+            <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 8px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+              {t.logo ? <TeamLogo url={t.logo} size={20} /> : <span style={{ width: 20 }} />}
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: G.textSecondary }}>{t.name}{t.mark.note ? <span style={{ color: G.textTertiary }}> — {t.mark.note}</span> : null}</span>
+              <span style={{ fontSize: 11.5, color: G.textTertiary }}>{t.mark.by}</span>
+              <span style={{ position: "relative" }} onMouseDown={e => e.stopPropagation()}>
+                <button onClick={() => setMenuFor(menuFor === t.name ? '' : t.name)} style={{ background: "none", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "2px 8px", color: G.textTertiary, fontSize: 13, cursor: "pointer", fontFamily: ff }}>✎</button>
+                {menuFor === t.name && <FitMarkMenu team={t.name} cur={t.mark} onSave={marks.set} onClose={() => setMenuFor('')} />}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>{res && res.early ? 'Early season: projections that lean on this year’s production firm up after about six games. ' : ''}Fit = the factors above, weighted by {first}’s priorities (Some ×1, Important ×3, Top ×6 — and a team that scores poorly on a Top priority is pulled down overall). Read the band, not the exact number: Strong fit 70+, Good fit 55–69, Possible 40–54, Long shot below 40. “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
   </>);
   if (wide) {

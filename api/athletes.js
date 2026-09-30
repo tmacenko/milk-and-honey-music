@@ -654,6 +654,9 @@ const ADMIN_TABS = {
   // Team Fit priorities per player (shared by all agents): playerId = CFBD/ESPN
   // id (or 'r…' for a high school recruit), prefs = JSON {w, level, tiers}.
   fitprefs: { title: 'FitPrefs', writable: true, autoCreate: ['playerId', 'name', 'prefs', 'updatedBy', 'updatedAt'] },
+  // Agents' marks on schools per player for Team Fit: status = interested
+  // (school has shown interest — scored like an offer) | talked | notfit.
+  fitnotes: { title: 'FitNotes', writable: true, autoCreate: ['playerId', 'name', 'team', 'status', 'note', 'updatedBy', 'updatedAt'] },
   // Brand deal tracker — one row per deal; clients is a comma list of roster
   // names; fileId/fileName point at the deal file in Box (copied into each
   // tagged player's folder at upload time).
