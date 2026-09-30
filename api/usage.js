@@ -104,7 +104,7 @@ async function handle(req, res) {
   for (const it of items) {
     if (!it || !it.u) continue;
     const key = (it.u.e || it.u.n || '?').toLowerCase();
-    const P = people[key] || (people[key] = { name: it.u.n, email: it.u.e, role: it.u.r, byDay: {}, pages: {}, clients: {}, times: [], recent: [], last: 0 });
+    const P = people[key] || (people[key] = { name: it.u.n, email: it.u.e, role: it.u.r, byDay: {}, pages: {}, clients: {}, times: [], recent: [], last: 0, music: 0, sports: 0 });
     const ad = localDay(it.at || now);
     if (ad >= since && it.active) { const D = P.byDay[ad] || (P.byDay[ad] = { active: 0, events: 0 }); D.active += it.active; }
     for (const e of it.events || []) {
@@ -114,7 +114,9 @@ async function handle(req, res) {
       D.events++;
       P.times.push(e.t);
       if (e.t > P.last) P.last = e.t;
-      const page = e.ty === 'view' ? e.pg : e.ty === 'profile' || e.ty === 'tab' ? `profile:${e.tab || 'overview'}` : '';
+      const isMusic = e.ty === 'view' ? String(e.pg || '').startsWith('music/') : e.pg === 'music';
+      if (e.ty !== 'open') { if (isMusic) P.music++; else if (e.ty !== 'view' || !String(e.pg || '').startsWith('all/')) P.sports++; }
+      const page = e.ty === 'view' ? e.pg : e.ty === 'profile' || e.ty === 'tab' ? `profile:${isMusic ? 'music:' : ''}${e.tab || (isMusic ? 'about' : 'overview')}` : '';
       if (page && e.ty !== 'open') P.pages[page] = (P.pages[page] || 0) + 1;
       if (e.ty === 'profile' && e.c) P.clients[e.c] = (P.clients[e.c] || 0) + 1;
       if (e.ty !== 'open') P.recent.push({ t: e.t, ty: e.ty, pg: e.pg, c: e.c, tab: e.tab });
@@ -127,6 +129,8 @@ async function handle(req, res) {
     const top = (o, n) => Object.entries(o).sort((x, y) => y[1] - x[1]).slice(0, n);
     return {
       name: P.name, email: P.email, role: P.role,
+      // Which side they work in: 'Music', 'Sports' or 'Both' (each ≥ 20%).
+      side: P.music + P.sports ? (P.music / (P.music + P.sports) >= 0.8 ? 'Music' : P.sports / (P.music + P.sports) >= 0.8 ? 'Sports' : 'Both') : '',
       byDay: P.byDay, sessions, last: P.last,
       active: Object.values(P.byDay).reduce((t, d) => t + d.active, 0),
       daysActive: Object.values(P.byDay).filter(d => d.active >= 60 || d.events >= 3).length,

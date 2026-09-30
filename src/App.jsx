@@ -1543,7 +1543,7 @@ function MusicSocialsModule({ client: c }) {
   );
 }
 
-function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdmin }) {
+function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdmin, fromPage }) {
   const proLogo = lookupLogo(logos, c.pro);
   const pubLogo = lookupLogo(logos, c.publisher);
   const lblLogo = lookupLogo(logos, c.label);
@@ -1596,8 +1596,16 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
   ) : null;
 
   const [bioExpanded, setBioExpanded] = useState(false);
-  // About | Marketing tabs (staff only), mirroring the sports profile.
-  const [tab, setTab] = useState('about');
+  // About | Marketing tabs (staff only), mirroring the sports profile —
+  // opened from the Marketing page it lands on Marketing.
+  const [tab, setTab] = useState(() => (isAdmin && fromPage === 'marketing' ? 'marketing' : 'about'));
+  // Usage log: the tab the profile opens on, then each switch.
+  const usageFirst = useRef(true);
+  useEffect(() => {
+    if (!isAdmin) return;
+    mhTrack(usageFirst.current ? 'profile' : 'tab', { c: c.name, tab, pg: 'music' });
+    usageFirst.current = false;
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const tabBar = (padX) => isAdmin ? (
     <div style={{ display: "flex", gap: 26, padding: `0 ${padX}px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>
       {[['about', 'About'], ['marketing', 'Marketing']].map(([k, l]) => (
@@ -11686,10 +11694,13 @@ const USAGE_PAGE_NAMES = {
   prospects: 'Prospect Search', teams: 'Teams', team: 'Team page', player: 'Player page', portal: 'Transfer Portal', teamfit: 'Team Fit',
   contracts: 'Contracts', resources: 'Resources', notes: 'Notes', schedule: 'Schedule', usage: 'Usage',
 };
-const USAGE_TAB_NAMES = { overview: 'Overview', stats: 'Performance', recruiting: 'Recruiting', teamfit: 'Team Fit', deal: 'Deal', marketing: 'Marketing' };
+const USAGE_TAB_NAMES = { overview: 'Overview', about: 'About', stats: 'Performance', recruiting: 'Recruiting', teamfit: 'Team Fit', deal: 'Deal', marketing: 'Marketing' };
+// Keys: 'sports/roster', 'music/home', 'profile:stats' (sports profile tab),
+// 'profile:music:about' (music profile tab).
 const usagePageLabel = (k) => {
   const s = String(k || '');
-  if (s.startsWith('profile:')) return `Client profile · ${USAGE_TAB_NAMES[s.slice(8)] || s.slice(8)}`;
+  if (s.startsWith('profile:music:')) return `Music profile · ${USAGE_TAB_NAMES[s.slice(14)] || s.slice(14)}`;
+  if (s.startsWith('profile:')) return `Sports profile · ${USAGE_TAB_NAMES[s.slice(8)] || s.slice(8)}`;
   const [dom, pg] = s.split('/');
   return `${dom === 'music' ? 'Music' : dom === 'all' ? 'All' : 'Sports'} · ${USAGE_PAGE_NAMES[pg] || pg || 'Home'}`;
 };
@@ -11778,7 +11789,8 @@ function UsagePage({ isMobile, staff, user }) {
   };
   const detail = (u) => {
     const maxP = Math.max(1, ...u.pages.map(x => x[1]));
-    const evLabel = (e) => e.ty === 'view' ? usagePageLabel(e.pg) : e.ty === 'profile' ? `Opened ${e.c || 'a client'} · ${USAGE_TAB_NAMES[e.tab] || 'Overview'}` : `${e.c || 'Client'} · ${USAGE_TAB_NAMES[e.tab] || e.tab}`;
+    const side = (e) => (e.pg === 'music' ? ' (music)' : '');
+    const evLabel = (e) => e.ty === 'view' ? usagePageLabel(e.pg) : e.ty === 'profile' ? `Opened ${e.c || 'a client'}${side(e)} · ${USAGE_TAB_NAMES[e.tab] || 'Overview'}` : `${e.c || 'Client'}${side(e)} · ${USAGE_TAB_NAMES[e.tab] || e.tab}`;
     return (
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 16, padding: "12px 12px 20px" }}>
         <div>
@@ -11877,7 +11889,7 @@ function UsagePage({ isMobile, staff, user }) {
                         <td style={{ ...td, color: G.text }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <Avatar name={u.name} size={28} />
-                            <div><div style={{ fontWeight: 600 }}>{u.name}</div>{u.role && <div style={{ fontSize: 11.5, color: G.textTertiary, textTransform: "capitalize" }}>{u.role}</div>}</div>
+                            <div><div style={{ fontWeight: 600 }}>{u.name}</div><div style={{ fontSize: 11.5, color: G.textTertiary }}>{[u.role && u.role.charAt(0).toUpperCase() + u.role.slice(1), u.side].filter(Boolean).join(' · ')}</div></div>
                           </div>
                         </td>
                         <td style={{ ...td, textAlign: "right", color: G.text }}>{u.daysActive}</td>
@@ -12171,8 +12183,8 @@ function App() {
   const usageSel = view === 'detail' && selected ? selected.name : '';
   useEffect(() => {
     if (!isAdmin) return;
-    // Sports profiles log themselves (with the tab they land on).
-    if (usageSel) { if (domain !== 'sports') mhTrack('profile', { c: usageSel, pg: domain }); return; }
+    // Profiles log themselves (with the tab they land on).
+    if (usageSel) return;
     mhTrack('view', { pg: `${domain}/${domain === 'sports' ? sportsPage : domain === 'music' ? musicPage : 'home'}` });
   }, [isAdmin, authKnown, authConfigured, domain, sportsPage, musicPage, usageSel]);
   // Every navigation (side, page, or opened profile) lands at the top — in a
@@ -13356,7 +13368,7 @@ function App() {
           ) : (
             <>
               {!loading && !error && view === 'detail' && selected && (
-                <ClientDetail client={selected} logos={logos} staff={staff} isMobile={isMobile} isAdmin={isAdmin} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
+                <ClientDetail key={selected.name} client={selected} logos={logos} staff={staff} isMobile={isMobile} isAdmin={isAdmin} fromPage={domain === 'music' ? musicPage : ''} onBack={() => setView('roster')} onEdit={() => setEditing(selected)} />
               )}
               {!loading && !error && view === 'roster' && musicNavActive && musicPage === 'home' && (
                 <MusicDashboard clients={clients} isMobile={isMobile} user={currentUser}
