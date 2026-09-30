@@ -7847,7 +7847,7 @@ function pxClientPlayer(data, a, r247) {
     const loc = city && st ? data.cityIndex[`${city}, ${st}`.toLowerCase()] : null;
     const commit = data._teamKey[teamKey(a.committedTo)] || '';
     const r = (r247 || {})[nk(a.name)] || {};
-    return { id: `c:${slugOf(a.name)}`, name: a.name, isHs: true, fromClient: true, photo: a.photoUrl || '', pos, grp: pxGroupOf(pos), hs: a.college || a.school || '', hsClass: cls, stars: r.stars || 0, natRank: r.nat || 0,
+    return { id: `c:${slugOf(a.name)}`, name: a.name, isHs: true, fromClient: true, photo: a.photoUrl || '', pos, grp: pxGroupOf(pos), hs: a.college || a.school || '', hsClass: cls, stars: r.stars || a.stars || 0, natRank: r.nat || 0,
       commit, commitLogo: commit ? (data.teamInfo[commit] || {}).logo || '' : '', city: city || '', st: st || '', lat: loc ? loc.lat : 0, lng: loc ? loc.lng : 0, ht: htIn(a.height), wt: parseInt(a.weight, 10) || 0, tier: 'HS' };
   };
   const p0 = (a.level === 'College' && a.espnId && data._byId[String(a.espnId)]) || (a.level === 'High School' && (data._byName[nk(a.name)] || fromClient())) || null;
@@ -7855,6 +7855,37 @@ function pxClientPlayer(data, a, r247) {
   const offers = a.level === 'High School' ? pxParseOffers(a.offers247).filter(o => o[1]).map(o => pxTeamByName(data, o[0])).filter(Boolean) : [];
   return offers.length ? { ...p0, offers } : p0;
 }
+// A recruiting-board row shaped like a client record, so every client tool
+// (Team Fit, the Recruiting tab) works for board players too. Offers and
+// hometown are filled nightly from 247 (refresh-depth).
+function pxBoardAthlete(ops, r) {
+  const hs = /high/i.test(ops.cell(r, 'level'));
+  return {
+    name: ops.cell(r, 'name'), level: hs ? 'High School' : 'College', position: ops.cell(r, 'pos'),
+    college: ops.cell(r, 'school'), classOf: (ops.cell(r, 'klass').match(/\d{4}/) || [''])[0], espnId: hs ? '' : ops.cell(r, 'espn'),
+    hometown: ops.cell(r, 'home247'), offers247: ops.cell(r, 'offers247'), photoUrl: ops.cell(r, 'photo'),
+    agentAssigned: ops.cell(r, 'agent'), profileUrl247: ops.cell(r, 'url247'), stage: ops.cell(r, 'stage'), committedTo: '', board: true,
+    stars: parseInt((ops.cell(r, 'rank').match(/(\d)/) || [])[1], 10) || 0, // board's own Ranking note ("3★") until 247 data arrives
+  };
+}
+// Our players as fit players: clients, then board players who aren't clients.
+function pxOurPlayers(data, athletes, ops, r247) {
+  if (!data) return { clients: [], board: [] };
+  const clients = (athletes || []).map(a => { const p = pxClientPlayer(data, a, r247); return p && { p, a, kind: 'client' }; }).filter(Boolean);
+  const seen = new Set(clients.map(r => r.p.id));
+  const clientNames = new Set((athletes || []).map(a => pxNameKey(a.name)));
+  const board = ((ops && ops.data && ops.data.rows) || []).map(r => {
+    if (!ops.cell(r, 'name') || clientNames.has(pxNameKey(ops.cell(r, 'name')))) return null;
+    const a = pxBoardAthlete(ops, r);
+    const p = pxClientPlayer(data, a, r247);
+    if (!p || seen.has(p.id)) return null;
+    seen.add(p.id);
+    return { p: { ...p, photo: p.photo || a.photoUrl || '' }, a, kind: 'board' };
+  }).filter(Boolean);
+  return { clients, board };
+}
+// Full player page for anyone (clients, board, any database player).
+const openPlayerPage = (id) => { if (id) window.dispatchEvent(new CustomEvent('mh:open-player', { detail: String(id) })); };
 // Saved priorities merged over the defaults.
 const pxMergePrefs = (saved, draft) => ({ ...PX_FIT_DEFAULT, ...(saved || {}), ...(draft || {}), w: { ...PX_FIT_DEFAULT.w, ...((saved || {}).w || {}), ...((draft || {}).w || {}) } });
 // Agents' marks on schools per player (FitNotes tab: playerId | name | team |
@@ -8469,6 +8500,87 @@ function pxHeadCell(sort, setSort, col, text, right, firstDir = 'desc') {
   );
 }
 
+// Full player page: anyone on the board (or in the database) gets the same
+// tools a client profile has — overview with production vs peers, recruiting
+// (247 rankings, offers, best fits), stats, and the full Team Fit.
+function PlayerPage({ pid, isMobile, user, athletes, staff }) {
+  const V = useProspectViewer({ user, athletes, staff, isMobile });
+  const { data, ops } = V;
+  const hist = useAdminTab('stathistory');
+  const [tab, setTab] = useState('overview');
+  useEffect(() => { setTab('overview'); }, [pid]);
+  const ours = useMemo(() => pxOurPlayers(data, athletes, ops, pxR247((hist.data && hist.data.rows) || [])), [data, athletes, ops.data, hist.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const wrap = pxPageWrap(isMobile);
+  const back = (
+    <button onClick={() => window.history.back()} style={{ background: "none", border: "none", padding: 0, color: G.green, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>← Back</button>
+  );
+  if (!data) return <div style={wrap}>{back}{V.status}</div>;
+  const hit = [...ours.clients, ...ours.board].find(x => String(x.p.id) === String(pid));
+  const p = hit ? hit.p : data.players.find(x => String(x.id) === String(pid));
+  if (!p) return <div style={wrap}>{back}<div style={{ marginTop: 16, fontSize: 13, color: G.textTertiary }}>{String(pid).startsWith('c:') ? `Not enough on file for the full page yet — it covers recruits up to the class of ${data.season + 2} with a position and class on their board record.` : 'That player isn’t in the database.'}</div></div>;
+  const a = hit ? hit.a : { name: p.name, level: p.isHs ? 'High School' : 'College', position: p.pos, college: p.isHs ? p.hs : p.team, classOf: p.hsClass || '', hometown: p.city ? `${p.city}, ${p.st}` : '', committedTo: p.commit || '', espnId: p.isHs ? '' : p.id };
+  const tag = V.tagFor(p) || (hit && hit.kind === 'board' ? 'On board' : '');
+  const photo = p.photo || a.photoUrl || (p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`);
+  const logo = p.isHs ? p.commitLogo : p.logo;
+  const espnId = !p.isHs && /^\d+$/.test(String(p.id)) ? String(p.id) : '';
+  const tabs = [['overview', 'Overview'], p.isHs && ['recruiting', 'Recruiting'], espnId && ['stats', 'Stats'], ['fit', 'Team Fit']].filter(Boolean);
+  const fact = (k, v) => (
+    <div key={k}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{k}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: G.text, marginTop: 4 }}>{v || '—'}</div>
+    </div>
+  );
+  const offers = pxParseOffers(a.offers247).filter(o => o[1]).length;
+  const facts = p.isHs
+    ? [['Position', p.pos], ['High school', p.hs || a.college], ['Class', p.hsClass ? `${p.hsClass}` : ''], ['Hometown', p.city ? `${p.city}, ${p.st}` : a.hometown], ['247', [p.stars ? `${p.stars}★` : '', p.natRank ? `#${p.natRank} national` : ''].filter(Boolean).join(' · ')], ['Offers', offers ? String(offers) : ''], ['Committed', p.commit || 'Uncommitted'], ['Height / weight', [pxHt(p.ht), p.wt ? `${p.wt} lbs` : ''].filter(Boolean).join(' · ')]]
+    : [['Position', p.pos], ['Team', p.team], ['Class', PX_CLASS[Math.min(p.yr || 0, 5)]], ['Hometown', p.city ? `${p.city}, ${p.st}` : ''], ['Height / weight', [pxHt(p.ht), p.wt ? `${p.wt} lbs` : ''].filter(Boolean).join(' · ')], ['Team SP+', p.sp ? `#${p.sp}` : ''], ['Depth chart', p.depth ? `${p.depth[1]} ${p.depth[0]}` : ''], ['Recruited', p.stars ? `${p.stars}★${p.natRank ? ` · #${p.natRank} natl` : ''}` : '']];
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20 };
+  const linkBtn = (href, label) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>{label}</a>;
+  return (
+    <div style={wrap}>
+      {back}
+      <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 16, flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <Avatar name={p.name} photoUrl={photo} size={isMobile ? 72 : 96} faceZoom />
+          {logo && <span style={{ position: "absolute", right: -4, bottom: -4 }}><TeamLogo url={logo} size={32} /></span>}
+        </div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <h1 style={{ fontSize: isMobile ? 28 : 34, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, margin: 0, lineHeight: 1.1 }}>{p.name}</h1>
+            {tag && <span style={{ fontSize: 11, fontWeight: 700, color: G.green, background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 99, padding: "3px 10px" }}>{tag}</span>}
+          </div>
+          <div style={{ fontSize: 15, color: G.textSecondary, marginTop: 8 }}>{p.isHs ? [p.pos, p.hs || a.college, p.hsClass ? `Class of ${p.hsClass}` : ''].filter(Boolean).join(' · ') : [p.pos, p.team, p.conf].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {tag === 'Client' && <button onClick={() => openClientProfile(p)} style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "7px 12px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Client profile →</button>}
+          {a.profileUrl247 && linkBtn(a.profileUrl247, '247Sports ↗')}
+          {espnId && linkBtn(`https://www.espn.com/college-football/player/_/id/${espnId}`, 'ESPN ↗')}
+          {!p.isHs && p.team && <button onClick={() => openTeamPage(p.team)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>{p.team} roster →</button>}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 24, borderBottom: `1px solid ${G.surfaceBorder}`, marginTop: 24 }}>
+        {tabs.map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)}
+            onMouseEnter={e => { if (tab !== k) e.currentTarget.style.color = G.textSecondary; }}
+            onMouseLeave={e => { if (tab !== k) e.currentTarget.style.color = G.textTertiary; }}
+            style={{ background: "none", border: "none", padding: "12px 2px", fontFamily: ff, fontSize: 13, fontWeight: tab === k ? 700 : 500, color: tab === k ? G.text : G.textTertiary, borderBottom: `2px solid ${tab === k ? G.green : 'transparent'}`, marginBottom: -1, cursor: "pointer" }}>{l}</button>
+        ))}
+      </div>
+      {tab === 'overview' && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 24 }}>
+          <div style={{ ...card, display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: "20px 16px" }}>{facts.map(([k, v]) => fact(k, v))}</div>
+          {ops && ops.data && <div style={{ maxWidth: 640 }}><RecruitBlock p={p} ops={ops} staff={staff} user={user} /></div>}
+          {!p.isHs && <ProductionReport p={p} data={data} narrow={isMobile} />}
+        </div>
+      )}
+      {tab === 'recruiting' && <div style={{ margin: isMobile ? "0 -16px" : "0 -28px" }}><SportsRecruitingTab athlete={a} isMobile={isMobile} pad={isMobile ? 16 : 28} /></div>}
+      {tab === 'stats' && espnId && <div style={{ margin: isMobile ? "0 -16px" : "0 -28px" }}><SportsStatsTab athlete={{ espnId, level: 'College', name: p.name }} isMobile={isMobile} pad={isMobile ? 16 : 28} /></div>}
+      {tab === 'fit' && <TeamFit p={p} data={data} onOpenTeam={openTeamPage} user={user} wide={!isMobile} />}
+      {V.overlays}
+    </div>
+  );
+}
+
 // Every FBS/FCS team in one sortable table; any row opens its Team Outlook.
 function TeamsPage({ isMobile, user, athletes, staff }) {
   const V = useProspectViewer({ user, athletes, staff, isMobile });
@@ -8651,15 +8763,11 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
   // come first, then by production.
   const lists = useMemo(() => {
     if (!data) return { clients: [], board: [] };
-    const r247 = pxR247((hist.data && hist.data.rows) || []);
-    const clients = (athletes || []).map(a => { const p = pxClientPlayer(data, a, r247); return p && { p, a }; }).filter(Boolean);
-    const seen = new Set(clients.map(r => r.p.id));
-    const board = data.players.filter(p => !seen.has(p.id) && V.tagFor(p) === 'On board').map(p => ({ p, a: null }));
-    return { clients, board };
-  }, [data, athletes, V.tagFor, hist.data]); // eslint-disable-line react-hooks/exhaustive-deps
+    return pxOurPlayers(data, athletes, V.ops, pxR247((hist.data && hist.data.rows) || []));
+  }, [data, athletes, V.ops.data, hist.data]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!data) return <div style={pxPageWrap(isMobile)}>{pxTitle(isMobile, 'Team Fit')}{V.status}</div>;
   // Client versions of players (their own records, offers) take precedence.
-  const extra = lists.clients.filter(r => r.p.fromClient || r.p.offers).map(r => r.p);
+  const extra = [...lists.clients, ...lists.board].filter(r => r.p.fromClient || r.p.offers || r.kind === 'board').map(r => r.p);
   const extraIds = new Set(extra.map(p => p.id));
   const pick = pickId ? (extra.find(p => p.id === pickId) || data.players.find(p => p.id === pickId)) : null;
   const ql = q.trim().toLowerCase();
@@ -8723,8 +8831,10 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
       <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
         <button onClick={() => V.setOpen(pick)} onMouseEnter={e => e.currentTarget.style.background = G.surfaceBorder} onMouseLeave={e => e.currentTarget.style.background = G.surfaceRaised}
           style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Quick view</button>
-        {tag === 'Client' && <button onClick={() => openClientProfile(pick)} onMouseEnter={e => e.currentTarget.style.background = G.greenBorder} onMouseLeave={e => e.currentTarget.style.background = G.greenSubtle}
-          style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "7px 12px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Client profile →</button>}
+        {tag === 'Client' ? <button onClick={() => openClientProfile(pick)} onMouseEnter={e => e.currentTarget.style.background = G.greenBorder} onMouseLeave={e => e.currentTarget.style.background = G.greenSubtle}
+          style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "7px 12px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Client profile →</button>
+          : <button onClick={() => openPlayerPage(pick.id)} onMouseEnter={e => e.currentTarget.style.background = G.greenBorder} onMouseLeave={e => e.currentTarget.style.background = G.greenSubtle}
+          style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "7px 12px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Full profile →</button>}
       </div>
     </div>
   );
@@ -8830,6 +8940,7 @@ function useRecruitBoard({ tab: extTab, athletes, onPromoted } = {}) {
     name: hf(/player\s*name|^name/i), school: hf(/school/i), level: hf(/^level/i), pos: hf(/position/i),
     rank: hf(/rank/i), klass: hf(/class|year/i), agent: hf(/agent/i), notes: hf(/^notes/i),
     stage: hf(/^stage/i), espn: hf(/^espnid/i), url247: hf(/^url247/i), photo: hf(/^photo/i),
+    offers247: hf(/^offers247$/i), home247: hf(/^hometown247$/i),
   };
   const cell = (r, k) => (r && I[k] >= 0 ? String(r.cells[I[k]] || '').trim() : '');
   const index = useMemo(() => {
@@ -9011,6 +9122,11 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
             const text = p.url247 ? '247Sports profile ↗' : espn ? 'ESPN profile ↗' : 'Find on 247Sports ↗';
             return <a href={href} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 6, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 11px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>{text}</a>;
           })()}
+          {(!p.boardOnly || p.isHs) && tag !== 'Client' && (
+            <button onClick={() => { onClose(); openPlayerPage(p.boardOnly ? `c:${slugOf(p.name)}` : p.id); }} title="Open the full page: overview, recruiting, stats and Team Fit"
+              onMouseEnter={e => e.currentTarget.style.background = G.surfaceBorder} onMouseLeave={e => e.currentTarget.style.background = G.surfaceRaised}
+              style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 12px", color: G.text, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Full page →</button>
+          )}
           {tag === 'Client' && (
             <button onClick={() => { onClose(); openClientProfile(p); }}
               onMouseEnter={e => e.currentTarget.style.background = G.greenBorder} onMouseLeave={e => e.currentTarget.style.background = G.greenSubtle}
@@ -11225,6 +11341,7 @@ function App() {
   // sessions always get the roster regardless.
   const [sportsPage, setSportsPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
   const [teamParam, setTeamParam] = useState(() => new URLSearchParams(window.location.search).get('team') || '');
+  const [playerParam, setPlayerParam] = useState(() => new URLSearchParams(window.location.search).get('pid') || '');
   // History-aware page switch so the browser back/forward buttons walk the
   // sidebar sections instead of leaving the site. URL carries ?page= so a
   // refresh lands back on the same section.
@@ -11250,6 +11367,13 @@ function App() {
       if (viewRef.current === 'detail') { setSelected(null); setViewState('roster'); }
     };
     const onPage = (e) => goSportsPageRef.current(e.detail);
+    const onPlayer = (e) => {
+      const id = e.detail;
+      window.history.pushState({ view: 'roster', domain: 'sports', sportsPage: 'player', pid: id }, '', `/sports?page=player&pid=${encodeURIComponent(id)}`);
+      setPlayerParam(id);
+      setSportsPage('player');
+      if (viewRef.current === 'detail') { setSelected(null); setViewState('roster'); }
+    };
     const onClient = (e) => {
       const { espnId, name } = e.detail || {};
       const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -11260,7 +11384,8 @@ function App() {
     window.addEventListener('mh:open-team', onTeam);
     window.addEventListener('mh:open-page', onPage);
     window.addEventListener('mh:open-client', onClient);
-    return () => { window.removeEventListener('mh:open-team', onTeam); window.removeEventListener('mh:open-page', onPage); window.removeEventListener('mh:open-client', onClient); };
+    window.addEventListener('mh:open-player', onPlayer);
+    return () => { window.removeEventListener('mh:open-team', onTeam); window.removeEventListener('mh:open-page', onPage); window.removeEventListener('mh:open-client', onClient); window.removeEventListener('mh:open-player', onPlayer); };
   }, []);
   // Music employee section (Tyler-only while it's broken in): 'home' / 'roster'.
   const [musicPage, setMusicPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'home');
@@ -11275,7 +11400,7 @@ function App() {
     window.scrollTo(0, 0);
     document.body.scrollTop = 0;
     document.documentElement.scrollTop = 0;
-  }, [domain, sportsPage, musicPage, view, selectedKey, teamParam]);
+  }, [domain, sportsPage, musicPage, view, selectedKey, teamParam, playerParam]);
   const goMusicPage = (key) => {
     if (key === musicPage && view !== 'detail') return;
     window.history.pushState({ view: 'roster', domain: 'music', musicPage: key }, '', key === 'home' ? '/' : `/?page=${key}`);
@@ -11392,6 +11517,7 @@ function App() {
       setDomainState(d);
       setSportsPage(e.state?.sportsPage || new URLSearchParams(window.location.search).get('page') || 'home');
       setTeamParam(e.state?.team || new URLSearchParams(window.location.search).get('team') || '');
+      setPlayerParam(e.state?.pid || new URLSearchParams(window.location.search).get('pid') || '');
       setMusicPage(e.state?.musicPage || new URLSearchParams(window.location.search).get('page') || 'home');
       const list = d === 'sports' ? athletes : clients;
       if (list.length && slug) {
@@ -12027,7 +12153,7 @@ function App() {
   const musicNavActive = domain === 'music' && isAdmin && view !== 'detail';
   const navSide = domain === 'all' ? lastSide : domain;
   const navItems = navSide === 'sports' ? NAV_SPORTS : NAV_MUSIC;
-  const navPage = domain === 'all' ? 'roster' : (navSide === 'sports' ? (sportsPage === 'team' ? 'teams' : sportsPage) : musicPage);
+  const navPage = domain === 'all' ? 'roster' : (navSide === 'sports' ? (sportsPage === 'team' ? 'teams' : sportsPage === 'player' ? 'recruiting' : sportsPage) : musicPage);
   // Roster search/filter/export controls only make sense on the roster itself
   // (and always for public sessions). Both domains wait for the auth answer so
   // employees land straight on the dashboard with no roster flash.
@@ -12403,6 +12529,7 @@ function App() {
               {view === 'roster' && navActive && sportsPage === 'prospects' && <ProspectSearch isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'teams' && <TeamsPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'team' && <TeamPage team={teamParam} isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
+              {view === 'roster' && navActive && sportsPage === 'player' && <PlayerPage pid={playerParam} isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'portal' && <PortalPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'teamfit' && <TeamFitPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && sportsPage === 'recruiting' && <RecruitingBoard isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} onPromoted={() => { rosterFreshRef.current = true; setAthletesLoaded(false); }} />}

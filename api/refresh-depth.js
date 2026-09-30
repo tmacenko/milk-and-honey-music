@@ -95,6 +95,17 @@ const BROWSER_HEADERS = {
   'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none',
   'Upgrade-Insecure-Requests': '1',
 };
+// 247 Composite (industry average — what 247 leads with) from a profile page:
+// rating + national rank; stars follow 247's composite bands.
+function parseComposite(html) {
+  const flat = String(html).replace(/<[^>]+>/g, ' ').replace(/&reg;|®/g, '').replace(/\s+/g, ' ');
+  const cm = flat.match(/247Sports Composite\s*([01]\.\d{3,4})\s*Natl\.\s*(\d+)/i);
+  if (!cm) return null;
+  const rating = parseFloat(cm[1]);
+  return { compRating247: cm[1], compStars247: rating >= 0.9834 ? 5 : rating >= 0.89 ? 4 : rating >= 0.797 ? 3 : rating >= 0.7 ? 2 : '', compNatRank247: cm[2] };
+}
+const offersJson = (list) => JSON.stringify(list.map(x => (x.visit ? [x.school, x.offer ? 1 : 0, x.status, x.visit] : [x.school, x.offer ? 1 : 0, x.status])));
+
 // 247 recruitment interests page → [{ school, offer, status, visit }].
 function parseInterests(html) {
   const start = html.indexOf('recruit-interest-index_lst');
@@ -657,16 +668,11 @@ module.exports = async (req, res) => {
       const hsTasks = hsTargets.map(t => async () => {
         try {
           const html = await fetchText(t.url, true); // 247 needs the residential proxy
-          // 247 Composite (industry average — what 247 leads with): rating +
-          // national rank from the profile's ranks block. Stars follow 247's
-          // composite bands. Stored beside 247's own numbers in StatHistory.
-          const flat = html.replace(/<[^>]+>/g, ' ').replace(/&reg;|®/g, '').replace(/\s+/g, ' ');
-          const cm = flat.match(/247Sports Composite\s*([01]\.\d{3,4})\s*Natl\.\s*(\d+)/i);
-          if (cm) {
-            const rating = parseFloat(cm[1]);
-            const stars = rating >= 0.9834 ? 5 : rating >= 0.89 ? 4 : rating >= 0.797 ? 3 : rating >= 0.7 ? 2 : '';
+          // Composite stored beside 247's own numbers in StatHistory.
+          const comp = parseComposite(html);
+          if (comp) {
             const k = nameKey(t.name);
-            rankTrend[k] = { ...(rankTrend[k] || { name: t.name }), compRating247: cm[1], compStars247: stars, compNatRank247: cm[2] };
+            rankTrend[k] = { ...(rankTrend[k] || { name: t.name }), ...comp };
             hs247.composite = (hs247.composite || 0) + 1;
           }
           // Offers: 247's recruitment interests list → AutoSync offers247 as
@@ -679,7 +685,7 @@ module.exports = async (req, res) => {
               const list = parseInterests(ih);
               if (list.length) {
                 const rowN = await ensureAutoRow(t.name);
-                if (rowN) { hsUpdates.push({ range: `'AutoSync'!${colLetter(offersCol)}${rowN}`, values: [[JSON.stringify(list.map(x => (x.visit ? [x.school, x.offer ? 1 : 0, x.status, x.visit] : [x.school, x.offer ? 1 : 0, x.status])))]] }); hs247.offers = (hs247.offers || 0) + 1; }
+                if (rowN) { hsUpdates.push({ range: `'AutoSync'!${colLetter(offersCol)}${rowN}`, values: [[offersJson(list)]] }); hs247.offers = (hs247.offers || 0) + 1; }
               }
             } catch (e) { hs247.errors.push(`${t.name} offers: ${e.message}`); }
           }
@@ -696,6 +702,65 @@ module.exports = async (req, res) => {
       });
       await runTasks(hsTasks, 5, deadline);
       if (!dryRun) await sheetBatchUpdate(token, hsUpdates);
+
+      // 3d: recruiting-board high schoolers who aren't clients — the same 247
+      // rankings, offers and hometown, ~25 a night (least recently refreshed
+      // first) to keep 247 traffic polite. Offers / hometown / date go to the
+      // board's own Offers247 / Hometown247 / Updated247 columns; ranks join
+      // everyone else's in StatHistory.
+      const board = hs247.board = { refreshed: 0, errors: [] };
+      if (!onlyName) {
+        try {
+          const bRows = (await sheetGet(token, "'Recruiting Info'!A:AZ")).values || [];
+          let bh = (bRows[0] || []).map(x => String(x || '').trim());
+          const need = ['Offers247', 'Hometown247', 'Updated247'].filter(c => !bh.some(x => x.toLowerCase() === c.toLowerCase()));
+          if (need.length && !dryRun) {
+            const mr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title,gridProperties))`, { headers: { Authorization: `Bearer ${token}` } });
+            const sh = ((await mr.json()).sheets || []).find(x => (x.properties?.title || '').trim().toLowerCase() === 'recruiting info');
+            const cols = sh?.properties?.gridProperties?.columnCount || bh.length;
+            if (sh && bh.length + need.length > cols) {
+              await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+                method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requests: [{ appendDimension: { sheetId: sh.properties.sheetId, dimension: 'COLUMNS', length: bh.length + need.length - cols } }] }),
+              });
+            }
+            await sheetBatchUpdate(token, need.map((c, i) => ({ range: `'Recruiting Info'!${colLetter(bh.length + i)}1`, values: [[c]] })));
+            bh = [...bh, ...need];
+          }
+          const bi = (re) => bh.findIndex(x => re.test(x));
+          const nameC = bi(/^player\s*name$|^name$/i), lvC = bi(/^level/i), urlC = bi(/^url247$/i), clsC = bi(/class|year/i);
+          const offC = bi(/^offers247$/i), homeC = bi(/^hometown247$/i), updC = bi(/^updated247$/i);
+          const clientKeys = new Set(hsPlayers.map(p => nameKey(p['Name'])));
+          const cands = bRows.slice(1).map((r, i) => ({ r, row: i + 2 }))
+            .filter(({ r }) => /high/i.test(r[lvC] || '') && /247sports\.com/.test(r[urlC] || '') && r[nameC] && !clientKeys.has(nameKey(r[nameC])))
+            .sort((a, b) => String(a.r[updC] || '').localeCompare(String(b.r[updC] || '')))
+            .slice(0, 25);
+          const bUpdates = [];
+          const today = new Date().toISOString().slice(0, 10);
+          const cellAt = (c, row, v) => (c >= 0 ? { range: `'Recruiting Info'!${colLetter(c)}${row}`, values: [[v]] } : null);
+          const bTasks = cands.map(({ r, row }) => async () => {
+            const name = String(r[nameC]).trim(), url = String(r[urlC]).trim();
+            try {
+              const found = await findRecruit({ Name: name, [hsHeaders[classCol]]: r[clsC] || '' }, url, board.errors);
+              const ups = [];
+              if (found) {
+                recordRank(name, found.hit);
+                const town = found.hit.Hometown || {};
+                if (town.City) { const st = STATE_ABBR[String(town.State || '').toLowerCase()] || town.State || ''; ups.push(cellAt(homeC, row, st ? `${town.City}, ${st}` : town.City)); }
+              }
+              const comp = parseComposite(await fetchText(url, true));
+              if (comp) { const k = nameKey(name); rankTrend[k] = { ...(rankTrend[k] || { name }), ...comp }; }
+              const iUrl = interestUrls[nameKey(name)];
+              if (iUrl) { const list = parseInterests(await fetchText(iUrl, true)); if (list.length) ups.push(cellAt(offC, row, offersJson(list))); }
+              ups.push(cellAt(updC, row, today));
+              bUpdates.push(...ups.filter(Boolean));
+              board.refreshed++;
+            } catch (e) { board.errors.push(`${name}: ${e.message}`); }
+          });
+          await runTasks(bTasks, 3, deadline);
+          if (!dryRun && bUpdates.length) await sheetBatchUpdate(token, bUpdates);
+        } catch (e) { board.errors.push(e.message); }
+      }
     }
 
     // ── Module 4: Spotrac contracts (NFL) ────────────────────────────────────

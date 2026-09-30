@@ -640,7 +640,7 @@ async function saveAthlete(token, body) {
 const ADMIN_TABS = {
   // ensureCols: headers the app needs that the sheet may predate — appended
   // (with grid growth) on first read so nobody has to touch the sheet by hand.
-  recruiting: { title: 'Recruiting Info', writable: true, ensureCols: ['Stage', 'EspnId', 'Url247', 'Photo'] },
+  recruiting: { title: 'Recruiting Info', writable: true, ensureCols: ['Stage', 'EspnId', 'Url247', 'Photo', 'Offers247', 'Hometown247', 'Updated247'] }, // *247 = robot-filled nightly (refresh-depth)
   nflteams: { title: 'NFL Team Info', writable: false },
   stateregs: { title: 'State Registration', writable: false },
   appdata: { title: 'AppData', writable: false },
