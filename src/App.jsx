@@ -7617,6 +7617,29 @@ const pxAimOf = (v) => (v === 'stretch' || v === 'any' ? v : v === 'up' || v ===
 // notes: { team: { status: 'interested' | 'talked' | 'notfit', note } } —
 // agents' marks (FitNotes tab). A school that's shown interest is treated
 // like an offer; "Not a fit" schools leave the ranking (returned as ruledOut).
+// Backtest of this model on the 2023–25 transfer cycles (~5,900 transfers
+// found at their new school the next season): share who became regulars
+// (enough playing time to be scored) and above-median producers, by the
+// player's own production percentile before the move × how high the
+// destination ranked on their fit list (bottom half / 50–75th / 75–90th /
+// top 10%). Backups with no production record are one row.
+const PX_BT_OUTLOOK = {
+  bands: [[0, 40], [40, 60], [60, 80], [80, 101]],
+  fit: [50, 75, 90],
+  rows: [
+    [[65, 33], [65, 33], [78, 46], [74, 44]],
+    [[70, 43], [70, 45], [81, 50], [87, 58]],
+    [[79, 46], [82, 51], [84, 54], [83, 56]],
+    [[83, 52], [85, 61], [84, 57], [86, 63]],
+  ],
+  backups: [[33, 13], [43, 22], [39, 17], [38, 19]],
+};
+function pxOutlook(prodPct, fitPct) {
+  const fi = PX_BT_OUTLOOK.fit.filter(c => fitPct >= c).length;
+  if (!prodPct) return PX_BT_OUTLOOK.backups[fi];
+  const bi = PX_BT_OUTLOOK.bands.findIndex(([a, b]) => prodPct >= a && prodPct < b);
+  return PX_BT_OUTLOOK.rows[Math.max(0, bi)][fi];
+}
 function pxFitRank(data, p, prefs, notes) {
   const grp = p.grp || pxGroupOf(p.pos);
   if (!grp) return null;
@@ -7674,7 +7697,10 @@ function pxFitRank(data, p, prefs, notes) {
     // the current commits, blue-chips counting extra) against a full room.
     const needScore = h > 1
       ? Math.max(0, Math.min(100, 100 * (1 - (t.stayW + t.commitsW) / (S0 * 3.5)) + t.share * 20 + t.portalOut * 5))
-      : Math.max(0, Math.min(100, t.share * 100 * 1.2 + t.portalOut * 8 - t.commitsW * 6));
+      // Backtest (2023–25 transfers): production leaving predicts playing
+      // time; incoming commits didn't (bigger programs have both), so they
+      // no longer count against a room.
+      : Math.max(0, Math.min(100, t.share * 100 * 1.2 + t.portalOut * 8));
     let slot = 0;
     if (P) {
       // Ahead of them: returners who out-produce them, plus returning
@@ -7682,7 +7708,9 @@ function pxFitRank(data, p, prefs, notes) {
       // linemen, or too few snaps yet).
       slot = (returners[t.name] || []).filter(x => x.pct > P || (hasDepth && x.dr === 1 && !x.pct)).length + 1;
       const st = slot <= S0 ? 100 : slot === S0 + 1 ? 70 : slot === S0 + 2 ? 45 : 20;
-      f.opp = [0.6 * st + 0.4 * needScore, `${slot <= S0 ? 'Projected starter' : `Projected ${fg}${slot}`} · ${Math.round(t.share * 100)}% of ${fg} production ${gone}`];
+      // Backtest: production leaving the room predicted playing time better
+      // than the projected slot, so it carries more of the weight.
+      f.opp = [0.4 * st + 0.6 * needScore, `${slot <= S0 ? 'Projected starter' : `Projected ${fg}${slot}`} · ${Math.round(t.share * 100)}% of ${fg} production ${gone}`];
     } else if (hasDepth && h === 1) {
       // No production to compare (recruits, linemen): how many of the
       // position's starting spots open up — current starters who aren't
@@ -7707,7 +7735,12 @@ function pxFitRank(data, p, prefs, notes) {
     // Recruits with an offer list: anything clearly above their best offer is a reach.
     const aboveOffers = p.isHs && offerPcts.length >= 3 && !offered.has(t.name) && T > offerPcts[0] + 5;
     const label = aboveOffers || diff > reachAt ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
-    const free = (p.isHs ? 8 : 15) + (aim === 'stretch' ? (p.isHs ? 10 : 15) : 0);
+    // Backtest: productive transfers who moved well above their earned level
+    // produced far less often (39% vs 50–57%), so the reach discount starts
+    // sooner and falls faster than it used to.
+    // (Backups with no production record keep the gentler curve — their
+    // "earned level" is only their current team.)
+    const free = (p.isHs ? 8 : P ? 5 : 15) + (aim === 'stretch' ? (p.isHs ? 10 : 15) : 0);
     const mark = (notes || {})[t.name];
     const isOffer = offered.has(t.name) || (mark && mark.status === 'interested');
     // A recruit with a real offer list: offering schools are realistic by
@@ -7717,7 +7750,7 @@ function pxFitRank(data, p, prefs, notes) {
     const over = T - Math.max(D, offerPcts[0] || 0) - (aim === 'stretch' ? 10 : 0);
     const realism = aim === 'any' || isOffer ? 1
       : byOffers ? (over <= 0 ? 1 : Math.max(0.35, Math.exp(-((over / 10) ** 2))))
-      : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : 30)) ** 2)));
+      : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : P ? 22 : 30)) ** 2)));
     if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
     // Distance score is a smooth curve: 25 mi ≈ 93, 145 ≈ 66, 250 ≈ 49, 500 ≈ 24, 1,000 ≈ 6.
     if (avail.home) {
@@ -7758,6 +7791,9 @@ function pxFitRank(data, p, prefs, notes) {
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
   const ruledOut = allRows.filter(t => t.mark && t.mark.status === 'notfit');
   const rows = allRows.filter(t => !(t.mark && t.mark.status === 'notfit'));
+  // College players: how similar past transfers did at a school this high on
+  // their list (the backtest is transfers only — recruits get none).
+  if (!p.isHs) rows.forEach((t, i) => { t.outlook = pxOutlook(P, 100 * (1 - i / rows.length)); });
   const gms = Object.values(info).map(x => x.games || 0).filter(x => x > 0).sort((x, y) => x - y);
   const early = !gms.length || gms[Math.floor(gms.length / 2)] < 6;
   return { rows, ruledOut, avail, D, C, auto, spTarget: spNear(D), grp, h, offers: offered.size, early, fg };
@@ -8058,6 +8094,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, paddingLeft: 32 }}>
             <PxFitFactors t={t} w={prefs.w} />
           </div>
+          {t.outlook && <div title="From a backtest of this model on 2023–25 transfers: players with similar production who landed at a school this high on their fit list" style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Past transfers like this: <b style={{ color: G.text }}>{t.outlook[0]}%</b> became regulars · <b style={{ color: G.text }}>{t.outlook[1]}%</b> above-median producers</div>}
           {t.thin && t.thin.length > 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 8, paddingLeft: 32 }}>Limited data: {t.thin.join(', ')}</div>}
         </div>
       ))}
@@ -8216,6 +8253,7 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
               </span>
             </div>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12 }}><PxFitFactors t={row} w={fitCtx.w} /></div>
+            {row.outlook && <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 12 }}>Past transfers like this: <b style={{ color: G.text }}>{row.outlook[0]}%</b> became regulars · <b style={{ color: G.text }}>{row.outlook[1]}%</b> above-median producers</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
               <button onClick={() => window.history.back()} style={{ background: "none", border: "none", padding: "4px 8px", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>← Back to Team Fit</button>
               <span style={{ flex: 1 }} />
