@@ -11308,7 +11308,7 @@ const SHARE_PRESETS = {
   brand: { measurables: false, hometown: true, socials: true, interests: true, stats: false, depth: false, offers: false, film: false, contact: true },
   coach: { measurables: true, hometown: true, socials: false, interests: false, stats: true, depth: true, offers: true, film: true, contact: true },
 };
-const SHARE_AUDIENCES = [['brand', 'Brand', 'Socials, reach, market'], ['coach', 'Coach / team', 'Measurables, stats, offers, film'], ['custom', 'Custom', 'Pick every section yourself']];
+const SHARE_AUDIENCES = [['coach', 'Coach / team'], ['brand', 'Brand'], ['custom', 'Custom']];
 // High schoolers' 247 offers ([[school, offered, status]]) with team logos.
 function shareOffers(a, px) {
   let list = [];
@@ -11323,8 +11323,8 @@ function shareOffers(a, px) {
 }
 
 function SportsSharePage({ athletes, isMobile, staff, user }) {
-  const [audience, setAudience] = useState('');
-  const [on, setOn] = useState({ ...SHARE_PRESETS.coach, contact: true });
+  const [audience, setAudience] = useState('coach');
+  const [on, setOn] = useState({ ...SHARE_PRESETS.coach });
   const [picked, setPicked] = useState([]);
   const [levels, setLevels] = useState([]);
   const [side, setSide] = useState('All');
@@ -11350,6 +11350,7 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
   const btn = (primary, disabled) => ({ fontFamily: ff, fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 10, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, border: primary ? "none" : `1px solid ${G.surfaceBorder}`, background: primary ? G.green : G.surfaceRaised, color: primary ? "#0a0a0a" : G.text, whiteSpace: "nowrap" });
   const chip = (active) => ({ fontFamily: ff, fontSize: 13, fontWeight: 600, padding: "6px 14px", borderRadius: 99, cursor: "pointer", border: `1px solid ${active ? G.green : G.surfaceBorder}`, background: active ? G.greenSubtle : "transparent", color: active ? G.green : G.textSecondary });
 
+  // Coach / Brand just set the toggles; any manual change makes it Custom.
   const pickAudience = (k) => { setAudience(k); if (SHARE_PRESETS[k]) setOn({ ...SHARE_PRESETS[k] }); setLink(null); };
   const toggle = (k) => { setOn(o => ({ ...o, [k]: !o[k] })); if (audience !== 'custom') setAudience('custom'); setLink(null); };
 
@@ -11383,7 +11384,7 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
     espnId: a.level !== 'High School' ? a.espnId : '', depthRank: a.depthRank, depthPos: a.depthPos,
     offers: a.level === 'High School' ? shareOffers(a, px) : undefined, filmUrl: a.level === 'High School' ? a.filmUrl : '',
   });
-  const ready = !!audience && pickedList.length > 0;
+  const ready = pickedList.length > 0;
   const createLink = async () => {
     if (!ready || busy) return;
     setBusy('link'); setErr('');
@@ -11417,49 +11418,25 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
     setBusy('');
   };
 
-  const step = (n, label) => <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}><span style={{ width: 22, height: 22, borderRadius: 99, background: G.surfaceRaised, color: G.textSecondary, fontSize: 11.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{n}</span><span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>{label}</span></div>;
+  const cardTitle = (t, right) => (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+      <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>{t}</div>
+      {right}
+    </div>
+  );
 
   return (
     <div style={{ padding: `24px ${pad}px 48px`, display: "flex", flexDirection: "column", gap: 20, maxWidth: 1240 }}>
       <div>
         <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.1 }}>Share players</div>
-        <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>Build a link or PDF for a brand or a coaching staff. Contracts, value, notes, past brand partners and personal contact info are never included.</div>
-      </div>
-
-      <div style={card}>
-        {step(1, 'Who’s it for?')}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-          {SHARE_AUDIENCES.map(([k, l, d]) => (
-            <button key={k} onClick={() => pickAudience(k)}
-              onMouseEnter={e => { if (audience !== k) e.currentTarget.style.background = G.surfaceRaised; }}
-              onMouseLeave={e => { if (audience !== k) e.currentTarget.style.background = 'transparent'; }}
-              style={{ textAlign: "left", fontFamily: ff, cursor: "pointer", padding: 16, borderRadius: 12, border: `${audience === k ? 2 : 1}px solid ${audience === k ? G.green : G.surfaceBorder}`, background: audience === k ? G.greenSubtle : "transparent" }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: G.text }}>{l}</div>
-              <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>{d}</div>
-            </button>
-          ))}
-        </div>
+        <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>Send a link or a PDF. Contracts, value, notes, past brand partners and personal contact info are never included.</div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.25fr) minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
         <div style={card}>
-          {step(2, 'Who’s on it?')}
-          <div style={{ ...eyebrow, marginBottom: 8 }}>Add by level</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            {ALL_LEVELS.map(l => <button key={l} onClick={() => setLevels(v => (v.includes(l) ? v.filter(x => x !== l) : [...v, l]))} style={chip(levels.includes(l))}>{l === 'High School' ? 'High school' : l}</button>)}
-          </div>
-          {levels.length > 0 && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-              <select value={side} onChange={e => { setSide(e.target.value); setGroup('All'); }} style={sel} aria-label="Side of the ball"><option value="All">All positions</option>{Object.keys(POS_SIDES).map(s => <option key={s} value={s}>{s}</option>)}</select>
-              {groups.length > 1 && <select value={group} onChange={e => setGroup(e.target.value)} style={sel} aria-label="Position group"><option value="All">All {side.toLowerCase()}</option>{groups.map(g => <option key={g} value={g}>{g}</option>)}</select>}
-              <select value={depth} onChange={e => setDepth(e.target.value)} style={sel} aria-label="Depth chart"><option value="All">Any role</option><option>Starters</option><option>Backups</option></select>
-              <select value={agent} onChange={e => setAgent(e.target.value)} style={sel} aria-label="Agent"><option value="All">All agents</option>{(staff || []).map(n => <option key={n} value={n}>{n}</option>)}</select>
-              <button disabled={!toAdd.length} onClick={() => addNames(toAdd.map(a => a.name))} style={btn(true, !toAdd.length)}>{toAdd.length ? `Add ${toAdd.length} player${toAdd.length === 1 ? '' : 's'}` : matches.length ? 'All added' : 'No matches'}</button>
-            </div>
-          )}
-          <div style={{ ...eyebrow, margin: "16px 0 8px" }}>Add specific players</div>
-          <div style={{ position: "relative" }}>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name or school" style={{ ...sel, width: "100%", boxSizing: "border-box" }} />
+          {cardTitle('Players', pickedList.length > 0 && <button onClick={() => { setPicked([]); setLink(null); }} style={{ background: "none", border: "none", color: G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Clear all</button>)}
+          <div style={{ position: "relative", marginBottom: 16 }}>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search players to add" style={{ ...sel, width: "100%", boxSizing: "border-box" }} />
             {results.length > 0 && (
               <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, boxShadow: G.shadowLg, zIndex: 20, overflow: "hidden" }}>
                 {results.map(a => (
@@ -11474,54 +11451,75 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
               </div>
             )}
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "20px 0 8px" }}>
-            <div style={eyebrow}>On this share ({pickedList.length})</div>
-            {pickedList.length > 0 && <button onClick={() => { setPicked([]); setLink(null); }} style={{ background: "none", border: "none", color: G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Clear all</button>}
+          <div style={{ ...eyebrow, marginBottom: 8 }}>Or add a group</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {ALL_LEVELS.map(l => <button key={l} onClick={() => setLevels(v => (v.includes(l) ? v.filter(x => x !== l) : [...v, l]))} style={chip(levels.includes(l))}>{l === 'High School' ? 'High school' : l}</button>)}
           </div>
-          {pickedList.length === 0 ? (
-            <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No players yet — pick a level above or search for someone.</div>
-          ) : (
-            <div style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, maxHeight: 420, overflowY: "auto" }}>
-              {pickedList.map((a, i) => (
-                <div key={a.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: i % 2 ? G.surfaceRaised : "transparent" }}>
-                  <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{a.name}</div>
-                    <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[a.position, a.nflTeam || a.college, a.level].filter(Boolean).join(' · ')}</div>
-                  </div>
-                  <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" style={{ ...btn(false, i === 0), padding: "4px 8px" }}>↑</button>
-                  <button onClick={() => move(i, 1)} disabled={i === pickedList.length - 1} aria-label="Move down" style={{ ...btn(false, i === pickedList.length - 1), padding: "4px 8px" }}>↓</button>
-                  <button onClick={() => { setPicked(p => p.filter(n => n !== a.name)); setLink(null); }} aria-label={`Remove ${a.name}`} style={{ ...btn(false, false), padding: "4px 8px" }}>×</button>
-                </div>
-              ))}
+          {levels.length > 0 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
+              <select value={side} onChange={e => { setSide(e.target.value); setGroup('All'); }} style={sel} aria-label="Side of the ball"><option value="All">All positions</option>{Object.keys(POS_SIDES).map(s => <option key={s} value={s}>{s}</option>)}</select>
+              {groups.length > 1 && <select value={group} onChange={e => setGroup(e.target.value)} style={sel} aria-label="Position group"><option value="All">All {side.toLowerCase()}</option>{groups.map(g => <option key={g} value={g}>{g}</option>)}</select>}
+              <select value={depth} onChange={e => setDepth(e.target.value)} style={sel} aria-label="Depth chart"><option value="All">Any role</option><option>Starters</option><option>Backups</option></select>
+              <select value={agent} onChange={e => setAgent(e.target.value)} style={sel} aria-label="Agent"><option value="All">All agents</option>{(staff || []).map(n => <option key={n} value={n}>{n}</option>)}</select>
+              <button disabled={!toAdd.length} onClick={() => addNames(toAdd.map(a => a.name))} style={btn(true, !toAdd.length)}>{toAdd.length ? `Add ${toAdd.length}` : matches.length ? 'All added' : 'No matches'}</button>
             </div>
           )}
+          <div style={{ marginTop: 20 }}>
+            {pickedList.length === 0 ? (
+              <div style={{ fontSize: 13, color: G.textTertiary, padding: "24px 16px", textAlign: "center", border: `1px dashed ${G.surfaceBorder}`, borderRadius: 12 }}>Search for players or add a group to get started.</div>
+            ) : (
+              <>
+                <div style={{ ...eyebrow, marginBottom: 8 }}>{pickedList.length} player{pickedList.length === 1 ? '' : 's'}</div>
+                <div style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, maxHeight: 460, overflowY: "auto" }}>
+                  {pickedList.map((a, i) => (
+                    <div key={a.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: i % 2 ? G.surfaceRaised : "transparent" }}>
+                      <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{a.name}</div>
+                        <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[a.position, a.nflTeam || a.college, a.level].filter(Boolean).join(' · ')}</div>
+                      </div>
+                      <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" style={{ ...btn(false, i === 0), padding: "4px 8px" }}>↑</button>
+                      <button onClick={() => move(i, 1)} disabled={i === pickedList.length - 1} aria-label="Move down" style={{ ...btn(false, i === pickedList.length - 1), padding: "4px 8px" }}>↓</button>
+                      <button onClick={() => { setPicked(p => p.filter(n => n !== a.name)); setLink(null); }} aria-label={`Remove ${a.name}`} style={{ ...btn(false, false), padding: "4px 8px" }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={card}>
-            {step(3, 'What’s included')}
-            <div style={{ fontSize: 11.5, color: G.textTertiary, marginBottom: 12 }}>Always: photo, name, position and school / team. {audience ? (audience === 'custom' ? 'Custom selection.' : `Preset for a ${audience === 'brand' ? 'brand' : 'coach or team'} — change anything.`) : 'Pick who it’s for to preset these.'}</div>
+            {cardTitle('What to include')}
+            <div style={{ display: "flex", gap: 4, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: 4, marginBottom: 8 }}>
+              {SHARE_AUDIENCES.map(([k, l]) => (
+                <button key={k} onClick={() => pickAudience(k)}
+                  onMouseEnter={e => { if (audience !== k) e.currentTarget.style.color = G.text; }}
+                  onMouseLeave={e => { if (audience !== k) e.currentTarget.style.color = G.textSecondary; }}
+                  style={{ flex: 1, fontFamily: ff, fontSize: 13, fontWeight: 600, padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: audience === k ? G.surface : 'transparent', color: audience === k ? G.text : G.textSecondary, boxShadow: audience === k ? G.cardShadow : 'none', whiteSpace: "nowrap" }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: G.textTertiary, marginBottom: 8 }}>Photo, name, position and school / team are always included.</div>
             {SHARE_SECTIONS.map(([k, l, d]) => (
               <label key={k} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", cursor: "pointer", borderTop: `1px solid ${G.surfaceBorder}` }}>
                 <input type="checkbox" checked={!!on[k]} onChange={() => toggle(k)} style={{ marginTop: 2 }} />
                 <span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{l}</span>{d && <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>{d}</span>}</span>
               </label>
             ))}
-            <div style={{ fontSize: 11.5, color: G.textTertiary, borderTop: `1px solid ${G.surfaceBorder}`, paddingTop: 8 }}>Never shared: contracts, estimated value, Team Fit, agent notes, past brand partners, personal contact info, high school ratings and stats.</div>
           </div>
 
           <div style={card}>
-            {step(4, 'Send it')}
+            {cardTitle('Share')}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <label style={{ display: "block" }}><div style={{ ...eyebrow, marginBottom: 4 }}>Title</div><input value={title} onChange={e => { setTitle(e.target.value); setLink(null); }} placeholder={autoTitle} style={{ ...sel, width: "100%", boxSizing: "border-box" }} /></label>
               <label style={{ display: "block" }}><div style={{ ...eyebrow, marginBottom: 4 }}>Note (link only, optional)</div><textarea value={note} onChange={e => { setNote(e.target.value); setLink(null); }} rows={3} placeholder="A line for whoever opens it" style={{ ...sel, width: "100%", boxSizing: "border-box", resize: "vertical" }} /></label>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: G.textSecondary }}>Link expires<select value={expiry} onChange={e => { setExpiry(e.target.value); setLink(null); }} style={sel}><option value="7">in 7 days</option><option value="30">in 30 days</option><option value="90">in 90 days</option><option value="never">never</option></select></label>
-              {!ready && <div style={{ fontSize: 11.5, color: G.textTertiary }}>{!audience ? 'Pick who it’s for first.' : 'Add at least one player.'}</div>}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={createLink} disabled={!ready || !!busy} style={btn(true, !ready || !!busy)}>{busy === 'link' ? 'Creating…' : 'Create link'}</button>
                 <button onClick={downloadPdfFile} disabled={!ready || !!busy} style={btn(false, !ready || !!busy)}>{busy === 'pdf' ? 'Preparing…' : 'Download PDF'}</button>
               </div>
+              {!ready && <div style={{ fontSize: 11.5, color: G.textTertiary }}>Add at least one player.</div>}
               {err && <div style={{ fontSize: 12.5, color: G.red }}>{err}</div>}
               {link && (
                 <div style={{ border: `1px solid ${G.greenBorder}`, background: G.greenSubtle, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
