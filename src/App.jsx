@@ -11429,7 +11429,6 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
     <div style={{ padding: `24px ${pad}px 48px`, display: "flex", flexDirection: "column", gap: 20, maxWidth: 1240 }}>
       <div>
         <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.1 }}>Share players</div>
-        <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>Send a link or a PDF. Contracts, value, notes, past brand partners and personal contact info are never included.</div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.25fr) minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
@@ -11466,7 +11465,7 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
           )}
           <div style={{ marginTop: 20 }}>
             {pickedList.length === 0 ? (
-              <div style={{ fontSize: 13, color: G.textTertiary, padding: "24px 16px", textAlign: "center", border: `1px dashed ${G.surfaceBorder}`, borderRadius: 12 }}>Search for players or add a group to get started.</div>
+              <div style={{ fontSize: 13, color: G.textTertiary, padding: "24px 16px", textAlign: "center", border: `1px dashed ${G.surfaceBorder}`, borderRadius: 12 }}>No players added</div>
             ) : (
               <>
                 <div style={{ ...eyebrow, marginBottom: 8 }}>{pickedList.length} player{pickedList.length === 1 ? '' : 's'}</div>
@@ -11492,7 +11491,7 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={card}>
             {cardTitle('What to include')}
-            <div style={{ display: "flex", gap: 4, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: 4, marginBottom: 8 }}>
+            <div style={{ display: "flex", gap: 4, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: 4, marginBottom: 12 }}>
               {SHARE_AUDIENCES.map(([k, l]) => (
                 <button key={k} onClick={() => pickAudience(k)}
                   onMouseEnter={e => { if (audience !== k) e.currentTarget.style.color = G.text; }}
@@ -11500,11 +11499,10 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
                   style={{ flex: 1, fontFamily: ff, fontSize: 13, fontWeight: 600, padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: audience === k ? G.surface : 'transparent', color: audience === k ? G.text : G.textSecondary, boxShadow: audience === k ? G.cardShadow : 'none', whiteSpace: "nowrap" }}>{l}</button>
               ))}
             </div>
-            <div style={{ fontSize: 11.5, color: G.textTertiary, marginBottom: 8 }}>Photo, name, position and school / team are always included.</div>
-            {SHARE_SECTIONS.map(([k, l, d]) => (
-              <label key={k} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", cursor: "pointer", borderTop: `1px solid ${G.surfaceBorder}` }}>
-                <input type="checkbox" checked={!!on[k]} onChange={() => toggle(k)} style={{ marginTop: 2 }} />
-                <span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{l}</span>{d && <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>{d}</span>}</span>
+            {SHARE_SECTIONS.map(([k, l]) => (
+              <label key={k} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 0", cursor: "pointer", borderTop: `1px solid ${G.surfaceBorder}` }}>
+                <input type="checkbox" checked={!!on[k]} onChange={() => toggle(k)} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{l}</span>
               </label>
             ))}
           </div>
@@ -11513,13 +11511,12 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
             {cardTitle('Share')}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <label style={{ display: "block" }}><div style={{ ...eyebrow, marginBottom: 4 }}>Title</div><input value={title} onChange={e => { setTitle(e.target.value); setLink(null); }} placeholder={autoTitle} style={{ ...sel, width: "100%", boxSizing: "border-box" }} /></label>
-              <label style={{ display: "block" }}><div style={{ ...eyebrow, marginBottom: 4 }}>Note (link only, optional)</div><textarea value={note} onChange={e => { setNote(e.target.value); setLink(null); }} rows={3} placeholder="A line for whoever opens it" style={{ ...sel, width: "100%", boxSizing: "border-box", resize: "vertical" }} /></label>
+              <label style={{ display: "block" }}><div style={{ ...eyebrow, marginBottom: 4 }}>Note</div><textarea value={note} onChange={e => { setNote(e.target.value); setLink(null); }} rows={3} placeholder="Optional" style={{ ...sel, width: "100%", boxSizing: "border-box", resize: "vertical" }} /></label>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: G.textSecondary }}>Link expires<select value={expiry} onChange={e => { setExpiry(e.target.value); setLink(null); }} style={sel}><option value="7">in 7 days</option><option value="30">in 30 days</option><option value="90">in 90 days</option><option value="never">never</option></select></label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={createLink} disabled={!ready || !!busy} style={btn(true, !ready || !!busy)}>{busy === 'link' ? 'Creating…' : 'Create link'}</button>
                 <button onClick={downloadPdfFile} disabled={!ready || !!busy} style={btn(false, !ready || !!busy)}>{busy === 'pdf' ? 'Preparing…' : 'Download PDF'}</button>
               </div>
-              {!ready && <div style={{ fontSize: 11.5, color: G.textTertiary }}>Add at least one player.</div>}
               {err && <div style={{ fontSize: 12.5, color: G.red }}>{err}</div>}
               {link && (
                 <div style={{ border: `1px solid ${G.greenBorder}`, background: G.greenSubtle, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
