@@ -526,6 +526,15 @@ function divisionFrom(staffRows, user) {
 
 async function saveAthlete(token, body) {
   const a = body.athlete || {};
+  // Same formats as the rest of the sheet (lib/normalize).
+  {
+    const N = require('../lib/normalize');
+    const f = (k, fn) => { if (typeof a[k] === 'string' && a[k].trim()) a[k] = fn(a[k]); };
+    f('hometown', N.hometown); f('height', N.height); f('birthday', N.birthday); f('address', N.address); f('phone', N.phone);
+    ['shirtSize', 'hoodieSize', 'shortsSize', 'sweatpantsSize', 'glovesSize'].forEach(k => f(k, N.size)); f('gamingSystem', N.gaming);
+    ['instagram', 'twitter', 'tiktok'].forEach(k => f(k, N.handle));
+    ['interests', 'brands', 'brandTargets', 'musicArtists'].forEach(k => { if (typeof a[k] === 'string') f(k, N.list); else if (Array.isArray(a[k])) a[k] = N.list(a[k].join(', ')).split(', ').filter(Boolean); });
+  }
   const originalName = String(body.originalName || a.name || '').trim();
   // No row reference → this is a brand-new athlete (append, don't update).
   const creating = !a._rowIndex;

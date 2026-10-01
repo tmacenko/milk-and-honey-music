@@ -166,6 +166,15 @@ module.exports = async (req, res) => {
       }
     });
 
+    // Same formats as the rest of the sheet (lib/normalize).
+    {
+      const N = require('../lib/normalize');
+      const f = (k, fn) => { if (sub[k] != null && sub[k] !== '') sub[k] = Array.isArray(sub[k]) ? sub[k] : fn(sub[k]); };
+      f('hometown', N.hometown); f('birthday', N.birthday); f('address', N.address); f('phone', N.phone);
+      ['shirt', 'hoodie', 'shorts', 'pants', 'gloves'].forEach(k => f(k, N.size)); f('gamingSystem', N.gaming);
+      ['instagram', 'twitter', 'tiktok'].forEach(k => f(k, N.handle)); f('schoolOrTeam', N.school);
+      ['interests', 'brands', 'musicArtists'].forEach(k => { if (Array.isArray(sub[k])) sub[k] = N.list(sub[k].join(', ')).split(', ').filter(Boolean); });
+    }
     // Values for the level tab (identity + gifting — the columns those tabs own).
     const baseVals = {
       'Name': matchedName || sub.name.trim(),
