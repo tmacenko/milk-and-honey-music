@@ -11453,6 +11453,20 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
   const [err, setErr] = useState('');
   const [px, setPx] = useState(PROSPECTS.data);
   useEffect(() => { if (!px) loadProspectData(false).then(setPx).catch(() => {}); }, [px]);
+  // Recruiting board players (not clients) can be added too; height, weight
+  // and team logo come from the player database when it has them.
+  const ops = useRecruitBoard({ athletes });
+  const pool = useMemo(() => {
+    const clientKeys = new Set(athletes.map(a => pxNameKey(a.name)));
+    const board = ((ops && ops.data && ops.data.rows) || []).map(r => {
+      if (!ops.cell(r, 'name') || clientKeys.has(pxNameKey(ops.cell(r, 'name')))) return null;
+      const a = pxBoardAthlete(ops, r);
+      const p = px ? pxClientPlayer(px, a, null) : null;
+      if (p) { if (!a.height && p.ht) a.height = pxHt(p.ht); if (!a.weight && p.wt) a.weight = String(p.wt); if (!a.teamLogo && !p.isHs && p.logo) a.teamLogo = p.logo; }
+      return a;
+    }).filter(Boolean);
+    return [...athletes, ...board];
+  }, [athletes, ops, px]);
 
   const pad = isMobile ? 16 : 32;
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20, minWidth: 0 };
@@ -11480,8 +11494,8 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
   const toAdd = matches.filter(a => !pickedSet.has(a.name));
   const addNames = (names) => { setPicked(p => [...p, ...names.filter(n => !p.includes(n))]); setLink(null); };
   const ql = q.trim().toLowerCase();
-  const results = ql.length >= 2 ? athletes.filter(a => !pickedSet.has(a.name) && (a.name.toLowerCase().includes(ql) || String(a.nflTeam || a.college || '').toLowerCase().includes(ql))).slice(0, 8) : [];
-  const byName = new Map(athletes.map(a => [a.name, a]));
+  const results = ql.length >= 2 ? pool.filter(a => !pickedSet.has(a.name) && (a.name.toLowerCase().includes(ql) || String(a.nflTeam || a.college || '').toLowerCase().includes(ql))).slice(0, 8) : [];
+  const byName = new Map(pool.map(a => [a.name, a]));
   const pickedList = picked.map(n => byName.get(n)).filter(Boolean);
   const move = (i, d) => setPicked(p => { const n = [...p]; const j = i + d; if (j < 0 || j >= n.length) return p; [n[i], n[j]] = [n[j], n[i]]; return n; });
   // One-time reorder of the list (it's also the link's default order).
@@ -11605,6 +11619,7 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
                     <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
                     <span style={{ fontSize: 13, color: G.text, fontWeight: 600 }}>{a.name}</span>
                     <span style={{ fontSize: 11.5, color: G.textTertiary }}>{[a.position, a.nflTeam || a.college, a.level].filter(Boolean).join(' · ')}</span>
+                    {a.board && <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: G.textTertiary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 6, padding: "1px 6px" }}>Board</span>}
                   </button>
                 ))}
               </div>
@@ -11637,7 +11652,7 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
                     <div key={a.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: i % 2 ? G.surfaceRaised : "transparent" }}>
                       <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{a.name}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{a.name}{a.board && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: G.textTertiary }}>Board</span>}</div>
                         <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[a.position, a.nflTeam || a.college, a.level].filter(Boolean).join(' · ')}</div>
                       </div>
                       <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" style={{ ...btn(false, i === 0), padding: "4px 8px" }}>↑</button>
