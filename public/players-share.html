@@ -12,9 +12,9 @@
     :root{--bg:#f7f7f8;--surface:#ffffff;--raised:#f1f1f3;--border:#e3e3e6;--border-l:#d2d2d8;--text:#141417;--text2:#4c4c56;--text3:#71717c;--green:#1f8a5c;--green-s:rgba(31,138,92,0.10);--green-b:rgba(31,138,92,0.35);--red:#dc2626;--shadow:0 1px 2px rgba(20,20,25,0.04),0 4px 14px rgba(20,20,25,0.04);--ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif}
     html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased}
     a{color:inherit}
-    .hdr{position:sticky;top:0;z-index:10;background:rgba(255,255,255,0.94);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .hdr{position:sticky;top:0;z-index:10;background:rgba(255,255,255,0.94);border-bottom:1px solid var(--border);padding:12px 40px;display:flex;align-items:center;justify-content:space-between;gap:12px}
     .logos{display:flex;align-items:center;gap:12px}.logos img{height:26px}.logos .sep{width:1px;height:20px;background:var(--border-l)}
-    .wrap{max-width:1180px;margin:0 auto;padding:24px 24px 64px}
+    .wrap{padding:32px 40px 64px}
     .eyebrow{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
     h1{font-size:28px;font-weight:800;letter-spacing:-.03em;line-height:1.1}
     .sub{font-size:13px;color:var(--text2);margin-top:8px}
@@ -94,6 +94,7 @@ let view = window.innerWidth < 700 ? 'cards' : 'table';
 try { view = localStorage.getItem('mh_share_view') || view; } catch { /* default */ }
 const YEAR_RANK = { Freshman: 1, Sophomore: 2, Junior: 3, Senior: 4 };
 const inches = (h) => { const m = String(h || '').match(/(\d+)\D+(\d+)/); return m ? +m[1] * 12 + +m[2] : 0; };
+const ht = (h) => { const m = String(h || '').match(/^\s*(\d)\s*(?:'|ft|-|\s)\s*(\d{1,2})/i); return m ? `${m[1]}'${m[2]}"` : String(h || ''); };
 const app = document.getElementById('app');
 const header = () => `<div class="hdr"><div class="logos"><img src="/mh-logo.png" alt="Milk &amp; Honey" /></div>${data && data.contact ? `<div class="contact"><span class="who">${esc(data.contact.name)}${data.contact.email ? ' ·' : ''}</span>${data.contact.email ? `<a href="mailto:${esc(data.contact.email)}">Email</a>` : ''}</div>` : ''}</div>`;
 const photo = (a) => a.photoUrl ? `<img class="ph" src="${esc(a.photoUrl)}" alt="" />` : `<div class="ph">${esc(initials(a.name))}</div>`;
@@ -121,7 +122,7 @@ function columns(rows) {
     { k: 'team', l: 'School / team', v: a => (a.team || '').toLowerCase(), h: a => `<span class="tm">${a.teamLogo ? `<img src="${esc(a.teamLogo)}" alt="" />` : ''}${esc(a.team)}</span>`, left: 1 },
     new Set(rows.map(a => a.level)).size > 1 && { k: 'level', l: 'Level', v: a => ({ NFL: 0, College: 1, 'High School': 2 })[a.level] ?? 9, h: a => esc(a.level === 'High School' ? 'HS' : a.level), left: 1 },
     S.measurables && has(a => a.year) && { k: 'year', l: 'Year', v: yearKey, h: a => esc(a.year), left: 1 },
-    S.measurables && has(a => a.height) && { k: 'ht', l: 'Ht', v: a => inches(a.height), h: a => esc(a.height) },
+    S.measurables && has(a => a.height) && { k: 'ht', l: 'Ht', v: a => inches(a.height), h: a => esc(ht(a.height)) },
     S.measurables && has(a => a.weight) && { k: 'wt', l: 'Wt', v: a => parseInt(a.weight, 10) || 0, h: a => esc(a.weight) },
     S.hometown && has(a => a.hometown) && { k: 'home', l: 'Hometown', v: a => (a.hometown || '').toLowerCase(), h: a => esc(a.hometown), left: 1 },
     S.depth && has(a => a.depthRank) && { k: 'role', l: 'Role', v: a => a.depthRank || 99, h: a => esc(roleText(a)), left: 1 },
@@ -163,7 +164,7 @@ function filmBlock(url) {
 
 function profile(a) {
   const S = data.sections || {};
-  const facts = [['Height', a.height], ['Weight', a.weight ? (/\d$/.test(a.weight) ? a.weight + ' lbs' : a.weight) : ''], ['Year', a.year], ['Hometown', a.hometown], [S.depth ? 'Depth chart' : '', roleText(a)]].filter(([l, v]) => l && v);
+  const facts = [['Height', ht(a.height)], ['Weight', a.weight ? (/\d$/.test(a.weight) ? a.weight + ' lbs' : a.weight) : ''], ['Year', a.year], ['Hometown', a.hometown], [S.depth ? 'Depth chart' : '', roleText(a)]].filter(([l, v]) => l && v);
   const socials = S.socials ? [['Instagram', a.instagram, a.igFollowers, 'https://instagram.com/'], ['X', a.twitter, a.twitterFollowers, 'https://x.com/'], ['TikTok', a.tiktok, a.tiktokFollowers, 'https://tiktok.com/@']].filter(x => x[1]) : [];
   const offers = S.offers ? [...(a.offers || [])].sort((x, y) => (y.committed ? 1 : 0) - (x.committed ? 1 : 0)) : [];
   return `${header()}<div class="wrap">

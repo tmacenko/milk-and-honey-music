@@ -11,7 +11,7 @@ The app's visual language, distilled from what's already built plus agreed
 principles. Follow these for ALL UI work; when existing code disagrees with a
 parameter, migrate toward the parameter as you touch that code.
 
-**Theme.** Dark is the default; light mode via `[data-theme="light"]` tokens
+**Theme.** Light is the default for everyone until they pick (2026-10-01); dark via the sidebar toggle. Tokens via `[data-theme="light"]`
 (`--mh-*` CSS vars defined in THEME_CSS at the top of App.jsx, consumed through
 the `G` object). Never hardcode a color that must respond to theme — use `G`.
 Literal hexes only where alpha-concat requires them (documented inline) or for

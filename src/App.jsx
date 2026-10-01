@@ -46,7 +46,7 @@ if (typeof document !== 'undefined') {
   el.textContent = THEME_CSS;
   document.head.appendChild(el);
   document.documentElement.dataset.theme = (() => {
-    try { return localStorage.getItem('mh_theme') || 'dark'; } catch { return 'dark'; }
+    try { return localStorage.getItem('mh_theme') || 'light'; } catch { return 'light'; }
   })();
 }
 const G = {
@@ -5012,7 +5012,7 @@ function useOpenDealAlerts(athletes, user, enabled = true) {
     }
     return out;
   }, [dealsTab.data, invTab.data, athletes, user, userKey, dismissed, enabled]);
-  return { alerts, dismiss };
+  return { alerts, dismiss, loading: enabled && ((dealsTab.loading && !dealsTab.data) || (invTab.loading && !invTab.data)) };
 }
 
 // ── This Weekend (dashboard, in-season) ──────────────────────────────────────
@@ -5254,7 +5254,36 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
 // Upcoming events module. Data comes from /api/sheets {action:'artist-shows'}
 // (server-side provider + 24h per-artist cache); the module hides itself until
 // a provider key is configured on the server AND someone has a show coming up.
-const SHOWS_CACHE = { data: null, ts: 0 };
+const SHOWS_CACHE = { data: null, ts: 0, promise: null };
+// Every artist client's upcoming shows in one request (dashboard + Schedule);
+// shared so the Home page can wait for it before revealing.
+function loadAllShows(names) {
+  if (SHOWS_CACHE.data && Date.now() - SHOWS_CACHE.ts < 30 * 60 * 1000) return Promise.resolve(SHOWS_CACHE.data);
+  if (SHOWS_CACHE.promise) return SHOWS_CACHE.promise;
+  SHOWS_CACHE.promise = fetch('/api/sheets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'artist-shows', artists: names }) })
+    .then(r => r.json())
+    .then(d => { if (!d || d.unconfigured) return null; SHOWS_CACHE.data = d.shows || {}; SHOWS_CACHE.ts = Date.now(); return SHOWS_CACHE.data; })
+    .catch(() => null)
+    .finally(() => { SHOWS_CACHE.promise = null; });
+  return SHOWS_CACHE.promise;
+}
+// Home pages appear in one piece: wait for their sources (capped, so one slow
+// source can't hold the page), then reveal.
+// Later visits in the same session start ready (everything's cached).
+const HOME_SEEN = {};
+function useHomeReady(key, loaders, busy) {
+  const [done, setDone] = useState(!!HOME_SEEN[key]);
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    let on = true;
+    const t = setTimeout(() => on && setTimedOut(true), 4000);
+    Promise.allSettled(loaders.map(f => f())).then(() => on && setDone(true));
+    return () => { on = false; clearTimeout(t); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const ready = timedOut || (done && (!busy || !!HOME_SEEN[key]));
+  if (ready) HOME_SEEN[key] = true;
+  return ready;
+}
 function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onShowAll }) {
   const artistClients = useMemo(() => (clients || []).filter(c => c.name && (c.types || []).includes('Artist')), [clients]);
   const [data, setData] = useState(SHOWS_CACHE.data);
@@ -5266,12 +5295,8 @@ function MusicShowsModule({ clients, isMobile, onOpenClient, user, fullPage, onS
   const isMine = useCallback(c => !!user?.agentKey && agentMatch(c.contact, user.agentKey), [user]);
   useEffect(() => {
     if (!artistClients.length) return;
-    if (SHOWS_CACHE.data && Date.now() - SHOWS_CACHE.ts < 30 * 60 * 1000) { setData(SHOWS_CACHE.data); return; }
     let on = true;
-    fetch('/api/sheets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'artist-shows', artists: artistClients.map(c => c.name) }) })
-      .then(r => r.json())
-      .then(d => { if (!d || d.unconfigured) return; SHOWS_CACHE.data = d.shows || {}; SHOWS_CACHE.ts = Date.now(); if (on) setData(SHOWS_CACHE.data); })
-      .catch(() => { /* module stays hidden; next load retries */ });
+    loadAllShows(artistClients.map(c => c.name)).then(d => { if (on && d) setData(d); });
     return () => { on = false; };
   }, [artistClients]);
   const items = useMemo(() => {
@@ -5608,7 +5633,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const onboardTab = useAdminTab('onboarding');
   // Fresh open brand deals (≤7 days, still open) get a dashboard nudge for ALL
   // staff — agents are the ones who submit their players.
-  const { alerts: dealAlerts, dismiss: dismissDeal } = useOpenDealAlerts(athletes, user);
+  const { alerts: dealAlerts, dismiss: dismissDeal, loading: dealsLoading } = useOpenDealAlerts(athletes, user);
   const [alertsOpen, setAlertsOpen] = useState(false); // >1 notification collapses to one row until opened
   const [addingTodo, setAddingTodo] = useState(false);
   const [todoText, setTodoText] = useState('');
@@ -5704,8 +5729,10 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
   const firstName = (user?.name || '').split(' ')[0];
   const greeting = (now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening') + (firstName ? `, ${firstName}` : '');
 
+  const homeReady = useHomeReady('sports', [() => fetchWeekendEvents()], todosTab.loading || onboardTab.loading || dealsLoading);
+  if (!homeReady) return <TabSkeleton pad={isMobile ? 16 : 28} isMobile={isMobile} blocks={[56, [120, 120, 120, 120], 280, [240, 240]]} />;
   return (
-    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px", ...REVEAL }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: isMobile ? 21 : 25, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{greeting}</div>
@@ -6271,8 +6298,13 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
   const firstName = (user?.name || '').split(' ')[0];
   const greeting = (now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening') + (firstName ? `, ${firstName}` : '');
 
+  const homeReady = useHomeReady('music', [
+    () => loadAllShows(clients.filter(c => c.name && (c.types || []).includes('Artist')).map(c => c.name)),
+    () => loadTracklists().catch(() => null),
+  ], todosTab.loading);
+  if (!homeReady) return <TabSkeleton pad={isMobile ? 16 : 28} isMobile={isMobile} blocks={[56, [120, 120, 120, 120], 280, [240, 240]]} />;
   return (
-    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" }}>
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px", ...REVEAL }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: isMobile ? 21 : 25, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>{greeting}</div>
@@ -12867,7 +12899,7 @@ function App() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   // Light/dark theme — per-browser staff preference; index.html applies the
   // saved value pre-paint, this just keeps state + storage in sync on toggle.
-  const [theme, setThemeState] = useState(() => { try { return localStorage.getItem('mh_theme') || 'dark'; } catch { return 'dark'; } });
+  const [theme, setThemeState] = useState(() => { try { return localStorage.getItem('mh_theme') || 'light'; } catch { return 'light'; } });
   const toggleTheme = () => {
     const t = theme === 'dark' ? 'light' : 'dark';
     setThemeState(t);
