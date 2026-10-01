@@ -33,7 +33,7 @@ function sanitizePlayer(a, on) {
   };
   if (on.measurables) {
     o.height = str(a.height, 12); o.weight = str(a.weight, 12);
-    o.year = hs ? (a.classOf ? `Class of ${str(a.classOf, 4)}` : '') : a.level === 'College' ? str(a.year, 20) : '';
+    o.year = hs ? str(a.classOf, 4) : a.level === 'College' ? str(a.year, 20) : '';
   }
   if (on.hometown) o.hometown = str(a.hometown, 60);
   if (on.socials) {

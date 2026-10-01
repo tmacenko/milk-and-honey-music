@@ -125,7 +125,7 @@ function columns(rows) {
     S.measurables && has(a => a.weight) && { k: 'wt', l: 'Wt', v: a => parseInt(a.weight, 10) || 0, h: a => esc(a.weight) },
     S.hometown && has(a => a.hometown) && { k: 'home', l: 'Hometown', v: a => (a.hometown || '').toLowerCase(), h: a => esc(a.hometown), left: 1 },
     S.depth && has(a => a.depthRank) && { k: 'role', l: 'Role', v: a => a.depthRank || 99, h: a => esc(roleText(a)), left: 1 },
-    S.offers && has(a => (a.offers || []).length) && { k: 'offers', l: 'Offers', v: a => -(a.offers || []).length, h: a => { const c = (a.offers || []).find(o => o.committed); return c ? `<span class="tm">${c.logo ? `<img src="${esc(c.logo)}" alt="" />` : ''}Committed</span>` : esc((a.offers || []).length || ''); } },
+    S.offers && has(a => (a.offers || []).length) && { k: 'offers', l: 'Offers', v: a => -(a.offers || []).length, h: a => { const c = (a.offers || []).find(o => o.committed); return c ? `<span class="tm" title="Committed to ${esc(c.school)}">${c.logo ? `<img src="${esc(c.logo)}" alt="${esc(c.school)}" />` : esc(c.school)}</span>` : esc((a.offers || []).length || ''); } },
     S.film && has(a => a.filmUrl) && { k: 'film', l: 'Film', v: a => (a.filmUrl ? 0 : 1), h: a => (a.filmUrl ? `<a href="${esc(a.filmUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--green);font-weight:700;text-decoration:none">▶ Watch</a>` : '') },
     S.socials && has(a => reach(a)) && { k: 'reach', l: 'Followers', v: a => -reach(a), h: a => (reach(a) ? fmt(reach(a)) : '') },
   ].filter(Boolean);
@@ -251,7 +251,7 @@ window.addEventListener('hashchange', render);
       const d = await r.json();
       if (d.type !== 'players-share') err = 'notfound';
       else if (d.expiresAt && new Date(d.expiresAt) < new Date()) err = 'expired';
-      else data = d;
+      else { data = d; data.athletes.forEach(a => { if (a.year) a.year = String(a.year).replace(/^Class of\s*/i, ''); }); }
     }
   } catch { err = 'error'; }
   render();
