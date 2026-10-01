@@ -10169,7 +10169,6 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                       {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
                     </th>
                   ))}
-                  <th style={{ borderBottom: `1px solid ${G.surfaceBorder}` }} />
                 </tr></thead>
                 <tbody>
                   {rows.map((r, i) => {
@@ -10218,12 +10217,6 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                               </select>
                             );
                           })()}
-                        </td>
-                        <td style={{ ...td, overflow: "visible", maxWidth: "none", textAlign: "right" }} onClick={e => e.stopPropagation()}>
-                          <button onClick={() => setEditing(r)} title="Edit"
-                            onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; e.currentTarget.style.color = G.text; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = G.textSecondary; }}
-                            style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "4px 10px", color: G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Edit</button>
                         </td>
                       </tr>
                     );
