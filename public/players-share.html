@@ -34,6 +34,18 @@
     .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
     .chip{font-size:11px;font-weight:600;color:var(--text2);background:var(--raised);border:1px solid var(--border);border-radius:7px;padding:2px 8px;white-space:nowrap}
     .chip.g{color:var(--green);background:var(--green-s);border-color:var(--green-b)}
+    .bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:24px 0 16px}
+    .bar .tabs{margin:0}
+    .seg{display:flex;gap:4px;background:var(--raised);border:1px solid var(--border);border-radius:10px;padding:4px}
+    .seg button{font:600 13px var(--ff);padding:4px 12px;border-radius:8px;border:none;background:transparent;color:var(--text2);cursor:pointer}
+    .seg button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+    .tbl{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow-x:auto}
+    .tbl th{cursor:pointer;user-select:none}.tbl th:hover{color:var(--text)}.tbl th.on{color:var(--text)}
+    .tbl tbody tr{cursor:pointer}.tbl tbody tr:hover{background:var(--green-s)}
+    .tbl td.p{position:sticky;left:0;background:var(--surface)}.tbl tbody tr:nth-child(even) td.p{background:var(--raised)}
+    .pl{display:flex;align-items:center;gap:10px;font-weight:700}
+    .pl .ph{width:32px;height:32px;border-radius:50%;object-fit:cover;background:var(--raised);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text2)}
+    .tm{display:inline-flex;align-items:center;gap:6px}.tm img{width:18px;height:18px;object-fit:contain}
     .back{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--green);text-decoration:none;margin-bottom:20px}
     .hero{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
     .hero .ph{width:120px;height:120px;border-radius:50%;object-fit:cover;background:var(--raised);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;color:var(--text2)}
@@ -76,7 +88,11 @@ const slug = (n) => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').re
 const initials = (n) => String(n || '').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
 const reach = (a) => (a.igFollowers || 0) + (a.twitterFollowers || 0) + (a.tiktokFollowers || 0);
 const isZero = (v) => /^(|-|--|0|0\.0+|0-0|0\.0+%|0%)$/.test(String(v == null ? '' : v).trim());
-let data = null, err = '', level = 'All';
+let data = null, err = '', level = 'All', sortKey = '', sortDir = 1;
+let view = 'table';
+try { view = localStorage.getItem('mh_share_view') || 'table'; } catch { /* default */ }
+const YEAR_RANK = { Freshman: 1, Sophomore: 2, Junior: 3, Senior: 4 };
+const inches = (h) => { const m = String(h || '').match(/(\d+)\D+(\d+)/); return m ? +m[1] * 12 + +m[2] : 0; };
 const app = document.getElementById('app');
 const header = () => `<div class="hdr"><div class="logos"><img src="/mh-logo.png" alt="Milk &amp; Honey" /></div>${data && data.contact ? `<div class="contact"><span class="who">${esc(data.contact.name)}${data.contact.email ? ' ·' : ''}</span>${data.contact.email ? `<a href="mailto:${esc(data.contact.email)}">Email</a>` : ''}</div>` : ''}</div>`;
 const photo = (a) => a.photoUrl ? `<img class="ph" src="${esc(a.photoUrl)}" alt="" />` : `<div class="ph">${esc(initials(a.name))}</div>`;
@@ -93,14 +109,46 @@ function card(a) {
   return `<a class="card" href="#p=${esc(slug(a.name))}"><div class="av">${photo(a)}${a.teamLogo ? `<img class="tl" src="${esc(a.teamLogo)}" alt="" />` : ''}</div><div style="min-width:0"><div class="nm">${esc(a.name)}</div><div class="meta">${esc([a.position, a.team].filter(Boolean).join(' · '))}</div>${a.year ? `<div class="meta">${esc(a.year)}</div>` : ''}${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div></a>`;
 }
 
+// Columns follow what was shared; every header sorts.
+function columns(rows) {
+  const S = data.sections || {};
+  const has = (f) => rows.some(f);
+  const yearKey = (a) => (a.level === 'High School' ? 100 + (parseInt(String(a.year).replace(/\D/g, ''), 10) || 0) : YEAR_RANK[a.year] || 50);
+  return [
+    { k: 'name', l: 'Player', v: a => a.name.toLowerCase(), h: a => `<div class="pl">${photo(a)}${esc(a.name)}</div>`, left: 1, p: 1 },
+    { k: 'pos', l: 'Pos', v: a => a.position || '', h: a => esc(a.position), left: 1 },
+    { k: 'team', l: 'School / team', v: a => (a.team || '').toLowerCase(), h: a => `<span class="tm">${a.teamLogo ? `<img src="${esc(a.teamLogo)}" alt="" />` : ''}${esc(a.team)}</span>`, left: 1 },
+    new Set(rows.map(a => a.level)).size > 1 && { k: 'level', l: 'Level', v: a => ({ NFL: 0, College: 1, 'High School': 2 })[a.level] ?? 9, h: a => esc(a.level === 'High School' ? 'HS' : a.level), left: 1 },
+    S.measurables && has(a => a.year) && { k: 'year', l: 'Year', v: yearKey, h: a => esc(a.year), left: 1 },
+    S.measurables && has(a => a.height) && { k: 'ht', l: 'Ht', v: a => inches(a.height), h: a => esc(a.height) },
+    S.measurables && has(a => a.weight) && { k: 'wt', l: 'Wt', v: a => parseInt(a.weight, 10) || 0, h: a => esc(a.weight) },
+    S.hometown && has(a => a.hometown) && { k: 'home', l: 'Hometown', v: a => (a.hometown || '').toLowerCase(), h: a => esc(a.hometown), left: 1 },
+    S.depth && has(a => a.depthRank) && { k: 'role', l: 'Role', v: a => a.depthRank || 99, h: a => esc(roleText(a)), left: 1 },
+    S.offers && has(a => (a.offers || []).length) && { k: 'offers', l: 'Offers', v: a => -(a.offers || []).length, h: a => { const c = (a.offers || []).find(o => o.committed); return c ? `<span class="tm">${c.logo ? `<img src="${esc(c.logo)}" alt="" />` : ''}Committed</span>` : esc((a.offers || []).length || ''); } },
+    S.film && has(a => a.filmUrl) && { k: 'film', l: 'Film', v: a => (a.filmUrl ? 0 : 1), h: a => (a.filmUrl ? `<a href="${esc(a.filmUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--green);font-weight:700;text-decoration:none">▶ Watch</a>` : '') },
+    S.socials && has(a => reach(a)) && { k: 'reach', l: 'Followers', v: a => -reach(a), h: a => (reach(a) ? fmt(reach(a)) : '') },
+  ].filter(Boolean);
+}
+
+function table(rows) {
+  const cols = columns(rows);
+  const c = cols.find(x => x.k === sortKey);
+  const sorted = c ? [...rows].sort((x, y) => { const a = c.v(x), b = c.v(y); return (a < b ? -1 : a > b ? 1 : 0) * sortDir; }) : rows;
+  return `<div class="tbl"><table><thead><tr>${cols.map(x => `<th class="${x.left ? 'l' : ''}${x.k === sortKey ? ' on' : ''}" data-k="${x.k}">${esc(x.l)}${x.k === sortKey ? (sortDir > 0 ? ' ↑' : ' ↓') : ''}</th>`).join('')}</tr></thead>
+    <tbody>${sorted.map(a => `<tr data-p="${esc(slug(a.name))}">${cols.map(x => `<td class="${x.left ? 'l' : ''}${x.p ? ' p' : ''}">${x.h(a)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+
 function list() {
   const levels = ['NFL', 'College', 'High School'].filter(l => data.athletes.some(a => a.level === l));
   const shown = data.athletes.filter(a => level === 'All' || a.level === level);
   return `${header()}<div class="wrap">
     <h1>${esc(data.title)}</h1>
     ${data.note ? `<div class="note">${esc(data.note)}</div>` : ''}
-    ${levels.length > 1 ? `<div class="tabs">${['All', ...levels].map(l => `<button class="tab${l === level ? ' on' : ''}" data-l="${esc(l)}">${esc(l)}</button>`).join('')}</div>` : '<div style="height:24px"></div>'}
-    <div class="grid">${shown.map(card).join('')}</div>
+    <div class="bar">
+      ${levels.length > 1 ? `<div class="tabs">${['All', ...levels].map(l => `<button class="tab${l === level ? ' on' : ''}" data-l="${esc(l)}">${esc(l)}</button>`).join('')}</div>` : '<span></span>'}
+      <div class="seg"><button data-v="table" class="${view === 'table' ? 'on' : ''}">Table</button><button data-v="cards" class="${view === 'cards' ? 'on' : ''}">Cards</button></div>
+    </div>
+    ${view === 'table' ? table(shown) : `<div class="grid">${shown.map(card).join('')}</div>`}
     ${foot()}
   </div>`;
 }
@@ -187,6 +235,9 @@ function render() {
   app.innerHTML = list();
   document.title = `${data.title} — Milk & Honey Sports`;
   app.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { level = b.dataset.l; render(); }));
+  app.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { view = b.dataset.v; try { localStorage.setItem('mh_share_view', view); } catch { /* ok */ } render(); }));
+  app.querySelectorAll('.tbl th').forEach(th => th.addEventListener('click', () => { const k = th.dataset.k; if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = 1; } render(); }));
+  app.querySelectorAll('.tbl tbody tr').forEach(tr => tr.addEventListener('click', () => { location.hash = 'p=' + tr.dataset.p; }));
 }
 
 window.addEventListener('hashchange', render);

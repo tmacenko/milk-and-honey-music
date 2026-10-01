@@ -1091,6 +1091,7 @@ function AthleteForm({ initial, onSave, onCancel, staffNames, canContracts = tru
             </Field>
             <Field label="Birthday"><Input value={form.birthday} onChange={e => set('birthday', e.target.value)} placeholder="6/14/2007" /></Field>
             {isHS && <Field label="Class Of"><Input value={form.classOf} onChange={e => set('classOf', e.target.value)} placeholder="2027" /></Field>}
+            {isHS && <Field label="Hudl / film link"><Input value={form.filmUrl || ''} onChange={e => set('filmUrl', e.target.value.trim())} placeholder="https://www.hudl.com/profile/…" /></Field>}
             {isHS && (
               <Field label="Commitment"><Input value={form.committedTo} onChange={e => set('committedTo', e.target.value)} placeholder="Blank if uncommitted" /></Field>
             )}
@@ -1164,11 +1165,6 @@ function AthleteForm({ initial, onSave, onCancel, staffNames, canContracts = tru
             {isHS && (
               <div style={{ gridColumn: "1/-1" }}>
                 {lockInput('url247', '247Sports profile URL', 'profileUrl247', 'Auto-discovered nightly for HS players')}
-              </div>
-            )}
-            {isHS && (
-              <div style={{ gridColumn: "1/-1" }}>
-                <Field label="Film link (Hudl / YouTube)"><Input value={form.filmUrl || ''} onChange={e => set('filmUrl', e.target.value.trim())} placeholder="https://www.hudl.com/profile/…" /></Field>
               </div>
             )}
           </>)}
@@ -11372,6 +11368,23 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
   const byName = new Map(athletes.map(a => [a.name, a]));
   const pickedList = picked.map(n => byName.get(n)).filter(Boolean);
   const move = (i, d) => setPicked(p => { const n = [...p]; const j = i + d; if (j < 0 || j >= n.length) return p; [n[i], n[j]] = [n[j], n[i]]; return n; });
+  // One-time reorder of the list (it's also the link's default order).
+  const YEAR_RANK = { Freshman: 1, Sophomore: 2, Junior: 3, Senior: 4 };
+  const sortBy = (k) => {
+    const key = (a) => {
+      switch (k) {
+        case 'name': return a.name.toLowerCase();
+        case 'position': return `${String(contractPosGroup(a.position) || 'zz')}|${a.position || ''}`;
+        case 'team': return String(a.nflTeam || a.college || '').toLowerCase();
+        case 'level': return LEAGUE_RANK[a.level] ?? 9;
+        case 'year': return a.level === 'High School' ? 10000 + (parseInt(a.classOf, 10) || 0) : a.level === 'College' ? (YEAR_RANK[a.espnClass] || 5) : 0;
+        case 'reach': return -athleteReach(a);
+        default: return 0;
+      }
+    };
+    setPicked(p => [...p].sort((x, y) => { const a = key(byName.get(x) || {}), b = key(byName.get(y) || {}); return a < b ? -1 : a > b ? 1 : 0; }));
+    setLink(null);
+  };
 
   // Title from who's on it: "Milk & Honey Sports College Roster",
   // "Milk & Honey Sports Defensive HS Prospects", "… NFL WR Roster".
@@ -11480,7 +11493,10 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
               <div style={{ fontSize: 13, color: G.textTertiary, padding: "24px 16px", textAlign: "center", border: `1px dashed ${G.surfaceBorder}`, borderRadius: 12 }}>No players added</div>
             ) : (
               <>
-                <div style={{ ...eyebrow, marginBottom: 8 }}>{pickedList.length} player{pickedList.length === 1 ? '' : 's'}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <div style={eyebrow}>{pickedList.length} player{pickedList.length === 1 ? '' : 's'}</div>
+                  {pickedList.length > 1 && <select value="" onChange={e => { if (e.target.value) sortBy(e.target.value); }} style={{ ...sel, padding: "4px 8px", fontSize: 12 }} aria-label="Sort players"><option value="">Sort by…</option><option value="name">Name</option><option value="position">Position</option><option value="team">School / team</option><option value="level">Level</option><option value="year">Year</option><option value="reach">Reach</option></select>}
+                </div>
                 <div style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, maxHeight: 460, overflowY: "auto" }}>
                   {pickedList.map((a, i) => (
                     <div key={a.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: i % 2 ? G.surfaceRaised : "transparent" }}>
