@@ -11410,16 +11410,35 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
     offers: a.level === 'High School' ? shareOffers(a, px) : undefined, filmUrl: a.level === 'High School' ? a.filmUrl : '',
   });
   const ready = pickedList.length > 0;
+  // Create → copy the link and open it in a new tab. The tab and the
+  // clipboard write both start inside the click (browsers block them after an
+  // await); they're filled in once the server returns the URL.
   const createLink = async () => {
     if (!ready || busy) return;
     setBusy('link'); setErr('');
+    const tab = window.open('', '_blank');
+    let resolveUrl;
+    const urlP = new Promise(r => { resolveUrl = r; });
+    let copiedAsync = false;
+    try {
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({ 'text/plain': urlP.then(u => new Blob([u || ''], { type: 'text/plain' })) })]).then(() => { copiedAsync = true; setCopied(true); }).catch(() => {});
+      }
+    } catch { /* fall back below */ }
     try {
       const expiresAt = expiry === 'never' ? null : new Date(Date.now() + parseInt(expiry, 10) * 864e5).toISOString();
       const r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'players-share', audience, title: title.trim() || autoTitle, note: note.trim(), sections: on, expiresAt, athletes: pickedList.map(mapPlayer) }) });
       const d = await r.json();
       if (!r.ok || !d.url) throw new Error(d.error || 'Couldn’t create the link');
+      resolveUrl(d.url);
       setLink(d.url); setCopied(false);
-    } catch (e) { setErr(e.message); }
+      setTimeout(() => { if (!copiedAsync) navigator.clipboard.writeText(d.url).then(() => setCopied(true)).catch(() => {}); }, 300);
+      if (tab) tab.location.href = d.url; else window.open(d.url, '_blank');
+    } catch (e) {
+      resolveUrl('');
+      if (tab) tab.close();
+      setErr(e.message);
+    }
     setBusy('');
   };
   const downloadPdfFile = async () => {
