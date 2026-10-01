@@ -1468,8 +1468,9 @@ function MusicMarketingTab({ client: c, isMobile, pad }) {
       </div>
     </div>
   ));
+  if (hist.loading) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[320, [160, 160]]} />;
   return (
-    <div style={{ padding: `24px ${pad}px`, display: "grid", gap: 14, background: G.bg }}>
+    <div style={{ padding: `24px ${pad}px`, display: "grid", gap: 14, background: G.bg, ...REVEAL }}>
       {chartCard}
       {audienceCard}
     </div>
@@ -1600,6 +1601,8 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
   // About | Marketing tabs (staff only), mirroring the sports profile —
   // opened from the Marketing page it lands on Marketing.
   const [tab, setTab] = useState(() => (isAdmin && fromPage === 'marketing' ? 'marketing' : 'about'));
+  // Start the Marketing tab's data on open, so it's ready when clicked.
+  useEffect(() => { if (isAdmin) prefetchAdminTab('socialhistory', 'sheets'); }, [isAdmin]);
   // Usage log: the tab the profile opens on, then each switch.
   const usageFirst = useRef(true);
   useEffect(() => {
