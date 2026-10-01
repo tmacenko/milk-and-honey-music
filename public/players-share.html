@@ -97,9 +97,7 @@ function list() {
   const levels = ['NFL', 'College', 'High School'].filter(l => data.athletes.some(a => a.level === l));
   const shown = data.athletes.filter(a => level === 'All' || a.level === level);
   return `${header()}<div class="wrap">
-    <div class="eyebrow">Milk &amp; Honey Sports</div>
-    <h1 style="margin-top:8px">${esc(data.title)}</h1>
-    <div class="sub">${data.athletes.length} player${data.athletes.length === 1 ? '' : 's'} · tap a player for their profile</div>
+    <h1>${esc(data.title)}</h1>
     ${data.note ? `<div class="note">${esc(data.note)}</div>` : ''}
     ${levels.length > 1 ? `<div class="tabs">${['All', ...levels].map(l => `<button class="tab${l === level ? ' on' : ''}" data-l="${esc(l)}">${esc(l)}</button>`).join('')}</div>` : '<div style="height:24px"></div>'}
     <div class="grid">${shown.map(card).join('')}</div>
@@ -108,7 +106,7 @@ function list() {
 }
 
 function foot() {
-  return `<footer><span class="muted">Milk &amp; Honey Sports</span></footer>`;
+  return '';
 }
 
 function filmBlock(url) {
@@ -178,7 +176,7 @@ async function loadStats(a) {
 
 function render() {
   if (err) {
-    const m = { notfound: 'This link could not be found.', expired: 'This link has expired — ask your Milk & Honey contact for a new one.', invalid: 'Invalid link.', error: 'Something went wrong. Try again in a minute.' };
+    const m = { notfound: 'This link could not be found.', expired: 'This link has expired.', invalid: 'Invalid link.', error: 'Something went wrong.' };
     app.innerHTML = `${header()}<div class="err"><h2>${m[err] || m.error}</h2></div>`;
     return;
   }
