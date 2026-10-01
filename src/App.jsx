@@ -6702,7 +6702,7 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
     name: hOf(/player\s*name|^name/i), school: hOf(/school/i), level: hOf(/^level/i),
     pos: hOf(/position/i), rank: hOf(/rank/i), klass: hOf(/class|year/i),
     agent: hOf(/agent/i), notes: hOf(/note|comment/i), stage: hOf(/^stage/i),
-    espnId: hOf(/^espnid/i), url247: hOf(/^url247/i), photo: hOf(/^photo/i),
+    espnId: hOf(/^espnid/i), url247: hOf(/^url247/i), photo: hOf(/^photo/i), film: hOf(/^film/i),
   };
   const cell = (h) => (initial && h) ? (initial.cells[headers.indexOf(h)] || '') : '';
   const rawLevel = cell(H.level);
@@ -6711,7 +6711,7 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
     name: cell(H.name), school: cell(H.school), pos: cell(H.pos).toUpperCase(),
     rank: prettyRating(cell(H.rank)), klass: cell(H.klass), agent: cell(H.agent),
     notes: cell(H.notes), stage: cell(H.stage),
-    espnId: cell(H.espnId), url247: cell(H.url247), photo: cell(H.photo),
+    espnId: cell(H.espnId), url247: cell(H.url247), photo: cell(H.photo), film: cell(H.film),
   });
   const set = (k) => (e) => setF(v => ({ ...v, [k]: e.target.value }));
   const linked = level === 'College' ? !!f.espnId : !!f.url247;
@@ -6758,6 +6758,7 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
       put(H.pos, f.pos); put(H.rank, f.rank); put(H.klass, f.klass);
       put(H.agent, f.agent); put(H.notes, f.notes); put(H.stage, f.stage);
       put(H.espnId, f.espnId); put(H.url247, f.url247); put(H.photo, f.photo);
+      if (level === 'High School') put(H.film, f.film.trim());
       await onSave(vals);
     } catch (e) { alert(e.message || 'Save failed'); }
     finally { setBusy(false); }
@@ -6846,6 +6847,12 @@ function RecruitForm({ headers, initial, defaultLevel, staff, onSave, onDelete, 
           <div><label style={labelStyle}>{level === 'College' ? 'Class' : 'Graduating class'}</label><MultiPick single value={f.klass} onChange={v => setF(x => ({ ...x, klass: v }))} options={classOpts} /></div>
           <div><label style={labelStyle}>Rating</label><MultiPick single value={f.rank} onChange={v => setF(x => ({ ...x, rank: v }))} options={rankOpts} placeholder="Unrated" /></div>
           <div><label style={labelStyle}>Stage</label><MultiPick single value={f.stage} onChange={v => setF(x => ({ ...x, stage: v }))} options={REC_STAGES} /></div>
+          {level === 'High School' && (
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={labelStyle}>Hudl / film link</label>
+              <input value={f.film} onChange={set('film')} placeholder="https://www.hudl.com/profile/…" style={inputBase} />
+            </div>
+          )}
           <div style={{ gridColumn: "1 / -1" }}>
             <label style={labelStyle}>Notes</label>
             <textarea value={f.notes} onChange={set('notes')} rows={3} style={{ ...inputBase, resize: "vertical" }} />
@@ -8425,6 +8432,7 @@ function pxBoardAthlete(ops, r) {
     college: ops.cell(r, 'school'), classOf: (ops.cell(r, 'klass').match(/\d{4}/) || [''])[0], espnId: hs ? '' : ops.cell(r, 'espn'),
     hometown: ops.cell(r, 'home247'), offers247: ops.cell(r, 'offers247'), photoUrl: ops.cell(r, 'photo'),
     agentAssigned: ops.cell(r, 'agent'), profileUrl247: ops.cell(r, 'url247'), stage: ops.cell(r, 'stage'), committedTo: '', board: true,
+    filmUrl: hs ? ops.cell(r, 'film') : '',
     stars: parseInt((ops.cell(r, 'rank').match(/(\d)/) || [])[1], 10) || 0, // board's own Ranking note ("3★") until 247 data arrives
   };
 }
@@ -9223,6 +9231,7 @@ function PlayerPage({ pid, isMobile, user, athletes, staff }) {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {tag === 'Client' && <button onClick={() => openClientProfile(p)} style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "7px 12px", color: G.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>Client profile →</button>}
+          {a.filmUrl && linkBtn(a.filmUrl, 'Watch film ↗')}
           {a.profileUrl247 && linkBtn(a.profileUrl247, '247Sports ↗')}
           {espnId && linkBtn(`https://www.espn.com/college-football/player/_/id/${espnId}`, 'ESPN ↗')}
           {!p.isHs && p.team && <button onClick={() => openTeamPage(p.team)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: ff }}>{p.team} roster →</button>}
@@ -9611,7 +9620,7 @@ function useRecruitBoard({ tab: extTab, athletes, onPromoted } = {}) {
     name: hf(/player\s*name|^name/i), school: hf(/school/i), level: hf(/^level/i), pos: hf(/position/i),
     rank: hf(/rank/i), klass: hf(/class|year/i), agent: hf(/agent/i), notes: hf(/^notes/i),
     stage: hf(/^stage/i), espn: hf(/^espnid/i), url247: hf(/^url247/i), photo: hf(/^photo/i),
-    offers247: hf(/^offers247$/i), home247: hf(/^hometown247$/i),
+    offers247: hf(/^offers247$/i), home247: hf(/^hometown247$/i), film: hf(/^film$/i),
   };
   const cell = (r, k) => (r && I[k] >= 0 ? String(r.cells[I[k]] || '').trim() : '');
   const index = useMemo(() => {
