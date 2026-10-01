@@ -1354,125 +1354,204 @@ function DetailedClientCard({ client: c, logos, isMobile, onClick }) {
 // ── Marketing tab (music client profile, company view) ───────────────────────
 // The music twin of SportsMarketingTab: follower-growth chart from the music
 // SocialHistory tab plus an audience breakdown with Spotify listeners.
+// Spotify listener history (ListenerHistory tab, music sheet): one row per
+// artist per day — listeners, followers, world rank, top cities (JSON).
+function listenerSeries(rows) {
+  const by = {};
+  (rows || []).forEach(r => {
+    const [d, n, l, f, wr, tc] = r.cells || [];
+    const k = String(n || '').toLowerCase().trim();
+    const dt = new Date(String(d || '').slice(0, 10) + 'T12:00:00');
+    const sp = +String(l || '').replace(/,/g, '') || 0;
+    if (!k || isNaN(dt) || !sp) return;
+    let cities = null;
+    try { cities = tc ? JSON.parse(tc) : null; } catch { cities = null; }
+    (by[k] = by[k] || []).push({ dt, sp, followers: +f || 0, rank: +wr || 0, cities });
+  });
+  for (const arr of Object.values(by)) arr.sort((x, y) => x.dt - y.dt);
+  return by;
+}
+// % change from the point nearest `days` ago to the latest.
+function changeOver(pts, key, days) {
+  if (!pts || pts.length < 2) return null;
+  const last = pts[pts.length - 1];
+  const target = last.dt.getTime() - days * 86400000;
+  let base = pts[0];
+  for (const p of pts) if (p.dt.getTime() <= target) base = p;
+  return base !== last && base[key] > 0 ? ((last[key] - base[key]) / base[key]) * 100 : null;
+}
+const pctChip = (v, suffix) => (v == null || Math.abs(v) < 0.05 ? null : (
+  <span style={{ fontSize: 11.5, fontWeight: 700, color: v > 0 ? G.green : G.red }}>{v > 0 ? '↑' : '↓'} {Math.abs(v).toFixed(1)}%{suffix && <span style={{ color: G.textTertiary, fontWeight: 500 }}> {suffix}</span>}</span>
+));
+
 function MusicMarketingTab({ client: c, isMobile, pad }) {
   const hist = useAdminTab('socialhistory', 'sheets');
+  const lhist = useAdminTab('listenerhistory', 'sheets');
   const key = String(c.name || '').toLowerCase().trim();
   const series = useMemo(() => seriesFromHistory(hist.data?.rows)[key] || [], [hist.data, key]);
-  const [metric, setMetric] = useState('total');
-  const [range, setRange] = useState('30');
+  const lseries = useMemo(() => listenerSeries(lhist.data?.rows)[key] || [], [lhist.data, key]);
+  const [range, setRange] = useState('90');
+  const days = range === 'all' ? 100000 : +range;
+  const cut = (arr) => { if (!arr.length || range === 'all') return arr; const cutoff = arr[arr.length - 1].dt.getTime() - days * 86400000; return arr.filter(p => p.dt.getTime() >= cutoff); };
+  const sPts = useMemo(() => cut(series), [series, range]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lPts = useMemo(() => cut(lseries), [lseries, range]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rangeChange = (pts, k) => { if (pts.length < 2) return null; const a0 = pts[0][k] || 0, b0 = pts[pts.length - 1][k] || 0; return a0 > 0 ? ((b0 - a0) / a0) * 100 : null; };
+  const listenersNow = lseries.length ? lseries[lseries.length - 1].sp : parseListeners(c.spotifyMonthly);
+  const latest = lseries[lseries.length - 1] || {};
+  const cities = Array.isArray(latest.cities) ? latest.cities : [];
   const platforms = [
-    ['total', 'Total reach'],
-    c.instagram && ['ig', 'Instagram'],
-    c.twitter && ['x', 'X'],
-    c.tiktok && ['tk', 'TikTok'],
+    listenersNow > 0 && { k: 'sp', label: 'Spotify monthly listeners', icon: <SpotifyIcon size={15} />, pts: lPts, now: listenersNow },
+    c.instagram && { k: 'ig', label: 'Instagram', icon: <IgIcon size={15} />, pts: sPts, now: parseReach(c.igFollowers) },
+    c.tiktok && { k: 'tk', label: 'TikTok', icon: <TkIcon size={15} />, pts: sPts, now: parseReach(c.tiktokFollowers) },
+    c.twitter && { k: 'x', label: 'X', icon: <TwIcon size={15} />, pts: sPts, now: parseReach(c.twitterFollowers) },
   ].filter(Boolean);
-  const points = useMemo(() => {
-    if (!series.length || range === 'all') return series;
-    const cutoff = series[series.length - 1].dt.getTime() - (+range) * 86400000;
-    return series.filter(p2 => p2.dt.getTime() >= cutoff);
-  }, [series, range]);
-  const rangeChange = useMemo(() => {
-    if (points.length < 2) return null;
-    const first = points[0][metric] || 0, last = points[points.length - 1][metric] || 0;
-    if (!(first > 0)) return null;
-    return (last - first) / first * 100;
-  }, [points, metric]);
-  const move30 = useMemo(() => {
-    if (series.length < 2) return null;
-    const last = series[series.length - 1];
-    const target = last.dt.getTime() - 30 * 86400000;
-    let base = series[0];
-    for (const p2 of series) if (p2 !== last && Math.abs(p2.dt - target) < Math.abs(base.dt - target)) base = p2;
-    return base !== last && base.total > 0 ? (last.total - base.total) / base.total * 100 : null;
-  }, [series]);
-  const card = (title, right, body) => (
-    <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: G.textTertiary }}>{title}</div>
-        {right}
+  const totalReach = parseReach(c.igFollowers) + parseReach(c.twitterFollowers) + parseReach(c.tiktokFollowers);
+  const rangeLabel = range === 'all' ? 'all time' : `${range} days`;
+  const cardS = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, minWidth: 0 };
+  const eyebrow = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary };
+  const tile = (label, value, sub) => (
+    <div style={cardS}>
+      <div style={eyebrow}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", color: G.text, marginTop: 6, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+      {sub && <div style={{ marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+  if (hist.loading || lhist.loading) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[[92, 92, 92], [260, 260]]} />;
+  const maxCity = Math.max(1, ...cities.map(x => x[2] || 0));
+  return (
+    <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 16, background: G.bg, ...REVEAL }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, minmax(0, 1fr))", gap: 16 }}>
+        {tile('Total followers', fmtCount(totalReach), pctChip(changeOver(series, 'total', 30), '30 days'))}
+        {listenersNow > 0 && tile('Monthly listeners', fmtCount(listenersNow), pctChip(changeOver(lseries, 'sp', 30), '30 days'))}
+        {latest.rank > 0 && tile('Spotify world rank', `#${latest.rank.toLocaleString()}`)}
       </div>
-      {body}
-    </div>
-  );
-  const segGroup = (items) => (
-    <div style={{ display: "flex", background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: 2, gap: 2 }}>
-      {items.map(([on, label, onClick]) => (
-        <button key={label} onClick={onClick}
-          style={{ background: on ? G.surface : "transparent", border: `1px solid ${on ? G.green : 'transparent'}`, borderRadius: 7, padding: "3px 9px", color: on ? G.green : G.textTertiary, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-  const rangeLabel = range === 'all' ? 'overall' : `over last ${range} days`;
-  const chartCard = card('Reach growth', (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-      {segGroup(platforms.map(([k, l]) => [metric === k, l, () => setMetric(k)]))}
-      {segGroup([['7', '7D'], ['30', '30D'], ['90', '90D'], ['all', 'ALL']].map(([k, l]) => [range === k, l, () => setRange(k)]))}
-    </div>
-  ), (
-    <>
-      {hist.loading && !series.length
-        ? <div style={{ padding: "36px 0", textAlign: "center", color: G.textTertiary, fontSize: 12.5 }}>Loading history…</div>
-        : <GrowthChart points={points} metric={metric} isMobile={isMobile} />}
-      {rangeChange != null && (
-        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: rangeChange >= 0 ? G.green : G.red }}>
-          {rangeChange >= 0 ? '↑' : '↓'} {Math.abs(rangeChange).toFixed(1)}% <span style={{ color: G.textTertiary, fontWeight: 500 }}>{rangeLabel}</span>
+      {platforms.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: 4, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: 4 }}>
+            {[['30', '30D'], ['90', '90D'], ['365', '1Y'], ['all', 'All']].map(([k, l]) => (
+              <button key={k} onClick={() => setRange(k)}
+                onMouseEnter={e => { if (range !== k) e.currentTarget.style.color = G.text; }}
+                onMouseLeave={e => { if (range !== k) e.currentTarget.style.color = G.textSecondary; }}
+                style={{ fontFamily: ff, fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: range === k ? G.surface : 'transparent', color: range === k ? G.text : G.textSecondary, boxShadow: range === k ? G.cardShadow : 'none' }}>{l}</button>
+            ))}
+          </div>
         </div>
       )}
-    </>
-  ));
-  const audiencePlatforms = [
-    c.instagram && ['Instagram', parseReach(c.igFollowers), <IgIcon size={15} />],
-    c.twitter && ['X', parseReach(c.twitterFollowers), <TwIcon size={15} />],
-    c.tiktok && ['TikTok', parseReach(c.tiktokFollowers), <TkIcon size={15} />],
-  ].filter(Boolean);
-  const totalReach = audiencePlatforms.reduce((t, [, n]) => t + n, 0);
-  const listeners = parseListeners(c.spotifyMonthly);
-  const audienceCard = card('Audience', null, (
-    <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
-      <div style={{ flexShrink: 0 }}>
-        <div style={{ fontSize: 28, fontWeight: 800, color: G.text, letterSpacing: "-0.02em", lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{fmtCount(totalReach)}</div>
-        <div style={{ fontSize: 11.5, color: G.textTertiary, fontWeight: 600, marginTop: 2 }}>Total followers</div>
-        {move30 != null && Math.abs(move30) >= 0.05 && (
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: move30 > 0 ? G.green : G.red, marginTop: 4 }}>
-            {move30 > 0 ? '↑' : '↓'} {Math.abs(move30).toFixed(1)}% <span style={{ color: G.textTertiary, fontWeight: 500 }}>over last 30 days</span>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 16 }}>
+        {platforms.map(pl => (
+          <div key={pl.k} style={cardS}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: G.textSecondary }}>{pl.icon}<span style={eyebrow}>{pl.label}</span></div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 23, fontWeight: 800, letterSpacing: "-0.02em", color: G.text, fontVariantNumeric: "tabular-nums" }}>{fmtCount(pl.now)}</span>
+              {pctChip(rangeChange(pl.pts, pl.k), rangeLabel)}
+            </div>
+            <GrowthChart points={pl.pts} metric={pl.k} isMobile={isMobile} />
           </div>
-        )}
-      </div>
-      <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
-        {audiencePlatforms.map(([label, n, icon]) => {
-          const pct = totalReach > 0 ? Math.round((n / totalReach) * 100) : 0;
-          return (
-            <div key={label} title={label} style={{ minWidth: 92 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, color: G.textSecondary }}>
-                {icon}
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: G.green }}>{pct}%</span>
+        ))}
+        {cities.length > 0 && (
+          <div style={cardS}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: G.textSecondary, marginBottom: 12 }}><SpotifyIcon size={15} /><span style={eyebrow}>Top cities</span></div>
+            {cities.map(([city, country, n]) => (
+              <div key={city + country} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+                  <span style={{ color: G.text, fontWeight: 600 }}>{city}{country ? <span style={{ color: G.textTertiary, fontWeight: 500 }}> · {country}</span> : null}</span>
+                  <span style={{ color: G.textSecondary, fontVariantNumeric: "tabular-nums" }}>{fmtCount(n)}</span>
+                </div>
+                <div style={{ height: 4, borderRadius: 2, background: G.surfaceRaised, marginTop: 4 }}><div style={{ width: `${(n / maxCity) * 100}%`, height: "100%", borderRadius: 2, background: G.green }} /></div>
               </div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{fmtCount(n)}</div>
-              <div style={{ height: 4, borderRadius: 3, background: G.surfaceRaised, overflow: "hidden", marginTop: 5 }}>
-                <div style={{ width: `${pct}%`, height: "100%", background: G.green, borderRadius: 3 }} />
-              </div>
-            </div>
-          );
-        })}
-        {listeners > 0 && (
-          <div title="Spotify monthly listeners" style={{ minWidth: 92 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, color: G.textSecondary }}>
-              <SpotifyIcon size={15} />
-              <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>Listeners</span>
-            </div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: G.text, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{fmtCount(listeners)}</div>
+            ))}
           </div>
         )}
       </div>
     </div>
-  ));
-  if (hist.loading) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[320, [160, 160]]} />;
+  );
+}
+
+// Spotify listeners card on an artist's About tab (staff only): the number,
+// its 30-day change, world rank and a 90-day sparkline.
+function SpotifyListenersCard({ client: c }) {
+  const hist = useAdminTab('listenerhistory', 'sheets');
+  const key = String(c.name || '').toLowerCase().trim();
+  const pts = useMemo(() => listenerSeries(hist.data?.rows)[key] || [], [hist.data, key]);
+  const now = pts.length ? pts[pts.length - 1].sp : parseListeners(c.spotifyMonthly);
+  if (!(now > 0)) return null;
+  const last = pts[pts.length - 1] || {};
+  const recent = pts.filter(p => p.dt.getTime() >= (last.dt ? last.dt.getTime() : 0) - 90 * 86400000);
+  const W = 140, H = 36;
+  let path = '';
+  if (recent.length > 1) {
+    const vs = recent.map(p => p.sp), lo = Math.min(...vs), hi = Math.max(...vs), span = hi - lo || 1;
+    const t0 = recent[0].dt.getTime(), t1 = recent[recent.length - 1].dt.getTime(), ts = t1 - t0 || 1;
+    path = recent.map((p, i) => `${i ? 'L' : 'M'}${(((p.dt.getTime() - t0) / ts) * W).toFixed(1)},${(H - 2 - ((p.sp - lo) / span) * (H - 4)).toFixed(1)}`).join(' ');
+  }
+  const top = Array.isArray(last.cities) && last.cities[0] ? last.cities[0][0] : '';
   return (
-    <div style={{ padding: `24px ${pad}px`, display: "grid", gap: 14, background: G.bg, ...REVEAL }}>
-      {chartCard}
-      {audienceCard}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, maxWidth: 520 }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: G.textSecondary }}><SpotifyIcon size={15} /><span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>Monthly listeners</span></div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 6 }}>
+          <span style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", color: G.text, fontVariantNumeric: "tabular-nums" }}>{fmtCount(now)}</span>
+          {pctChip(changeOver(pts, 'sp', 30), '30 days')}
+        </div>
+        {(last.rank > 0 || top) && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>{[last.rank > 0 && `World rank #${last.rank.toLocaleString()}`, top && `Top city ${top}`].filter(Boolean).join(' · ')}</div>}
+      </div>
+      {path && <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ flexShrink: 0 }} aria-hidden="true"><path d={path} fill="none" stroke={G.green} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" /></svg>}
+    </div>
+  );
+}
+
+// ── Shows tab (artists, DJs) ────────────────────────────────────────────────
+const ARTIST_SHOWS_PENDING = {};
+function loadArtistShows(name) {
+  if (SHOWS_CACHE.data && Array.isArray(SHOWS_CACHE.data[name])) return Promise.resolve(SHOWS_CACHE.data[name]);
+  if (!ARTIST_SHOWS_PENDING[name]) {
+    ARTIST_SHOWS_PENDING[name] = fetch('/api/sheets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'artist-shows', artists: [name] }) })
+      .then(r => r.json()).then(d => ((d && d.shows && d.shows[name]) || []))
+      .catch(() => { delete ARTIST_SHOWS_PENDING[name]; return null; });
+  }
+  return ARTIST_SHOWS_PENDING[name];
+}
+const clientHasShows = (c) => (c.types || []).some(t => /^(artist|dj)$/i.test(t));
+
+function ArtistShowsTab({ client: c, isMobile, pad }) {
+  const [shows, setShows] = useState(null);
+  useEffect(() => {
+    let on = true;
+    loadArtistShows(c.name).then(s => { if (on) setShows(s || []); });
+    return () => { on = false; };
+  }, [c.name]);
+  if (!shows) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[72, 72, 72, 72]} />;
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const upcoming = shows.map(e => {
+    const m = String(e.date || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+    return m ? { ...e, d: new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0), hasTime: !!m[4] } : null;
+  }).filter(e => e && e.d >= t0).sort((a, b) => a.d - b.d);
+  const months = [];
+  upcoming.forEach(e => { const k = e.d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); const last = months[months.length - 1]; if (last && last.k === k) last.items.push(e); else months.push({ k, items: [e] }); });
+  return (
+    <div style={{ padding: `24px ${pad}px 32px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg, ...REVEAL }}>
+      {!upcoming.length ? (
+        <div style={{ padding: "40px 0", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>No upcoming shows</div>
+      ) : months.map(m => (
+        <div key={m.k}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginBottom: 8 }}>{m.k}</div>
+          <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
+            {m.items.map((e, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderTop: i ? `1px solid ${G.surfaceBorder}` : "none" }}>
+                <div style={{ width: 44, textAlign: "center", flexShrink: 0 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{e.d.toLocaleDateString(undefined, { weekday: 'short' })}</div>
+                  <div style={{ fontSize: 23, fontWeight: 800, color: G.text, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{e.d.getDate()}</div>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.venue || 'TBA'}</div>
+                  <div style={{ fontSize: 13, color: G.textSecondary }}>{[e.city, e.hasTime ? e.d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : ''].filter(Boolean).join(' · ')}</div>
+                </div>
+                {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 600, color: G.green, textDecoration: "none", flexShrink: 0 }}>Tickets →</a>}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1602,7 +1681,12 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
   // opened from the Marketing page it lands on Marketing.
   const [tab, setTab] = useState(() => (isAdmin && fromPage === 'marketing' ? 'marketing' : 'about'));
   // Start the Marketing tab's data on open, so it's ready when clicked.
-  useEffect(() => { if (isAdmin) prefetchAdminTab('socialhistory', 'sheets'); }, [isAdmin]);
+  useEffect(() => {
+    if (!isAdmin) return;
+    prefetchAdminTab('socialhistory', 'sheets');
+    prefetchAdminTab('listenerhistory', 'sheets');
+    if (clientHasShows(c)) loadArtistShows(c.name);
+  }, [isAdmin, c.name]); // eslint-disable-line react-hooks/exhaustive-deps
   // Usage log: the tab the profile opens on, then each switch.
   const usageFirst = useRef(true);
   useEffect(() => {
@@ -1612,7 +1696,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const tabBar = (padX) => isAdmin ? (
     <div style={{ display: "flex", gap: 26, padding: `0 ${padX}px`, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.bg }}>
-      {[['about', 'About'], ['marketing', 'Marketing']].map(([k, l]) => (
+      {[['about', 'About'], clientHasShows(c) && ['shows', 'Shows'], ['marketing', 'Marketing']].filter(Boolean).map(([k, l]) => (
         <button key={k} onClick={() => setTab(k)}
           style={{ background: "none", border: "none", padding: "13px 2px 11px", fontFamily: ff, fontSize: 13.5, fontWeight: tab === k ? 700 : 500, color: tab === k ? G.text : G.textTertiary, borderBottom: `2px solid ${tab === k ? G.green : 'transparent'}`, marginBottom: -1, cursor: "pointer", transition: "color 0.12s" }}>
           {l}
@@ -1704,6 +1788,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
         </div>
         {tabBar(16)}
         {isAdmin && tab === 'marketing' && <MusicMarketingTab client={c} isMobile pad={16} />}
+        {isAdmin && tab === 'shows' && <ArtistShowsTab client={c} isMobile pad={16} />}
         <div style={{ padding: "18px 16px", display: (!isAdmin || tab === 'about') ? "flex" : "none", flexDirection: "column", gap: 18, background: G.bg }}>
         {c.bio && (
           <div>
@@ -1826,6 +1911,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
         </div>
         {tabBar(32)}
         {isAdmin && tab === 'marketing' && <MusicMarketingTab client={c} isMobile={false} pad={32} />}
+        {isAdmin && tab === 'shows' && <ArtistShowsTab client={c} isMobile={false} pad={32} />}
         <div style={{ padding: "24px 32px", display: (!isAdmin || tab === 'about') ? "flex" : "none", flexDirection: "column", gap: 20, background: G.bg }}>
         {c.bio && <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{c.bio}</p>}
         {supportersEl}
@@ -1889,12 +1975,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {/* Listener counts are internal-only for now — company sessions see
                 them, the b2b login doesn't. */}
-            {isAdmin && c.spotifyMonthly && (
-              <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px" }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmt(c.spotifyMonthly)}</div>
-                <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}><SpotifyIcon size={9} /> Monthly Listeners</div>
-              </div>
-            )}
+            {isAdmin && <SpotifyListenersCard client={c} />}
             {c.spotifyFollowers > 0 && (
               <div style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "14px 18px" }}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmt(c.spotifyFollowers)}</div>

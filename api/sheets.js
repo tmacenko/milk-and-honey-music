@@ -392,6 +392,19 @@ module.exports = async (req, res) => {
     // ── GET ?tab=socialhistory: raw follower snapshots (admin only) ──────────
     // Same {headers, rows:[{_row, cells}]} shape as the sports tab API, so the
     // client's seriesFromHistory / useAdminTab machinery works unchanged.
+    // ── GET ?tab=listenerhistory: Spotify listener snapshots (admin only) ───
+    if (req.method === 'GET' && req.query?.tab === 'listenerhistory') {
+      const { configured, admin } = authState(req);
+      if (configured && !admin) return res.status(401).json({ error: 'Not authorized' });
+      let d = null;
+      try { d = await sheetGet(token, "'ListenerHistory'!A:F"); } catch { d = { values: [] }; }
+      const vals = d.values || [];
+      return res.json({
+        headers: (vals[0] || []).map(h => String(h || '').trim()),
+        rows: vals.slice(1).map((r, i) => ({ _row: i + 2, cells: r })),
+      });
+    }
+
     if (req.method === 'GET' && req.query?.tab === 'socialhistory') {
       const { configured, admin } = authState(req);
       if (configured && !admin) return res.status(401).json({ error: 'Not authorized' });

@@ -88,7 +88,14 @@ async function ensureHistoryTab(token) {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'ListenerHistory', hidden: true } } }] }),
   });
-  await sheetAppend(token, 'ListenerHistory!A:C', [['date', 'name', 'listeners']]);
+  await sheetAppend(token, 'ListenerHistory!A:F', [HISTORY_HEAD]);
+}
+// date | name | listeners | followers | worldRank | topCities (JSON)
+const HISTORY_HEAD = ['date', 'name', 'listeners', 'followers', 'worldRank', 'topCities'];
+async function ensureHistoryHeader(token) {
+  const head = ((await sheetGet(token, 'ListenerHistory!1:1')).values || [[]])[0] || [];
+  if (head.length >= HISTORY_HEAD.length) return;
+  await sheetBatchWrite(token, [{ range: 'ListenerHistory!A1:F1', values: [HISTORY_HEAD] }]);
 }
 function colLetter(n) {
   let s = '';
@@ -176,8 +183,18 @@ async function fetchOverview(artistId, anonToken) {
   const j = await r.json();
   const a = j?.data?.artistUnion;
   if (!a) return null;
-  const n = a.stats?.monthlyListeners;
-  return { listeners: Number.isFinite(n) && n > 0 ? n : null, releases: overviewReleases(a.discography) };
+  const st = a.stats || {};
+  const n = st.monthlyListeners;
+  // Top listener cities (Spotify shows five) — kept as [city, country, listeners].
+  const cities = ((st.topCities || {}).items || []).slice(0, 5)
+    .map(c => [c.city || '', c.country || '', Number(c.numberOfListeners) || 0]).filter(c => c[0]);
+  return {
+    listeners: Number.isFinite(n) && n > 0 ? n : null,
+    followers: Number.isFinite(st.followers) ? st.followers : '',
+    worldRank: Number.isFinite(st.worldRank) && st.worldRank > 0 ? st.worldRank : '',
+    cities,
+    releases: overviewReleases(a.discography),
+  };
 }
 async function getSpotifyApiToken() {
   const cid = process.env.SPOTIFY_CLIENT_ID, csec = process.env.SPOTIFY_CLIENT_SECRET;
@@ -265,6 +282,8 @@ module.exports = async (req, res) => {
     });
 
     const releasesOnly = req.query?.mode === 'releases';
+    // ?mode=listeners — the daily run: listener counts + history only.
+    const listenersOnly = req.query?.mode === 'listeners';
     const RECENT_MS = 6 * 60 * 60 * 1000;
     const cache = await loadBlobCache(RELEASES_CACHE_PATH);
     const needsReleases = (a) => !(releasesOnly && cache[a.artistId] && Date.now() - (cache[a.artistId].fetchedAt || 0) < RECENT_MS);
@@ -283,18 +302,23 @@ module.exports = async (req, res) => {
         if (releasesOnly) return;
         if (ov?.listeners) {
           writes.push({ range: `Clients!${colLetter(mlC + 1)}${a.row}`, values: [[ov.listeners]] });
-          history.push([today, a.name, ov.listeners]);
+          history.push([today, a.name, ov.listeners, ov.followers, ov.worldRank, ov.cities.length ? JSON.stringify(ov.cities) : '']);
         } else errors.push(a.name);
       } catch { if (!releasesOnly) errors.push(a.name); }
     });
     if (writes.length) {
       await sheetBatchWrite(token, writes);
       await ensureHistoryTab(token);
+      await ensureHistoryHeader(token);
       // A second run on the same day must not double-count the history.
       const prior = ((await sheetGet(token, 'ListenerHistory!A:B')).values || [])
         .filter(r => r[0] === today).map(r => String(r[1] || '').toLowerCase());
       const fresh = history.filter(h => !prior.includes(String(h[1]).toLowerCase()));
-      if (fresh.length) await sheetAppend(token, 'ListenerHistory!A:C', fresh);
+      if (fresh.length) await sheetAppend(token, 'ListenerHistory!A:F', fresh);
+    }
+    if (listenersOnly) {
+      console.log(`refresh-music (listeners): ${writes.length}/${artists.length}`);
+      return res.json({ ok: true, mode: 'listeners', artistProfiles: artists.length, listenersWritten: writes.length, listenerErrors: errors });
     }
 
     // Releases: overview first; the official Web API only for artists whose
