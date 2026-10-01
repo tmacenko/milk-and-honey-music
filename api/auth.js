@@ -152,6 +152,8 @@ async function findUser(pw, secret) {
     // Work email (optional column) — the music Tools sidebar copies it for
     // sites that log in via a code sent to your own address.
     email: (d && d.email) || '',
+    // Staff tab Division (Music / Sports / Both) — picks the landing side.
+    division: (d && d.division) || '',
   });
   // Hashed store first. Once it exists it is authoritative — plaintext sheet
   // passwords stop working the moment the migration uploads it.
@@ -285,7 +287,7 @@ module.exports = async (req, res) => {
     payload.exp = Math.floor(Date.now() / 1000) + THIRTY_DAYS;
     const token = sign(payload, secret);
     res.setHeader('Set-Cookie', cookie(token, THIRTY_DAYS));
-    return res.json({ ok: true, isAdmin: true, user: user ? { name: user.name, agentKey: user.agentKey, userRole: user.userRole, email: user.email } : null });
+    return res.json({ ok: true, isAdmin: true, user: user ? { name: user.name, agentKey: user.agentKey, userRole: user.userRole, email: user.email, division: user.division } : null });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

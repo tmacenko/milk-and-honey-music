@@ -4189,6 +4189,9 @@ const SITE_PASSWORD = 'beverlyhills';
 // music, Tyler/Jake sports); b2b viewers → music.
 const defaultSideFor = (user) => {
   if (!user) return 'music';
+  // Staff tab Division decides; role-based guesses only for 'Both' / unset.
+  const div = String(user.division || '').toLowerCase();
+  if (div === 'music' || div === 'sports') return div;
   if (user.userRole === 'agent') return 'sports';
   if (user.userRole === 'manager') return 'music';
   return /^(lucas kel|dave frank|nic warner)/i.test(user.name || '') ? 'music' : 'sports';
