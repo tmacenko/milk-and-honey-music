@@ -192,6 +192,8 @@ module.exports = async (req, res) => {
       // Linked identity from the recruiting board upgrade — lets the instant
       // enrichment hit the exact ESPN/247 profile instead of re-discovering.
       'espnId': sub.espnId, 'profileUrl247': sub.profileUrl247,
+      // High schoolers' highlight film (Hudl / YouTube).
+      'filmUrl': /^https?:\/\//i.test(String(sub.filmUrl || '').trim()) ? String(sub.filmUrl).trim() : undefined,
     };
 
     const planned = { baseTab: base.tab, matched: !!matchRow, matchedName };

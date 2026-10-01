@@ -54,8 +54,9 @@ module.exports = async function handler(req, res) {
   if (!id) return res.status(400).send('Missing share ID');
 
   const isRoster = req.query.kind === 'roster';
-  const routeBase = isRoster ? 'roster' : 'share';
-  const targetFile = isRoster ? 'roster-share.html' : 'share.html';
+  const isPlayers = req.query.kind === 'players';
+  const routeBase = isPlayers ? 'players' : isRoster ? 'roster' : 'share';
+  const targetFile = isPlayers ? 'players-share.html' : isRoster ? 'roster-share.html' : 'share.html';
 
   const ua = req.headers['user-agent'] || '';
   const pageUrl = `${APP_URL}/${routeBase}/${id}`;
@@ -70,7 +71,7 @@ module.exports = async function handler(req, res) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="refresh" content="0;url=${shareHtmlUrl}" />
-  <title>Milk &amp; Honey Music</title>
+  <title>${isPlayers ? 'Milk &amp; Honey Sports' : 'Milk &amp; Honey Music'}</title>
   <meta property="og:image" content="${OG_IMAGE}" />
   <meta name="twitter:card" content="summary_large_image" />
 </head>
@@ -82,8 +83,8 @@ module.exports = async function handler(req, res) {
   }
 
   // ── Crawler: fetch share data and return full OG tags ─────────────────────
-  let title = 'Milk & Honey Music — Client Roster';
-  let description = 'Client roster shared by Milk & Honey Music';
+  let title = isPlayers ? 'Milk & Honey Sports' : 'Milk & Honey Music — Client Roster';
+  let description = isPlayers ? 'Players shared by Milk & Honey Sports' : 'Client roster shared by Milk & Honey Music';
 
   try {
     const data = await fetchShareData(id);
@@ -94,7 +95,7 @@ module.exports = async function handler(req, res) {
       } else if (data.title) {
         title = data.title;
         const n = data.athletes?.length || data.clients?.length;
-        if (n) description = `${n} client${n !== 1 ? 's' : ''} · Milk & Honey Music`;
+        if (n) description = isPlayers ? `${n} player${n !== 1 ? 's' : ''} · Milk & Honey Sports` : `${n} client${n !== 1 ? 's' : ''} · Milk & Honey Music`;
       }
     }
   } catch { /* use defaults */ }
@@ -117,7 +118,7 @@ module.exports = async function handler(req, res) {
   <meta property="og:image:type" content="image/jpeg" />
   <meta property="og:url" content="${pageUrl}" />
   <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="Milk &amp; Honey Music" />
+  <meta property="og:site_name" content="${isPlayers ? 'Milk &amp; Honey Sports' : 'Milk &amp; Honey Music'}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />

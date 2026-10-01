@@ -378,6 +378,8 @@ function mergeAthlete(row, ext, level) {
     contractYears: ext['contractYears'] || '',
     contractGuaranteed: ext['contractGuaranteed'] || '',
     contractUrl: ext['contractUrl'] || '',
+    // Highlight film (Hudl / YouTube) — high schoolers; shareable on coach links.
+    filmUrl: ext['filmUrl'] || '',
     agentAssigned: row['Lead Agent'] || row['Agent'] || '',
     birthday: row['Birthday'] || '',
     shirtSize: row['Shirt'] || '', hoodieSize: row['Hoodie'] || '', shortsSize: row['Shorts'] || '',
@@ -587,6 +589,7 @@ async function saveAthlete(token, body) {
     profileUrl247: a.profileUrl247,
     espnId: a.espnId,
     contractValue: a.contractYearly,
+    filmUrl: a.filmUrl,
     // Kept in sync with the level tab's Address column (parse prefers that).
     address: a.address,
     status: a.status, tiktok: a.tiktok,

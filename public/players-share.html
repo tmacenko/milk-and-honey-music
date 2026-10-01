@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Milk & Honey Sports</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/favicon.png" />
+  <meta name="robots" content="noindex" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#080809;--surface:#111113;--raised:#18181b;--border:#1e1e22;--border-l:#28282d;--text:#f4f4f5;--text2:#b4b4be;--text3:#8a8a98;--green:#3eaa78;--green-s:rgba(62,170,120,0.09);--green-b:rgba(62,170,120,0.3);--red:#dc2626;--ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif}
+    html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased}
+    a{color:inherit}
+    .hdr{position:sticky;top:0;z-index:10;background:rgba(8,8,9,0.94);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .logos{display:flex;align-items:center;gap:12px}.logos img{height:26px}.logos .sep{width:1px;height:20px;background:var(--border-l)}
+    .wrap{max-width:1180px;margin:0 auto;padding:24px 24px 64px}
+    .eyebrow{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
+    h1{font-size:28px;font-weight:800;letter-spacing:-.03em;line-height:1.1}
+    .sub{font-size:13px;color:var(--text2);margin-top:8px}
+    .note{margin-top:16px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:14px;font-size:15px;line-height:1.55;color:var(--text2);white-space:pre-wrap}
+    .contact{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--text2)}
+    .contact a{color:var(--green);text-decoration:none;font-weight:600}
+    .tabs{display:flex;gap:8px;margin:24px 0 16px;flex-wrap:wrap}
+    .tab{padding:6px 14px;border-radius:99px;border:1px solid var(--border-l);background:transparent;color:var(--text2);font:600 13px var(--ff);cursor:pointer}
+    .tab:hover{color:var(--text)}.tab.on{border-color:var(--green);background:var(--green-s);color:var(--green)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+    .card{display:flex;gap:12px;align-items:center;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:14px;text-decoration:none;transition:background .15s,border-color .15s}
+    .card:hover{background:var(--raised);border-color:var(--border-l)}
+    .av{position:relative;flex-shrink:0}.av .ph{width:64px;height:64px;border-radius:50%;object-fit:cover;background:var(--raised);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--text2)}
+    .av .tl{position:absolute;right:-4px;bottom:-4px;width:24px;height:24px;object-fit:contain;background:var(--surface);border-radius:50%;padding:2px}
+    .nm{font-size:15px;font-weight:700;letter-spacing:-.01em}
+    .meta{font-size:12px;color:var(--text3);margin-top:2px}
+    .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .chip{font-size:11px;font-weight:600;color:var(--text2);background:var(--raised);border:1px solid var(--border);border-radius:7px;padding:2px 8px;white-space:nowrap}
+    .chip.g{color:var(--green);background:var(--green-s);border-color:var(--green-b)}
+    .back{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--green);text-decoration:none;margin-bottom:20px}
+    .hero{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+    .hero .ph{width:120px;height:120px;border-radius:50%;object-fit:cover;background:var(--raised);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;color:var(--text2)}
+    .line{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:15px;color:var(--text2);flex-wrap:wrap}
+    .line img{width:22px;height:22px;object-fit:contain}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-top:24px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:14px}
+    .fv{font-size:15px;font-weight:700;margin-top:4px}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;background:var(--green);color:#0a0a0a;font:700 13px var(--ff);text-decoration:none}
+    .sec{margin-top:24px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;overflow:hidden}
+    .sec h2{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:12px}
+    .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:12px}
+    .tile .v{font-size:23px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:2px}
+    .scroll{overflow-x:auto;margin:0 -8px}
+    table{border-collapse:collapse;width:100%}
+    th{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);padding:8px 10px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap}
+    td{font-size:13px;color:var(--text);padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+    th.l,td.l{text-align:left}
+    tbody tr:nth-child(even){background:var(--raised)}
+    tr.tot td{font-weight:700;border-bottom:1px solid var(--border)}
+    .opp{display:inline-flex;align-items:center;gap:6px}.opp img{width:18px;height:18px;object-fit:contain}
+    .w{color:var(--green);font-weight:700}.lo{color:var(--red);font-weight:700}
+    .offers{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
+    .offer{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px;background:var(--raised);border:1px solid var(--border);border-radius:12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)}
+    .offer img{width:40px;height:40px;object-fit:contain}
+    .offer.c{border-color:var(--green);background:var(--green-s);color:var(--text)}
+    .soc{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}.soc:last-child{border-bottom:none}
+    .soc a{color:var(--text);text-decoration:none;font-weight:600}.soc a:hover{color:var(--green)}
+    .muted{font-size:13px;color:var(--text3)}
+    .video{position:relative;padding-top:56.25%;border-radius:12px;overflow:hidden;background:#000}.video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+    .err{text-align:center;padding:96px 24px}.err h2{font-size:18px;font-weight:700}
+    footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    @media(max-width:640px){.wrap{padding:16px 16px 48px}.hdr{padding:12px 16px}.hdr .contact{display:none}.logos img{height:22px}h1{font-size:24px}.hero{gap:16px}.hero .ph{width:88px;height:88px;font-size:24px}.hero .btn{width:100%;justify-content:center}}
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (n) => { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K' : String(Math.round(n)); };
+const slug = (n) => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const initials = (n) => String(n || '').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
+const reach = (a) => (a.igFollowers || 0) + (a.twitterFollowers || 0) + (a.tiktokFollowers || 0);
+const isZero = (v) => /^(|-|--|0|0\.0+|0-0|0\.0+%|0%)$/.test(String(v == null ? '' : v).trim());
+let data = null, err = '', level = 'All';
+const app = document.getElementById('app');
+const header = () => `<div class="hdr"><div class="logos"><img src="/mh-logo.png" alt="Milk &amp; Honey" /><span class="sep"></span><img src="/targa-logo.png" alt="Targa" /></div>${data && data.contact ? `<div class="contact">${esc(data.contact.name)}${data.contact.email ? ` · <a href="mailto:${esc(data.contact.email)}">Email</a>` : ''}</div>` : ''}</div>`;
+const photo = (a) => a.photoUrl ? `<img class="ph" src="${esc(a.photoUrl)}" alt="" />` : `<div class="ph">${esc(initials(a.name))}</div>`;
+const roleText = (a) => a.depthRank ? `${a.depthRank === 1 ? 'Starter' : a.depthRank === 2 ? '2nd string' : a.depthRank === 3 ? '3rd string' : a.depthRank + 'th string'}${a.depthPos ? ' · ' + a.depthPos : ''}` : '';
+
+function card(a) {
+  const S = data.sections || {};
+  const chips = [];
+  if (S.socials && reach(a)) chips.push(`<span class="chip">${fmt(reach(a))} followers</span>`);
+  if (S.depth && a.depthRank === 1) chips.push(`<span class="chip g">Starter</span>`);
+  else if (S.depth && a.depthRank) chips.push(`<span class="chip">${esc(roleText(a))}</span>`);
+  if (S.offers && (a.offers || []).length) { const c = a.offers.find(o => o.committed); chips.push(c ? `<span class="chip g">Committed · ${esc(c.school)}</span>` : `<span class="chip">${a.offers.length} offer${a.offers.length === 1 ? '' : 's'}</span>`); }
+  if (S.film && a.filmUrl) chips.push(`<span class="chip">Film</span>`);
+  return `<a class="card" href="#p=${esc(slug(a.name))}"><div class="av">${photo(a)}${a.teamLogo ? `<img class="tl" src="${esc(a.teamLogo)}" alt="" />` : ''}</div><div style="min-width:0"><div class="nm">${esc(a.name)}</div><div class="meta">${esc([a.position, a.team].filter(Boolean).join(' · '))}</div>${a.year ? `<div class="meta">${esc(a.year)}</div>` : ''}${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div></a>`;
+}
+
+function list() {
+  const levels = ['NFL', 'College', 'High School'].filter(l => data.athletes.some(a => a.level === l));
+  const shown = data.athletes.filter(a => level === 'All' || a.level === level);
+  return `${header()}<div class="wrap">
+    <div class="eyebrow">Milk &amp; Honey Sports</div>
+    <h1 style="margin-top:8px">${esc(data.title)}</h1>
+    <div class="sub">${data.athletes.length} player${data.athletes.length === 1 ? '' : 's'} · tap a player for their profile</div>
+    ${data.note ? `<div class="note">${esc(data.note)}</div>` : ''}
+    ${levels.length > 1 ? `<div class="tabs">${['All', ...levels].map(l => `<button class="tab${l === level ? ' on' : ''}" data-l="${esc(l)}">${esc(l)}</button>`).join('')}</div>` : '<div style="height:24px"></div>'}
+    <div class="grid">${shown.map(card).join('')}</div>
+    ${foot()}
+  </div>`;
+}
+
+function foot() {
+  return `<footer><span class="muted">Shared by Milk &amp; Honey Sports${data.contact ? ' · ' + esc(data.contact.name) : ''}</span>${data.contact && data.contact.email ? `<a class="muted" style="color:var(--green);text-decoration:none;font-weight:600" href="mailto:${esc(data.contact.email)}">${esc(data.contact.email)}</a>` : ''}</footer>`;
+}
+
+function filmBlock(url) {
+  const m = String(url).match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{6,})/);
+  if (m) return `<div class="sec"><h2>Film</h2><div class="video"><iframe src="https://www.youtube.com/embed/${esc(m[1])}" allowfullscreen loading="lazy" title="Film"></iframe></div></div>`;
+  return '';
+}
+
+function profile(a) {
+  const S = data.sections || {};
+  const facts = [['Height', a.height], ['Weight', a.weight ? (/\d$/.test(a.weight) ? a.weight + ' lbs' : a.weight) : ''], ['Year', a.year], ['Hometown', a.hometown], [S.depth ? 'Depth chart' : '', roleText(a)]].filter(([l, v]) => l && v);
+  const socials = S.socials ? [['Instagram', a.instagram, a.igFollowers, 'https://instagram.com/'], ['X', a.twitter, a.twitterFollowers, 'https://x.com/'], ['TikTok', a.tiktok, a.tiktokFollowers, 'https://tiktok.com/@']].filter(x => x[1]) : [];
+  const offers = S.offers ? [...(a.offers || [])].sort((x, y) => (y.committed ? 1 : 0) - (x.committed ? 1 : 0)) : [];
+  return `${header()}<div class="wrap">
+    <a class="back" href="#">← All players</a>
+    <div class="hero">${photo(a)}<div style="min-width:0;flex:1">
+      <h1>${esc(a.name)}</h1>
+      <div class="line">${a.teamLogo ? `<img src="${esc(a.teamLogo)}" alt="" />` : ''}${esc([a.position, a.jerseyNumber ? '#' + a.jerseyNumber : '', a.team].filter(Boolean).join(' · '))}</div>
+    </div>${S.film && a.filmUrl ? `<a class="btn" href="${esc(a.filmUrl)}" target="_blank" rel="noopener noreferrer">▶ Watch film</a>` : ''}</div>
+    ${facts.length ? `<div class="facts">${facts.map(([l, v]) => `<div><div class="eyebrow">${esc(l)}</div><div class="fv">${esc(v)}</div></div>`).join('')}</div>` : ''}
+    ${S.film && a.filmUrl ? filmBlock(a.filmUrl) : ''}
+    ${a.espnId ? `<div class="sec" id="stats"><h2>Stats</h2><div class="muted">Loading stats…</div></div>` : ''}
+    ${offers.length ? `<div class="sec"><h2>Offers (${offers.length})</h2><div class="offers">${offers.map(o => `<div class="offer${o.committed ? ' c' : ''}">${o.logo ? `<img src="${esc(o.logo)}" alt="" />` : ''}<span>${esc(o.school)}</span>${o.committed ? '<span class="chip g">Committed</span>' : ''}</div>`).join('')}</div></div>` : ''}
+    ${socials.length ? `<div class="sec"><h2>Social</h2><div class="tiles" style="margin-bottom:12px"><div class="tile"><div class="eyebrow">Total reach</div><div class="v">${fmt(reach(a))}</div></div>${a.growth7d ? `<div class="tile"><div class="eyebrow">Last 7 days</div><div class="v" style="color:var(--green)">+${fmt(a.growth7d)}</div></div>` : ''}</div>${socials.map(([l, h, n, base]) => `<div class="soc"><span class="muted">${l}</span><a href="${base}${encodeURIComponent(h)}" target="_blank" rel="noopener noreferrer">@${esc(h)}${n ? ` · ${fmt(n)}` : ''}</a></div>`).join('')}</div>` : ''}
+    ${S.interests && (a.interests || []).length ? `<div class="sec"><h2>Interests</h2><div class="chips">${a.interests.map(i => `<span class="chip">${esc(i)}</span>`).join('')}</div></div>` : ''}
+    ${foot()}
+  </div>`;
+}
+
+// Live stats from ESPN (college / NFL): this season's line + game log, then
+// season-by-season. Columns that are zero everywhere are dropped.
+async function loadStats(a) {
+  const box = document.getElementById('stats');
+  if (!box) return;
+  const league = a.level === 'NFL' ? 'nfl' : 'college-football';
+  const base = `https://site.web.api.espn.com/apis/common/v3/sports/football/${league}/athletes/${a.espnId}`;
+  const get = (u) => fetch(u).then(r => r.json()).catch(() => null);
+  const [st, lg] = await Promise.all([get(base + '/stats'), get(base + '/gamelog')]);
+  if (!document.getElementById('stats')) return;
+  const all = ((st || {}).categories || []).filter(c => (c.statistics || []).length);
+  const cats = all.length > 1 ? all.filter(c => !/scoring/i.test(c.name || '')) : all;
+  let html = '<h2>Stats</h2>';
+  // Game log (current season)
+  const log = lg || {};
+  const games = [];
+  (log.seasonTypes || []).forEach(t => (t.categories || []).forEach(c => (c.events || []).forEach(ev => games.push({ ...((log.events || {})[ev.eventId] || {}), stats: ev.stats || [] }))));
+  games.sort((x, y) => String(y.gameDate || '').localeCompare(String(x.gameDate || '')));
+  const season = (((log.filters || []).find(f => f.name === 'season') || {}).value) || '';
+  if (games.length) {
+    const cols = (log.labels || []).map((l, i) => i).filter(i => games.some(g => !isZero(g.stats[i])));
+    const seasonVal = (name) => { for (const c of cats) { const i = (c.names || []).indexOf(name); const row = (c.statistics || []).find(x => String((x.season || {}).year) === String(season)); if (i >= 0 && row) return (row.stats || [])[i]; } return ''; };
+    html += `<div class="eyebrow" style="margin-bottom:8px">${esc(season)} game by game</div><div class="scroll"><table><thead><tr><th class="l">Date</th><th class="l">Opponent</th><th class="l">Result</th>${cols.map(i => `<th title="${esc((log.displayNames || [])[i] || '')}">${esc(log.labels[i])}</th>`).join('')}</tr></thead><tbody>
+      <tr class="tot"><td class="l" colspan="3">${esc(season)} season</td>${cols.map(i => `<td>${esc(seasonVal((log.names || [])[i]))}</td>`).join('')}</tr>
+      ${games.map(g => { const d = g.gameDate ? new Date(g.gameDate) : null; const o = g.opponent || {}; return `<tr><td class="l">${d && !isNaN(d) ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}</td><td class="l"><span class="opp"><span class="muted">${g.atVs === '@' || g.atVs === 'at' ? '@' : 'vs'}</span>${o.logo ? `<img src="${esc(o.logo)}" alt="" />` : ''}${esc(o.abbreviation || '')}</span></td><td class="l"><span class="${g.gameResult === 'W' ? 'w' : g.gameResult === 'L' ? 'lo' : ''}">${esc(g.gameResult || '')}</span> ${esc(g.score || '')}</td>${cols.map(i => `<td>${esc(g.stats[i])}</td>`).join('')}</tr>`; }).join('')}
+    </tbody></table></div>`;
+  }
+  // Season by season
+  cats.forEach(c => {
+    const rows = [...(c.statistics || [])].sort((x, y) => ((y.season || {}).year || 0) - ((x.season || {}).year || 0));
+    const cols = (c.labels || []).map((l, i) => i).filter(i => rows.some(r => !isZero((r.stats || [])[i])));
+    if (!cols.length) return;
+    html += `<div class="eyebrow" style="margin:20px 0 8px">${esc(c.displayName || c.name)} · by season</div><div class="scroll"><table><thead><tr><th class="l">Season</th>${cols.map(i => `<th>${esc(c.labels[i])}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td class="l">${esc((r.season || {}).year || '')}</td>${cols.map(i => `<td>${esc((r.stats || [])[i])}</td>`).join('')}</tr>`).join('')}${rows.length > 1 && (c.totals || []).length ? `<tr class="tot"><td class="l">Career</td>${cols.map(i => `<td>${esc(c.totals[i])}</td>`).join('')}</tr>` : ''}</tbody></table></div>`;
+  });
+  if (!games.length && !cats.length) html += '<div class="muted">No stats logged yet this season.</div>';
+  box.innerHTML = html;
+}
+
+function render() {
+  if (err) {
+    const m = { notfound: 'This link could not be found.', expired: 'This link has expired — ask your Milk & Honey contact for a new one.', invalid: 'Invalid link.', error: 'Something went wrong. Try again in a minute.' };
+    app.innerHTML = `${header()}<div class="err"><h2>${m[err] || m.error}</h2></div>`;
+    return;
+  }
+  if (!data) { app.innerHTML = `${header()}<div class="err"><div class="muted">Loading…</div></div>`; return; }
+  const h = decodeURIComponent((location.hash.match(/^#p=(.+)$/) || [])[1] || '');
+  const a = h && data.athletes.find(x => slug(x.name) === h);
+  if (a) { app.innerHTML = profile(a); window.scrollTo(0, 0); document.title = `${a.name} — Milk & Honey Sports`; if (a.espnId) loadStats(a); return; }
+  app.innerHTML = list();
+  document.title = `${data.title} — Milk & Honey Sports`;
+  app.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { level = b.dataset.l; render(); }));
+}
+
+window.addEventListener('hashchange', render);
+(async () => {
+  render();
+  const id = new URLSearchParams(location.search).get('id');
+  if (!id || !/^[a-f0-9]{8,32}$/.test(id)) { err = 'invalid'; return render(); }
+  try {
+    const r = await fetch('/api/share?id=' + encodeURIComponent(id));
+    if (r.status === 410) err = 'expired';
+    else if (!r.ok) err = 'notfound';
+    else {
+      const d = await r.json();
+      if (d.type !== 'players-share') err = 'notfound';
+      else if (d.expiresAt && new Date(d.expiresAt) < new Date()) err = 'expired';
+      else data = d;
+    }
+  } catch { err = 'error'; }
+  render();
+})();
+</script>
+</body>
+</html>

@@ -159,6 +159,10 @@
       <label>Class of</label>
       <input type="text" id="classOf" placeholder="e.g. 2027" maxlength="4" inputmode="numeric" />
     </div>
+    <div class="field" id="film-field" style="display:none">
+      <label>Film link (Hudl or YouTube)</label>
+      <input type="url" id="filmUrl" placeholder="https://www.hudl.com/profile/…" autocorrect="off" autocapitalize="none" inputmode="url" />
+    </div>
     <div class="btn-row">
       <button class="btn-back" onclick="goBack(3)">← Back</button>
       <button class="btn-next" onclick="nextStep(3)">Continue →</button>
@@ -369,6 +373,7 @@ function selectLevel(btn) {
 function updateLevelFields() {
   const lbl = document.getElementById('school-label');
   const classofField = document.getElementById('classof-field');
+  document.getElementById('film-field').style.display = selectedLevel === 'High School' ? 'block' : 'none';
   if (selectedLevel === 'NFL') {
     lbl.textContent = 'NFL Team';
     document.getElementById('schoolOrTeam').placeholder = 'NFL Team';
@@ -565,6 +570,7 @@ function getData() {
     jerseyNumber: document.getElementById('jerseyNumber').value.trim(),
     schoolOrTeam: document.getElementById('schoolOrTeam').value.trim(),
     classOf: document.getElementById('classOf').value.trim(),
+    filmUrl: selectedLevel === 'High School' ? document.getElementById('filmUrl').value.trim() : '',
     birthday,
     email: document.getElementById('email').value.trim(),
     phone: document.getElementById('phone').value.trim(),

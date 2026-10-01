@@ -70,6 +70,10 @@
       "destination": "/api/share-og?id=:id&kind=roster"
     },
     {
+      "source": "/players/:id",
+      "destination": "/api/share-og?id=:id&kind=players"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/:path*"
     },

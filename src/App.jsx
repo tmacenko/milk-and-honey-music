@@ -1166,6 +1166,11 @@ function AthleteForm({ initial, onSave, onCancel, staffNames, canContracts = tru
                 {lockInput('url247', '247Sports profile URL', 'profileUrl247', 'Auto-discovered nightly for HS players')}
               </div>
             )}
+            {isHS && (
+              <div style={{ gridColumn: "1/-1" }}>
+                <Field label="Film link (Hudl / YouTube)"><Input value={form.filmUrl || ''} onChange={e => set('filmUrl', e.target.value.trim())} placeholder="https://www.hudl.com/profile/…" /></Field>
+              </div>
+            )}
           </>)}
         </div>
         <div style={{ padding: "14px 24px", borderTop: `1px solid ${G.surfaceBorder}`, display: "flex", gap: 10, flexShrink: 0 }}>
@@ -3843,9 +3848,10 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
               </div>
             );
           })()}
-          {a.profileUrl247 && (
+          {(a.profileUrl247 || a.filmUrl) && (
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-              <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>
+              {a.filmUrl && <a href={a.filmUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>Watch film →</a>}
+              {a.profileUrl247 && <a href={a.profileUrl247} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: G.green, textDecoration: "none", fontWeight: 600 }}>247Sports profile →</a>}
             </div>
           )}
         </div>
@@ -11282,6 +11288,259 @@ function contractPosGroup(pos) {
   if (/^(K|P|LS|PK)/.test(p)) return 'ST';
   return '';
 }
+// ── Share players (sports) ──────────────────────────────────────────────────
+// Full-page builder behind the Share button: who it's for (presets the
+// sections, like Team Fit priorities), who's on it (by level + roster filters,
+// or specific players), what's included, then a link and/or a PDF. The server
+// (api/share.js sanitizePlayer) is the final word on what can be shared.
+const SHARE_SECTIONS = [
+  ['measurables', 'Height, weight and year', 'College year (Sophomore…) or high school class'],
+  ['hometown', 'Hometown', ''],
+  ['socials', 'Socials and total reach', 'Handles, followers and the last 7 days of growth'],
+  ['interests', 'Interests', ''],
+  ['stats', 'Stats', 'College and NFL only — live from ESPN'],
+  ['depth', 'Depth chart role', 'College and NFL only'],
+  ['offers', 'Offers', 'High school only — school logos'],
+  ['film', 'Film', 'High school only — Hudl or YouTube link'],
+  ['contact', 'Your contact card', 'Your name and work email'],
+];
+const SHARE_PRESETS = {
+  brand: { measurables: false, hometown: true, socials: true, interests: true, stats: false, depth: false, offers: false, film: false, contact: true },
+  coach: { measurables: true, hometown: true, socials: false, interests: false, stats: true, depth: true, offers: true, film: true, contact: true },
+};
+const SHARE_AUDIENCES = [['brand', 'Brand', 'Socials, reach, market'], ['coach', 'Coach / team', 'Measurables, stats, offers, film'], ['custom', 'Custom', 'Pick every section yourself']];
+// High schoolers' 247 offers ([[school, offered, status]]) with team logos.
+function shareOffers(a, px) {
+  let list = [];
+  try { list = JSON.parse(a.offers247 || '[]'); } catch { list = []; }
+  const committedTo = String(a.committedTo || '').toLowerCase();
+  return (Array.isArray(list) ? list : []).filter(r => Array.isArray(r) && r[0]).map(r => {
+    const school = String(r[0]);
+    const t = px ? pxTeamByName(px, school) : '';
+    const committed = /commit/i.test(String(r[2] || '')) || (!!committedTo && committedTo === school.toLowerCase());
+    return { school: t || school, logo: t && px.teamInfo[t] ? pxEspnLogo(px.teamInfo[t].logo) : '', committed };
+  });
+}
+
+function SportsSharePage({ athletes, isMobile, staff, user }) {
+  const [audience, setAudience] = useState('');
+  const [on, setOn] = useState({ ...SHARE_PRESETS.coach, contact: true });
+  const [picked, setPicked] = useState([]);
+  const [levels, setLevels] = useState([]);
+  const [side, setSide] = useState('All');
+  const [group, setGroup] = useState('All');
+  const [depth, setDepth] = useState('All');
+  const [agent, setAgent] = useState('All');
+  const [q, setQ] = useState('');
+  const [title, setTitle] = useState('');
+  const [note, setNote] = useState('');
+  const [expiry, setExpiry] = useState('30');
+  const [busy, setBusy] = useState('');
+  const [link, setLink] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState('');
+  const [px, setPx] = useState(PROSPECTS.data);
+  useEffect(() => { if (!px) loadProspectData(false).then(setPx).catch(() => {}); }, [px]);
+
+  const pad = isMobile ? 16 : 32;
+  const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20, minWidth: 0 };
+  const eyebrow = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary };
+  const h2 = { fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text, marginBottom: 12 };
+  const sel = { fontFamily: ff, fontSize: 13, padding: "8px 10px", borderRadius: 10, border: `1px solid ${G.surfaceBorder}`, background: G.surface, color: G.text };
+  const btn = (primary, disabled) => ({ fontFamily: ff, fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 10, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, border: primary ? "none" : `1px solid ${G.surfaceBorder}`, background: primary ? G.green : G.surfaceRaised, color: primary ? "#0a0a0a" : G.text, whiteSpace: "nowrap" });
+  const chip = (active) => ({ fontFamily: ff, fontSize: 13, fontWeight: 600, padding: "6px 14px", borderRadius: 99, cursor: "pointer", border: `1px solid ${active ? G.green : G.surfaceBorder}`, background: active ? G.greenSubtle : "transparent", color: active ? G.green : G.textSecondary });
+
+  const pickAudience = (k) => { setAudience(k); if (SHARE_PRESETS[k]) setOn({ ...SHARE_PRESETS[k] }); setLink(null); };
+  const toggle = (k) => { setOn(o => ({ ...o, [k]: !o[k] })); if (audience !== 'custom') setAudience('custom'); setLink(null); };
+
+  // Filter set (level + roster filters) → "Add N".
+  const groups = side === 'All' ? [] : POS_SIDES[side];
+  const matches = useMemo(() => (levels.length ? athletes.filter(a => {
+    if (!levels.includes(a.level)) return false;
+    if (depth === 'Starters' && a.depthRank !== 1) return false;
+    if (depth === 'Backups' && !(a.depthRank >= 2)) return false;
+    if (agent !== 'All' && !String(a.agentAssigned || '').toLowerCase().includes(agent.toLowerCase())) return false;
+    if (side !== 'All') { const g = contractPosGroup(a.position); if (!POS_SIDES[side].includes(g)) return false; if (group !== 'All' && g !== group) return false; }
+    return true;
+  }) : []), [athletes, levels, depth, agent, side, group]);
+  const pickedSet = new Set(picked);
+  const toAdd = matches.filter(a => !pickedSet.has(a.name));
+  const addNames = (names) => { setPicked(p => [...p, ...names.filter(n => !p.includes(n))]); setLink(null); };
+  const ql = q.trim().toLowerCase();
+  const results = ql.length >= 2 ? athletes.filter(a => !pickedSet.has(a.name) && (a.name.toLowerCase().includes(ql) || String(a.nflTeam || a.college || '').toLowerCase().includes(ql))).slice(0, 8) : [];
+  const byName = new Map(athletes.map(a => [a.name, a]));
+  const pickedList = picked.map(n => byName.get(n)).filter(Boolean);
+  const move = (i, d) => setPicked(p => { const n = [...p]; const j = i + d; if (j < 0 || j >= n.length) return p; [n[i], n[j]] = [n[j], n[i]]; return n; });
+
+  const autoTitle = audience === 'brand' ? 'Milk & Honey Sports — Athletes' : audience === 'coach' ? 'Milk & Honey Sports — Prospects' : 'Milk & Honey Sports';
+  const mapPlayer = (a) => ({
+    name: a.name, level: a.level, position: a.position, jerseyNumber: a.jerseyNumber, team: a.nflTeam || a.college || '',
+    photoUrl: a.photoUrl, teamLogo: a.teamLogo, height: a.height, weight: a.weight,
+    year: a.level === 'College' ? (a.espnClass || a.yearInSchool || '') : '', classOf: a.classOf, hometown: a.hometown,
+    instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
+    igFollowers: parseReach(a.igFollowers), twitterFollowers: parseReach(a.twitterFollowers), tiktokFollowers: parseReach(a.tiktokFollowers),
+    growth7d: a.growth7d, growth7dPct: a.growth7dPct, interests: a.interests,
+    espnId: a.level !== 'High School' ? a.espnId : '', depthRank: a.depthRank, depthPos: a.depthPos,
+    offers: a.level === 'High School' ? shareOffers(a, px) : undefined, filmUrl: a.level === 'High School' ? a.filmUrl : '',
+  });
+  const ready = !!audience && pickedList.length > 0;
+  const createLink = async () => {
+    if (!ready || busy) return;
+    setBusy('link'); setErr('');
+    try {
+      const expiresAt = expiry === 'never' ? null : new Date(Date.now() + parseInt(expiry, 10) * 864e5).toISOString();
+      const r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'players-share', audience, title: title.trim() || autoTitle, note: note.trim(), sections: on, expiresAt, athletes: pickedList.map(mapPlayer) }) });
+      const d = await r.json();
+      if (!r.ok || !d.url) throw new Error(d.error || 'Couldn’t create the link');
+      setLink(d.url); setCopied(false);
+    } catch (e) { setErr(e.message); }
+    setBusy('');
+  };
+  const downloadPdfFile = async () => {
+    if (!ready || busy) return;
+    setBusy('pdf'); setErr('');
+    try {
+      const hasNfl = pickedList.some(a => a.level === 'NFL'), hasAm = pickedList.some(a => a.level !== 'NFL');
+      const r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        action: 'roster-table-pdf', title: title.trim() || autoTitle, subtitle: '',
+        teamLabel: hasNfl && hasAm ? 'Team / School' : hasNfl ? 'Team' : 'School',
+        include: { position: true, class: !!on.measurables, team: true, level: new Set(pickedList.map(a => a.level)).size > 1, agent: false, reach: !!on.socials },
+        rows: pickedList.map(a => ({ name: a.name, photoUrl: a.photoUrl || '', level: a.level || '', position: a.position || '', class: a.level === 'College' ? (a.espnClass || a.yearInSchool || '') : a.level === 'High School' ? String(a.classOf || '') : '', team: a.nflTeam || a.college || '', teamLogo: a.teamLogo || '', agent: '', reach: athleteReach(a) })),
+      }) });
+      if (!r.ok) throw new Error('Couldn’t make the PDF');
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const el = document.createElement('a');
+      el.href = url; el.download = `${slugOf(title.trim() || autoTitle) || 'players'}.pdf`; document.body.appendChild(el); el.click(); el.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (e) { setErr(e.message); }
+    setBusy('');
+  };
+
+  const step = (n, label) => <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}><span style={{ width: 22, height: 22, borderRadius: 99, background: G.surfaceRaised, color: G.textSecondary, fontSize: 11.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{n}</span><span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>{label}</span></div>;
+
+  return (
+    <div style={{ padding: `24px ${pad}px 48px`, display: "flex", flexDirection: "column", gap: 20, maxWidth: 1240 }}>
+      <div>
+        <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, lineHeight: 1.1 }}>Share players</div>
+        <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 4 }}>Build a link or PDF for a brand or a coaching staff. Contracts, value, notes, past brand partners and personal contact info are never included.</div>
+      </div>
+
+      <div style={card}>
+        {step(1, 'Who’s it for?')}
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+          {SHARE_AUDIENCES.map(([k, l, d]) => (
+            <button key={k} onClick={() => pickAudience(k)}
+              onMouseEnter={e => { if (audience !== k) e.currentTarget.style.background = G.surfaceRaised; }}
+              onMouseLeave={e => { if (audience !== k) e.currentTarget.style.background = 'transparent'; }}
+              style={{ textAlign: "left", fontFamily: ff, cursor: "pointer", padding: 16, borderRadius: 12, border: `${audience === k ? 2 : 1}px solid ${audience === k ? G.green : G.surfaceBorder}`, background: audience === k ? G.greenSubtle : "transparent" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: G.text }}>{l}</div>
+              <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>{d}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.25fr) minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
+        <div style={card}>
+          {step(2, 'Who’s on it?')}
+          <div style={{ ...eyebrow, marginBottom: 8 }}>Add by level</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            {ALL_LEVELS.map(l => <button key={l} onClick={() => setLevels(v => (v.includes(l) ? v.filter(x => x !== l) : [...v, l]))} style={chip(levels.includes(l))}>{l === 'High School' ? 'High school' : l}</button>)}
+          </div>
+          {levels.length > 0 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+              <select value={side} onChange={e => { setSide(e.target.value); setGroup('All'); }} style={sel} aria-label="Side of the ball"><option value="All">All positions</option>{Object.keys(POS_SIDES).map(s => <option key={s} value={s}>{s}</option>)}</select>
+              {groups.length > 1 && <select value={group} onChange={e => setGroup(e.target.value)} style={sel} aria-label="Position group"><option value="All">All {side.toLowerCase()}</option>{groups.map(g => <option key={g} value={g}>{g}</option>)}</select>}
+              <select value={depth} onChange={e => setDepth(e.target.value)} style={sel} aria-label="Depth chart"><option value="All">Any role</option><option>Starters</option><option>Backups</option></select>
+              <select value={agent} onChange={e => setAgent(e.target.value)} style={sel} aria-label="Agent"><option value="All">All agents</option>{(staff || []).map(n => <option key={n} value={n}>{n}</option>)}</select>
+              <button disabled={!toAdd.length} onClick={() => addNames(toAdd.map(a => a.name))} style={btn(true, !toAdd.length)}>{toAdd.length ? `Add ${toAdd.length} player${toAdd.length === 1 ? '' : 's'}` : matches.length ? 'All added' : 'No matches'}</button>
+            </div>
+          )}
+          <div style={{ ...eyebrow, margin: "16px 0 8px" }}>Add specific players</div>
+          <div style={{ position: "relative" }}>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name or school" style={{ ...sel, width: "100%", boxSizing: "border-box" }} />
+            {results.length > 0 && (
+              <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 12, boxShadow: G.shadowLg, zIndex: 20, overflow: "hidden" }}>
+                {results.map(a => (
+                  <button key={a.name} onClick={() => { addNames([a.name]); setQ(''); }}
+                    onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                    style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 12px", background: "transparent", border: "none", cursor: "pointer", fontFamily: ff, textAlign: "left" }}>
+                    <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
+                    <span style={{ fontSize: 13, color: G.text, fontWeight: 600 }}>{a.name}</span>
+                    <span style={{ fontSize: 11.5, color: G.textTertiary }}>{[a.position, a.nflTeam || a.college, a.level].filter(Boolean).join(' · ')}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "20px 0 8px" }}>
+            <div style={eyebrow}>On this share ({pickedList.length})</div>
+            {pickedList.length > 0 && <button onClick={() => { setPicked([]); setLink(null); }} style={{ background: "none", border: "none", color: G.textTertiary, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Clear all</button>}
+          </div>
+          {pickedList.length === 0 ? (
+            <div style={{ fontSize: 13, color: G.textTertiary, padding: "16px 0" }}>No players yet — pick a level above or search for someone.</div>
+          ) : (
+            <div style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, maxHeight: 420, overflowY: "auto" }}>
+              {pickedList.map((a, i) => (
+                <div key={a.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: i % 2 ? G.surfaceRaised : "transparent" }}>
+                  <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{a.name}</div>
+                    <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[a.position, a.nflTeam || a.college, a.level].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" style={{ ...btn(false, i === 0), padding: "4px 8px" }}>↑</button>
+                  <button onClick={() => move(i, 1)} disabled={i === pickedList.length - 1} aria-label="Move down" style={{ ...btn(false, i === pickedList.length - 1), padding: "4px 8px" }}>↓</button>
+                  <button onClick={() => { setPicked(p => p.filter(n => n !== a.name)); setLink(null); }} aria-label={`Remove ${a.name}`} style={{ ...btn(false, false), padding: "4px 8px" }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={card}>
+            {step(3, 'What’s included')}
+            <div style={{ fontSize: 11.5, color: G.textTertiary, marginBottom: 12 }}>Always: photo, name, position and school / team. {audience ? (audience === 'custom' ? 'Custom selection.' : `Preset for a ${audience === 'brand' ? 'brand' : 'coach or team'} — change anything.`) : 'Pick who it’s for to preset these.'}</div>
+            {SHARE_SECTIONS.map(([k, l, d]) => (
+              <label key={k} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", cursor: "pointer", borderTop: `1px solid ${G.surfaceBorder}` }}>
+                <input type="checkbox" checked={!!on[k]} onChange={() => toggle(k)} style={{ marginTop: 2 }} />
+                <span><span style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{l}</span>{d && <span style={{ display: "block", fontSize: 11.5, color: G.textTertiary }}>{d}</span>}</span>
+              </label>
+            ))}
+            <div style={{ fontSize: 11.5, color: G.textTertiary, borderTop: `1px solid ${G.surfaceBorder}`, paddingTop: 8 }}>Never shared: contracts, estimated value, Team Fit, agent notes, past brand partners, personal contact info, high school ratings and stats.</div>
+          </div>
+
+          <div style={card}>
+            {step(4, 'Send it')}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <label style={{ display: "block" }}><div style={{ ...eyebrow, marginBottom: 4 }}>Title</div><input value={title} onChange={e => { setTitle(e.target.value); setLink(null); }} placeholder={autoTitle} style={{ ...sel, width: "100%", boxSizing: "border-box" }} /></label>
+              <label style={{ display: "block" }}><div style={{ ...eyebrow, marginBottom: 4 }}>Note (link only, optional)</div><textarea value={note} onChange={e => { setNote(e.target.value); setLink(null); }} rows={3} placeholder="A line for whoever opens it" style={{ ...sel, width: "100%", boxSizing: "border-box", resize: "vertical" }} /></label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: G.textSecondary }}>Link expires<select value={expiry} onChange={e => { setExpiry(e.target.value); setLink(null); }} style={sel}><option value="7">in 7 days</option><option value="30">in 30 days</option><option value="90">in 90 days</option><option value="never">never</option></select></label>
+              {!ready && <div style={{ fontSize: 11.5, color: G.textTertiary }}>{!audience ? 'Pick who it’s for first.' : 'Add at least one player.'}</div>}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={createLink} disabled={!ready || !!busy} style={btn(true, !ready || !!busy)}>{busy === 'link' ? 'Creating…' : 'Create link'}</button>
+                <button onClick={downloadPdfFile} disabled={!ready || !!busy} style={btn(false, !ready || !!busy)}>{busy === 'pdf' ? 'Preparing…' : 'Download PDF'}</button>
+              </div>
+              {err && <div style={{ fontSize: 12.5, color: G.red }}>{err}</div>}
+              {link && (
+                <div style={{ border: `1px solid ${G.greenBorder}`, background: G.greenSubtle, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: G.text }}>Link ready</div>
+                  <div style={{ fontSize: 12.5, color: G.textSecondary, wordBreak: "break-all" }}>{link}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => navigator.clipboard.writeText(link).then(() => setCopied(true)).catch(() => {})} style={btn(true, false)}>{copied ? 'Copied ✓' : 'Copy link'}</button>
+                    <a href={link} target="_blank" rel="noopener noreferrer" style={{ ...btn(false, false), textDecoration: "none" }}>Open</a>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
   const [levels, setLevels] = useCachedState('contracts.levels', ['NFL', 'College']);
   const toggleLevel = (l) => setLevels(prev => {
@@ -12712,7 +12971,7 @@ function App() {
               types: [a.position, a.jerseyNumber ? `#${a.jerseyNumber}` : '', team].filter(Boolean),
               instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
               bio: a.bio, logoUrls: [a.teamLogo].filter(Boolean),
-              sections: [['Brands', a.brands], ['Interests', a.interests]],
+              sections: [['Interests', a.interests]], // past brand partners are never shared
             };
           }),
         }, `${base}-detailed.pdf`);
@@ -12762,7 +13021,7 @@ function App() {
       position: a.position, team, bio: a.bio,
       instagram: a.instagram, twitter: a.twitter, tiktok: a.tiktok,
       igFollowers: a.igFollowers, twitterFollowers: a.twitterFollowers, tiktokFollowers: a.tiktokFollowers,
-      brands: a.brands, interests: a.interests,
+      interests: a.interests, // never past brand partners
       height: a.height, weight: a.weight, jerseyNumber: a.jerseyNumber, hometown: a.hometown,
     };
   };
@@ -13314,12 +13573,21 @@ function App() {
       onAll={() => { clearCustomGroup(); setFilterTypes([]); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   );
-  const exportControl = (iconOnly = false) => (
+  const exportControl = (iconOnly = false) => (domain === 'sports' && isAdmin && !sportsLimited ? (
+    <button onClick={() => goSportsPage('share')} title="Share players"
+      onMouseEnter={e => { e.currentTarget.style.borderColor = G.surfaceBorderLight; }} onMouseLeave={e => { e.currentTarget.style.borderColor = G.surfaceBorder; }}
+      style={iconOnly
+        ? { background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center" }
+        : { background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, display: "flex", alignItems: "center", gap: 6 }}>
+      <svg width={iconOnly ? 18 : 14} height={iconOnly ? 18 : 14} viewBox="0 0 24 24" fill="none"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      {!iconOnly && 'Share'}
+    </button>
+  ) : (
     <ExportMenu iconOnly={iconOnly} view={domain === 'all' ? 'list' : rosterView} count={domain === 'sports' ? filteredAthletes.length : domain === 'all' ? allRows.length : filtered.length} isAdmin={isAdmin} pdfBusy={pdfBusy}
       onPdf={downloadRosterPdf} linkUrl={shareRosterUrl} linkLoading={shareRosterLoading}
       onLink={generateShareLink} onClearLink={() => setShareRosterUrl(null)}
       tableCols={domain === 'sports' ? tableCols : null} onToggleCol={toggleTableCol} />
-  );
+  ));
   const customItems = (domain === 'sports' ? athletes : clients).map(x => ({
     name: x.name, photoUrl: x.photoUrl,
     subtitle: domain === 'sports' ? [x.position, x.nflTeam || x.college].filter(Boolean).join(' · ') : (x.types || []).join(' · '),
@@ -13529,6 +13797,7 @@ function App() {
               {view === 'roster' && navActive && effSportsPage === 'marketing' && <MarketingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && effSportsPage === 'gifting' && <GiftingPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && effSportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
+              {view === 'roster' && navActive && effSportsPage === 'share' && <SportsSharePage athletes={athletes} isMobile={isMobile} staff={sportsStaff} user={currentUser} />}
               {view === 'roster' && navActive && effSportsPage === 'usage' && <UsagePage isMobile={isMobile} staff={sportsStaff} user={currentUser} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
