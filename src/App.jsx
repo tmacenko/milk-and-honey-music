@@ -11373,7 +11373,19 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
   const pickedList = picked.map(n => byName.get(n)).filter(Boolean);
   const move = (i, d) => setPicked(p => { const n = [...p]; const j = i + d; if (j < 0 || j >= n.length) return p; [n[i], n[j]] = [n[j], n[i]]; return n; });
 
-  const autoTitle = audience === 'brand' ? 'Milk & Honey Sports — Athletes' : audience === 'coach' ? 'Milk & Honey Sports — Prospects' : 'Milk & Honey Sports';
+  // Title from who's on it: "Milk & Honey Sports College Roster",
+  // "Milk & Honey Sports Defensive HS Prospects", "… NFL WR Roster".
+  const autoTitle = (() => {
+    if (pickedList.length === 1) return `Milk & Honey Sports — ${pickedList[0].name}`;
+    const lv = [...new Set(pickedList.map(a => a.level))];
+    const gs = [...new Set(pickedList.map(a => contractPosGroup(a.position)).filter(Boolean))];
+    const sides = [...new Set(gs.map(g => Object.keys(POS_SIDES).find(k => POS_SIDES[k].includes(g))).filter(Boolean))];
+    const pos = gs.length === 1 && gs[0] !== 'ST' ? gs[0] : sides.length === 1 ? ({ Offense: 'Offensive', Defense: 'Defensive', Specialists: 'Special Teams' })[sides[0]] : '';
+    const level = lv.length === 1 ? ({ NFL: 'NFL', College: 'College', 'High School': 'HS' })[lv[0]] || '' : '';
+    const noun = lv.length === 1 && lv[0] === 'High School' ? 'Prospects' : 'Roster';
+    const words = gs.length === 1 ? [level, pos] : [pos, level];
+    return ['Milk & Honey Sports', ...words, noun].filter(Boolean).join(' ');
+  })();
   const mapPlayer = (a) => ({
     name: a.name, level: a.level, position: a.position, jerseyNumber: a.jerseyNumber, team: a.nflTeam || a.college || '',
     photoUrl: a.photoUrl, teamLogo: a.teamLogo, height: a.height, weight: a.weight,
