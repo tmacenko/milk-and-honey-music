@@ -193,8 +193,12 @@ module.exports = async (req, res) => {
   if (!authorized(req)) return res.status(403).json({ error: 'Not authorized' });
   const dryRun = ['1', 'true'].includes(String((req.query || {}).dryRun || ''));
   // task=depth|espn|hs|contracts|recruits|coaches|all — the daily cron runs everything.
+  // task=board247 — recruiting-board high schoolers' 247 offers / hometown /
+  // ranks only, on its own nightly run (the full run's 52s budget is gone by
+  // the time it reaches them).
   const task = String((req.query || {}).task || 'all');
-  const wants = (t) => task === 'all' || task === t;
+  const boardOnly = task === 'board247';
+  const wants = (t) => task === 'all' || task === t || (boardOnly && t === 'hs');
   const deadline = Date.now() + 52000;
 
   try {
@@ -552,7 +556,7 @@ module.exports = async (req, res) => {
           disc.misses.push(p['Name']);
         }
       });
-      await runTasks(discTasks, 3, deadline);
+      if (!boardOnly) await runTasks(discTasks, 3, deadline);
 
       // 3b: profile enrichment. Any HS athlete with a 247 link gets blank-only
       // backfill from the same season Recruits JSON: height/weight/hometown into
@@ -641,7 +645,7 @@ module.exports = async (req, res) => {
           enrich.updated++; enrich.cells += ups.length;
         }
       });
-      await runTasks(enrichTasks, 3, deadline);
+      if (!boardOnly) await runTasks(enrichTasks, 3, deadline);
 
       // 3c: rank snapshot for the remaining linked HS kids — enrichment only
       // fetched the ones with blank profile fields; the risers history wants
@@ -657,7 +661,7 @@ module.exports = async (req, res) => {
         const found = await findRecruit(p, url, hs247.rank.errors);
         if (found) recordRank(p['Name'], found.hit);
       });
-      await runTasks(rankTasks, 3, deadline);
+      if (!boardOnly) await runTasks(rankTasks, 3, deadline);
       hs247.rank.captured = Object.keys(rankTrend).length;
       const hsTargets = hsPlayers.map(p => {
         const rec = appByKey[nameKey(p['Name'])];
@@ -700,7 +704,7 @@ module.exports = async (req, res) => {
           hs247.images++;
         } catch (e) { hs247.errors.push(`${t.name}: ${e.message}`); }
       });
-      await runTasks(hsTasks, 5, deadline);
+      if (!boardOnly) await runTasks(hsTasks, 5, deadline);
       if (!dryRun) await sheetBatchUpdate(token, hsUpdates);
 
       // 3d: recruiting-board high schoolers who aren't clients — the same 247
@@ -734,7 +738,7 @@ module.exports = async (req, res) => {
           const cands = bRows.slice(1).map((r, i) => ({ r, row: i + 2 }))
             .filter(({ r }) => /high/i.test(r[lvC] || '') && /247sports\.com/.test(r[urlC] || '') && r[nameC] && !clientKeys.has(nameKey(r[nameC])))
             .sort((a, b) => String(a.r[updC] || '').localeCompare(String(b.r[updC] || '')))
-            .slice(0, 25);
+            .slice(0, boardOnly ? 30 : 25);
           const bUpdates = [];
           const today = new Date().toISOString().slice(0, 10);
           const cellAt = (c, row, v) => (c >= 0 ? { range: `'Recruiting Info'!${colLetter(c)}${row}`, values: [[v]] } : null);
@@ -1324,7 +1328,7 @@ module.exports = async (req, res) => {
           body: JSON.stringify({ values: rows2 }),
         });
         let histD = null;
-        try { histD = await sheetGet(token, "'StatHistory'!A:A"); }
+        try { histD = await sheetGet(token, "'StatHistory'!A:B"); }
         catch {
           await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
             method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -1348,14 +1352,17 @@ module.exports = async (req, res) => {
           await sheetBatchUpdate(token, [{ range: `'StatHistory'!A1:${colLetter(HEAD.length - 1)}1`, values: [HEAD] }]);
         } catch (e) { statHistory.error = `header: ${e.message}`; }
         const today = new Date().toISOString().slice(0, 10);
-        const dates = (histD.values || []).slice(1).map(r => String(r[0] || ''));
-        if (dates.includes(today)) {
+        // One row per athlete per day: skip only people already recorded today
+        // (the board-only run adds its players after the full run).
+        const doneToday = new Set((histD.values || []).slice(1).filter(r => String(r[0] || '') === today).map(r => nameKey(r[1])));
+        const fresh = entries.filter(v => !doneToday.has(nameKey(v.name)));
+        if (!fresh.length) {
           statHistory.skippedToday = true;
         } else {
-          await appendRows(`'StatHistory'!A:${colLetter(HEAD.length - 1)}`, entries.map(v =>
+          await appendRows(`'StatHistory'!A:${colLetter(HEAD.length - 1)}`, fresh.map(v =>
             [today, v.name, v.depthRank ?? '', v.depthPos ?? '', v.rating247 ?? '', v.stars247 ?? '', v.natRank247 ?? '', v.posRank247 ?? '', v.stateRank247 ?? '',
               v.compRating247 ?? '', v.compStars247 ?? '', v.compNatRank247 ?? '']));
-          statHistory.rows = entries.length;
+          statHistory.rows = fresh.length;
         }
         // Prune >60-day-old rows once a real backlog builds (append-only tab —
         // oldest rows sit directly under the header).

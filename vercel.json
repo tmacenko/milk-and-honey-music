@@ -44,6 +44,10 @@
       "schedule": "0 10 * * *"
     },
     {
+      "path": "/api/refresh-depth?task=board247",
+      "schedule": "40 10 * * *"
+    },
+    {
       "path": "/api/refresh-music",
       "schedule": "0 6 * * 5"
     },
