@@ -1675,7 +1675,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
               <h1 style={{ fontSize: 28, fontWeight: 800, color: c.headerUrl ? "#fff" : G.text, letterSpacing: "-0.03em", margin: 0, lineHeight: 1.1, flex: 1 }}>{c.name}</h1>
-              {c.contact && (
+              {c.contact && !isAdmin && ( // staff don't need it — only b2b viewers
                 <a href={contactMailto} style={{ display: "flex", alignItems: "center", justifyContent: "center", background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: "8px 10px", textDecoration: "none", flexShrink: 0 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke={G.green} strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke={G.green} strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke={G.green} strokeWidth="2" strokeLinecap="round"/></svg>
                 </a>
@@ -1796,7 +1796,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
               <h1 style={{ fontSize: 38, fontWeight: 800, color: c.headerUrl ? "#fff" : G.text, letterSpacing: "-0.04em", margin: 0, lineHeight: 1.05, flex: 1 }}>{c.name}</h1>
-              {c.contact && (
+              {c.contact && !isAdmin && ( // staff don't need it — only b2b viewers
                 <a href={contactMailto} style={{ display: "flex", alignItems: "center", gap: 7, background: G.greenSubtle, border: `1.5px solid ${G.green}`, borderRadius: 10, padding: "9px 14px", textDecoration: "none", flexShrink: 0, marginTop: 4 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke={G.green} strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke={G.green} strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke={G.green} strokeWidth="2" strokeLinecap="round"/></svg>
                   <span style={{ fontSize: 13, fontWeight: 600, color: G.green }}>Contact Rep</span>
