@@ -9812,6 +9812,11 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
               onMouseEnter={e => e.currentTarget.style.background = G.greenBorder} onMouseLeave={e => e.currentTarget.style.background = G.greenSubtle}
               style={{ background: G.greenSubtle, border: `1px solid ${G.greenBorder}`, borderRadius: 9, padding: "6px 12px", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Client profile →</button>
           )}
+          {onEditRecord && ops && ops.rowFor(p) && (
+            <button onClick={() => onEditRecord(ops.rowFor(p))}
+              onMouseEnter={e => e.currentTarget.style.background = G.surfaceBorder} onMouseLeave={e => e.currentTarget.style.background = G.surfaceRaised}
+              style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 12px", color: G.text, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Edit</button>
+          )}
           <button onClick={onClose} title="Close (Esc)" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "6px 10px", color: G.textSecondary, cursor: "pointer", fontSize: 13, fontFamily: ff }}>✕</button>
         </div>
         <div style={{ overflowY: "auto", flex: 1, padding: "8px 24px 32px" }}>
@@ -10164,6 +10169,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                       {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
                     </th>
                   ))}
+                  <th style={{ borderBottom: `1px solid ${G.surfaceBorder}` }} />
                 </tr></thead>
                 <tbody>
                   {rows.map((r, i) => {
@@ -10212,6 +10218,12 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                               </select>
                             );
                           })()}
+                        </td>
+                        <td style={{ ...td, overflow: "visible", maxWidth: "none", textAlign: "right" }} onClick={e => e.stopPropagation()}>
+                          <button onClick={() => setEditing(r)} title="Edit"
+                            onMouseEnter={e => { e.currentTarget.style.background = G.surfaceRaised; e.currentTarget.style.color = G.text; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = G.textSecondary; }}
+                            style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "4px 10px", color: G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Edit</button>
                         </td>
                       </tr>
                     );
