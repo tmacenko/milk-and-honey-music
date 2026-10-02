@@ -8175,19 +8175,23 @@ function pxValue(data, p, team, role) {
     // The #2 who plays: Opendorse's average backup pay.
     roleF = p4 ? PX_BACKUP_RATIO[grp] || 0.2 : 0.4;
   } else if (role === 'reserve') {
-    // Deeper on the chart (or not on it): near-minimum deals.
-    roleF = (p4 ? PX_BACKUP_RATIO[grp] || 0.2 : 0.4) * 0.4;
+    // Deeper on the chart: still the published backup level — Milk & Honey's
+    // own college deals (29, signed for 2026) showed the old extra 60% cut
+    // under-priced non-starters by ~2.5×.
+    roleF = p4 ? PX_BACKUP_RATIO[grp] || 0.2 : 0.4;
   } else {
     // Production, with a steeper top end — the market pays stars far more
     // than solid starters (flatter outside the P4, where budgets cap it).
     roleF = !P ? 0.9 : ti.tier === 'P4' || !team ? 0.6 + 0.8 * (P / 100) + (P >= 90 ? (P - 90) * 0.06 : 0) : 0.75 + 0.5 * (P / 100);
   }
-  // A true freshman who isn't starting is paid on his recruiting profile —
-  // that's what his deal was signed on (a 4★ third-stringer out-earns a 3★
-  // one). Second-years keep a quarter of it as a floor.
-  if (!p.isHs && role !== 'starter' && role !== 'recruit') {
-    if (p.yr === 1) roleF = recruitF();
-    else if (p.yr === 2) roleF = Math.max(roleF, recruitF() * 0.25);
+  // Recruiting pedigree is a floor: schools pay for a high national rank
+  // even before production (top-100 ≈ a starter's price, ~300 ≈ half,
+  // 1,000+ ≈ backup level). Checked against the agency's 29 college deals:
+  // typical miss 2.8× → 1.4×, no systematic lean (year in school tested and
+  // left out — production and rank already carry it).
+  if (!p.isHs && role !== 'recruit') {
+    const ped = Math.max(0.15, Math.min(1, 1.1 * Math.exp(-(p.natRank || 3000) / 450)));
+    roleF = Math.max(roleF, ped * 0.9);
   }
   const mid = anchor[1] * school * roleF;
   const w = conf === 'medium' ? [0.75, 1.3] : [0.6, 1.5];
