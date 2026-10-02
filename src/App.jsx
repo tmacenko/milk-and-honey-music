@@ -8168,8 +8168,22 @@ function pxValue(data, p, team, role) {
     const n = p.natRank || 0;
     return n ? 2.2 * Math.exp(-n / 130) + 0.02 : p.stars >= 5 ? 1.8 : p.stars === 4 ? 0.3 : p.stars === 3 ? 0.04 : 0.02;
   };
+  let offerLift = '';
   if (role === 'recruit') {
     roleF = recruitF();
+    // Offers: schools bidding sets a recruit's price, and star ratings lag.
+    // His third-best offer (so one splashy or soft offer can't move him)
+    // implies a level — that level's price, 30% off, is a floor. Not yet
+    // checked against real recruit deals (none in the sheet yet).
+    const op = (p.offers || []).map(n => pxProgram(data).pct[n]).filter(x => x != null).sort((a, b) => b - a);
+    if (op.length >= 2) {
+      const lvl = op[Math.min(2, op.length - 1)];
+      const pts = [[97, 25], [90, 150], [82, 300], [74, 500], [65, 1000], [45, 2500]];
+      let rank = lvl >= 97 ? 25 : 2500;
+      for (let i = 1; i < pts.length; i++) if (lvl <= pts[i - 1][0] && lvl >= pts[i][0]) { const [a, b] = [pts[i - 1], pts[i]]; rank = b[1] + (a[1] - b[1]) * (lvl - b[0]) / (a[0] - b[0]); break; }
+      const f = 0.7 * (2.2 * Math.exp(-rank / 130) + 0.02);
+      if (f > roleF) { roleF = f; offerLift = (p.offers || []).find(n => pxProgram(data).pct[n] === lvl) || ''; }
+    }
     if (conf === 'medium') conf = 'low';
   } else if (role === 'rotation' || role === 'backup') {
     // The #2 who plays: Opendorse's average backup pay.
@@ -8195,7 +8209,7 @@ function pxValue(data, p, team, role) {
   }
   const mid = anchor[1] * school * roleF;
   const w = conf === 'medium' ? [0.75, 1.3] : [0.6, 1.5];
-  return { lo: mid * w[0], mid, hi: mid * w[1], conf, role, anchorMid: anchor[1] };
+  return { lo: mid * w[0], mid, hi: mid * w[1], conf, role, anchorMid: anchor[1], offerLift };
 }
 // Depth-chart rank, ignoring Ourlads' reserves list ("RES" isn't a spot on
 // the two-deep).
@@ -8778,7 +8792,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, paddingLeft: 32 }}>
             <PxFitFactors t={t} w={prefs.w} />
           </div>
-          {t.value && <div title={`Estimated from ${PX_BUDGETS[t.name] ? `${t.name}’s 2026 roster budget (The Athletic, $${PX_BUDGETS[t.name][0]}–${PX_BUDGETS[t.name][1]}M)` : t.tier === 'G5' ? 'Group of 6 pay levels (Opendorse)' : 'FCS — very little public pay data'}, the conference’s spending on the position (Opendorse) and ESPN’s 2026 position prices. Confidence: ${t.value.conf}.`} style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Est. market value here: <b style={{ color: G.text }}>{pxMoneyRange(t.value)}</b> {PX_ROLE_LABEL[t.value.role]}{t.value.conf !== 'medium' ? <span style={{ color: G.textTertiary }}> · {t.value.conf} confidence</span> : null}</div>}
+          {t.value && <div title={`Estimated from ${PX_BUDGETS[t.name] ? `${t.name}’s 2026 roster budget (The Athletic, $${PX_BUDGETS[t.name][0]}–${PX_BUDGETS[t.name][1]}M)` : t.tier === 'G5' ? 'Group of 6 pay levels (Opendorse)' : 'FCS — very little public pay data'}, the conference’s spending on the position (Opendorse) and ESPN’s 2026 position prices.${t.value.offerLift ? ` Raised by his offers (third-best: ${t.value.offerLift}) — not yet checked against real recruit deals.` : ''} Confidence: ${t.value.conf}.`} style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Est. market value here: <b style={{ color: G.text }}>{pxMoneyRange(t.value)}</b> {PX_ROLE_LABEL[t.value.role]}{t.value.conf !== 'medium' ? <span style={{ color: G.textTertiary }}> · {t.value.conf} confidence</span> : null}</div>}
           <PxTransferLine t={t} style={{ marginTop: 8, paddingLeft: 32 }} />
           {t.thin && t.thin.length > 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 8, paddingLeft: 32 }}>Limited data: {t.thin.join(', ')}</div>}
         </div>
