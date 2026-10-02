@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
+import PX_TM from './pxTransferModel.json';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 // Every color routes through CSS variables so the whole app re-skins from one
@@ -8160,28 +8161,32 @@ const pxCurrentRole = (p) => {
 const PX_ROLE_LABEL = { starter: 'as a starter', rotation: 'in the rotation', backup: 'in the rotation', reserve: 'as a reserve', recruit: 'as a freshman' };
 const pxRoleName = { starter: 'Starter', rotation: 'Rotation', backup: 'Rotation', reserve: 'Reserve', recruit: 'Recruit' };
 
-// Backtest of this model on the 2023–25 transfer cycles (~5,900 transfers
-// found at their new school the next season): share who became regulars
-// (enough playing time to be scored) and above-median producers, by the
-// player's own production percentile before the move × how high the
-// destination ranked on their fit list (bottom half / 50–75th / 75–90th /
-// top 10%). Backups with no production record are one row.
-const PX_BT_OUTLOOK = {
-  bands: [[0, 40], [40, 60], [60, 80], [80, 101]],
-  fit: [50, 75, 90],
-  rows: [
-    [[65, 33], [65, 33], [78, 46], [74, 44]],
-    [[70, 43], [70, 45], [81, 50], [87, 58]],
-    [[79, 46], [82, 51], [84, 54], [83, 56]],
-    [[83, 52], [85, 61], [84, 57], [86, 63]],
-  ],
-  backups: [[33, 13], [43, 22], [39, 17], [38, 19]],
-};
-function pxOutlook(prodPct, fitPct) {
-  const fi = PX_BT_OUTLOOK.fit.filter(c => fitPct >= c).length;
-  if (!prodPct) return PX_BT_OUTLOOK.backups[fi];
-  const bi = PX_BT_OUTLOOK.bands.findIndex(([a, b]) => prodPct >= a && prodPct < b);
-  return PX_BT_OUTLOOK.rows[Math.max(0, bi)][fi];
+// Transfer outlook — fitted by scripts/transfer-model.js on every transfer
+// found at a new school since the earliest cached cycle (OL excluded: no
+// production stats to judge). "Play" = earned a production score in year 1,
+// "produce" = above-median production. Three parts, each from real outcomes:
+//   similar players — position, production before the move, class, and the
+//     level step vs. what he's earned (shown at an average room);
+//   room — what this school's share of production leaving adds;
+//   school — how ALL of this school's transfers did vs. what was expected for
+//     them (shrunk, so a handful of transfers barely moves it).
+function pxTransferOdds(P, yr, grp, lvDiff, share, team) {
+  const M = PX_TM;
+  if (!M || !M.coef || !M.groups.includes(grp)) return null;
+  const band = (k, v) => Math.max(0, M.bands[k].findIndex(([a, b]) => v >= a && v < b));
+  const x = (room) => {
+    const v = M.names.map(() => 0); v[0] = 1;
+    const set = (n, a = 1) => { const i = M.names.indexOf(n); if (i > 0) v[i] = a; };
+    set(`prod${band('prod', P)}`); set(`lv${band('lv', lvDiff)}`); set(`yr${band('yr', yr || 0)}`); set(grp);
+    set('room', room == null ? M.roomMean : Math.min(100, room) / 100);
+    return v;
+  };
+  const z = (w, v) => w.reduce((s, c, i) => s + c * v[i], 0);
+  const sg = (q) => 100 / (1 + Math.exp(-q));
+  const sc = M.schools[team] || [0, 0, 0, 0, 0];
+  const odds = (k, ei) => { const base = z(M.coef[k], x(null)), room = z(M.coef[k], x(share)); return [sg(base), sg(room), sg(room + sc[ei])]; };
+  const [pb, pr, pf] = odds('played', 1), [, , qf] = odds('produced', 2);
+  return { play: Math.round(pf), prod: Math.round(qf), base: Math.round(pb), room: Math.round(pr) - Math.round(pb), school: Math.round(pf) - Math.round(pr), n: sc[0], o: sc[3], e: sc[4] };
 }
 function pxFitRank(data, p, prefs, notes) {
   const grp = p.grp || pxGroupOf(p.pos);
@@ -8275,7 +8280,9 @@ function pxFitRank(data, p, prefs, notes) {
     // field in recent seasons.
     // Staying: playing time is the role they already have.
     if (isCur) f.opp = [curRole === 'starter' ? 95 : curRole === 'rotation' ? 65 : 35, `Current school · ${pxRoleName[curRole]}${p.depth && p.depth[1] !== 'RES' ? ` (${p.depth[1]} ${p.depth[0]})` : ''}`];
-    const path = isCur ? null : pxPath(data, t.name, grp, p.isHs ? 'fr' : 'tr');
+    // (Recruits only — for transfers, the school's record is part of the
+    // transfer outlook below, judged against expectations across positions.)
+    const path = isCur || !p.isHs ? null : pxPath(data, t.name, grp, 'fr');
     if (path) {
       f.opp[0] = (p.isHs ? 0.65 : 0.75) * f.opp[0] + (p.isHs ? 0.35 : 0.25) * path.pct;
       f.opp[1] += path.n
@@ -8358,9 +8365,8 @@ function pxFitRank(data, p, prefs, notes) {
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
   const ruledOut = allRows.filter(t => t.mark && t.mark.status === 'notfit');
   const rows = allRows.filter(t => !(t.mark && t.mark.status === 'notfit'));
-  // College players: how similar past transfers did at a school this high on
-  // their list (the backtest is transfers only — recruits get none).
-  if (!p.isHs) rows.forEach((t, i) => { if (!t.current) t.outlook = pxOutlook(P, 100 * (1 - i / rows.length)); });
+  // College players: how transfers like them do at each school.
+  if (!p.isHs) rows.forEach(t => { if (!t.current) t.outlook = pxTransferOdds(P, p.yr, grp, Math.round(tPct(info[t.name]) - D), Math.round((t.share || 0) * 100), t.name); });
   const gms = Object.values(info).map(x => x.games || 0).filter(x => x > 0).sort((x, y) => x - y);
   const early = !gms.length || gms[Math.floor(gms.length / 2)] < 6;
   return { rows, ruledOut, avail, D, C, auto, spTarget: spNear(D), grp, h, offers: offered.size, early, fg };
@@ -8368,6 +8374,19 @@ function pxFitRank(data, p, prefs, notes) {
 
 // A team's factor breakdown for one player (Team Fit rows and the team
 // page's "Fit for …" card).
+// One line under each Team Fit row: how transfers like him do at that
+// school (pxTransferOdds), with its three parts.
+function PxTransferLine({ t, size = 11.5, style }) {
+  const o = t.outlook;
+  if (!o) return null;
+  const pts = (v) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v)}`;
+  return (
+    <div title={`Based on ${PX_TM.n.toLocaleString()} transfers (${PX_TM.cycles[0]}–${PX_TM.cycles[PX_TM.cycles.length - 1]} cycles). Play = enough snaps in year 1 to earn a production score; produce = above-median production.${o.n ? ` ${t.name} transfers: ${o.o} of ${o.n} played (${Math.round(o.e)} expected).` : ''}`} style={{ fontSize: size, color: G.textSecondary, ...style }}>
+      Transfers like him here: <b style={{ color: G.text }}>{o.play}%</b> play year 1 · <b style={{ color: G.text }}>{o.prod}%</b> produce
+      <span style={{ color: G.textTertiary }}> · similar players {o.base}% · room {pts(o.room)} · {t.name} record {o.n ? `${pts(o.school)} (${o.n} transfers)` : '±0 (no recent transfers)'}</span>
+    </div>
+  );
+}
 function PxFitFactors({ t, w }) {
   return PX_FIT_FACTORS.filter(([k]) => k !== 'pay' && t.f[k] && (w[k] || 0) > 0).map(([k, label]) => (
     <span key={k} title={`${label}: ${Math.round(t.f[k][0])}/100${t.f[k][1] ? ` — ${t.f[k][1]}` : ''}`} style={{ display: "inline-flex", flexDirection: "column", gap: 4, minWidth: 84 }}>
@@ -8694,7 +8713,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
             <PxFitFactors t={t} w={prefs.w} />
           </div>
           {t.value && <div title={`Estimated from ${PX_BUDGETS[t.name] ? `${t.name}’s 2026 roster budget (The Athletic, $${PX_BUDGETS[t.name][0]}–${PX_BUDGETS[t.name][1]}M)` : t.tier === 'G5' ? 'Group of 6 pay levels (Opendorse)' : 'FCS — very little public pay data'}, the conference’s spending on the position (Opendorse) and ESPN’s 2026 position prices. Confidence: ${t.value.conf}.`} style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Est. market value here: <b style={{ color: G.text }}>{pxMoneyRange(t.value)}</b> {PX_ROLE_LABEL[t.value.role]}{t.value.conf !== 'medium' ? <span style={{ color: G.textTertiary }}> · {t.value.conf} confidence</span> : null}</div>}
-          {t.outlook && <div title="From a backtest of this model on 2023–25 transfers: players with similar production who landed at a school this high on their fit list" style={{ fontSize: 11.5, color: G.textSecondary, marginTop: 8, paddingLeft: 32 }}>Past transfers like this: <b style={{ color: G.text }}>{t.outlook[0]}%</b> became regulars · <b style={{ color: G.text }}>{t.outlook[1]}%</b> above-median producers</div>}
+          <PxTransferLine t={t} style={{ marginTop: 8, paddingLeft: 32 }} />
           {t.thin && t.thin.length > 0 && <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 8, paddingLeft: 32 }}>Limited data: {t.thin.join(', ')}</div>}
         </div>
       ))}
@@ -8872,7 +8891,7 @@ function TeamPage({ team, isMobile, user, athletes, staff }) {
               </span>
             </div>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12 }}><PxFitFactors t={row} w={fitCtx.w} /></div>
-            {row.outlook && <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 12 }}>Past transfers like this: <b style={{ color: G.text }}>{row.outlook[0]}%</b> became regulars · <b style={{ color: G.text }}>{row.outlook[1]}%</b> above-median producers</div>}
+            <PxTransferLine t={row} size={12.5} style={{ marginTop: 12 }} />
             <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
               <button onClick={() => window.history.back()} style={{ background: "none", border: "none", padding: "4px 8px", color: G.green, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>← Back to Team Fit</button>
               <span style={{ flex: 1 }} />
