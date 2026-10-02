@@ -10043,6 +10043,21 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const sub = useAdminTab('onboarding');
   const [promoting, setPromoting] = useState('');
   const [justPromoted, setJustPromoted] = useState({});
+  // A newly added player is pulled from 247 / ESPN right away (link, photo,
+  // class, rating, then offers / hometown / ranks for high schoolers) instead
+  // of waiting for the nightly batches.
+  const [syncing, setSyncing] = useState(null);
+  const syncNew = async (name, level, reload) => {
+    setSyncing({ name, state: 'busy' });
+    const run = (task) => fetch(`/api/refresh-depth?task=${task}&board=${encodeURIComponent(name)}`).then(r => r.ok);
+    try {
+      const ok = await run('recruits');
+      if (!/college/i.test(level)) await run('board247');
+      reload();
+      setSyncing({ name, state: ok ? 'done' : 'fail' });
+    } catch { setSyncing({ name, state: 'fail' }); }
+    setTimeout(() => setSyncing(cur => (cur && cur.name === name && cur.state !== 'busy' ? null : cur)), 4000);
+  };
   const rosterNames = useMemo(() => new Set((athletes || []).map(a => nameKey(a.name))), [athletes]);
   // Latest recruit-type submission per person, newest first.
   const recruitSubs = useMemo(() => {
@@ -10368,12 +10383,24 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
             if (g(/^stage/i) === 'Signed' && nm && !isClient(nm) && confirmClient(nm)) {
               await upgradeClient({ name: nm, level: g(/^level/i), position: g(/position/i), school: g(/school/i), classOf: g(/class|year/i), agent: g(/agent/i), espnId: g(/^espnid/i), url247: g(/^url247/i) });
             }
+            // New players — and existing ones whose 247 data was never pulled
+            // (no Updated247 date yet) — get pulled right away.
+            const updI = headers.findIndex(h => /^updated247$/i.test(String(h).trim()));
+            const neverPulled = editing !== 'new' && updI >= 0 && !String((editing.cells || [])[updI] || '').trim();
+            const pullNow = editing === 'new' || neverPulled;
             setEditing(null); reload();
+            if (pullNow && nm) syncNew(nm, g(/^level/i) || recTab, reload);
           }}
           onDelete={editing === 'new' ? null : async () => {
             await post({ action: 'tab-delete', tab: 'recruiting', row: editing._row });
             setEditing(null); reload();
           }} />
+      )}
+      {syncing && (
+        <div style={{ position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)", zIndex: 400, display: "flex", alignItems: "center", gap: 8, background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 99, padding: "8px 16px", boxShadow: G.shadowLg, fontSize: 13, color: syncing.state === 'fail' ? G.red : G.text, ...REVEAL }}>
+          {syncing.state === 'busy' && <span style={{ width: 12, height: 12, borderRadius: 6, border: `2px solid ${G.surfaceBorder}`, borderTopColor: G.green, animation: "spin .8s linear infinite" }} />}
+          {syncing.state === 'busy' ? `Pulling ${syncing.name}’s info…` : syncing.state === 'done' ? `${syncing.name} updated` : `Couldn’t pull ${syncing.name}’s info — the nightly run will retry`}
+        </div>
       )}
     </div>
   );

@@ -198,6 +198,11 @@ module.exports = async (req, res) => {
   // the time it reaches them).
   const task = String((req.query || {}).task || 'all');
   const boardOnly = task === 'board247';
+  // ?board=<name> — just that recruiting-board player, right after they're
+  // added (the app calls task=recruits to link 247/ESPN, then task=board247
+  // for offers / hometown / ranks) instead of waiting for the nightly runs.
+  const boardName = String((req.query || {}).board || '').trim();
+  const isBoardName = (n) => !boardName || nameKey(n) === nameKey(boardName);
   const wants = (t) => task === 'all' || task === t || (boardOnly && t === 'hs');
   const deadline = Date.now() + 52000;
 
@@ -736,7 +741,7 @@ module.exports = async (req, res) => {
           const offC = bi(/^offers247$/i), homeC = bi(/^hometown247$/i), updC = bi(/^updated247$/i);
           const clientKeys = new Set(hsPlayers.map(p => nameKey(p['Name'])));
           const cands = bRows.slice(1).map((r, i) => ({ r, row: i + 2 }))
-            .filter(({ r }) => /high/i.test(r[lvC] || '') && /247sports\.com/.test(r[urlC] || '') && r[nameC] && !clientKeys.has(nameKey(r[nameC])))
+            .filter(({ r }) => /high/i.test(r[lvC] || '') && /247sports\.com/.test(r[urlC] || '') && r[nameC] && !clientKeys.has(nameKey(r[nameC])) && isBoardName(r[nameC]))
             .sort((a, b) => String(a.r[updC] || '').localeCompare(String(b.r[updC] || '')))
             .slice(0, boardOnly ? 30 : 25);
           const bUpdates = [];
@@ -866,7 +871,7 @@ module.exports = async (req, res) => {
           .replace(/\bsaint\b/g, 'st').replace(/\bmount\b/g, 'mt').replace(/\bfort\b/g, 'ft')
           .replace(/\b(high school|hs|senior|academy|prep|preparatory|school|university|college|state)\b/g, '')
           .replace(/[^a-z]/g, '');
-        const items = recRows.map((row, i) => ({ row, num: i + 1 })).filter(x => x.num > 1 && cellAt(x.row, rNameC));
+        const items = recRows.map((row, i) => ({ row, num: i + 1 })).filter(x => x.num > 1 && cellAt(x.row, rNameC) && isBoardName(cellAt(x.row, rNameC)));
         const rUpdates = [];
         const putRec = (c, num, v) => { if (c >= 0 && String(v ?? '').trim()) rUpdates.push({ range: `'Recruiting Info'!${colLetter(c)}${num}`, values: [[String(v)]] }); };
         // ?maxdisc= raises the per-run discovery caps for manual backlog drains.
