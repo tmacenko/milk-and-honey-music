@@ -114,7 +114,7 @@ for (const [yk, y] of Object.entries(Y)) {
 }
 
 // ── Final model on every cycle ──
-const K = Number(process.env.K || 20);
+const K = Number(process.env.K || 10); // best holdout logloss (all positions)
 // Room = share of the position's production leaving (0–1, one slope).
 // "Similar players" (part 1) is shown at the average room, so part 2 is only
 // what this school's room adds.
