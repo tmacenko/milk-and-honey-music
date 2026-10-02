@@ -29,11 +29,11 @@ const GRP_LIST = ['QB', 'RB', 'WR', 'TE', 'DL', 'LB', 'DB', 'ATH'];
 const bandOf = (k, v) => Math.max(0, BANDS[k].findIndex(([a, b]) => v >= a && v < b));
 // One-hot design (first band of each = reference).
 const NAMES = ['int', ...BANDS.prod.slice(1).map((_, i) => `prod${i + 1}`), ...BANDS.lv.slice(1).map((_, i) => `lv${i + 1}`),
-  'room', ...(process.env.USE ? ['use'] : []), ...BANDS.yr.slice(1).map((_, i) => `yr${i + 1}`), ...GRP_LIST.slice(1)];
+  'room', ...(process.env.USE ? ['use'] : []), ...(process.env.COMP ? ['better', 'arrivals'] : []), ...BANDS.yr.slice(1).map((_, i) => `yr${i + 1}`), ...GRP_LIST.slice(1)];
 function feats(r) {
   const x = new Array(NAMES.length).fill(0); x[0] = 1;
   const set = (n) => { const i = NAMES.indexOf(n); if (i > 0) x[i] = 1; };
-  set(`prod${bandOf('prod', r.prodBefore)}`); set(`lv${bandOf('lv', r.lvDiff)}`); x[NAMES.indexOf('room')] = Math.min(100, r.share || 0) / 100; if (process.env.USE) x[NAMES.indexOf('use')] = r.use == null ? 0.5 : r.use / 100; set(`yr${bandOf('yr', r.yr || 0)}`); set(r.grp);
+  set(`prod${bandOf('prod', r.prodBefore)}`); set(`lv${bandOf('lv', r.lvDiff)}`); x[NAMES.indexOf('room')] = Math.min(100, r.share || 0) / 100; if (process.env.USE) x[NAMES.indexOf('use')] = r.use == null ? 0.5 : r.use / 100; if (process.env.COMP) { x[NAMES.indexOf('better')] = Math.min(3, r.inBetter || 0); x[NAMES.indexOf('arrivals')] = Math.min(4, r.inAll || 0); } set(`yr${bandOf('yr', r.yr || 0)}`); set(r.grp);
   return x;
 }
 const sig = (z) => 1 / (1 + Math.exp(-z));
@@ -119,11 +119,14 @@ const K = Number(process.env.K || 10); // best holdout logloss (all positions)
 // "Similar players" (part 1) is shown at the average room, so part 2 is only
 // what this school's room adds.
 const roomMean = +(all.reduce((s, r) => s + Math.min(100, r.share || 0), 0) / all.length / 100).toFixed(3);
+// TRAIN_MAX=2022 fits the final model on early cycles only (an honest
+// holdout file for the ranking backtest); OUTFILE overrides the output path.
+const FIT = process.env.TRAIN_MAX ? all.filter(r => r.Y <= +process.env.TRAIN_MAX) : all;
 const out = { v: 1, roomMean, built: new Date().toISOString().slice(0, 10), cycles, n: all.length, K, bands: BANDS, groups: GRP_LIST, names: NAMES, coef: {}, schools: {}, check: report };
 for (const [yk, y] of Object.entries(Y)) {
-  const w = fitLogit(all, y);
+  const w = fitLogit(FIT, y);
   out.coef[yk] = w.map(v => +v.toFixed(4));
-  const sch = effects(all, w, y, r => r.to, K);
+  const sch = effects(FIT, w, y, r => r.to, K);
   Object.entries(sch).forEach(([s, a]) => {
     const o = out.schools[s] || (out.schools[s] = [a.n, 0, 0, 0, 0]);
     // [transfers, played effect, produced effect, actual played, expected played]
@@ -138,4 +141,4 @@ for (const [yk, y] of Object.entries(Y)) {
 const top = Object.entries(out.schools).filter(([, v]) => v[0] >= 15).sort((a, b) => b[1][1] - a[1][1]);
 console.log('\nPlays transfers most vs expected:', top.slice(0, 8).map(([s, v]) => `${s} ${v[3]}/${v[0]} (exp ${v[4]})`).join(', '));
 console.log('Least:', top.slice(-8).map(([s, v]) => `${s} ${v[3]}/${v[0]} (exp ${v[4]})`).join(', '));
-if (!process.env.DRY) fs.writeFileSync(path.join(REPO, 'src/pxTransferModel.json'), JSON.stringify(out));
+if (!process.env.DRY) fs.writeFileSync(process.env.OUTFILE || path.join(REPO, 'src/pxTransferModel.json'), JSON.stringify(out));

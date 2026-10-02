@@ -8215,6 +8215,7 @@ const pxRoleName = { starter: 'Starter', rotation: 'Rotation', backup: 'Rotation
 //   room — what this school's share of production leaving adds;
 //   school — how ALL of this school's transfers did vs. what was expected for
 //     them (shrunk, so a handful of transfers barely moves it).
+const PX_OPP_MODE = 'model';
 function pxTransferOdds(P, yr, grp, lvDiff, share, team) {
   const M = PX_TM;
   if (!M || !M.coef || !M.groups.includes(grp)) return null;
@@ -8333,6 +8334,12 @@ function pxFitRank(data, p, prefs, notes) {
         ? ` · ${p.isHs ? `${grp} signees` : 'transfers'}: ${Math.round((path.raw || 0) * 100)}% regulars ${p.isHs ? 'by yr 2' : 'yr 1'} (${path.hits}/${path.n})`
         : ` · no recent ${p.isHs ? `${grp} signees` : `${grp} transfers`}`;
     }
+    // College transfers: the playing-time score IS the tested outlook — the
+    // chance transfers like him play year 1 here (pxTransferOdds). OL has no
+    // production stats to fit on, so it keeps the room-based score.
+    const outlook = !p.isHs && !isCur ? pxTransferOdds(P, p.yr, grp, Math.round(tPct(ti) - D), Math.round((t.share || 0) * 100), t.name) : null;
+    if (outlook && PX_OPP_MODE === 'model') f.opp[0] = outlook.play;
+    if (outlook && PX_OPP_MODE === 'blend') f.opp[0] = 0.5 * f.opp[0] + 0.5 * outlook.play;
     // Level
     const T = tPct(ti), diff = T - D;
     // Program level: stronger is always better (weight = how much it matters).
@@ -8403,12 +8410,10 @@ function pxFitRank(data, p, prefs, notes) {
     const fitRaw = den ? (num / den) * gate * realism * (isOffer ? 1.1 : 1) * stay : 0;
     // Factors that are only a placeholder for this team (no data behind them).
     const thin = PX_FIT_FACTORS.filter(([fk]) => f[fk] && ((prefs.w || {})[fk] || 0) > 0 && (!f[fk][1] || f[fk][1] === 'Location unknown')).map(([, l]) => l);
-    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, label, slot, realism, value, current: isCur, offered: offered.has(t.name), interested: !!(mark && mark.status === 'interested'), mark: mark || null, thin };
+    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, outlook, label, slot, realism, value, current: isCur, offered: offered.has(t.name), interested: !!(mark && mark.status === 'interested'), mark: mark || null, thin };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
   const ruledOut = allRows.filter(t => t.mark && t.mark.status === 'notfit');
   const rows = allRows.filter(t => !(t.mark && t.mark.status === 'notfit'));
-  // College players: how transfers like them do at each school.
-  if (!p.isHs) rows.forEach(t => { if (!t.current) t.outlook = pxTransferOdds(P, p.yr, grp, Math.round(tPct(info[t.name]) - D), Math.round((t.share || 0) * 100), t.name); });
   const gms = Object.values(info).map(x => x.games || 0).filter(x => x > 0).sort((x, y) => x - y);
   const early = !gms.length || gms[Math.floor(gms.length / 2)] < 6;
   return { rows, ruledOut, avail, D, C, auto, spTarget: spNear(D), grp, h, offers: offered.size, early, fg };

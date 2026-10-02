@@ -25,10 +25,10 @@ const code = grab('const PX_POS_GROUPS = [', 'const PX_CLASS')
 const G = new Proxy({}, { get: () => '' });
 const PX_AC = require(path.join(REPO, 'src/pxAcademics.json'));
 const PX_CM = (() => { try { return require(path.join(REPO, 'src/pxCoachModel.json')); } catch { return {}; } })();
-const PX_TM = (() => { try { return require(path.join(REPO, 'src/pxTransferModel.json')); } catch { return null; } })();
+const PX_TM = (() => { try { return require(process.env.PX_TM_PATH || path.join(REPO, 'src/pxTransferModel.json')); } catch { return null; } })();
 const PX_TIER_NAME = { P4: 'Power 4', G5: 'Group of 5', FCS: 'FCS', D2: 'Division II' };
 const slugOf = (n) => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-eval(code.replace(/^const /gm, 'var ').replace(/^function /gm, 'function '));
+eval((process.env.OPP_MODE ? code.replace("const PX_OPP_MODE = 'model';", `const PX_OPP_MODE = '${process.env.OPP_MODE}';`) : code).replace(/^const /gm, 'var ').replace(/^function /gm, 'function '));
 
 const STORE = path.join(REPO, '.backtest-cache');
 fs.mkdirSync(STORE, { recursive: true });
@@ -74,6 +74,10 @@ if (require.main === module) (async () => {
     const byTeamName = {}; before.players.forEach(p => { if (!p.isHs) byTeamName[`${p.team}|${nk(p.name)}`] = p; });
     const afterBy = {}; after.players.forEach(p => { if (!p.isHs) afterBy[`${p.team}|${nk(p.name)}`] = p; });
     const moves = before.portal.filter(e => e.cycle === Y && e.dest && e.origin);
+    // Same-cycle arrivals at each destination × room (incoming competition),
+    // with their production before the move.
+    const arrivals = {};
+    moves.forEach(e => { const q = byTeamName[`${e.origin}|${nk(e.name)}`]; if (!q || !q.grp) return; const fg = pxFitGroup(q.pos) || q.grp; (arrivals[`${e.dest}|${fg}`] = arrivals[`${e.dest}|${fg}`] || []).push({ k: `${e.origin}|${nk(e.name)}`, pct: q.prodPct || 0 }); });
     let n = 0;
     for (const e of moves) {
       const p = byTeamName[`${e.origin}|${nk(e.name)}`];
@@ -85,9 +89,11 @@ if (require.main === module) (async () => {
       const d = res.rows[i];
       const nxt = afterBy[`${e.dest}|${nk(e.name)}`];
       const sch = pxSchemeUse(before), su = (sch.by[e.dest] || {})[p.grp];
+      const rivals = (arrivals[`${e.dest}|${pxFitGroup(p.pos) || p.grp}`] || []).filter(a => a.k !== `${e.origin}|${nk(e.name)}`);
+      const inAll = rivals.length, inProd = rivals.filter(a => a.pct >= 40).length, inBetter = rivals.filter(a => a.pct > (p.prodPct || 0)).length;
       const use = su != null && sch.sorted[p.grp] ? Math.round(pxMidPct(sch.sorted[p.grp], su)) : null;
       out.push({ Y, name: e.name, pos: p.pos, from: e.origin, to: e.dest, prodBefore: p.prodPct || 0,
-        use, fit: d.fit, pct: Math.round(100 * (1 - i / res.rows.length)), opp: Math.round(d.f.opp[0]), slot: d.slot || 0, label: d.label,
+        use, inAll, inProd, inBetter, fit: d.fit, pct: Math.round(100 * (1 - i / res.rows.length)), opp: Math.round(d.f.opp[0]), slot: d.slot || 0, label: d.label,
         share: Math.round((d.share || 0) * 100), S0: PX_STARTERS[pxFitGroup(p.pos) || p.grp] || 1, lvDiff: Math.round((pxProgram(before).pct[e.dest] || 5) - res.D), stayW: d.stayW, portalOut: d.portalOut, commits: d.commits,
         fromTier: (before.teamInfo[e.origin] || {}).tier || '', toTier: (before.teamInfo[e.dest] || {}).tier || '', yr: p.yr, usageBefore: p.usage ? p.usage[0] : 0,
         found: !!nxt, played: !!(nxt && nxt.prodPct), prodAfter: nxt ? nxt.prodPct || 0 : 0, usageAfter: nxt && nxt.usage ? nxt.usage[0] : 0 });
