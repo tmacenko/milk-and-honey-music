@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, useDeferredVa
 import ReactDOM from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
 import PX_TM from './pxTransferModel.json';
+import PX_FM from './pxFreshmanModel.json';
 import PX_AC from './pxAcademics.json';
 import PX_CM from './pxCoachModel.json';
 
@@ -8216,15 +8217,14 @@ const pxRoleName = { starter: 'Starter', rotation: 'Rotation', backup: 'Rotation
 //   school — how ALL of this school's transfers did vs. what was expected for
 //     them (shrunk, so a handful of transfers barely moves it).
 const PX_OPP_MODE = 'model';
-function pxTransferOdds(P, yr, grp, lvDiff, share, team) {
-  const M = PX_TM;
-  if (!M || !M.coef || !M.groups.includes(grp)) return null;
-  const band = (k, v) => Math.max(0, M.bands[k].findIndex(([a, b]) => v >= a && v < b));
+// Shared by both outlooks: M = a fitted model file, setX(set) fills the
+// player's own features; room is shown at the average room first, so its
+// part is only what this school's room adds, then this school's record.
+function pxModelOdds(M, setX, share, team) {
   const x = (room) => {
     const v = M.names.map(() => 0); v[0] = 1;
     const set = (n, a = 1) => { const i = M.names.indexOf(n); if (i > 0) v[i] = a; };
-    set(`prod${band('prod', P)}`); set(`lv${band('lv', lvDiff)}`); set(`yr${band('yr', yr || 0)}`); set(grp);
-    set('room', room == null ? M.roomMean : Math.min(100, room) / 100);
+    setX(set); set('room', room == null ? M.roomMean : Math.min(100, room) / 100);
     return v;
   };
   const z = (w, v) => w.reduce((s, c, i) => s + c * v[i], 0);
@@ -8233,6 +8233,23 @@ function pxTransferOdds(P, yr, grp, lvDiff, share, team) {
   const odds = (k, ei) => { const base = z(M.coef[k], x(null)), room = z(M.coef[k], x(share)); return [sg(base), sg(room), sg(room + sc[ei])]; };
   const [pb, pr, pf] = odds('played', 1), [, , qf] = odds('produced', 2);
   return { play: Math.round(pf), prod: Math.round(qf), base: Math.round(pb), room: Math.round(pr) - Math.round(pb), school: Math.round(pf) - Math.round(pr), n: sc[0], o: sc[3], e: sc[4] };
+}
+const pxBand = (M, k, v) => Math.max(0, M.bands[k].findIndex(([a, b]) => v >= a && v < b));
+function pxTransferOdds(P, yr, grp, lvDiff, share, team) {
+  const M = PX_TM;
+  if (!M || !M.coef || !M.groups.includes(grp)) return null;
+  return { kind: 'tr', ...pxModelOdds(M, (set) => { set(`prod${pxBand(M, 'prod', P)}`); set(`lv${pxBand(M, 'lv', lvDiff)}`); set(`yr${pxBand(M, 'yr', yr || 0)}`); set(grp); }, share, team) };
+}
+// Freshman outlook — scripts/freshman-model.js, fitted on every high school
+// signee found on a roster since the 2021 class (OL excluded): the chance
+// recruits like him play by year 2 at that school. Recruit level uses stars
+// and national rank; a school far above it lowers the odds.
+function pxFreshmanOdds(stars, natRank, grp, schoolPct, share, team) {
+  const M = PX_FM;
+  if (!M || !M.coef || !M.groups.includes(grp)) return null;
+  const n = natRank || 0, rankD = !n ? 0 : n <= 50 ? 97 : n <= 150 ? 90 : n <= 300 ? 82 : n <= 500 ? 74 : 0;
+  const lvl = Math.max(({ 5: 97, 4: 85, 3: 65, 2: 40 })[stars] || 45, rankD);
+  return { kind: 'fr', ...pxModelOdds(M, (set) => { set(`lvl${pxBand(M, 'lvl', lvl)}`); set(`step${pxBand(M, 'step', Math.round(schoolPct - lvl))}`); set(grp); }, share, team) };
 }
 function pxFitRank(data, p, prefs, notes) {
   const grp = p.grp || pxGroupOf(p.pos);
@@ -8325,19 +8342,14 @@ function pxFitRank(data, p, prefs, notes) {
     // field in recent seasons.
     // Staying: playing time is the role they already have.
     if (isCur) f.opp = [curRole === 'starter' ? 95 : curRole === 'rotation' ? 65 : 35, `Current school · ${pxRoleName[curRole]}${p.depth && p.depth[1] !== 'RES' ? ` (${p.depth[1]} ${p.depth[0]})` : ''}`];
-    // (Recruits only — for transfers, the school's record is part of the
-    // transfer outlook below, judged against expectations across positions.)
-    const path = isCur || !p.isHs ? null : pxPath(data, t.name, grp, 'fr');
-    if (path) {
-      f.opp[0] = (p.isHs ? 0.65 : 0.75) * f.opp[0] + (p.isHs ? 0.35 : 0.25) * path.pct;
-      f.opp[1] += path.n
-        ? ` · ${p.isHs ? `${grp} signees` : 'transfers'}: ${Math.round((path.raw || 0) * 100)}% regulars ${p.isHs ? 'by yr 2' : 'yr 1'} (${path.hits}/${path.n})`
-        : ` · no recent ${p.isHs ? `${grp} signees` : `${grp} transfers`}`;
-    }
-    // College transfers: the playing-time score IS the tested outlook — the
-    // chance transfers like him play year 1 here (pxTransferOdds). OL has no
-    // production stats to fit on, so it keeps the room-based score.
-    const outlook = !p.isHs && !isCur ? pxTransferOdds(P, p.yr, grp, Math.round(tPct(ti) - D), Math.round((t.share || 0) * 100), t.name) : null;
+    // The playing-time score IS the tested outlook — the chance players like
+    // him play here (transfers: year 1, pxTransferOdds; recruits: by year 2,
+    // pxFreshmanOdds). The school's own record is part of it, judged against
+    // expectations across positions. OL has no production stats to fit on,
+    // so it keeps the room-based score.
+    const outlook = isCur ? null : p.isHs
+      ? pxFreshmanOdds(p.stars, p.natRank, grp, tPct(ti), Math.round((t.share || 0) * 100), t.name)
+      : pxTransferOdds(P, p.yr, grp, Math.round(tPct(ti) - D), Math.round((t.share || 0) * 100), t.name);
     if (outlook && PX_OPP_MODE === 'model') f.opp[0] = outlook.play;
     if (outlook && PX_OPP_MODE === 'blend') f.opp[0] = 0.5 * f.opp[0] + 0.5 * outlook.play;
     // Level
@@ -8426,11 +8438,12 @@ function pxFitRank(data, p, prefs, notes) {
 function PxTransferLine({ t, size = 11.5, style }) {
   const o = t.outlook;
   if (!o) return null;
+  const fr = o.kind === 'fr', M = fr ? PX_FM : PX_TM, span = fr ? M.classes : M.cycles;
   const pts = (v) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v)}`;
   return (
-    <div title={`Based on ${PX_TM.n.toLocaleString()} transfers (${PX_TM.cycles[0]}–${PX_TM.cycles[PX_TM.cycles.length - 1]} cycles). Play = enough snaps in year 1 to earn a production score; produce = above-median production.${o.n ? ` ${t.name} transfers: ${o.o} of ${o.n} played (${Math.round(o.e)} expected).` : ''}`} style={{ fontSize: size, color: G.textSecondary, ...style }}>
-      Transfers like him here: <b style={{ color: G.text }}>{o.play}%</b> play year 1 · <b style={{ color: G.text }}>{o.prod}%</b> produce
-      <span style={{ color: G.textTertiary }}> · similar players {o.base}% · room {pts(o.room)} · {t.name} record {o.n ? `${pts(o.school)} (${o.n} transfers)` : '±0 (no recent transfers)'}</span>
+    <div title={`Based on ${M.n.toLocaleString()} ${fr ? 'high school signees' : 'transfers'} (${span[0]}–${span[span.length - 1]} ${fr ? 'classes' : 'cycles'}). Play = enough snaps ${fr ? 'by year 2' : 'in year 1'} to earn a production score; produce = above-median production.${o.n ? ` ${t.name}: ${o.o} of ${o.n} played (${Math.round(o.e)} expected).` : ''}`} style={{ fontSize: size, color: G.textSecondary, ...style }}>
+      {fr ? 'Recruits' : 'Transfers'} like him here: <b style={{ color: G.text }}>{o.play}%</b> play {fr ? 'by year 2' : 'year 1'} · <b style={{ color: G.text }}>{o.prod}%</b> produce
+      <span style={{ color: G.textTertiary }}> · similar players {o.base}% · room {pts(o.room)} · {t.name} record {o.n ? `${pts(o.school)} (${o.n} ${fr ? 'signees' : 'transfers'})` : `±0 (no recent ${fr ? 'signees' : 'transfers'})`}</span>
     </div>
   );
 }

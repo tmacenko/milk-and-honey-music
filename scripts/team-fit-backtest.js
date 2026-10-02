@@ -24,6 +24,7 @@ const code = grab('const PX_POS_GROUPS = [', 'const PX_CLASS')
   + grab('const PX_ACADEMIC = ', "// A team's factor breakdown for one player");
 const G = new Proxy({}, { get: () => '' });
 const PX_AC = require(path.join(REPO, 'src/pxAcademics.json'));
+const PX_FM = (() => { try { return require(path.join(REPO, 'src/pxFreshmanModel.json')); } catch { return {}; } })();
 const PX_CM = (() => { try { return require(path.join(REPO, 'src/pxCoachModel.json')); } catch { return {}; } })();
 const PX_TM = (() => { try { return require(process.env.PX_TM_PATH || path.join(REPO, 'src/pxTransferModel.json')); } catch { return null; } })();
 const PX_TIER_NAME = { P4: 'Power 4', G5: 'Group of 5', FCS: 'FCS', D2: 'Division II' };
