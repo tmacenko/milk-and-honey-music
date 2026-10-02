@@ -23,6 +23,9 @@ const code = grab('const PX_POS_GROUPS = [', 'const PX_CLASS')
   + grab('const pxMiles = ', 'function loadProspectData(')
   + grab('const PX_ACADEMIC = ', "// A team's factor breakdown for one player");
 const G = new Proxy({}, { get: () => '' });
+const PX_AC = require(path.join(REPO, 'src/pxAcademics.json'));
+const PX_CM = (() => { try { return require(path.join(REPO, 'src/pxCoachModel.json')); } catch { return {}; } })();
+const PX_DM = (() => { try { return require(path.join(REPO, 'src/pxDraftModel.json')); } catch { return { K: 30, schools: {} }; } })();
 const PX_TM = (() => { try { return require(path.join(REPO, 'src/pxTransferModel.json')); } catch { return null; } })();
 const PX_TIER_NAME = { P4: 'Power 4', G5: 'Group of 5', FCS: 'FCS', D2: 'Division II' };
 const slugOf = (n) => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -61,7 +64,10 @@ function parse(raw) {
 }
 const nk = (x) => String(x || '').toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g, '').replace(/[^a-z]/g, '');
 
-(async () => {
+// Shared with the other model scripts (coach-model.js): the build loader and
+// the app's own functions, by name.
+module.exports = { built, parse, STORE, nk, fn: (n) => eval(n) };
+if (require.main === module) (async () => {
   const cycles = (process.argv[2] || '2023,2024,2025').split(',').map(Number);
   const out = [];
   for (const Y of cycles) {
@@ -79,8 +85,10 @@ const nk = (x) => String(x || '').toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g
       if (i < 0) continue;
       const d = res.rows[i];
       const nxt = afterBy[`${e.dest}|${nk(e.name)}`];
+      const sch = pxSchemeUse(before), su = (sch.by[e.dest] || {})[p.grp];
+      const use = su != null && sch.sorted[p.grp] ? Math.round(pxMidPct(sch.sorted[p.grp], su)) : null;
       out.push({ Y, name: e.name, pos: p.pos, from: e.origin, to: e.dest, prodBefore: p.prodPct || 0,
-        fit: d.fit, pct: Math.round(100 * (1 - i / res.rows.length)), opp: Math.round(d.f.opp[0]), slot: d.slot || 0, label: d.label,
+        use, fit: d.fit, pct: Math.round(100 * (1 - i / res.rows.length)), opp: Math.round(d.f.opp[0]), slot: d.slot || 0, label: d.label,
         share: Math.round((d.share || 0) * 100), S0: PX_STARTERS[pxFitGroup(p.pos) || p.grp] || 1, lvDiff: Math.round((pxProgram(before).pct[e.dest] || 5) - res.D), stayW: d.stayW, portalOut: d.portalOut, commits: d.commits,
         fromTier: (before.teamInfo[e.origin] || {}).tier || '', toTier: (before.teamInfo[e.dest] || {}).tier || '', yr: p.yr, usageBefore: p.usage ? p.usage[0] : 0,
         found: !!nxt, played: !!(nxt && nxt.prodPct), prodAfter: nxt ? nxt.prodPct || 0 : 0, usageAfter: nxt && nxt.usage ? nxt.usage[0] : 0 });

@@ -5,6 +5,9 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, useDeferredVa
 import ReactDOM from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
 import PX_TM from './pxTransferModel.json';
+import PX_DM from './pxDraftModel.json';
+import PX_AC from './pxAcademics.json';
+import PX_CM from './pxCoachModel.json';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 // Every color routes through CSS variables so the whole app re-skins from one
@@ -7883,17 +7886,51 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
 // score. Level aims at where the player's production says they belong: an
 // elite year at a top school keeps them at the top, a weak year points down
 // to teams where they'd start.
-// Academic tiers — generic, from national university rankings (approximate).
-// 1 = elite, 2 = strong, 3 = good; anyone unlisted is 4 (standard).
+// Academics — public data only (scripts/academics.js): how selective the
+// university is (College Scorecard: average SAT and admission rate) and how
+// often its FOOTBALL players graduate (NCAA Graduation Success Rate). Scored
+// as percentiles among FBS/FCS schools, selectivity 60% / graduation 40%.
 const PX_ACADEMIC = (() => {
-  const m = {};
-  [[1, 'Stanford,Notre Dame,Northwestern,Duke,Vanderbilt,Rice,California,UCLA,Michigan,USC,Georgia Tech,Virginia,North Carolina,Harvard,Yale,Princeton,Columbia,Cornell,Brown,Dartmouth,Pennsylvania,Georgetown'],
-   [2, 'Wake Forest,Boston College,Florida,Texas,Wisconsin,Illinois,Georgia,Washington,Ohio State,Maryland,Purdue,Rutgers,Virginia Tech,Texas A&M,Minnesota,Florida State,Miami,Pittsburgh,Tulane,SMU,Syracuse,Indiana,Michigan State,Penn State,Iowa,Army,Navy,Air Force,Clemson,BYU,Baylor,UConn,Lehigh,Lafayette,Bucknell,Colgate,Holy Cross,Fordham,William & Mary,Villanova,Richmond,UC Davis,Delaware'],
-   [3, 'Arizona State,Arizona,Colorado,Oregon,Utah,Iowa State,NC State,Auburn,Alabama,Tennessee,South Carolina,Kansas,Kansas State,Oklahoma,Missouri,Nebraska,Kentucky,LSU,Louisville,Cincinnati,Temple,Houston,Oregon State,Washington State,Colorado State,TCU,Texas Tech,Oklahoma State,Arkansas,Ole Miss,Mississippi State,West Virginia,Buffalo,Miami (OH),James Madison,San Diego State,UCF,South Florida,Utah State,Boise State,Stony Brook,New Hampshire,Maine,Dayton,San Diego,Montana,Montana State,Elon,Furman,Wofford,Davidson']]
-    .forEach(([t, list]) => list.split(',').forEach(n => { m[n] = t; }));
-  return m;
+  const rows = Object.entries(PX_AC.schools);
+  const sorted = (i, flip) => rows.map(([, v]) => v[i]).filter(x => x != null).map(x => (flip ? -x : x)).sort((a, b) => a - b);
+  const pctOf = (arr, x) => { let lo = 0; while (lo < arr.length && arr[lo] < x) lo++; let hi = lo; while (hi < arr.length && arr[hi] === x) hi++; return 100 * (lo + hi) / 2 / arr.length; };
+  const G = sorted(0), A = sorted(1, true), S = sorted(2);
+  const out = {};
+  rows.forEach(([n, [gsr, adm, sat]]) => {
+    const sel = [sat != null ? pctOf(S, sat) : null, adm != null ? pctOf(A, -adm) : null].filter(x => x != null);
+    const selP = sel.length ? sel.reduce((a, b) => a + b, 0) / sel.length : null, gP = gsr != null ? pctOf(G, gsr) : null;
+    const score = selP != null && gP != null ? 0.6 * selP + 0.4 * gP : selP != null ? selP : gP;
+    out[n] = [Math.round(score), [adm != null ? `Admits ${Math.round(adm)}%` : '', gsr != null ? `${gsr}% football grad rate` : ''].filter(Boolean).join(' · ')];
+  });
+  return out;
 })();
-const PX_ACAD_LABEL = { 1: 'Elite academics', 2: 'Strong academics', 3: 'Good academics', 4: 'Standard academics' };
+// Scheme: how much a school's offense feeds each position — per game this
+// season (QB pass attempts, RB carries + catches, WR / TE catches), as a
+// percentile among teams with 3+ games. Coordinators change, so the latest
+// season is the one that counts.
+const PX_SCHEME_LABEL = { QB: 'QB passes', RB: 'RB touches', WR: 'WR catches', TE: 'TE catches' };
+function pxSchemeUse(data) {
+  if (data._scheme) return data._scheme;
+  const S = data.S || {}, get = (v, k) => (v && S[k] != null ? v[S[k]] || 0 : 0);
+  const per = {};
+  data.players.forEach(p => {
+    if (p.isHs || !p.team || !p.season) return;
+    const g = p.grp, v = p.season;
+    const n = g === 'QB' ? get(v, 'passAtt') : g === 'RB' ? get(v, 'rushAtt') + get(v, 'rec') : g === 'WR' || g === 'TE' ? get(v, 'rec') : 0;
+    if (!n) return;
+    const t = per[p.team] || (per[p.team] = {}); t[g] = (t[g] || 0) + n;
+  });
+  const by = {}, sorted = {};
+  Object.entries(per).forEach(([team, o]) => {
+    const gm = (data.teamInfo[team] || {}).games || 0;
+    if (gm < 3) return;
+    by[team] = {}; ['QB', 'RB', 'WR', 'TE'].forEach(g => { by[team][g] = (o[g] || 0) / gm; (sorted[g] = sorted[g] || []).push(by[team][g]); });
+  });
+  Object.values(sorted).forEach(a => a.sort((x, y) => x - y));
+  const avg = {}; Object.entries(sorted).forEach(([g, a]) => { avg[g] = a[Math.floor(a.length / 2)]; });
+  data._scheme = { by, sorted, avg };
+  return data._scheme;
+}
 const PX_STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, DB: 4, 'K/P': 1, ATH: 1, EDGE: 2, DT: 2, CB: 2, S: 2 };
 // The room a player actually competes in: edge rushers vs interior linemen,
 // corners vs safeties. Teams that list everyone as a generic DL / DB count
@@ -7907,13 +7944,13 @@ const pxSameRoom = (fg, pl) => {
 const PX_FIT_FACTORS = [
   ['opp', 'Playing time', 'Would they start: how their production compares with the players who return there, plus how much of the position’s production is leaving (net of commits)'],
   ['level', 'Program level', 'How strong the program is — SP+ this season blended with last season, plus a conference nudge (Power 4 highest). Stronger is always better here; set how much playing somewhere big matters to the player. (Realism — whether they could get there — is handled separately by Aim.)'],
-  ['nfl', 'NFL development', 'Players the school sent to the NFL draft at this position in the last five drafts'],
+  ['nfl', 'NFL development', 'Draft picks compared with what the school’s talent predicts (last eight drafts)'],
   ['home', 'Close to home', 'Distance from hometown to campus'],
-  ['acad', 'Academics', 'Generic academic tier from national rankings'],
-  ['scheme', 'Scheme', 'Offense only: how pass-heavy the offense is (receivers, TEs, QBs) or run-heavy (backs)'],
+  ['acad', 'Academics', 'How selective the university is (admission rate, SAT) and how often its football players graduate (NCAA)'],
+  ['scheme', 'Scheme', 'Offense only: how much the offense feeds the position this season (QB passes, RB touches, WR / TE catches per game)'],
   ['build', 'Roster building', 'How the team added players the last two years. Recruits: teams that sign and develop high schoolers score higher than ones that reload through the portal. College players: the reverse — teams that take transfers'],
   ['pay', 'Earning potential', 'Estimated market value for this player at the school — their budget (The Athletic), the conference’s spending on the position (Opendorse) and the role they’d have (starter / backup / freshman), scaled to ESPN’s 2026 position prices. A reference range, not a salary'],
-  ['coach', 'Coach stability', 'Estimated hot-seat risk: performance (SP+) vs roster talent, win-loss this season and last, SP+ trend and years in charge (first- and second-year coaches get time). A coaching change usually reshuffles the roster'],
+  ['coach', 'Coach stability', 'Chance the head coach is gone within two years (fired or hired away), from every FBS coaching change since 2020'],
 ];
 const PX_FIT_WEIGHT_LABEL = ['Ignore', 'Some', 'Important', 'Top'];
 // What each setting weighs. "Top" also gates: a team that scores badly on a
@@ -7970,22 +8007,31 @@ function pxTeamByName(data, name) {
 // team performs (SP+) against its roster talent, win-loss (last season
 // weighs more until this season has games), SP+ decline, and tenure — new
 // coaches get time.
-function pxCoachRisk(data, t) {
+// Coach stability: the chance the head coach is gone within two years —
+// a logistic model (scripts/coach-model.js) fitted on every FBS coach-season
+// since 2020 against who actually left (fired or hired away). What it learned:
+// losing records and underperforming talent get coaches fired; Group of 5
+// coaches leave more, and winning Group of 5 coaches leave most (poached).
+function pxCoachFeatures(data, t) {
   if (!t || t.hcFirst === undefined || !t.coach) return null;
-  const clamp = (x) => Math.max(0, Math.min(1, x));
   const tenure = t.hcFirst ? data.season - t.hcFirst + 1 : 3;
   const wl = (r) => { const m = String(r || '').match(/(\d+)-(\d+)/); return m && (+m[1] + +m[2]) ? [+m[1], +m[2]] : null; };
   const cur = wl(t.record), prev = tenure >= 2 ? wl(t.recPrev) : null;
+  // Early in a season, last season's record carries the rest of the weight.
   const wc = cur ? Math.min(1, (cur[0] + cur[1]) / 12) : 0;
   const pct = (x) => x[0] / (x[0] + x[1]);
-  const win = cur && prev ? wc * pct(cur) + (1 - wc) * pct(prev) : cur ? pct(cur) : prev ? pct(prev) : null;
+  const win = cur && prev ? wc * pct(cur) + (1 - wc) * pct(prev) : cur ? pct(cur) : prev ? pct(prev) : 0.5;
   const spB = t.sp && t.spPrev && tenure >= 2 ? wc * t.sp + (1 - wc) * t.spPrev : t.sp || 0;
-  const under = t.talentRank && spB ? clamp((spB - t.talentRank) / 40) : 0;
-  const losing = win != null ? clamp((0.5 - win) / 0.3) : 0;
-  const decline = t.sp && t.spPrev && tenure >= 2 ? clamp((t.sp - t.spPrev) / 40) : 0;
-  const factor = tenure <= 1 ? 0.15 : tenure === 2 ? 0.5 : 1;
-  const risk = Math.round(100 * factor * (0.45 * under + 0.35 * losing + 0.2 * decline));
-  return { risk, tenure, label: risk >= 50 ? 'Hot seat' : risk >= 25 ? 'Some pressure' : 'Stable' };
+  const cl = (x) => Math.max(-1, Math.min(1, x));
+  return { tenure, win, g5: t.tier === 'G5' ? 1 : 0, under: t.talentRank && spB ? cl((spB - t.talentRank) / 40) : 0, decline: t.sp && t.spPrev && tenure >= 2 ? cl((t.sp - t.spPrev) / 40) : 0 };
+}
+const pxCoachX = (f) => [1, f.tenure <= 1 ? 1 : 0, f.tenure === 2 ? 1 : 0, f.tenure >= 6 ? 1 : 0, f.win < 0.35 ? 1 : 0, f.win >= 0.35 && f.win < 0.5 ? 1 : 0, f.win >= 0.75 ? 1 : 0, f.g5, f.g5 && f.win >= 0.75 ? 1 : 0, f.under, f.decline];
+function pxCoachRisk(data, t) {
+  const f = pxCoachFeatures(data, t);
+  if (!f || !PX_CM.coef) return null;
+  const z = pxCoachX(f).reduce((s, v, i) => s + v * PX_CM.coef[i], 0);
+  const risk = Math.round(100 / (1 + Math.exp(-z)));
+  return { risk, tenure: f.tenure, label: `${risk}% chance of a new HC by ${data.season + 2}` };
 }
 // Per-team context shared by every fit ranking: how rosters were built
 // (portal arrivals vs high school signees, last two cycles) and coach risk.
@@ -8228,9 +8274,8 @@ function pxFitRank(data, p, prefs, notes) {
   });
   const hasDraft = Object.values(info).some(t => t.draft !== undefined);
   const hasLoc = Object.values(info).some(t => t.lat);
-  const rates = Object.values(info).map(t => t.passRate || 0).filter(x => x > 0).sort((x, y) => x - y);
-  const schemeOk = rates.length > 20 && ['QB', 'WR', 'TE', 'RB'].includes(grp);
-  const rateMed = rates.length ? rates[Math.floor(rates.length / 2)] : 0.5;
+  const scheme = pxSchemeUse(data);
+  const schemeOk = Object.keys(scheme.by).length > 20 && ['QB', 'WR', 'TE', 'RB'].includes(grp);
   const ctx = pxTeamCtx(data);
   const avail = { opp: true, level: true, nfl: hasDraft, home: hasLoc && !!p.lat, acad: true, scheme: schemeOk, build: ctx.hasBuild, coach: ctx.hasCoach, pay: true };
   const S0 = PX_STARTERS[fg] || PX_STARTERS[grp] || 1;
@@ -8317,19 +8362,24 @@ function pxFitRank(data, p, prefs, notes) {
     const realism = aim === 'any' || isOffer || isCur ? 1
       : byOffers ? (over <= 0 ? 1 : Math.max(0.35, Math.exp(-((over / 10) ** 2))))
       : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : P ? 22 : 30)) ** 2)));
-    if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
+    // NFL development: draft picks vs. what the school's talent predicts
+    // (scripts/draft-model.js — all positions, shrunk; raw pick counts mostly
+    // reflect recruiting). The position's own count stays as the fact shown.
+    if (avail.nfl) {
+      const n = (ti.draft || {})[grp] || 0, dv = PX_DM.schools[t.name];
+      const m = dv ? (dv[0] + PX_DM.K) / (dv[1] + PX_DM.K) : 1, pc = Math.round((m - 1) * 100);
+      f.nfl = [Math.max(0, Math.min(100, 50 + 125 * Math.log(m))), `${n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`}${dv && dv[1] >= 3 ? ` · ${pc >= 5 ? `drafts ${pc}% above its talent` : pc <= -5 ? `drafts ${-pc}% below its talent` : 'drafts in line with its talent'}` : ''}`];
+    }
     // Distance score is a smooth curve: 25 mi ≈ 93, 145 ≈ 66, 250 ≈ 49, 500 ≈ 24, 1,000 ≈ 6.
     if (avail.home) {
       if (ti.lat) { const d = pxMiles(p, { lat: ti.lat, lng: ti.lng }); f.home = [100 * Math.exp(-d / 350), `${Math.round(d).toLocaleString()} mi from home`]; }
       else f.home = [0, 'Location unknown'];
     }
-    const tier = PX_ACADEMIC[t.name] || 4;
-    f.acad = [({ 1: 100, 2: 70, 3: 45, 4: 20 })[tier], PX_ACAD_LABEL[tier]];
+    f.acad = PX_ACADEMIC[t.name] ? [...PX_ACADEMIC[t.name]] : [50, ''];
+    // Scheme: how much this offense feeds his position (pxSchemeUse).
     if (avail.scheme) {
-      // Distance from the median pass rate (±15 points = the extremes), so
-      // a 48% vs 51% offense reads as the near-tie it is.
-      if (ti.passRate) { const dv = Math.max(-1, Math.min(1, (ti.passRate - rateMed) / 0.15)) * 50; f.scheme = [50 + (grp === 'RB' ? -dv : dv), `${Math.round(ti.passRate * 100)}% pass plays`]; }
-      else f.scheme = [50, ''];
+      const u = (scheme.by[t.name] || {})[grp];
+      f.scheme = u != null ? [pxMidPct(scheme.sorted[grp], u), `${PX_SCHEME_LABEL[grp]}: ${u.toFixed(1)}/game (avg ${scheme.avg[grp].toFixed(1)})`] : [50, ''];
     }
     // Estimated value here, in the role they'd have.
     const role = isCur ? curRole : p.isHs ? 'recruit' : P ? (slot && slot <= S0 ? 'starter' : slot && slot <= S0 + 2 ? 'rotation' : 'reserve') : (f.opp[0] >= 70 ? 'starter' : f.opp[0] >= 45 ? 'rotation' : 'reserve');
@@ -8343,7 +8393,7 @@ function pxFitRank(data, p, prefs, notes) {
       } else f.build = [50, ''];
     }
     if (avail.coach) {
-      if (tc.coach) f.coach = [100 - tc.coach.risk, `${tc.coach.label}${tc.coach.tenure ? ` · HC yr ${tc.coach.tenure}` : ''}`];
+      if (tc.coach) f.coach = [100 - tc.coach.risk, `${tc.coach.tenure ? `HC yr ${tc.coach.tenure} · ` : ''}${tc.coach.label}`];
       else f.coach = [50, ''];
     }
     let num = 0, den = 0, gate = 1;
