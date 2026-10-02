@@ -8467,7 +8467,9 @@ const PX_FIT_CTX = { cur: null };
 const PX_FIT_LABEL_COLOR = { Reach: G.yellow, Match: G.green, Safe: G.textSecondary, Current: G.green };
 // Plain-language band for a fit score — the number is a guide, not a
 // measurement, so the band is what to read.
-const pxFitTier = (n) => (n >= 70 ? ['Strong fit', G.green] : n >= 55 ? ['Good fit', G.text] : n >= 40 ? ['Possible', G.textSecondary] : ['Long shot', G.textTertiary]);
+// Bands describe fit, not the odds of getting there (Reach / Match / Safe
+// covers that) — a school far below a player's level is a poor fit, not a long shot.
+const pxFitTier = (n) => (n >= 70 ? ['Strong fit', G.green] : n >= 55 ? ['Good fit', G.text] : n >= 40 ? ['Fair fit', G.textSecondary] : ['Poor fit', G.textTertiary]);
 // Latest 247 stars / national rank per name key (Composite when captured).
 function pxR247(rows) {
   const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -8799,7 +8801,7 @@ function TeamFit({ p, data, onOpenTeam, user, wide, side }) {
           ))}
         </div>
       )}
-      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>{res && res.early ? 'Early season: projections that lean on this year’s production firm up after about six games. ' : ''}Fit = the factors above, weighted by {first}’s priorities (Some ×1, Important ×3, Top ×6 — and a team that scores poorly on a Top priority is pulled down overall). Read the band, not the exact number: Strong fit 70+, Good fit 55–69, Possible 40–54, Long shot below 40. “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
+      <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 12, lineHeight: 1.5 }}>{res && res.early ? 'Early season: projections that lean on this year’s production firm up after about six games. ' : ''}Fit = the factors above, weighted by {first}’s priorities (Some ×1, Important ×3, Top ×6 — and a team that scores poorly on a Top priority is pulled down overall). Read the band, not the exact number: Strong fit 70+, Good fit 55–69, Fair fit 40–54, Poor fit below 40. “Projected starter” compares their production percentile with the players who return at that school; “leaving” = listed seniors/5th-years (redshirt and COVID years aren’t in the data) plus next-cycle portal entries. Academics are a generic tier.</div>
   </>);
   if (wide) {
     return (

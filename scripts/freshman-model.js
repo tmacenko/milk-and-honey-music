@@ -92,6 +92,7 @@ const logloss = (ps, ys) => -ps.reduce((s, p, i) => s + (ys[i] ? Math.log(Math.m
       rows.push({ Z, team: p.team, grp: p.grp, stars: p.stars || 0, lvl, step: Math.round(T - lvl), share: Math.round(100 * (needs[nk][p.team] || 0)), played: played ? 1 : 0, produced: produced ? 1 : 0, stayed });
     }
   }
+  if (process.env.DUMP) fs.writeFileSync(process.env.DUMP, JSON.stringify(rows));
   const Y = { played: (r) => r.played, produced: (r) => r.produced };
   const classes = [...new Set(rows.map(r => r.Z))].sort();
   console.log(`signees ${rows.length} (OL excluded), classes ${classes.join(',')}, played by yr 2 ${Math.round(100 * rows.filter(r => r.played).length / rows.length)}%`);
