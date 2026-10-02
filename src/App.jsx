@@ -5,7 +5,6 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, useDeferredVa
 import ReactDOM from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
 import PX_TM from './pxTransferModel.json';
-import PX_DM from './pxDraftModel.json';
 import PX_AC from './pxAcademics.json';
 import PX_CM from './pxCoachModel.json';
 
@@ -7944,7 +7943,7 @@ const pxSameRoom = (fg, pl) => {
 const PX_FIT_FACTORS = [
   ['opp', 'Playing time', 'Would they start: how their production compares with the players who return there, plus how much of the position’s production is leaving (net of commits)'],
   ['level', 'Program level', 'How strong the program is — SP+ this season blended with last season, plus a conference nudge (Power 4 highest). Stronger is always better here; set how much playing somewhere big matters to the player. (Realism — whether they could get there — is handled separately by Aim.)'],
-  ['nfl', 'NFL development', 'Draft picks compared with what the school’s talent predicts (last eight drafts)'],
+  ['nfl', 'NFL development', 'Players the school sent to the NFL draft at this position in the last five drafts'],
   ['home', 'Close to home', 'Distance from hometown to campus'],
   ['acad', 'Academics', 'How selective the university is (admission rate, SAT) and how often its football players graduate (NCAA)'],
   ['scheme', 'Scheme', 'Offense only: how much the offense feeds the position this season (QB passes, RB touches, WR / TE catches per game)'],
@@ -8362,14 +8361,7 @@ function pxFitRank(data, p, prefs, notes) {
     const realism = aim === 'any' || isOffer || isCur ? 1
       : byOffers ? (over <= 0 ? 1 : Math.max(0.35, Math.exp(-((over / 10) ** 2))))
       : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : P ? 22 : 30)) ** 2)));
-    // NFL development: draft picks vs. what the school's talent predicts
-    // (scripts/draft-model.js — all positions, shrunk; raw pick counts mostly
-    // reflect recruiting). The position's own count stays as the fact shown.
-    if (avail.nfl) {
-      const n = (ti.draft || {})[grp] || 0, dv = PX_DM.schools[t.name];
-      const m = dv ? (dv[0] + PX_DM.K) / (dv[1] + PX_DM.K) : 1, pc = Math.round((m - 1) * 100);
-      f.nfl = [Math.max(0, Math.min(100, 50 + 125 * Math.log(m))), `${n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`}${dv && dv[1] >= 3 ? ` · ${pc >= 5 ? `drafts ${pc}% above its talent` : pc <= -5 ? `drafts ${-pc}% below its talent` : 'drafts in line with its talent'}` : ''}`];
-    }
+    if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
     // Distance score is a smooth curve: 25 mi ≈ 93, 145 ≈ 66, 250 ≈ 49, 500 ≈ 24, 1,000 ≈ 6.
     if (avail.home) {
       if (ti.lat) { const d = pxMiles(p, { lat: ti.lat, lng: ti.lng }); f.home = [100 * Math.exp(-d / 350), `${Math.round(d).toLocaleString()} mi from home`]; }
