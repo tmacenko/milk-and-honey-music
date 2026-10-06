@@ -13049,7 +13049,9 @@ function App() {
     setFilterTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
   };
   const typeActive = (t) => t === 'All' ? filterTypes.length === 0 : filterTypes.includes(t);
-  const [filterContact, setFilterContact] = useState('All');
+  // Manager filter — multi-select like types (a client matches ANY picked manager).
+  const [filterContacts, setFilterContacts] = useState([]);
+  const toggleFilterContact = (n) => setFilterContacts(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n]);
   const [filterLabel, setFilterLabel] = useState('All');
   const [filterCountry, setFilterCountry] = useState('All');
   const [clientSort, setClientSort] = useState('default');
@@ -13426,9 +13428,12 @@ function App() {
     const extra = Array.from(all).filter(t => !ORDER.includes(t)).sort();
     return ['All', ...ORDER, ...extra, 'UK Client'];
   }, [clients]);
-  const contacts = useMemo(() => ['All', ...Array.from(new Set(
-    clients.flatMap(c => repNames(c.contact))
-  )).sort()], [clients]);
+  const contacts = useMemo(() => {
+    // One entry per person, however their name is spaced or capitalized.
+    const byKey = new Map();
+    clients.forEach(c => repNames(c.contact).forEach(n => { if (!byKey.has(repKey(n))) byKey.set(repKey(n), n); }));
+    return ['All', ...[...byKey.values()].sort()];
+  }, [clients]);
 
   const labels = useMemo(() => ['All', ...Array.from(new Set(
     clients.map(c => c.label).filter(Boolean)
@@ -13449,7 +13454,7 @@ function App() {
     }
     const list = clients.filter(c => {
       if (filterTypes.length > 0 && !filterTypes.some(t => t === 'UK Client' ? isUKClient(c) : (c.types || []).includes(t))) return false;
-      if (filterContact !== 'All' && !repNames(c.contact).some(n => repKey(n) === repKey(filterContact))) return false;
+      if (filterContacts.length && !repNames(c.contact).some(n => filterContacts.some(f => repKey(n) === repKey(f)))) return false;
       if (filterLabel !== 'All' && c.label !== filterLabel) return false;
       if (filterCountry !== 'All' && c.country !== filterCountry) return false;
       if (search) {
@@ -13468,7 +13473,7 @@ function App() {
     if (clientSort === 'listeners') return [...list].sort((a, b) => parseListeners(b.spotifyMonthly) - parseListeners(a.spotifyMonthly));
     if (clientSort === 'type') return [...list].sort((a, b) => (a.types?.[0] || '').localeCompare(b.types?.[0] || ''));
     return list;
-  }, [clients, filterTypes, filterContact, filterLabel, filterCountry, search, clientSort, customGroup]);
+  }, [clients, filterTypes, filterContacts, filterLabel, filterCountry, search, clientSort, customGroup]);
 
   const filteredAthletes = useMemo(() => {
     if (customGroup.length > 0) {
@@ -13892,14 +13897,23 @@ function App() {
   const rosterFilterActive = customGroup.length > 0 || agentFilter !== 'All' || posSide !== 'All' || depthFilter !== 'All';
   const rosterFilterLabel = customGroup.length > 0 ? `Custom · ${customGroup.length}`
     : ([agentFilter !== 'All' ? agentFilter : null, posValue !== 'All' ? posValue : null, depthFilter !== 'All' ? depthFilter : null].filter(Boolean).join(', ') || 'All');
+  const pickedLabel = (list) => (list.length === 0 ? 'All' : list.length === 1 ? list[0] : `${list.length} selected`);
+  const musicSections = [
+    { id: 'type', title: 'Type', value: pickedLabel(filterTypes),
+      rows: types.filter(t => t !== 'All').map(t => ({ on: filterTypes.includes(t), label: t, onClick: () => { clearCustomGroup(); toggleFilterType(t); } })) },
+    isAdmin && contacts.length > 1 && { id: 'manager', title: 'Manager', value: pickedLabel(filterContacts),
+      rows: contacts.filter(n => n !== 'All').map(n => ({ on: filterContacts.includes(n), label: n, onClick: () => { clearCustomGroup(); toggleFilterContact(n); } })) },
+  ].filter(Boolean);
+  const musicFilterActive = customGroup.length > 0 || filterTypes.length > 0 || filterContacts.length > 0;
+  const musicFilterLabel = customGroup.length > 0 ? `Custom · ${customGroup.length}` : ([...filterTypes, ...filterContacts].join(', ') || 'All');
   const viewFilter = domain === 'sports' ? (
     <FilterMenu compact={isMobile} sections={rosterSections} active={rosterFilterActive} label={rosterFilterLabel}
       onAll={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setAgentFilter('All'); setPosSide('All'); setPosGroup('All'); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   ) : (
-    <ViewFilterDropdown compact={isMobile} types={types} filterTypes={filterTypes}
-      onToggleType={(t) => { clearCustomGroup(); toggleFilterType(t); }}
-      onAll={() => { clearCustomGroup(); setFilterTypes([]); }}
+    // Music: same menu as sports — Type and Manager sections, multi-select in each.
+    <FilterMenu compact={isMobile} sections={musicSections} active={musicFilterActive} label={musicFilterLabel}
+      onAll={() => { clearCustomGroup(); setFilterTypes([]); setFilterContacts([]); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   );
   const exportControl = (iconOnly = false) => (domain === 'sports' && isAdmin && !sportsLimited ? (
@@ -14189,7 +14203,7 @@ function App() {
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
                   {filtered.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "80px 32px", color: G.textTertiary }}>
-                      <div style={{ fontSize: 15 }}>{search || filterTypes.length > 0 || filterContact !== 'All' || filterLabel !== 'All' || filterCountry !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
+                      <div style={{ fontSize: 15 }}>{search || filterTypes.length > 0 || filterContacts.length > 0 || filterLabel !== 'All' || filterCountry !== 'All' ? 'No clients match your filters.' : 'No clients yet. Add your first one.'}</div>
                     </div>
                   ) : rosterView === 'detailed' ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
