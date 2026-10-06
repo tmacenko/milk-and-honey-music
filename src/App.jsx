@@ -13225,8 +13225,21 @@ function App() {
       for (const k in o) if (!HEAVY.has(k) && o[k] != null && o[k] !== '') out[k] = o[k];
       return { ...out, ...extra };
     };
-    const roster = (domain === 'sports' ? athletes : clients).map(x =>
+    // "My clients" is answered exactly, not by the AI: the logged-in agent's
+    // or manager's own roster (same matching as the "Mine" toggle). Anything
+    // more ("my clients in Texas") sends only their roster to the AI.
+    const list = domain === 'sports' ? athletes : clients;
+    const isMine = (x) => agentMatch(domain === 'sports' ? x.agentAssigned : x.contact, user.agentKey);
+    const wantsMine = !!user?.agentKey && /\b(my|mine)\b/i.test(query);
+    if (wantsMine && /^\s*(show\s+)?(me\s+)?(all\s+)?(of\s+)?(my|mine)(\s+(clients?|roster|artists?|players?|athletes?|writers?|producers?|people|guys))?\s*$/i.test(query)) {
+      const names = list.filter(isMine).map(x => x.name);
+      const title = `Milk & Honey — ${user.name || user.agentKey}'s Clients`;
+      setCustomGroup(names); setCustomGroupTitle(title);
+      return { count: names.length, title };
+    }
+    const roster = (wantsMine ? list.filter(isMine) : list).map(x =>
       domain === 'sports' ? strip(x, { socialReach: athleteReach(x) }) : strip(x));
+    if (!roster.length) { setCustomGroup([]); setCustomGroupTitle(''); return { count: 0, title: '' }; }
     const r = await fetch('/api/smart-group', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain, query, roster }),
