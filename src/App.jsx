@@ -12859,10 +12859,12 @@ function App() {
     return next.length ? next : [...ALL_LEVELS]; // never let the roster go empty
   });
   // Depth chart filter (employee-only control): All / Starters / Backups / Not on chart.
-  const [depthFilter, setDepthFilter] = useState('All');
-  const [agentFilter, setAgentFilter] = useState('All');
-  const [posSide, setPosSide] = useState('All');
-  const [posGroup, setPosGroup] = useState('All');
+  // Roster View filters — multi-select in each section (empty = all).
+  const [depthFilters, setDepthFilters] = useState([]);
+  const [agentFilters, setAgentFilters] = useState([]);
+  // Position picks are sides ("Offense") and/or groups ("WR").
+  const [posPicks, setPosPicks] = useState([]);
+  const toggleIn = (setter) => (v) => setter(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
   // "My clients" filter for individual logins (matched on Lead Agent).
   const parseUrl = () => {
     const parts = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
@@ -13279,7 +13281,7 @@ function App() {
       if (rosterView === 'table' && !layout) {
         const inc = k => tableCols[k] !== false;
         const levelLabel = sportsLevels.length === ALL_LEVELS.length ? '' : sportsLevels.join(' + ');
-        const subtitle = [levelLabel, agentFilter !== 'All' ? agentFilter : null, posValue !== 'All' ? posValue : null, depthFilter !== 'All' ? depthFilter : null].filter(Boolean).join(' · ');
+        const subtitle = [levelLabel, agentFilters.join(', ') || null, posPicks.join(', ') || null, depthFilters.join(', ') || null].filter(Boolean).join(' · ');
         const hasNfl = sportsLevels.includes('NFL'), hasAmateur = sportsLevels.some(l => l !== 'NFL');
         return downloadPdf({
           action: 'roster-table-pdf', title: rosterTitle(), subtitle,
@@ -13485,14 +13487,11 @@ function App() {
     }
     const list = athletes.filter(a => {
       if (!sportsLevels.includes(a.level)) return false;
-      if (depthFilter === 'Starters' && a.depthRank !== 1) return false;
-      if (depthFilter === 'Backups' && !(a.depthRank >= 2)) return false;
-      if (depthFilter === 'Not on chart' && (a.depthRank > 0 || a.level === 'High School')) return false;
-      if (agentFilter !== 'All' && !agentMatch(a.agentAssigned, agentFilter)) return false;
-      if (posSide !== 'All') {
+      if (depthFilters.length && !depthFilters.some(d => (d === 'Starters' ? a.depthRank === 1 : d === 'Backups' ? a.depthRank >= 2 : !(a.depthRank > 0) && a.level !== 'High School'))) return false;
+      if (agentFilters.length && !agentFilters.some(n => agentMatch(a.agentAssigned, n))) return false;
+      if (posPicks.length) {
         const g = contractPosGroup(a.position);
-        if (!POS_SIDES[posSide].includes(g)) return false;
-        if (posGroup !== 'All' && g !== posGroup) return false;
+        if (!posPicks.some(p => (POS_SIDES[p] ? POS_SIDES[p].includes(g) : p === g))) return false;
       }
       if (search) return athleteSearchMatch(a, search.toLowerCase());
       return true;
@@ -13512,7 +13511,7 @@ function App() {
       if (fa !== 0) return fa;
       return athleteReach(b) - athleteReach(a);
     });
-  }, [athletes, sportsLevels, depthFilter, agentFilter, posSide, posGroup, currentUser, search, customGroup, clientSort]);
+  }, [athletes, sportsLevels, depthFilters, agentFilters, posPicks, currentUser, search, customGroup, clientSort]);
 
   // "All" view rows: both rosters combined. Sort modes — 'reach' (one list by
   // IG+X+TikTok followers) or 'division' (music first in sheet order, then
@@ -13719,14 +13718,14 @@ function App() {
     // Usage lives on the sports side; reachable from either sidebar.
     if (it.key === 'usage' && domain !== 'sports') { setDomain('sports', 'usage'); return; }
     if (domain === 'all') {
-      if (it.key === 'roster' && lastSide === 'sports') setAgentFilter('All');
+      if (it.key === 'roster' && lastSide === 'sports') setAgentFilters([]);
       setDomain(lastSide, it.key);
       return;
     }
     if (domain === 'music') { goMusicPage(it.key); return; }
     // Clicking Roster in the nav always shows the full roster — the "my
     // clients" scope only applies via the dashboard link.
-    if (it.key === 'roster') setAgentFilter('All');
+    if (it.key === 'roster') setAgentFilters([]);
     goSportsPage(it.key);
   };
   const navActive = domain === 'sports' && isAdmin && view !== 'detail';
@@ -13870,45 +13869,38 @@ function App() {
   );
   // Consolidated View dropdown: multi-select types (music) or single-select level
   // (sports), plus a Custom Group entry — same component for both domains.
-  const posValue = posSide === 'All' ? 'All' : (posGroup !== 'All' ? posGroup : posSide);
+  const pickLabel = (list) => (list.length === 0 ? 'All' : list.length === 1 ? list[0] : `${list.length} selected`);
   const rosterSections = domain !== 'sports' ? [] : [
     (isAdmin && sportsStaff.length > 0) && {
-      id: 'agent', title: 'Agent', value: agentFilter,
-      rows: [
-        { on: agentFilter === 'All', label: 'All agents', onClick: () => { clearCustomGroup(); setAgentFilter('All'); } },
-        ...sportsStaff.map(n => ({ on: agentFilter === n, label: n, onClick: () => { clearCustomGroup(); setAgentFilter(agentFilter === n ? 'All' : n); } })),
-      ],
+      id: 'agent', title: 'Agent', value: pickLabel(agentFilters),
+      rows: sportsStaff.map(n => ({ on: agentFilters.includes(n), label: n, onClick: () => { clearCustomGroup(); toggleIn(setAgentFilters)(n); } })),
     },
     {
-      id: 'position', title: 'Position', value: posValue,
-      rows: [
-        { on: posSide === 'All', label: 'All positions', onClick: () => { clearCustomGroup(); setPosSide('All'); setPosGroup('All'); } },
-        ...Object.keys(POS_SIDES).flatMap(s => [
-          { on: posSide === s && posGroup === 'All', label: s, onClick: () => { clearCustomGroup(); setPosSide(posSide === s ? 'All' : s); setPosGroup('All'); } },
-          ...(posSide === s && POS_SIDES[s].length > 1 ? POS_SIDES[s].map(g => ({ on: posGroup === g, label: `· ${g}`, onClick: () => { clearCustomGroup(); setPosGroup(posGroup === g ? 'All' : g); } })) : []),
-        ]),
-      ],
+      id: 'position', title: 'Position', value: pickLabel(posPicks),
+      rows: Object.keys(POS_SIDES).flatMap(sd => [
+        { on: posPicks.includes(sd), label: sd, onClick: () => { clearCustomGroup(); setPosPicks(prev => prev.includes(sd) ? prev.filter(x => x !== sd) : [...prev.filter(x => !POS_SIDES[sd].includes(x)), sd]); } },
+        ...(POS_SIDES[sd].length > 1 ? POS_SIDES[sd].map(g => ({ on: posPicks.includes(g) || posPicks.includes(sd), label: `· ${g}`, onClick: () => { clearCustomGroup(); setPosPicks(prev => prev.includes(sd) ? [...prev.filter(x => x !== sd), ...POS_SIDES[sd].filter(x => x !== g)] : prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]); } })) : []),
+      ]),
     },
     isAdmin && {
-      id: 'depth', title: 'Depth chart', value: depthFilter,
-      rows: ['Starters', 'Backups', 'Not on chart'].map(o => ({ on: depthFilter === o, label: o, onClick: () => { clearCustomGroup(); setDepthFilter(depthFilter === o ? 'All' : o); } })),
+      id: 'depth', title: 'Depth chart', value: pickLabel(depthFilters),
+      rows: ['Starters', 'Backups', 'Not on chart'].map(o => ({ on: depthFilters.includes(o), label: o, onClick: () => { clearCustomGroup(); toggleIn(setDepthFilters)(o); } })),
     },
   ].filter(Boolean);
-  const rosterFilterActive = customGroup.length > 0 || agentFilter !== 'All' || posSide !== 'All' || depthFilter !== 'All';
+  const rosterFilterActive = customGroup.length > 0 || agentFilters.length > 0 || posPicks.length > 0 || depthFilters.length > 0;
   const rosterFilterLabel = customGroup.length > 0 ? `Custom · ${customGroup.length}`
-    : ([agentFilter !== 'All' ? agentFilter : null, posValue !== 'All' ? posValue : null, depthFilter !== 'All' ? depthFilter : null].filter(Boolean).join(', ') || 'All');
-  const pickedLabel = (list) => (list.length === 0 ? 'All' : list.length === 1 ? list[0] : `${list.length} selected`);
-  const musicSections = [
-    { id: 'type', title: 'Type', value: pickedLabel(filterTypes),
+    : ([...agentFilters, ...posPicks, ...depthFilters].join(', ') || 'All');
+    const musicSections = [
+    { id: 'type', title: 'Type', value: pickLabel(filterTypes),
       rows: types.filter(t => t !== 'All').map(t => ({ on: filterTypes.includes(t), label: t, onClick: () => { clearCustomGroup(); toggleFilterType(t); } })) },
-    isAdmin && contacts.length > 1 && { id: 'manager', title: 'Manager', value: pickedLabel(filterContacts),
+    isAdmin && contacts.length > 1 && { id: 'manager', title: 'Manager', value: pickLabel(filterContacts),
       rows: contacts.filter(n => n !== 'All').map(n => ({ on: filterContacts.includes(n), label: n, onClick: () => { clearCustomGroup(); toggleFilterContact(n); } })) },
   ].filter(Boolean);
   const musicFilterActive = customGroup.length > 0 || filterTypes.length > 0 || filterContacts.length > 0;
   const musicFilterLabel = customGroup.length > 0 ? `Custom · ${customGroup.length}` : ([...filterTypes, ...filterContacts].join(', ') || 'All');
   const viewFilter = domain === 'sports' ? (
     <FilterMenu compact={isMobile} sections={rosterSections} active={rosterFilterActive} label={rosterFilterLabel}
-      onAll={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setAgentFilter('All'); setPosSide('All'); setPosGroup('All'); }}
+      onAll={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilters([]); setAgentFilters([]); setPosPicks([]); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   ) : (
     // Music: same menu as sports — Type and Manager sections, multi-select in each.
@@ -14112,8 +14104,8 @@ function App() {
                 <SportsDashboard athletes={athletes} isMobile={isMobile} user={currentUser} canContracts={canContracts} decks={sportsDecks || DECKS}
                   onOpenAthlete={(a) => setView('detail', a)}
                   onGoRoster={() => goSportsPage('roster')}
-                  onShowStarters={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('Starters'); goSportsPage('roster'); }}
-                  onShowMine={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilter('All'); setAgentFilter(currentUser?.name || 'All'); goSportsPage('roster'); }}
+                  onShowStarters={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilters(['Starters']); goSportsPage('roster'); }}
+                  onShowMine={() => { clearCustomGroup(); setSportsLevels([...ALL_LEVELS]); setDepthFilters([]); setAgentFilters(currentUser?.name ? [currentUser.name] : []); goSportsPage('roster'); }}
                   onGoBrandDeals={() => goSportsPage('branddeals')}
                   onGoMarketing={sportsLimited ? undefined : () => goSportsPage('marketing')}
                   onGoRecruiting={() => goSportsPage('recruiting')}
