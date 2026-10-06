@@ -1712,10 +1712,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
   // Resolve contact name(s) to email(s)
   const contactEmails = (() => {
     if (!c.contact) return [];
-    return c.contact.split(',').map(name => {
-      const key = name.trim().toLowerCase();
-      return staff[key] || { name: name.trim(), email: null };
-    });
+    return repNames(c.contact).map(name => staff[name.toLowerCase()] || { name, email: null });
   })();
   const contactMailto = contactEmails.length
     ? 'mailto:' + contactEmails.filter(s => s.email).map(s => s.email).join(',')
@@ -4543,9 +4540,15 @@ const rosterTagFor = (a) => {
   if (/suspend/i.test(st)) return { full: 'Suspended', short: 'SUSP', warn: true };
   return null;
 };
+// A rep cell can hold several names ("Lucas Keller, Justin Frazier",
+// "Jenna & Justin Frazier", "A / B"). Split on any separator, and compare
+// letters only so spacing, punctuation and capitals never break a match.
+const repNames = (cell) => String(cell || '').split(/\s*(?:,|;|&|\/|\+|\||\n|\band\b)\s*/i).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+const repKey = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
 const agentMatch = (agent, key) => {
-  const a = String(agent || '').toLowerCase().trim(), k = String(key || '').toLowerCase().trim();
-  return !!a && !!k && (a === k || a.includes(k) || k.includes(a));
+  const k = repKey(key);
+  if (!k) return false;
+  return repNames(agent).some(n => { const a = repKey(n); return !!a && (a === k || a.includes(k) || k.includes(a)); });
 };
 
 // ── Growth board ──────────────────────────────────────────────────────────────
@@ -4622,7 +4625,7 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
   const sorted = athletes
     .filter(a => athleteReach(a) > 0 || (a.growth7d || 0) !== 0)
     .filter(a => levels.includes(a.level))
-    .filter(a => agent === 'All' || String(a.agentAssigned || '').toLowerCase().includes(agent.toLowerCase()))
+    .filter(a => agent === 'All' || agentMatch(a.agentAssigned, agent))
     .filter(a => { if (side === 'All') return true; const g = contractPosGroup(a.position); return POS_SIDES[side].includes(g) && (group === 'All' || g === group); })
     .filter(a => !q.trim() || athleteSearchMatch(a, q.trim().toLowerCase()))
     .sort((a, b) => {
@@ -10444,7 +10447,7 @@ function MusicMarketingPage({ isMobile, clients, onOpenClient }) {
   const [mgr, setMgr] = useCachedState('mgrowth.mgr', 'All');
   const managers = useMemo(() => {
     const set = new Set();
-    for (const c of clients) for (const n of String(c.contact || '').split(',')) { const t = n.trim(); if (t) set.add(t); }
+    for (const c of clients) for (const t of repNames(c.contact)) set.add(t);
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [clients]);
   const [sortCol, setSortCol] = useCachedState('mgrowth.sortCol', 'total');
@@ -10973,10 +10976,10 @@ function OpenDealModal({ deal, athletes, user, onClose, onEdit }) {
   const eligible = useMemo(() => athletes
     .filter(a => (!deal.levels.length || deal.levels.includes(a.level)) && (!deal.minFollowers || athleteReach(a) >= deal.minFollowers))
     .filter(a => !invitedKeys.has(a.name.toLowerCase().trim()))
-    .filter(a => !agentOnly || String(a.agentAssigned || '').toLowerCase().includes(user.name.toLowerCase()))
+    .filter(a => !agentOnly || agentMatch(a.agentAssigned, user.name))
     .sort((a, b) => {
-      const mineA = user?.name && String(a.agentAssigned || '').includes(user.name) ? 0 : 1;
-      const mineB = user?.name && String(b.agentAssigned || '').includes(user.name) ? 0 : 1;
+      const mineA = user?.name && agentMatch(a.agentAssigned, user.name) ? 0 : 1;
+      const mineB = user?.name && agentMatch(b.agentAssigned, user.name) ? 0 : 1;
       return mineA - mineB || a.name.localeCompare(b.name);
     }), [athletes, deal, invitedKeys, user, agentOnly]);
   const shown = useMemo(() => {
@@ -11311,7 +11314,7 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   const filtered = deals
     .filter(d => !d.open)
     .filter(d => cat === 'All' || d.categories.includes(cat))
-    .filter(d => agent === 'All' || d.clients.some(n => String(athleteByName[n.toLowerCase()]?.agentAssigned || '').toLowerCase().includes(agent.toLowerCase())))
+    .filter(d => agent === 'All' || d.clients.some(n => agentMatch(athleteByName[n.toLowerCase()]?.agentAssigned, agent)))
     .filter(d => !ql || d.company.toLowerCase().includes(ql) || d.clients.join(' ').toLowerCase().includes(ql) || d.category.toLowerCase().includes(ql) || d.deliverables.toLowerCase().includes(ql));
   const sorted = [...filtered].sort((a, b) => {
     const sv = { company: x => x.company.toLowerCase(), clients: x => (x.clients[0] || '').toLowerCase(), category: x => x.category.toLowerCase() };
@@ -11626,7 +11629,7 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
     if (!levels.includes(a.level)) return false;
     if (depth === 'Starters' && a.depthRank !== 1) return false;
     if (depth === 'Backups' && !(a.depthRank >= 2)) return false;
-    if (agent !== 'All' && !String(a.agentAssigned || '').toLowerCase().includes(agent.toLowerCase())) return false;
+    if (agent !== 'All' && !agentMatch(a.agentAssigned, agent)) return false;
     if (side !== 'All') { const g = contractPosGroup(a.position); if (!POS_SIDES[side].includes(g)) return false; if (group !== 'All' && g !== group) return false; }
     return true;
   }) : []), [athletes, levels, depth, agent, side, group]);
@@ -11887,7 +11890,7 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
   const list = deals.filter(d => {
     const g = contractPosGroup(d.a.position);
     return levels.includes(d.a.level) &&
-      (agent === 'All' || String(d.a.agentAssigned || '').toLowerCase().includes(agent.toLowerCase())) &&
+      (agent === 'All' || agentMatch(d.a.agentAssigned, agent)) &&
       (side === 'All' || (POS_SIDES[side].includes(g) && (group === 'All' || g === group))) &&
       (team === 'All' || d.team === team) &&
       (!q.trim() || athleteSearchMatch(d.a, q.trim().toLowerCase()));
@@ -12038,7 +12041,7 @@ function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
   const colOf = Object.fromEntries(COLS.map(([k, , fn]) => [k, fn]));
   const sorted = athletes
     .filter(a => levels.includes(a.level))
-    .filter(a => agent === 'All' || String(a.agentAssigned || '').toLowerCase().includes(agent.toLowerCase()))
+    .filter(a => agent === 'All' || agentMatch(a.agentAssigned, agent))
     .filter(a => { if (side === 'All') return true; const g = contractPosGroup(a.position); return POS_SIDES[side].includes(g) && (group === 'All' || g === group); })
     .filter(a => !q.trim() || athleteSearchMatch(a, q.trim().toLowerCase()))
     .sort((a, b) => {
@@ -13318,7 +13321,7 @@ function App() {
           youtube: c.youtube, beatport: c.beatport,
           bio: c.bio, credits: c.credits, supporters: c.supporters, keyShows: c.keyShows,
           pro: c.pro, publisher: c.publisher, label: c.label, contact: c.contact,
-          contactEmail: (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(','),
+          contactEmail: repNames(c.contact).map(n => staff[n.toLowerCase()]?.email).filter(Boolean).join(','),
         })),
       }, `${base}-detailed.pdf`);
     }
@@ -13333,7 +13336,7 @@ function App() {
     }, `${base}.pdf`);
   };
   const downloadClientPdf = (c) => {
-    const contactEmail = (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(',');
+    const contactEmail = repNames(c.contact).map(n => staff[n.toLowerCase()]?.email).filter(Boolean).join(',');
     return downloadPdf({ action: 'client-pdf', client: { ...c, contactEmail }, logos }, `${slugOf(c.name)}.pdf`);
   };
   const downloadAthletePdf = (a) => downloadPdf({ action: 'athlete-pdf', athlete: a }, `${slugOf(a.name)}.pdf`);
@@ -13364,7 +13367,7 @@ function App() {
     city2: c.city2, state2: c.state2, country2: c.country2,
     city3: c.city3, state3: c.state3, country3: c.country3,
     credits: c.credits, bio: c.bio, contact: c.contact,
-    contactEmail: (c.contact || '').split(',').map(n => staff[n.trim().toLowerCase()]?.email).filter(Boolean).join(','),
+    contactEmail: repNames(c.contact).map(n => staff[n.toLowerCase()]?.email).filter(Boolean).join(','),
     instagram: c.instagram, twitter: c.twitter, tiktok: c.tiktok,
     appleMusicUrl: c.appleMusicUrl, soundcloudUrl: c.soundcloudUrl,
     spotifyUrl: c.spotifyUrl, spotifyMonthly: c.spotifyMonthly,
@@ -13424,7 +13427,7 @@ function App() {
     return ['All', ...ORDER, ...extra, 'UK Client'];
   }, [clients]);
   const contacts = useMemo(() => ['All', ...Array.from(new Set(
-    clients.flatMap(c => (c.contact || '').split(',').map(s => s.trim()).filter(Boolean))
+    clients.flatMap(c => repNames(c.contact))
   )).sort()], [clients]);
 
   const labels = useMemo(() => ['All', ...Array.from(new Set(
@@ -13446,7 +13449,7 @@ function App() {
     }
     const list = clients.filter(c => {
       if (filterTypes.length > 0 && !filterTypes.some(t => t === 'UK Client' ? isUKClient(c) : (c.types || []).includes(t))) return false;
-      if (filterContact !== 'All' && !(c.contact || '').split(',').map(s => s.trim()).includes(filterContact)) return false;
+      if (filterContact !== 'All' && !repNames(c.contact).some(n => repKey(n) === repKey(filterContact))) return false;
       if (filterLabel !== 'All' && c.label !== filterLabel) return false;
       if (filterCountry !== 'All' && c.country !== filterCountry) return false;
       if (search) {
@@ -13480,7 +13483,7 @@ function App() {
       if (depthFilter === 'Starters' && a.depthRank !== 1) return false;
       if (depthFilter === 'Backups' && !(a.depthRank >= 2)) return false;
       if (depthFilter === 'Not on chart' && (a.depthRank > 0 || a.level === 'High School')) return false;
-      if (agentFilter !== 'All' && !String(a.agentAssigned || '').toLowerCase().includes(agentFilter.toLowerCase())) return false;
+      if (agentFilter !== 'All' && !agentMatch(a.agentAssigned, agentFilter)) return false;
       if (posSide !== 'All') {
         const g = contractPosGroup(a.position);
         if (!POS_SIDES[posSide].includes(g)) return false;

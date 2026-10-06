@@ -16,6 +16,11 @@ const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
 const secret = fs.readFileSync(os.homedir() + '/.mh-harvest-secret', 'utf8').trim();
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+// A fresh Chrome profile per run: a Chrome left hanging by an earlier run
+// (e.g. waiting on a macOS prompt) holds its profile lock, and every later
+// run against that profile quits instantly with a blank page.
+const PROFILE = fs.mkdtempSync(`${os.tmpdir()}/mh-harvest-`);
+process.on('exit', () => { try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch { /* best effort */ } });
 
 // Exact page URLs for names the slug guess lands wrong on (verified by hand).
 const BIT_URLS = {
@@ -41,7 +46,7 @@ console.log(new Date().toISOString(), '— harvesting', artists.length, 'artists
 function chromeDump(url, budget = 15000) {
   return new Promise((resolve) => {
     const p = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-first-run', `--virtual-time-budget=${budget}`,
-      '--dump-dom', `--user-data-dir=${os.tmpdir()}/mh-harvest-profile`, `--user-agent=${UA}`, url]);
+      '--dump-dom', `--user-data-dir=${PROFILE}`, `--user-agent=${UA}`, url]);
     let out = '', done = false;
     const finish = () => { if (!done) { done = true; try { p.kill('SIGKILL'); } catch { /* already gone */ } resolve(out); } };
     p.stdout.on('data', d => { out += d; });
