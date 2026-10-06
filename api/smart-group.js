@@ -41,7 +41,7 @@ module.exports = async function handler(req, res) {
     return res.status(503).json({ error: 'AI search is not configured yet. Add ANTHROPIC_API_KEY in Vercel to enable it.' });
   }
   // Admin-only: AI search reasons over the full sheet, including internal fields.
-  const { configured, admin } = authState(req);
+  const { configured, admin, user } = authState(req);
   if (configured && !admin) return res.status(403).json({ error: 'Log in to use AI search.' });
 
   try {
@@ -63,7 +63,9 @@ module.exports = async function handler(req, res) {
         role: 'user',
         content: [
           { type: 'text', text: `Roster (JSON):\n${JSON.stringify(roster)}`, cache_control: { type: 'ephemeral' } },
-          { type: 'text', text: `Request: ${query}` },
+          // Who's asking, so "my clients" / "mine" / "me" resolve to the
+          // logged-in agent or manager (the rep columns hold staff names).
+          { type: 'text', text: `${user && user.name ? `The person asking is ${user.name}. "My clients", "my roster", "mine" and "me" mean people whose agent / manager / rep is ${user.name}; title those groups "Milk & Honey — ${user.name}'s Clients".\n` : ''}Request: ${query}` },
         ],
       }],
       output_config: { format: { type: 'json_schema', schema: SCHEMA } },
