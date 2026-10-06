@@ -2498,6 +2498,7 @@ function SportsCard({ athlete: a, isMobile, onClick, showDepth, compact }) {
       {rosterTagFor(a) ? rosterTagFor(a).short : `${a.depthPos}${a.depthRank}`}
     </span>
   ) : null;
+  const [pressed, setPressed] = useState(false); // above the mobile return — hooks can't be conditional
   if (isMobile) return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderBottom: `1px solid ${G.surfaceBorder}`, background: hov ? G.surfaceRaised : "transparent", cursor: "pointer", transition: `background 0.15s ${G.ease}` }}>
@@ -2511,7 +2512,6 @@ function SportsCard({ athlete: a, isMobile, onClick, showDepth, compact }) {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke={G.textTertiary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
     </div>
   );
-  const [pressed, setPressed] = useState(false);
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => { setHov(false); setPressed(false); }}
       onMouseDown={() => setPressed(true)} onMouseUp={() => setPressed(false)}
@@ -13229,11 +13229,11 @@ function App() {
     // or manager's own roster (same matching as the "Mine" toggle). Anything
     // more ("my clients in Texas") sends only their roster to the AI.
     const list = domain === 'sports' ? athletes : clients;
-    const isMine = (x) => agentMatch(domain === 'sports' ? x.agentAssigned : x.contact, user.agentKey);
-    const wantsMine = !!user?.agentKey && /\b(my|mine)\b/i.test(query);
+    const isMine = (x) => agentMatch(domain === 'sports' ? x.agentAssigned : x.contact, currentUser.agentKey);
+    const wantsMine = !!currentUser?.agentKey && /\b(my|mine)\b/i.test(query);
     if (wantsMine && /^\s*(show\s+)?(me\s+)?(all\s+)?(of\s+)?(my|mine)(\s+(clients?|roster|artists?|players?|athletes?|writers?|producers?|people|guys))?\s*$/i.test(query)) {
       const names = list.filter(isMine).map(x => x.name);
-      const title = `Milk & Honey — ${user.name || user.agentKey}'s Clients`;
+      const title = `Milk & Honey — ${currentUser.name || currentUser.agentKey}'s Clients`;
       setCustomGroup(names); setCustomGroupTitle(title);
       return { count: names.length, title };
     }

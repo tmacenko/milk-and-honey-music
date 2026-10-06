@@ -23,6 +23,7 @@ const BIT_URLS = {
   'KAS:ST': 'https://www.bandsintown.com/a/13530466-kas:st',
   'Joel Corry': 'https://www.bandsintown.com/a/4269020-joel-corry',
   'J. Worra': 'https://www.bandsintown.com/a/5248787-j.-worra',
+  'AR/CO': 'https://www.bandsintown.com/a/15532775-arco',
 };
 
 // Artist list from the public roster payload (Artist-type clients).
@@ -102,7 +103,7 @@ function parseArtistPage(html) {
 const shows = {}; const skipped = [];
 const harvestOne = async (name, budget) => {
   const slug = name.replace(/[^A-Za-z0-9]/g, '');
-  const url = BIT_URLS[name] || (slug && `https://www.bandsintown.com/${slug}`);
+  const url = BIT_URLS[name] || (Object.entries(BIT_URLS).find(([k]) => norm(k) === norm(name)) || [])[1] || (slug && `https://www.bandsintown.com/${slug}`);
   if (!url) return 'skip';
   const html = await chromeDump(url, budget);
   const { artist, events } = parseArtistPage(html);
