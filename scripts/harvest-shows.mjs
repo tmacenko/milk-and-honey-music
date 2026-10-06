@@ -24,6 +24,8 @@ const BIT_URLS = {
   'Joel Corry': 'https://www.bandsintown.com/a/4269020-joel-corry',
   'J. Worra': 'https://www.bandsintown.com/a/5248787-j.-worra',
   'AR/CO': 'https://www.bandsintown.com/a/15532775-arco',
+  'Chris Avantgarde': 'https://www.bandsintown.com/a/1499460-chris-avantgarde',
+  'Juliet Fox': 'https://www.bandsintown.com/a/2185860-juliet-fox',
 };
 
 // Artist list from the public roster payload (Artist-type clients).
