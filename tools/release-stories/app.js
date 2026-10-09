@@ -283,6 +283,35 @@ async function loadRoster() {
   }
 }
 
+// Inside the Milk & Honey dashboard the roster comes from the dashboard's own
+// client list (same site, same login) — no sheet link needed. Names like
+// "Alexis Kesselman (Idarose)" also match as "Alexis Kesselman" and "Idarose".
+async function loadDashboardRoster() {
+  try {
+    const res = await fetch('/api/sheets', { credentials: 'same-origin' });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const names = [];
+    for (const c of data.clients || []) {
+      const n = String(c.name || '').trim();
+      if (!n) continue;
+      names.push(n);
+      const m = n.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+      if (m) names.push(m[1].trim(), m[2].trim());
+    }
+    const uniq = [...new Set(names.filter(Boolean))].sort((a, b) => b.length - a.length);
+    if (!uniq.length) return false;
+    state.roster = uniq;
+    $('rosterStatus').textContent = `${(data.clients || []).length} clients from the dashboard ✓`;
+    // The sheet-link fields aren't needed here.
+    ['sheetUrl', 'loadRosterBtn'].forEach(id => { const el = $(id); if (el) el.style.display = 'none'; });
+    const lbl = document.querySelector('label[for="sheetUrl"]'); if (lbl) lbl.style.display = 'none';
+    renderRosterList();
+    render();
+    return true;
+  } catch (e) { return false; }
+}
+
 function renderRosterList() {
   $('rosterList').textContent = state.roster.join(' · ');
 }
@@ -1276,6 +1305,7 @@ function init() {
   logos.mh.onload = render;
   logos.mhr.onload = render;
   render();
+  loadDashboardRoster();
 }
 
 init();
