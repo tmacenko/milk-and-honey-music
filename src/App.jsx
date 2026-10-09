@@ -13703,6 +13703,8 @@ function App() {
     ...(isUsageOwner(currentUser) ? [{ key: 'usage', label: 'Usage', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' }] : []),
   ];
   const [onboardLinksOpen, setOnboardLinksOpen] = useState(false);
+  // Phone: the sidebar lives in a slide-out drawer (☰ in the header).
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Expand/collapse state for sidebar groups; a group with the active page
   // inside starts open.
   const [openNavGroups, setOpenNavGroups] = useState({});
@@ -13728,6 +13730,7 @@ function App() {
     } catch { /* quiet — the tooltip still explains the button */ }
   };
   const navClick = (it) => {
+    setMobileNavOpen(false);
     if (it.modal) { setOnboardLinksOpen(true); return; }
     // Usage lives on the sports side; reachable from either sidebar.
     if (it.key === 'usage' && domain !== 'sports') { setDomain('sports', 'usage'); return; }
@@ -13759,8 +13762,9 @@ function App() {
   // The sidebar stays up on player pages too (desktop staff view) — only the
   // page-content gating uses the view-aware navActive flags.
   const sidebarOn = !isMobile && isAdmin;
-  const sidebar = sidebarOn ? (
-    <div style={{ width: 176, flexShrink: 0, borderRight: `1px solid ${G.surfaceBorder}`, padding: "18px 10px", position: "sticky", top: 62, alignSelf: "flex-start", maxHeight: "calc(100vh - 62px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+  // The nav list itself — the desktop sidebar and the phone drawer both show it.
+  const navContent = isAdmin ? (
+    <>
       {navItems.map(it => {
         if (it.children) {
           const childActive = it.children.some(c => navPage === c.key);
@@ -13821,7 +13825,7 @@ function App() {
                   const em = t.email === 'me' ? (currentUser?.email || '') : t.email ? (toolEmails[t.email] || '') : '';
                   const copiedEm = toolCopied === t.label, copiedPw = toolCopied === t.label + '#pw';
                   return (
-                    <button key={t.label} onClick={() => t.page ? goMusicPage(t.page) : openTool(t)}
+                    <button key={t.label} onClick={() => { if (t.page) { goMusicPage(t.page); setMobileNavOpen(false); } else openTool(t); }}
                       title={t.page ? 'Open in the app' : em ? `Opens in a new tab — copies the login email (${em})` : 'Opens in a new tab'}
                       style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px 8px 27px", background: t.page && musicPage === t.page && view !== 'detail' ? G.surface : "transparent", boxShadow: t.page && musicPage === t.page && view !== 'detail' ? G.cardShadow : "none", border: "none", borderRadius: 9, color: copiedEm || copiedPw || (t.page && musicPage === t.page && view !== 'detail') ? G.green : G.textSecondary, fontWeight: copiedEm || copiedPw || (t.page && musicPage === t.page && view !== 'detail') ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: ff, textAlign: "left", width: "100%" }}>
                       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{copiedPw ? '✓ Password copied' : copiedEm ? '✓ Email copied' : t.label}</span>
@@ -13848,21 +13852,40 @@ function App() {
           <span style={{ flex: 1 }}>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
         </button>
       </div>
+    </>
+  ) : null;
+  const sidebar = sidebarOn ? (
+    <div style={{ width: 176, flexShrink: 0, borderRight: `1px solid ${G.surfaceBorder}`, padding: "18px 10px", position: "sticky", top: 62, alignSelf: "flex-start", maxHeight: "calc(100vh - 62px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+      {navContent}
     </div>
   ) : null;
+  const currentNavLabel = (navItems.flatMap(it => it.children || [it]).find(it => it.key === navPage) || {}).label || 'Menu';
   const mobileNavStrip = (
-    <div className="mh-hscroll" style={{ display: "flex", gap: 4, alignItems: "center", overflowX: "auto" }}>
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
       {domainToggle}
-      <div style={{ display: "flex", background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-        {navItems.flatMap(it => it.children || [it]).map((it, i) => (
-          <button key={it.key} onClick={() => navClick(it)}
-            style={{ padding: "8px 10px", border: "none", borderLeft: i > 0 ? `1px solid ${G.surfaceBorder}` : "none", background: navPage === it.key ? G.greenSubtle : "transparent", color: navPage === it.key ? G.green : G.textSecondary, fontWeight: navPage === it.key ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
-            {it.label}
-          </button>
-        ))}
-      </div>
+      <button onClick={() => setMobileNavOpen(true)}
+        style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", color: G.text, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff, minWidth: 0 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentNavLabel}</span>
+        <span style={{ fontSize: 9, color: G.textTertiary, flexShrink: 0 }}>▾</span>
+      </button>
     </div>
   );
+  // Phone drawer — the desktop sidebar, slid in from the left.
+  const mobileDrawer = isMobile && isAdmin && mobileNavOpen ? (
+    <div onClick={() => setMobileNavOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,0.45)", animation: "fadeIn .15s ease-out" }}>
+      <div onClick={e => e.stopPropagation()} style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "min(300px, 84vw)", background: G.bg, borderRight: `1px solid ${G.surfaceBorder}`, boxShadow: G.shadowLg, display: "flex", flexDirection: "column", animation: `drawerIn .2s ${G.ease}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 12px 10px 16px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+          <img src="/mh-logo.png" alt="Milk & Honey" style={{ height: 24, objectFit: "contain" }} />
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setMobileNavOpen(false)} aria-label="Close menu" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, color: G.textSecondary, cursor: "pointer", padding: "6px 10px", fontSize: 14, fontFamily: ff }}>✕</button>
+        </div>
+        <div style={{ padding: "12px 12px 4px" }}>{domainToggle}</div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "4px 10px 24px", display: "flex", flexDirection: "column", gap: 2 }}>
+          {navContent}
+        </div>
+      </div>
+    </div>
+  ) : null;
   // Level chips — always visible above the roster grid, multi-select.
   const sportsLevelBar = (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: isMobile ? "12px 16px 14px" : "0 0 14px" }}>
@@ -13949,10 +13972,12 @@ function App() {
       <UpdateChip />
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
       {onboardLinksOpen && <OnboardLinksModal onClose={() => setOnboardLinksOpen(false)} />}
+      {mobileDrawer}
       <style>{`
         @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
         @keyframes chatDot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
         @keyframes modalIn{from{opacity:0;transform:translateY(10px) scale(0.98)}to{opacity:1;transform:none}}
+        @keyframes drawerIn{from{transform:translateX(-100%)}to{transform:none}}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes mhPulse{0%,100%{opacity:1}50%{opacity:.55}}
         *{-webkit-font-smoothing:antialiased}
@@ -13986,6 +14011,12 @@ function App() {
             <div style={{ flexShrink: 0, position: "sticky", top: 0, zIndex: 40, background: G.bg }}>
               {/* Row 1: logo (left) + export + profile (right) — always just these three */}
               <div style={{ padding: "14px 16px 10px", display: "flex", gap: 8, alignItems: "center" }}>
+                {isAdmin && (
+                  <button onClick={() => setMobileNavOpen(true)} aria-label="Menu"
+                    style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "7px 9px", cursor: "pointer", color: G.text, display: "flex", alignItems: "center", flexShrink: 0 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  </button>
+                )}
                 <img src="/mh-logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
                 {isAdmin && <img src="/targa-logo.png" alt="Targa" style={{ height: 15, objectFit: "contain", flexShrink: 0 }} />}
                 <div style={{ flex: 1 }} />
