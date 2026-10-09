@@ -13697,6 +13697,9 @@ function App() {
     { key: 'home', label: 'Home', icon: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10' },
     { key: 'roster', label: 'Roster', icon: 'M4 6h16M4 12h16M4 18h16' },
     { key: 'marketing', label: 'Marketing', icon: 'M3 11l18-8-8 18-2-8-8-2z' },
+    // Owner-only: the Friday release story generator (tools/release-stories,
+    // served by api/tool.js behind the same owner check).
+    ...(isUsageOwner(currentUser) ? [{ key: 'stories', label: 'Release stories', icon: 'M7 2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2zM9 7h6M9 11h6M9 15h3' }] : []),
     ...(isUsageOwner(currentUser) ? [{ key: 'usage', label: 'Usage', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' }] : []),
   ];
   const [onboardLinksOpen, setOnboardLinksOpen] = useState(false);
@@ -14198,6 +14201,9 @@ function App() {
                   <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 4 }}>Every artist show in the next 14 days</div>
                   <MusicShowsModule clients={clients} isMobile={isMobile} onOpenClient={(c) => setView('detail', c)} user={currentUser} fullPage />
                 </div>
+              )}
+              {!loading && !error && view === 'roster' && musicNavActive && effMusicPage === 'stories' && isUsageOwner(currentUser) && (
+                <iframe title="Release stories" src="/release-stories/" style={{ display: "block", width: "100%", height: isMobile ? "calc(100vh - 64px)" : "100vh", border: 0, background: G.bg }} />
               )}
               {!loading && !error && view === 'roster' && musicNavActive && effMusicPage === 'marketing' && (
                 <MusicMarketingPage isMobile={isMobile} clients={clients} onOpenClient={(c) => setView('detail', c)} />

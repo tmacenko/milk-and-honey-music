@@ -28,6 +28,9 @@
     },
     "api/usage.js": {
       "maxDuration": 60
+    },
+    "api/tool.js": {
+      "includeFiles": "tools/**"
     }
   },
   "crons": [
@@ -82,6 +85,14 @@
       "destination": "/api/share-og?id=:id&kind=players"
     },
     {
+      "source": "/release-stories/",
+      "destination": "/api/tool?tool=release-stories&path=index.html"
+    },
+    {
+      "source": "/release-stories/:path*",
+      "destination": "/api/tool?tool=release-stories&path=:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/:path*"
     },
@@ -104,6 +115,13 @@
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/release-stories",
+      "destination": "/release-stories/",
+      "permanent": false
     }
   ]
 }

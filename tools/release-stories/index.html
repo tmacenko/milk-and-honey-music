@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Release Story Generator</title>
+<link rel="stylesheet" href="styles.css?v=2">
+</head>
+<body>
+<div class="layout">
+  <aside class="panel">
+    <header class="panel-header">
+      <h1>Release Story Generator</h1>
+      <p class="sub">Milk &amp; Honey — Friday release stories</p>
+    </header>
+
+    <div class="seg mode-seg" id="modeSwitch">
+      <button data-value="single" class="seg-btn active">Single</button>
+      <button data-value="batch" class="seg-btn">Batch (paste thread)</button>
+    </div>
+
+    <div id="batchControls" class="hidden">
+      <section class="field-group">
+        <label class="field-label" for="threadInput">Paste the Friday email thread</label>
+        <textarea id="threadInput" rows="12" placeholder="Madonna - Confessions 2 - Album executive produced and co written by Stuart Price&#10;https://open.spotify.com/album/...&#10;&#10;Take That - Sweet July - Co written and produced by Matt Rad&#10;https://open.spotify.com/album/..."></textarea>
+        <p class="hint">Every reply with a Spotify link becomes a graphic. Artist releases and credit releases are sorted automatically.</p>
+        <div class="row">
+          <label class="field-label" for="batchDate" style="margin:0;">Folder date</label>
+          <input type="text" id="batchDate" style="max-width:130px;" placeholder="MM.DD.YYYY">
+        </div>
+      </section>
+      <button id="generateBtn" class="btn primary" style="width:100%;">Generate all</button>
+      <p class="hint" id="batchStatus"></p>
+      <button id="downloadZipBtn" class="btn download hidden">Download all (Box-ready zip)</button>
+    </div>
+
+    <div id="singleControls">
+    <div id="editBar" class="edit-bar hidden">
+      <span id="editBarLabel"></span>
+      <div class="row" style="margin-top:8px;">
+        <button id="saveEditBtn" class="btn primary">Save to batch</button>
+        <button id="cancelEditBtn" class="btn">Cancel</button>
+      </div>
+    </div>
+    <section class="field-group">
+      <label class="field-label" for="spotifyUrl">Spotify link</label>
+      <div class="row">
+        <input type="url" id="spotifyUrl" placeholder="https://open.spotify.com/track/…">
+        <button id="fetchBtn" class="btn primary">Fetch</button>
+      </div>
+      <p class="hint" id="fetchStatus"></p>
+      <label class="upload-fallback">
+        or upload artwork manually
+        <input type="file" id="artUpload" accept="image/*">
+      </label>
+    </section>
+
+    <section class="field-group">
+      <label class="field-label" for="titleInput">Release title</label>
+      <input type="text" id="titleInput" placeholder="Adored">
+      <label class="field-label" for="artistInput">Artist</label>
+      <input type="text" id="artistInput" placeholder="J. Worra">
+      <p class="hint">Client names auto-bold on mixed releases. Wrap a name in *asterisks* to force bold, or _underscores_ to force regular.</p>
+    </section>
+
+    <section class="field-group">
+      <label class="check">
+        <input type="checkbox" id="creditToggle">
+        <span>Include credit block (for producer / writer / mixer clients)</span>
+      </label>
+      <div id="creditFields" class="nested hidden">
+        <label class="field-label">Specific track(s) — optional</label>
+        <div id="trackList"></div>
+        <button id="addTrackBtn" type="button" class="btn small">+ Add track</button>
+        <p class="hint">List the exact tracks the client worked on (e.g. two songs on one album) — reads <em>"Song 1" &amp; "Song 2" co-written by</em>. Leave empty to credit the whole release.</p>
+
+        <label class="field-label">Role(s)</label>
+        <div class="chips" id="roleChips"></div>
+        <div id="customRoleWrap" class="hidden">
+          <input type="text" id="customRole" placeholder="e.g. ALBUM EXECUTIVE PRODUCED &amp; CO WRITTEN BY">
+          <p class="hint">Custom overrides the built line — type exactly what should appear.</p>
+        </div>
+        <label class="field-label" for="creditNames">Credited client(s)</label>
+        <input type="text" id="creditNames" placeholder="Stuart Price">
+        <p class="hint" id="creditPreview"></p>
+      </div>
+    </section>
+
+    <section class="field-group">
+      <label class="field-label">Logo</label>
+      <div class="seg" id="logoType">
+        <button data-value="mh" class="seg-btn active">Milk &amp; Honey</button>
+        <button data-value="mhr" class="seg-btn">M&amp;H Records</button>
+      </div>
+    </section>
+
+    <section class="field-group">
+      <label class="field-label">Accent color</label>
+      <div class="row swatch-row">
+        <div id="swatches" class="swatches"></div>
+        <input type="color" id="accentPicker" value="#c0392b" title="Custom accent color">
+      </div>
+    </section>
+
+    <button id="downloadBtn" class="btn download">Download PNG (1080 × 1920)</button>
+
+    <div id="editActions" class="edit-bar hidden">
+      <button id="saveEditBtn2" class="btn primary block">Save to batch</button>
+      <button id="deleteEditBtn" class="btn danger block">Delete this release</button>
+      <button id="cancelEditBtn2" class="btn block">Back without saving</button>
+    </div>
+    </div><!-- /singleControls -->
+
+    <details class="settings">
+      <summary>Settings — client roster</summary>
+      <label class="field-label" for="sheetUrl">Google Sheet link (view or publish-to-web link)</label>
+      <input type="url" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/…">
+      <div class="row">
+        <button id="loadRosterBtn" class="btn">Load roster</button>
+        <span class="hint" id="rosterStatus"></span>
+      </div>
+      <div id="rosterList" class="roster-list"></div>
+    </details>
+  </aside>
+
+  <main class="preview-wrap">
+    <canvas id="preview" width="1080" height="1920"></canvas>
+    <div id="gallery" class="gallery hidden"></div>
+  </main>
+</div>
+<script src="app.js?v=4"></script>
+</body>
+</html>
