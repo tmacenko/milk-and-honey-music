@@ -1726,6 +1726,15 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
   ];
 
   const BIO_LIMIT = 280;
+  // Manager chip — same as the sports profile's Agent chip (staff only).
+  const mgrs = repNames(c.contact);
+  const managerEl = isAdmin && mgrs.length > 0 && (
+    <div style={{ marginTop: c.bio ? -6 : 0 }}>
+      <span style={{ display: "inline-block", fontSize: 12, fontWeight: 600, color: G.text, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 11px" }}>
+        <span style={{ color: G.textTertiary }}>{mgrs.length > 1 ? 'Managers' : 'Manager'} · </span>{mgrs.join(', ')}
+      </span>
+    </div>
+  );
   const bioTruncated = c.bio && c.bio.length > BIO_LIMIT && !bioExpanded;
   const bioText = bioTruncated ? c.bio.slice(0, BIO_LIMIT).trimEnd() + '...' : c.bio;
 
@@ -1803,6 +1812,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
             )}
           </div>
         )}
+        {managerEl}
         {supportersEl}
         {keyShowsEl}
         {logoItems.length > 0 && (
@@ -1915,6 +1925,7 @@ function ClientDetail({ client: c, logos, staff, onBack, onEdit, isMobile, isAdm
         {isAdmin && tab === 'shows' && <ArtistShowsTab client={c} isMobile={false} pad={32} />}
         <div style={{ padding: "24px 32px", display: (!isAdmin || tab === 'about') ? "flex" : "none", flexDirection: "column", gap: 20, background: G.bg }}>
         {c.bio && <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{c.bio}</p>}
+        {managerEl}
         {supportersEl}
         {keyShowsEl}
         {logoItems.length > 0 && (
