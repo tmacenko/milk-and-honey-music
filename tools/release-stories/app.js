@@ -302,6 +302,7 @@ async function loadDashboardRoster() {
     const uniq = [...new Set(names.filter(Boolean))].sort((a, b) => b.length - a.length);
     if (!uniq.length) return false;
     state.roster = uniq;
+    state.clients = (data.clients || []).map(c => ({ name: c.name, types: c.types || [] }));
     $('rosterStatus').textContent = `${(data.clients || []).length} clients from the dashboard ✓`;
     // The sheet-link fields aren't needed here.
     ['sheetUrl', 'loadRosterBtn'].forEach(id => { const el = $(id); if (el) el.style.display = 'none'; });
@@ -874,8 +875,27 @@ function releaseFileName(rel) {
 
 let batchItems = [];
 
+// Clean up the pasted email first (api/release-parse: Spotify names every
+// link, the AI sorts lines into releases and credits) and show the result in
+// the box so it can be checked or fixed before the graphics build.
+async function cleanUpThread(status) {
+  const raw = $('threadInput').value.trim();
+  if (!raw) return;
+  status.textContent = 'Cleaning up the email…';
+  try {
+    const res = await fetch('/api/release-parse', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: raw, clients: state.clients || [] }) });
+    const d = await res.json();
+    if (!res.ok || !d.text) throw new Error(d.error || 'Clean-up failed');
+    $('threadInput').value = d.text;
+    if (d.notes && d.notes.length) window.alert(d.notes.join('\n'));
+  } catch (e) {
+    status.textContent = `Couldn’t clean up (${e.message}) — using the text as pasted.`;
+  }
+}
+
 async function runBatch() {
   const status = $('batchStatus');
+  await cleanUpThread(status);
   const releases = parseThread($('threadInput').value);
   if (!releases.length) {
     status.textContent = 'No Spotify links found in that text.';
