@@ -9881,6 +9881,343 @@ function RecruitBlock({ p, ops, staff, user, onEditRecord }) {
   );
 }
 
+// ── Marketing plans (owner-only slide decks, shared at /plan/{id}) ───────────
+// Decks are built from fixed slide types and stored in the Presentations tab;
+// api/plan.js does every write and checks OWNERS, so nothing here is security.
+// The preview is the real public page (/plan-preview) fed by postMessage, so
+// what Tyler sees in the editor is exactly what the link shows.
+const PLAN_ICONS = ['handshake', 'megaphone', 'community', 'camera', 'trophy', 'star', 'chart', 'mic', 'heart', 'globe', 'calendar', 'dollar', 'shirt', 'phone'];
+const PLAN_TYPES = { cover: 'Cover', focus: 'Focus areas', section: 'Section' };
+const PLAN_URL = (id) => `https://www.milkandhoneyfamily.com/plan/${id}`;
+function planNewSlide(type, p) {
+  const photo = (p && p.photo) || '';
+  if (type === 'cover') return { type, photo, photoPos: '50% 50%', name: (p && p.name) || '', subtitle: 'In season marketing plan', showLogo: true };
+  if (type === 'focus') return { type, photo, photoPos: '50% 20%', title: 'Three key\nfocus areas', items: [{ icon: 'handshake', label: 'Brand\npartnerships' }, { icon: 'megaphone', label: 'Media\nopportunities' }, { icon: 'community', label: 'Community\ninvolvement' }] };
+  return { type: 'section', photo, photoPos: '50% 30%', title: '', groups: [{ heading: '', bullets: [] }], logos: [] };
+}
+function planTemplate(p) {
+  const sec = (title, heads) => ({ ...planNewSlide('section', p), title, groups: heads.map(h => ({ heading: h, bullets: [] })) });
+  return { v: 1, slides: [
+    planNewSlide('cover', p), planNewSlide('focus', p),
+    sec('Brand\npartnerships', ['Paid opportunities', 'Free product-based']),
+    sec('Media\nopportunities', ['']),
+    sec('Community\ninvolvement', ['']),
+  ] };
+}
+// Resize in the browser, then host in public Blob via api/plan (owner-only).
+async function planUpload(file, name, max, keepPng) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      resolve(keepPng && file.type === 'image/png' ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', 0.88));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
+    img.src = url;
+  });
+  const r = await fetch('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'upload', data: dataUrl, name }) });
+  const j = await r.json();
+  if (!r.ok || !j.url) throw new Error(j.error || 'Upload failed');
+  return j.url;
+}
+const planBtn = (kind, busy) => ({
+  primary: { background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: busy ? "default" : "pointer", fontFamily: ff, opacity: busy ? 0.6 : 1, whiteSpace: "nowrap" },
+  secondary: { background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: busy ? "default" : "pointer", fontFamily: ff, opacity: busy ? 0.6 : 1, whiteSpace: "nowrap" },
+  ghost: { background: "none", color: G.textSecondary, border: "none", borderRadius: 8, padding: "6px 8px", fontWeight: 600, fontSize: 12.5, cursor: busy ? "default" : "pointer", fontFamily: ff, opacity: busy ? 0.6 : 1, whiteSpace: "nowrap" },
+}[kind]);
+function PlanToast({ text, busy }) {
+  if (!text) return null;
+  return (
+    <div style={{ position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)", zIndex: 400, display: "flex", alignItems: "center", gap: 8, background: G.surface, border: `1px solid ${G.surfaceBorderLight}`, borderRadius: 99, padding: "8px 16px", boxShadow: G.shadowLg, fontSize: 13, color: G.text, ...REVEAL }}>
+      {busy && <span style={{ width: 12, height: 12, border: `2px solid ${G.surfaceBorderLight}`, borderTopColor: G.green, borderRadius: "50%", animation: "spin .8s linear infinite" }} />}
+      {text}
+    </div>
+  );
+}
+
+function PlanBlock({ p, isMobile }) {
+  const tab = useAdminTab('presentations', 'athletes');
+  const [editing, setEditing] = useState(null);
+  const [busyId, setBusyId] = useState('');
+  const [toast, setToast] = useState('');
+  const [hoverId, setHoverId] = useState('');
+  const toastRef = useRef(null);
+  const say = (t) => { setToast(t); clearTimeout(toastRef.current); toastRef.current = setTimeout(() => setToast(''), 3000); };
+  const plans = useMemo(() => {
+    if (!tab.data) return [];
+    const h = tab.data.headers.map(x => x.toLowerCase());
+    const col = (n) => h.indexOf(n.toLowerCase());
+    return tab.data.rows.map(r => { const o = {}; tab.data.headers.forEach((k, i) => { o[k] = r.cells[i] || ''; }); return o; })
+      .filter(o => o.id && (o.playerId === String(p.id) || (!o.playerId && nameKey(o.player) === nameKey(p.name))))
+      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+      .map(o => ({ ...o, _col: col }));
+  }, [tab.data, p.id, p.name]);
+  const expired = (o) => !!o.expires && new Date().toISOString().slice(0, 10) > o.expires;
+  const copy = async (id) => { try { await navigator.clipboard.writeText(PLAN_URL(id)); say('Link copied'); } catch { say(PLAN_URL(id)); } };
+  const toggle = async (o) => {
+    setBusyId(o.id);
+    try {
+      const status = o.status === 'live' ? 'revoked' : 'live';
+      const r = await fetch('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'status', id: o.id, status }) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+      say(status === 'live' ? 'Link on' : 'Link off'); tab.reload();
+    } catch (e) { say(e.message); }
+    finally { setBusyId(''); }
+  };
+  const open = (o) => {
+    let deck; try { deck = JSON.parse(o.deck); } catch { deck = { v: 1, slides: [] }; }
+    setEditing({ id: o.id, title: o.title, expires: o.expires, deck });
+  };
+  const chip = (o) => {
+    const off = o.status !== 'live', ex = expired(o);
+    const label = off ? 'Off' : ex ? 'Expired' : 'Live';
+    const color = off ? G.textTertiary : ex ? G.yellow : G.green;
+    return <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color, background: off ? G.surfaceRaised : ex ? "rgba(217,119,6,.12)" /* amber at 12% — no token for amber-subtle */ : G.greenSubtle, borderRadius: 99, padding: "2px 8px" }}>{label}</span>;
+  };
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>Marketing plans</div>
+        <button onClick={() => setEditing({ id: '', title: 'In season marketing plan', expires: '', deck: planTemplate(p) })}
+          onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = 'none'}
+          style={{ ...planBtn('ghost'), color: G.green, fontWeight: 700 }}>+ New plan</button>
+      </div>
+      {tab.loading && !tab.data ? <div style={{ height: 40, borderRadius: 10, background: G.surfaceRaised }} />
+        : plans.length === 0 ? <div style={{ fontSize: 12.5, color: G.textTertiary }}>No plans yet</div>
+        : plans.map(o => (
+          <div key={o.id} onMouseEnter={() => setHoverId(o.id)} onMouseLeave={() => setHoverId('')}
+            style={{ display: "flex", alignItems: "center", flexWrap: isMobile ? "wrap" : "nowrap", gap: isMobile ? "4px 2px" : 10, padding: "10px 12px", margin: "0 -12px", borderRadius: 10, background: hoverId === o.id ? G.surfaceRaised : "transparent", transition: `background .15s ${G.ease}` }}>
+            <div style={{ flex: isMobile ? "1 1 100%" : 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.title || 'Marketing plan'}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, fontSize: 11.5, color: G.textTertiary, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                {chip(o)}<span>{parseInt(o.views, 10) || 0} views</span>{o.expires && <span>until {o.expires}</span>}
+              </div>
+            </div>
+            <button onClick={() => open(o)} style={planBtn('ghost')} onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>Edit</button>
+            <button onClick={() => copy(o.id)} style={planBtn('ghost')} onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>Copy link</button>
+            <button onClick={() => toggle(o)} disabled={busyId === o.id} style={planBtn('ghost', busyId === o.id)} onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>{busyId === o.id ? 'Saving…' : o.status === 'live' ? 'Link off' : 'Link on'}</button>
+          </div>
+        ))}
+      {editing && <PlanEditor p={p} isMobile={isMobile} initial={editing} onClose={() => setEditing(null)} onSaved={() => tab.reload()} onDeleted={() => { setEditing(null); tab.reload(); say('Plan deleted'); }} />}
+      <PlanToast text={toast} />
+    </div>
+  );
+}
+
+function PlanEditor({ p, isMobile, initial, onClose, onSaved, onDeleted }) {
+  const [id, setId] = useState(initial.id || '');
+  const [title, setTitle] = useState(initial.title || '');
+  const [expires, setExpires] = useState(initial.expires || '');
+  const [slides, setSlides] = useState(() => (initial.deck && Array.isArray(initial.deck.slides) ? initial.deck.slides : []));
+  const [sel, setSel] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [toast, setToast] = useState({ text: '', busy: false });
+  const [mode, setMode] = useState(isMobile ? 'phone' : 'desktop');
+  const [uploading, setUploading] = useState('');
+  const [scale, setScale] = useState(0.5);
+  const frameRef = useRef(null), wrapRef = useRef(null), readyRef = useRef(false), toastRef = useRef(null);
+  const say = (text, busy) => { setToast({ text, busy: !!busy }); clearTimeout(toastRef.current); if (!busy) toastRef.current = setTimeout(() => setToast({ text: '', busy: false }), 3000); };
+  useEffect(() => { document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = ''; }; }, []);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  // Live preview: the public page in an iframe, redrawn from the draft.
+  const post = useCallback(() => {
+    const w = frameRef.current && frameRef.current.contentWindow;
+    if (w && readyRef.current) w.postMessage({ type: 'plan', deck: { v: 1, slides }, index: sel }, window.location.origin);
+  }, [slides, sel]);
+  useEffect(() => {
+    const onMsg = (e) => { if (e.origin === window.location.origin && e.data && e.data.type === 'plan-ready') { readyRef.current = true; post(); } };
+    window.addEventListener('message', onMsg); return () => window.removeEventListener('message', onMsg);
+  }, [post]);
+  useEffect(() => { const t = setTimeout(post, 120); return () => clearTimeout(t); }, [post]);
+  useEffect(() => {
+    const el = wrapRef.current; if (!el) return;
+    const fit = () => { const W = mode === 'desktop' ? 1280 : 390; setScale(Math.min(1, (el.clientWidth) / W)); };
+    fit();
+    const ro = new ResizeObserver(fit); ro.observe(el); return () => ro.disconnect();
+  }, [mode]);
+
+  const update = (patch) => { setSlides(s => s.map((x, i) => (i === sel ? { ...x, ...patch } : x))); setDirty(true); };
+  const cur = slides[sel];
+  const add = (type) => { setSlides(s => [...s, planNewSlide(type, p)]); setSel(slides.length); setDirty(true); };
+  const move = (i, d) => { const j = i + d; if (j < 0 || j >= slides.length) return; setSlides(s => { const n = [...s]; [n[i], n[j]] = [n[j], n[i]]; return n; }); setSel(j); setDirty(true); };
+  const remove = (i) => { if (!window.confirm('Remove this slide?')) return; setSlides(s => s.filter((_, k) => k !== i)); setSel(Math.max(0, Math.min(sel, slides.length - 2))); setDirty(true); };
+  const save = async () => {
+    setSaving(true); say('Saving…', true);
+    try {
+      const r = await fetch('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', id, playerId: String(p.id), player: p.name, title, expires, deck: { v: 1, slides } }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Save failed');
+      setId(j.id); setDirty(false); say('Saved'); onSaved();
+    } catch (e) { say(e.message); }
+    finally { setSaving(false); }
+  };
+  const copy = async () => { try { await navigator.clipboard.writeText(PLAN_URL(id)); say('Link copied'); } catch { say(PLAN_URL(id)); } };
+  const del = async () => {
+    if (!window.confirm('Delete this plan? The link stops working.')) return;
+    say('Deleting…', true);
+    try {
+      const r = await fetch('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', id }) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Delete failed');
+      onDeleted();
+    } catch (e) { say(e.message); }
+  };
+  const pick = async (file, field, max, keepPng, name) => {
+    if (!file) return;
+    setUploading(field);
+    try { const url = await planUpload(file, name, max, keepPng); if (field === 'logo') update({ logos: [...(cur.logos || []), { url, name: file.name.replace(/\.[^.]+$/, '') }] }); else update({ photo: url }); }
+    catch (e) { say(e.message); }
+    finally { setUploading(''); }
+  };
+  const label = (t) => <div style={{ ...labelStyle, marginTop: 16 }}>{t}</div>;
+  const area = (v, on, rows = 2) => <textarea value={v} onChange={e => on(e.target.value)} rows={rows} style={{ ...inputBase, resize: "vertical", lineHeight: 1.4 }} onFocus={e => e.currentTarget.style.borderColor = G.green} onBlur={e => e.currentTarget.style.borderColor = G.surfaceBorder} />;
+  const text = (v, on, ph) => <input value={v} onChange={e => on(e.target.value)} placeholder={ph} style={inputBase} onFocus={e => e.currentTarget.style.borderColor = G.green} onBlur={e => e.currentTarget.style.borderColor = G.surfaceBorder} />;
+  const select = (v, on, opts) => <select value={v} onChange={e => on(e.target.value)} style={{ ...inputBase, width: "auto" }}>{opts.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>;
+  const fileBtn = (field, max, keepPng, lbl) => (
+    <label style={{ ...planBtn('secondary', uploading === field), display: "inline-block" }}>
+      {uploading === field ? 'Uploading…' : lbl}
+      <input type="file" accept="image/*" disabled={!!uploading} style={{ display: "none" }} onChange={e => { pick(e.target.files && e.target.files[0], field, max, keepPng, `${p.name}-${field}`); e.target.value = ''; }} />
+    </label>
+  );
+  const [px, py] = String(cur && cur.photoPos || '50% 50%').split(' ');
+  const form = cur && (
+    <div>
+      <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>{PLAN_TYPES[cur.type]}</div>
+      {label('Photo')}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        {cur.photo && <img src={cur.photo} alt="" style={{ width: 64, height: 40, objectFit: "cover", objectPosition: cur.photoPos, borderRadius: 6, background: G.surfaceRaised }} />}
+        {fileBtn('photo', 1800, false, cur.photo ? 'Replace' : 'Upload')}
+        {p.photo && cur.photo !== p.photo && <button onClick={() => update({ photo: p.photo })} style={planBtn('ghost')}>Use profile photo</button>}
+        {cur.photo && <button onClick={() => update({ photo: '' })} style={{ ...planBtn('ghost'), color: G.red }}>Remove</button>}
+      </div>
+      {cur.photo && (<>
+        {label('Focal point')}
+        <div style={{ display: "flex", gap: 8 }}>
+          {select(px, v => update({ photoPos: `${v} ${py}` }), [['20%', 'Left'], ['50%', 'Center'], ['80%', 'Right']])}
+          {select(py, v => update({ photoPos: `${px} ${v}` }), [['20%', 'Top'], ['50%', 'Middle'], ['80%', 'Bottom']])}
+        </div>
+      </>)}
+      {cur.type === 'cover' && (<>
+        {label('Name')}{text(cur.name, v => update({ name: v }))}
+        {label('Subtitle')}{text(cur.subtitle, v => update({ subtitle: v }))}
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, fontSize: 13, color: G.text, cursor: "pointer" }}>
+          <input type="checkbox" checked={cur.showLogo !== false} onChange={e => update({ showLogo: e.target.checked })} style={{ accentColor: G.green }} /> Show logo
+        </label>
+      </>)}
+      {cur.type === 'focus' && (<>
+        {label('Title')}{area(cur.title, v => update({ title: v }))}
+        {label('Items')}
+        {(cur.items || []).map((it, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            {select(it.icon, v => update({ items: cur.items.map((x, k) => (k === i ? { ...x, icon: v } : x)) }), PLAN_ICONS.map(k => [k, k[0].toUpperCase() + k.slice(1)]))}
+            <input value={it.label} onChange={e => update({ items: cur.items.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)) })} style={inputBase} onFocus={e => e.currentTarget.style.borderColor = G.green} onBlur={e => e.currentTarget.style.borderColor = G.surfaceBorder} />
+            <button onClick={() => update({ items: cur.items.filter((_, k) => k !== i) })} title="Remove" style={{ ...planBtn('ghost'), color: G.textTertiary }}>✕</button>
+          </div>
+        ))}
+        {(cur.items || []).length < 4 && <button onClick={() => update({ items: [...(cur.items || []), { icon: 'star', label: '' }] })} style={{ ...planBtn('ghost'), color: G.green, padding: "6px 0" }}>+ Add item</button>}
+      </>)}
+      {cur.type === 'section' && (<>
+        {label('Title')}{area(cur.title, v => update({ title: v }))}
+        {(cur.groups || []).map((g, i) => (
+          <div key={i} style={{ marginTop: 16, padding: 12, borderRadius: 10, border: `1px solid ${G.surfaceBorder}` }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {text(g.heading, v => update({ groups: cur.groups.map((x, k) => (k === i ? { ...x, heading: v } : x)) }), 'Heading')}
+              <button onClick={() => update({ groups: cur.groups.filter((_, k) => k !== i) })} title="Remove group" style={{ ...planBtn('ghost'), color: G.textTertiary }}>✕</button>
+            </div>
+            <div style={{ ...labelStyle, marginTop: 10 }}>Bullets, one per line</div>
+            {area((g.bullets || []).join('\n'), v => update({ groups: cur.groups.map((x, k) => (k === i ? { ...x, bullets: v.split('\n') } : x)) }), 4)}
+          </div>
+        ))}
+        {(cur.groups || []).length < 4 && <button onClick={() => update({ groups: [...(cur.groups || []), { heading: '', bullets: [] }] })} style={{ ...planBtn('ghost'), color: G.green, padding: "6px 0", marginTop: 8 }}>+ Add group</button>}
+        {label('Logos')}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {(cur.logos || []).map((l, i) => (
+            <div key={i} style={{ position: "relative", background: "#080809", borderRadius: 8, padding: 8 }}>
+              <img src={l.url} alt={l.name} style={{ height: 28, maxWidth: 90, objectFit: "contain", display: "block" }} />
+              <button onClick={() => update({ logos: cur.logos.filter((_, k) => k !== i) })} title="Remove" style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 99, border: `1px solid ${G.surfaceBorderLight}`, background: G.surface, color: G.textSecondary, fontSize: 10, cursor: "pointer", fontFamily: ff, padding: 0 }}>✕</button>
+            </div>
+          ))}
+          {(cur.logos || []).length < 6 && fileBtn('logo', 800, true, 'Add logo')}
+        </div>
+      </>)}
+    </div>
+  );
+  const list = (
+    <div>
+      {slides.map((s, i) => {
+        const name = s.type === 'cover' ? s.name : (s.title || '').replace(/\n/g, ' ');
+        const on = i === sel;
+        return (
+          <div key={i} onClick={() => setSel(i)}
+            onMouseEnter={e => { if (!on) e.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent'; }}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 10, cursor: "pointer", background: on ? G.greenSubtle : "transparent", border: `1px solid ${on ? G.greenBorder : 'transparent'}`, marginBottom: 4 }}>
+            <span style={{ fontSize: 11.5, color: G.textTertiary, fontVariantNumeric: "tabular-nums", width: 16 }}>{i + 1}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: on ? G.green : G.textTertiary }}>{PLAN_TYPES[s.type]}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name || '—'}</div>
+            </div>
+            {on && <span style={{ display: "flex", gap: 2 }}>
+              <button onClick={e => { e.stopPropagation(); move(i, -1); }} disabled={i === 0} title="Move up" style={{ ...planBtn('ghost'), padding: "2px 5px", opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+              <button onClick={e => { e.stopPropagation(); move(i, 1); }} disabled={i === slides.length - 1} title="Move down" style={{ ...planBtn('ghost'), padding: "2px 5px", opacity: i === slides.length - 1 ? 0.3 : 1 }}>↓</button>
+              <button onClick={e => { e.stopPropagation(); remove(i); }} title="Remove slide" style={{ ...planBtn('ghost'), padding: "2px 5px", color: G.red }}>✕</button>
+            </span>}
+          </div>
+        );
+      })}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+        {Object.entries(PLAN_TYPES).map(([k, l]) => <button key={k} onClick={() => add(k)} style={{ ...planBtn('secondary'), padding: "6px 10px", fontSize: 12 }}>+ {l}</button>)}
+      </div>
+    </div>
+  );
+  const W = mode === 'desktop' ? 1280 : 390, H = mode === 'desktop' ? 720 : 760;
+  const preview = (
+    <div ref={wrapRef} style={{ width: "100%", height: Math.round(H * scale), position: "relative", overflow: "hidden" }}>
+      <iframe ref={frameRef} title="Preview" src="/plan-preview" style={{ width: W, height: H, border: 0, borderRadius: 12, background: "#000", transform: `scale(${scale})`, transformOrigin: "top left", position: "absolute", left: 0, top: 0, pointerEvents: "none" }} />
+    </div>
+  );
+  const seg = (k, l) => <button onClick={() => setMode(k)} style={{ background: mode === k ? G.greenSubtle : "transparent", color: mode === k ? G.green : G.textSecondary, border: "none", borderRadius: 8, padding: "4px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>{l}</button>;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: G.bg, display: "flex", flexDirection: "column", animation: "fadeIn .15s ease-out" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: isMobile ? "10px 16px" : "12px 24px", borderBottom: `1px solid ${G.surfaceBorder}`, background: G.surface, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: G.textSecondary, whiteSpace: "nowrap" }}>{p.name}</div>
+        <input value={title} onChange={e => { setTitle(e.target.value); setDirty(true); }} placeholder="Plan title" style={{ ...inputBase, flex: isMobile ? "1 1 100%" : "0 0 300px", width: isMobile ? "100%" : 300, fontWeight: 700, boxSizing: "border-box" }} onFocus={e => e.currentTarget.style.borderColor = G.green} onBlur={e => e.currentTarget.style.borderColor = G.surfaceBorder} />
+        <input type="date" value={expires} onChange={e => { setExpires(e.target.value); setDirty(true); }} title="Link expires" style={{ ...inputBase, width: "auto", color: expires ? G.text : G.textTertiary }} />
+        <div style={{ flex: 1 }} />
+        {!isMobile && <div style={{ display: "flex", gap: 2, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: 2 }}>{seg('desktop', 'Desktop')}{seg('phone', 'Phone')}</div>}
+        {id && !isMobile && <button onClick={copy} style={planBtn('secondary')}>Copy link</button>}
+        <button onClick={save} disabled={saving} style={planBtn('primary', saving)}>{saving ? 'Saving…' : dirty || !id ? 'Save' : 'Saved'}</button>
+        <button onClick={onClose} title="Close (Esc)" style={{ ...planBtn('secondary'), padding: "8px 10px" }}>✕</button>
+      </div>
+      {isMobile ? (
+        <div style={{ overflowY: "auto", flex: 1, padding: "16px 16px 80px" }}>
+          {preview}
+          <div style={{ marginTop: 16 }}>{list}</div>
+          <div style={{ marginTop: 20 }}>{form}</div>
+          {id && <button onClick={del} style={{ ...planBtn('ghost'), color: G.red, marginTop: 24, padding: 0 }}>Delete plan</button>}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr) 380px", flex: 1, minHeight: 0 }}>
+          <div style={{ overflowY: "auto", padding: 16, borderRight: `1px solid ${G.surfaceBorder}` }}>
+            {list}
+            {id && <button onClick={del} style={{ ...planBtn('ghost'), color: G.red, marginTop: 24, padding: 0 }}>Delete plan</button>}
+          </div>
+          <div style={{ overflowY: "auto", padding: 24 }}>{preview}</div>
+          <div style={{ overflowY: "auto", padding: "16px 20px 40px", borderLeft: `1px solid ${G.surfaceBorder}` }}>{form}</div>
+        </div>
+      )}
+      <PlanToast text={toast.text} busy={toast.busy} />
+    </div>
+  );
+}
+
 function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEditRecord, onOpenTeam }) {
   const [tab, setTab] = useState('overview');
   useEffect(() => { setTab('overview'); }, [p.id]);
@@ -9956,6 +10293,7 @@ function ProspectPanel({ p, data, tag, isMobile, onClose, ops, staff, user, onEd
           </div>
 
           {ops && <RecruitBlock p={p} ops={ops} staff={staff} user={user} onEditRecord={onEditRecord} />}
+          {isUsageOwner(user) && <PlanBlock p={p} isMobile={isMobile} />}
 
           {p.boardOnly ? (<>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px 12px", marginTop: 22 }}>

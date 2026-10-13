@@ -73,6 +73,14 @@
   ],
   "rewrites": [
     {
+      "source": "/plan/:id",
+      "destination": "/api/plan?id=:id"
+    },
+    {
+      "source": "/plan-preview",
+      "destination": "/api/plan?preview=1"
+    },
+    {
       "source": "/share/:id",
       "destination": "/api/share-og?id=:id"
     },

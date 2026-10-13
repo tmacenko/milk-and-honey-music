@@ -697,6 +697,9 @@ const ADMIN_TABS = {
     // productUrls: store links of the chosen products at sign time (newline
     // list) — the brand export needs them and titles alone can't be re-resolved.
     ensureCols: ['productUrls'] },
+  // Marketing-plan decks (/plan/{id}); owner-only writes go through api/plan.js,
+  // never tab actions. deck = slides JSON; status live|revoked; views = public visits.
+  presentations: { title: 'Presentations', writable: false, autoCreate: ['id', 'playerId', 'player', 'title', 'status', 'expires', 'views', 'deck', 'createdBy', 'createdAt', 'updatedAt'] },
 };
 const tabRange = title => `'${title}'!A:AZ`;
 async function getSheetGid(token, title) {

@@ -1,0 +1,87 @@
+/* Public marketing-plan deck (/plan/{id}). The deck's own dark style — not the
+   dashboard theme. Desktop: one 16:9 full-screen slide per section, sized in
+   container units so every slide scales as one piece. Phone: slides stack as
+   full-width sections at natural height. */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--green:#3fd39a;--disp:"apotek-extended","Arial Black","Helvetica Neue",Arial,sans-serif;--wide:"apotek-wide","Helvetica Neue",Arial,sans-serif;--body:"apotek","Helvetica Neue",Arial,sans-serif}
+html{background:#000}
+body{background:#000;color:#fff;font-family:var(--body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+img{display:block}
+.frame{position:relative;background:#000;overflow:hidden;container-type:inline-size}
+.u{text-transform:uppercase}
+.ph{object-fit:cover;object-position:var(--pos,50% 50%)}
+.logo{overflow:hidden;aspect-ratio:2.24/1}
+.logo img{width:100%;height:auto}
+.ic{color:var(--green)}
+.ic svg{width:100%;height:100%;display:block;fill:currentColor}
+.pre{white-space:pre-line}
+.gone{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:32px;text-align:center}
+.gone .logo{width:180px}
+.gone p{font:400 15px/1.5 var(--wide);color:#8a8a98;text-transform:uppercase;letter-spacing:.04em}
+.nav{position:fixed;right:20px;bottom:20px;display:flex;align-items:center;gap:8px;z-index:5}
+.nav .n{font:400 12px/1 var(--wide);color:#8a8a98;letter-spacing:.08em;margin-right:6px;font-variant-numeric:tabular-nums}
+.nav button{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.nav button:hover{background:rgba(255,255,255,.18)}
+.nav button:disabled{opacity:.3;cursor:default}
+.nav button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+body.preview .nav{display:none}
+
+@media (min-width:900px){
+  html{scroll-snap-type:y mandatory;overflow-y:scroll}
+  .slide{height:100vh;display:flex;align-items:center;justify-content:center;scroll-snap-align:start;scroll-snap-stop:always}
+  .frame{width:min(100vw,177.78vh);height:min(56.25vw,100vh)}
+  .frame>.ph{position:absolute;inset:0;width:100%;height:100%}
+  /* Cover */
+  .cover .fade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,0) 28%,rgba(0,0,0,.72) 52%,#000 70%)}
+  .cover .txt{position:absolute;left:49%;right:4%;top:50%;transform:translateY(-50%)}
+  .cover .name{font:700 7.4cqw/.95 var(--disp);letter-spacing:-.005em}
+  .cover .sub{font:400 2.05cqw/1.2 var(--wide);letter-spacing:.02em;margin-top:2.4cqw}
+  .cover .logo{width:13.5cqw;margin-top:3.6cqw}
+  /* Focus areas */
+  .focus .band{position:absolute;top:0;left:0;width:100%;height:25%;overflow:hidden}
+  .focus .band img{width:100%;height:100%;filter:saturate(.5) brightness(.95)}
+  .focus .title{position:absolute;left:6.5%;right:6%;top:34%;font:700 6.6cqw/.98 var(--disp)}
+  .focus .items{position:absolute;left:6.5%;right:6.5%;top:63%;display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:3cqw}
+  .focus .ic{width:6.4cqw;height:6.4cqw}
+  .focus .lbl{font:400 2.9cqw/1.05 var(--wide);margin-top:2.2cqw}
+  /* Section */
+  .section>.ph{width:36%;right:auto}
+  .section .body{position:absolute;left:41%;right:5%;top:9%;bottom:8%;display:flex;flex-direction:column}
+  .section .title{font:700 6.2cqw/.95 var(--disp)}
+  .section .grp{margin-top:2.4cqw}
+  .section .hd{font:400 2.25cqw/1.1 var(--wide);color:var(--green)}
+  .section ul{list-style:none;margin-top:1.1cqw}
+  .section li{font:400 1.62cqw/1.45 var(--body);position:relative;padding-left:1.3cqw;margin-top:.9cqw}
+  .section li::before{content:"•";position:absolute;left:0}
+  .section .logos{margin-top:auto;padding-top:2cqw;display:flex;align-items:center;gap:4cqw}
+  .section .logos img{height:4.2cqw;max-width:15cqw;object-fit:contain}
+}
+
+@media (max-width:899px){
+  .nav{display:none}
+  .frame{width:100%}
+  .frame>.ph{width:100%}
+  /* Cover */
+  .cover>.ph{height:125cqw;-webkit-mask-image:linear-gradient(180deg,#000 55%,rgba(0,0,0,0) 100%);mask-image:linear-gradient(180deg,#000 55%,rgba(0,0,0,0) 100%)}
+  .cover .txt{padding:0 6cqw 12cqw;margin-top:-26cqw;position:relative}
+  .cover .name{font:700 13cqw/.95 var(--disp)}
+  .cover .sub{font:400 4cqw/1.2 var(--wide);margin-top:4cqw;letter-spacing:.02em}
+  .cover .logo{width:30cqw;margin-top:7cqw}
+  /* Focus areas */
+  .focus .band img{width:100%;height:52cqw;filter:saturate(.5) brightness(.95)}
+  .focus .title{padding:9cqw 6cqw 0;font:700 11cqw/.98 var(--disp)}
+  .focus .items{padding:8cqw 6cqw 12cqw;display:grid;gap:7cqw}
+  .focus .ic{width:11cqw;height:11cqw}
+  .focus .lbl{font:400 5.6cqw/1.05 var(--wide);margin-top:3cqw}
+  /* Section */
+  .section>.ph{height:72cqw}
+  .section .body{padding:8cqw 6cqw 12cqw}
+  .section .title{font:700 10.5cqw/.95 var(--disp)}
+  .section .grp{margin-top:6cqw}
+  .section .hd{font:400 4.6cqw/1.1 var(--wide);color:var(--green)}
+  .section ul{list-style:none;margin-top:2.5cqw}
+  .section li{font:400 4.1cqw/1.45 var(--body);position:relative;padding-left:3.5cqw;margin-top:2.2cqw}
+  .section li::before{content:"•";position:absolute;left:0}
+  .section .logos{margin-top:8cqw;display:flex;flex-wrap:wrap;align-items:center;gap:6cqw 8cqw}
+  .section .logos img{height:7cqw;max-width:30cqw;object-fit:contain}
+}
