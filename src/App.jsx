@@ -9889,12 +9889,13 @@ function RecruitBlock({ p, ops, staff, user, onEditRecord }) {
 // The preview is the real public page (/plan-preview) fed by postMessage, so
 // what Tyler sees in the editor is exactly what the link shows.
 const PLAN_ICONS = ['handshake', 'megaphone', 'community', 'camera', 'trophy', 'star', 'chart', 'mic', 'heart', 'globe', 'calendar', 'dollar', 'shirt', 'phone'];
-const PLAN_TYPES = { cover: 'Cover', focus: 'Focus areas', section: 'Section' };
+const PLAN_TYPES = { cover: 'Cover', focus: 'Focus areas', section: 'Section', media: 'Logo wall' };
 const PLAN_URL = (id) => `https://www.milkandhoneyfamily.com/plan/${id}`;
 function planNewSlide(type, p) {
   const photo = (p && p.photo) || '';
   if (type === 'cover') return { type, photo, photoPos: '50% 50%', name: (p && p.name) || '', subtitle: 'In season marketing plan', showLogo: true };
   if (type === 'focus') return { type, photo, photoPos: '50% 20%', title: 'Three key\nfocus areas', items: [{ icon: 'handshake', label: 'Brand\npartnerships' }, { icon: 'megaphone', label: 'Media\nopportunities' }, { icon: 'community', label: 'Community\ninvolvement' }] };
+  if (type === 'media') return { type, photo, photoPos: '50% 30%', title: 'Media\nopportunities', heading: '', text: '', logos: [] };
   return { type: 'section', photo, photoPos: '50% 30%', title: '', groups: [{ heading: '', bullets: [] }], logos: [] };
 }
 function planTemplate(p) {
@@ -10127,6 +10128,20 @@ function PlanEditor({ p, isMobile, initial, onClose, onSaved, onDeleted }) {
           </div>
         ))}
         {(cur.items || []).length < 4 && <button onClick={() => update({ items: [...(cur.items || []), { icon: 'star', label: '' }] })} style={{ ...planBtn('ghost'), color: G.green, padding: "6px 0" }}>+ Add item</button>}
+      </>)}
+      {cur.type === 'media' && (<>
+        {label('Title')}{area(cur.title, v => update({ title: v }))}
+        {label('Lead-in')}{text(cur.heading, v => update({ heading: v }))}
+        {label('Text')}{area(cur.text, v => update({ text: v }), 3)}
+        {label('Logos')}
+        {(cur.logos || []).map((l, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+            {l.url ? <img src={l.url} alt={l.name} style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} /> : null}
+            <input value={l.name} placeholder={l.url ? 'Name' : 'Name (shown as text)'} onChange={e => update({ logos: cur.logos.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)) })} style={inputBase} onFocus={e => e.currentTarget.style.borderColor = G.green} onBlur={e => e.currentTarget.style.borderColor = G.surfaceBorder} />
+            <button onClick={() => update({ logos: cur.logos.filter((_, k) => k !== i) })} title="Remove" style={{ ...planBtn('ghost'), color: G.textTertiary }}>✕</button>
+          </div>
+        ))}
+        {(cur.logos || []).length < 12 && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{fileBtn('logo', 1200, true, 'Add logo')}<button onClick={() => update({ logos: [...(cur.logos || []), { url: '', name: '' }] })} style={{ ...planBtn('ghost'), color: G.green }}>+ Add as text</button></div>}
       </>)}
       {cur.type === 'section' && (<>
         {label('Title')}{area(cur.title, v => update({ title: v }))}

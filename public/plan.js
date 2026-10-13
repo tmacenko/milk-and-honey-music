@@ -68,7 +68,20 @@
     f.appendChild(b);
     return f;
   }
-  var BUILD = { cover: cover, focus: focus, section: section };
+  // Logo wall: networks and shows. With a photo it sits beside the text; without, the wall spans the slide.
+  function media(s) {
+    var f = el('div', 'frame media' + (s.photo ? ' has-ph' : ''));
+    if (s.photo) f.appendChild(photo(s.photo, s.photoPos));
+    var b = el('div', 'body');
+    b.appendChild(anim(el('div', 'title u pre', s.title), 0));
+    if (s.heading || s.text) { var g = anim(el('div', 'grp'), 1); if (s.heading) g.appendChild(el('div', 'hd u', s.heading)); if (s.text) g.appendChild(el('p', 'txt', s.text)); b.appendChild(g); }
+    var wall = anim(el('div', 'wall'), 2); var list = (s.logos || []).filter(function (l) { return l && (l.url || l.name); });
+    list.forEach(function (l) { var c = el('div', 'cell'); if (l.url) { var i = el('img'); i.alt = l.name || ''; i.src = l.url; c.appendChild(i); } else c.appendChild(el('span', 'wm u', l.name)); wall.appendChild(c); });
+    b.appendChild(wall);
+    f.appendChild(b);
+    return f;
+  }
+  var BUILD = { cover: cover, focus: focus, section: section, media: media };
 
   var nav = null, cur = 0, slides = [];
   function go(i) { if (i < 0 || i >= slides.length) return; slides[i].scrollIntoView({ behavior: preview ? 'auto' : 'smooth', block: 'start' }); }

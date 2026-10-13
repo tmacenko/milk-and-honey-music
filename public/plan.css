@@ -56,6 +56,20 @@ body.preview .nav{display:none}
   .section .logos{margin-top:auto;padding-top:2cqw;display:flex;align-items:center;gap:3cqw;max-width:100%}
   .section .logos img{height:5.4cqw;max-width:16cqw;min-width:0;flex:0 1 auto;object-fit:contain}
   .section .logos img.sq{height:9cqw}
+  /* Media / logo wall */
+  .media>.ph{width:36%;left:auto;right:0}
+  .media .body{position:absolute;left:6.5%;right:6.5%;top:9%;bottom:9%;display:flex;flex-direction:column}
+  .media.has-ph .body{left:5%;right:41%}
+  .media .title{font:700 6.2cqw/.95 var(--disp)}
+  .media .grp{margin-top:2.2cqw;max-width:60cqw}
+  .media .hd{font:var(--light) 2.1cqw/1.1 var(--wide);color:var(--green);letter-spacing:.02em}
+  .media .txt{font:var(--light) 1.45cqw/1.5 var(--body);margin-top:1cqw;color:#fff}
+  .media .wall{margin-top:auto;display:flex;flex-wrap:wrap;gap:1.4cqw}
+  .media .cell{width:11cqw;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border-radius:1.4cqw;overflow:hidden}
+  .media.has-ph .wall{gap:1.2cqw}
+  .media.has-ph .cell{width:8cqw;border-radius:1.1cqw}
+  .media .cell img{width:100%;height:100%;object-fit:cover}
+  .media .wm{font:700 1.1cqw/1.1 var(--disp);color:#fff;text-align:center;padding:.6cqw}
 }
 
 @media (max-width:899px){
@@ -86,6 +100,17 @@ body.preview .nav{display:none}
   .section .logos{margin-top:8cqw;display:flex;flex-wrap:wrap;align-items:center;gap:6cqw 8cqw}
   .section .logos img{height:9cqw;max-width:32cqw;object-fit:contain}
   .section .logos img.sq{height:15cqw}
+  /* Media / logo wall */
+  .media>.ph{height:72cqw}
+  .media .body{padding:8cqw 6cqw 12cqw}
+  .media .title{font:700 10.5cqw/.95 var(--disp)}
+  .media .grp{margin-top:6cqw}
+  .media .hd{font:var(--light) 4.3cqw/1.1 var(--wide);color:var(--green);letter-spacing:.02em}
+  .media .txt{font:var(--light) 3.8cqw/1.5 var(--body);margin-top:2.5cqw;color:#fff}
+  .media .wall{margin-top:8cqw;display:flex;flex-wrap:wrap;gap:3cqw}
+  .media .cell{width:26.5cqw;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border-radius:3.5cqw;overflow:hidden}
+  .media .cell img{width:100%;height:100%;object-fit:cover}
+  .media .wm{font:700 3.4cqw/1.1 var(--disp);color:#fff;text-align:center;padding:2cqw}
 }
 
 /* Entrance animations — .in is added by plan.js when a slide enters view */
