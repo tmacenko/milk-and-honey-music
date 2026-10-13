@@ -3861,9 +3861,10 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
             ))}
           </div>
         )}
-        {companyView && page === 'marketing' ? (
+        {companyView && page === 'marketing' ? (<>
+          {isUsageOwner(user) && <div style={{ padding: `24px ${pad}px 0` }}><PlanBlock p={{ id: a.espnId || `c:${slugOf(a.name)}`, name: a.name, photo: a.photoUrl || a.photo || '' }} isMobile={isMobile} style={{ marginTop: 0 }} /></div>}
           <SportsMarketingTab athlete={a} isMobile={isMobile} pad={pad} />
-        ) : companyView && a.level === 'High School' && page === 'recruiting' ? (
+        </>) : companyView && a.level === 'High School' && page === 'recruiting' ? (
           <SportsRecruitingTab athlete={a} isMobile={isMobile} pad={pad} />
         ) : companyView && a.espnId && page === 'stats' ? (
           <SportsStatsTab athlete={a} isMobile={isMobile} pad={pad} withReport />
@@ -9940,7 +9941,7 @@ function PlanToast({ text, busy }) {
   );
 }
 
-function PlanBlock({ p, isMobile }) {
+function PlanBlock({ p, isMobile, style }) {
   const tab = useAdminTab('presentations', 'athletes');
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState('');
@@ -9953,7 +9954,7 @@ function PlanBlock({ p, isMobile }) {
     const h = tab.data.headers.map(x => x.toLowerCase());
     const col = (n) => h.indexOf(n.toLowerCase());
     return tab.data.rows.map(r => { const o = {}; tab.data.headers.forEach((k, i) => { o[k] = r.cells[i] || ''; }); return o; })
-      .filter(o => o.id && (o.playerId === String(p.id) || (!o.playerId && nameKey(o.player) === nameKey(p.name))))
+      .filter(o => o.id && (o.playerId === String(p.id) || nameKey(o.player) === nameKey(p.name)))
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
       .map(o => ({ ...o, _col: col }));
   }, [tab.data, p.id, p.name]);
@@ -9980,7 +9981,7 @@ function PlanBlock({ p, isMobile }) {
     return <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color, background: off ? G.surfaceRaised : ex ? "rgba(217,119,6,.12)" /* amber at 12% — no token for amber-subtle */ : G.greenSubtle, borderRadius: 99, padding: "2px 8px" }}>{label}</span>;
   };
   return (
-    <div style={{ marginTop: 22 }}>
+    <div style={{ marginTop: 22, ...(style || {}) }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>Marketing plans</div>
         <button onClick={() => setEditing({ id: '', title: 'In season marketing plan', expires: '', deck: planTemplate(p) })}
@@ -10214,6 +10215,127 @@ function PlanEditor({ p, isMobile, initial, onClose, onSaved, onDeleted }) {
         </div>
       )}
       <PlanToast text={toast.text} busy={toast.busy} />
+    </div>
+  );
+}
+
+// Presentations page (owner-only): every marketing plan across players.
+function PlansPage({ isMobile, athletes, onOpenAthlete }) {
+  const tab = useAdminTab('presentations', 'athletes');
+  const [status, setStatus] = useCachedState('plans.status', 'All');
+  const [player, setPlayer] = useCachedState('plans.player', 'All');
+  const [editing, setEditing] = useState(null);
+  const [busyId, setBusyId] = useState('');
+  const [toast, setToast] = useState('');
+  const [hoverId, setHoverId] = useState('');
+  const toastRef = useRef(null);
+  const say = (t) => { setToast(t); clearTimeout(toastRef.current); toastRef.current = setTimeout(() => setToast(''), 3000); };
+  const today = new Date().toISOString().slice(0, 10);
+  const stateOf = (o) => (o.status !== 'live' ? 'Off' : o.expires && today > o.expires ? 'Expired' : 'Live');
+  const all = useMemo(() => {
+    if (!tab.data) return [];
+    return tab.data.rows.map(r => { const o = {}; tab.data.headers.forEach((k, i) => { o[k] = r.cells[i] || ''; }); return o; })
+      .filter(o => o.id).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  }, [tab.data]);
+  const players = useMemo(() => [...new Set(all.map(o => o.player).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [all]);
+  const rows = all.filter(o => (status === 'All' || stateOf(o) === status) && (player === 'All' || o.player === player));
+  const athleteFor = (o) => (athletes || []).find(a => (o.playerId && /^\d+$/.test(o.playerId) && String(a.espnId || '') === o.playerId) || nameKey(a.name) === nameKey(o.player));
+  const openPlayer = (o) => {
+    const a = athleteFor(o);
+    if (a && onOpenAthlete) return onOpenAthlete(a);
+    if (/^\d+$/.test(o.playerId)) return openPlayerPage(o.playerId);
+    window.dispatchEvent(new CustomEvent('mh:open-page', { detail: 'recruiting' }));
+  };
+  const copy = async (id) => { try { await navigator.clipboard.writeText(PLAN_URL(id)); say('Link copied'); } catch { say(PLAN_URL(id)); } };
+  const toggle = async (o) => {
+    setBusyId(o.id);
+    try {
+      const next = o.status === 'live' ? 'revoked' : 'live';
+      const r = await fetch('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'status', id: o.id, status: next }) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+      say(next === 'live' ? 'Link on' : 'Link off'); tab.reload();
+    } catch (e) { say(e.message); }
+    finally { setBusyId(''); }
+  };
+  const edit = (o) => {
+    let deck; try { deck = JSON.parse(o.deck); } catch { deck = { v: 1, slides: [] }; }
+    const a = athleteFor(o);
+    setEditing({ p: { id: o.playerId || `c:${slugOf(o.player)}`, name: o.player, photo: (a && (a.photoUrl || a.photo)) || '' }, initial: { id: o.id, title: o.title, expires: o.expires, deck } });
+  };
+  const chip = (o) => {
+    const s = stateOf(o);
+    const color = s === 'Off' ? G.textTertiary : s === 'Expired' ? G.yellow : G.green;
+    return <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color, background: s === 'Off' ? G.surfaceRaised : s === 'Expired' ? "rgba(217,119,6,.12)" /* amber at 12% — no amber-subtle token */ : G.greenSubtle, borderRadius: 99, padding: "2px 8px", whiteSpace: "nowrap" }}>{s}</span>;
+  };
+  const fmtDate = (iso) => { const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+  const ghost = (label, onClick, extra) => (
+    <button onClick={onClick} style={{ ...planBtn('ghost'), ...(extra || {}) }} onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = (extra && extra.color) || G.textSecondary}>{label}</button>
+  );
+  const actions = (o) => (<>
+    {ghost('Edit', () => edit(o))}
+    {ghost('Copy link', () => copy(o.id))}
+    <button onClick={() => toggle(o)} disabled={busyId === o.id} style={planBtn('ghost', busyId === o.id)} onMouseEnter={e => e.currentTarget.style.color = G.text} onMouseLeave={e => e.currentTarget.style.color = G.textSecondary}>{busyId === o.id ? 'Saving…' : o.status === 'live' ? 'Link off' : 'Link on'}</button>
+    {ghost(athleteFor(o) || /^\d+$/.test(o.playerId) ? 'Open player' : 'Open board', () => openPlayer(o), { color: G.green, fontWeight: 700 })}
+  </>);
+  const selectStyle = (on) => ({ ...inputBase, width: "auto", fontWeight: 600, color: on ? G.green : G.text, borderColor: on ? G.greenBorder : G.surfaceBorder, background: on ? G.greenSubtle : G.surfaceRaised });
+  const sections = [
+    { id: 'status', title: 'Status', value: status, rows: ['All', 'Live', 'Off', 'Expired'].map(s => ({ on: status === s, label: s, onClick: () => setStatus(s) })) },
+    { id: 'player', title: 'Player', value: player, rows: ['All', ...players].map(s => ({ on: player === s, label: s, onClick: () => setPlayer(s) })) },
+  ];
+  const th = (label, right) => <th style={{ textAlign: right ? "right" : "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap" }}>{label}</th>;
+  const td = (content, right, extra) => <td style={{ padding: "12px 16px", fontSize: 13, color: G.text, textAlign: right ? "right" : "left", fontVariantNumeric: right ? "tabular-nums" : undefined, whiteSpace: "nowrap", ...(extra || {}) }}>{content}</td>;
+  const pad = isMobile ? 16 : 28;
+  if (tab.loading && !tab.data) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[48, 300]} />;
+  return (
+    <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px", ...REVEAL }}>
+      {pxTitle(isMobile, 'Presentations', `${all.length} plan${all.length === 1 ? '' : 's'}`)}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "16px 0 14px" }}>
+        {isMobile
+          ? <FilterMenu compact sections={sections} active={status !== 'All' || player !== 'All'} label="Filters" onAll={() => { setStatus('All'); setPlayer('All'); }} />
+          : (<>
+            <select value={status} onChange={e => setStatus(e.target.value)} style={selectStyle(status !== 'All')}>{['All', 'Live', 'Off', 'Expired'].map(s => <option key={s} value={s}>{s === 'All' ? 'All statuses' : s}</option>)}</select>
+            <select value={player} onChange={e => setPlayer(e.target.value)} style={selectStyle(player !== 'All')}><option value="All">All players</option>{players.map(s => <option key={s} value={s}>{s}</option>)}</select>
+            {(status !== 'All' || player !== 'All') && <button onClick={() => { setStatus('All'); setPlayer('All'); }} style={{ ...planBtn('ghost'), color: G.green }}>Clear</button>}
+          </>)}
+      </div>
+      {tab.err && <div style={{ fontSize: 13, color: G.red, marginBottom: 12 }}>{tab.err}</div>}
+      {rows.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "24px 0" }}>No plans</div>
+        : isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {rows.map(o => (
+              <div key={o.id} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: G.text }}>{o.player || '—'}</div>
+                <div style={{ fontSize: 13, color: G.textSecondary, marginTop: 2 }}>{o.title}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 11.5, color: G.textTertiary, fontVariantNumeric: "tabular-nums", flexWrap: "wrap" }}>
+                  {chip(o)}<span>{parseInt(o.views, 10) || 0} views</span>{o.expires && <span>until {o.expires}</span>}<span>updated {fmtDate(o.updatedAt)}</span>
+                </div>
+                <div style={{ display: "flex", gap: 2, marginTop: 8, marginLeft: -8, flexWrap: "wrap" }}>{actions(o)}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mh-hscroll" style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr>{th('Player')}{th('Title')}{th('Status')}{th('Views', true)}{th('Expires')}{th('Updated')}{th('')}</tr></thead>
+              <tbody>
+                {rows.map((o, i) => (
+                  <tr key={o.id} onMouseEnter={() => setHoverId(o.id)} onMouseLeave={() => setHoverId('')}
+                    style={{ background: hoverId === o.id ? G.surfaceRaised : i % 2 ? G.surfaceRaised : "transparent", borderBottom: `1px solid ${G.surfaceBorder}` }}>
+                    {td(<span style={{ fontWeight: 700 }}>{o.player || '—'}</span>)}
+                    {td(o.title, false, { whiteSpace: "normal", minWidth: 200 })}
+                    {td(chip(o))}
+                    {td(parseInt(o.views, 10) || 0, true)}
+                    {td(o.expires || '—')}
+                    {td(fmtDate(o.updatedAt))}
+                    {td(<div style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>{actions(o)}</div>, true)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      {editing && <PlanEditor p={editing.p} isMobile={isMobile} initial={editing.initial} onClose={() => setEditing(null)} onSaved={() => tab.reload()} onDeleted={() => { setEditing(null); tab.reload(); say('Plan deleted'); }} />}
+      <PlanToast text={toast} />
     </div>
   );
 }
@@ -14060,6 +14182,7 @@ function App() {
     ...(canContracts ? [{ key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' }] : []),
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
+    ...(isUsageOwner(currentUser) ? [{ key: 'plans', label: 'Presentations', icon: 'M2 4h20v12H2zM8 20h8M12 16v4' }] : []),
     ...(isUsageOwner(currentUser) ? [{ key: 'usage', label: 'Usage', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' }] : []),
   ];
   const NAV_MUSIC = [
@@ -14548,6 +14671,7 @@ function App() {
               {view === 'roster' && navActive && effSportsPage === 'resources' && <ResourcesPage isMobile={isMobile} decks={sportsDecks || DECKS} />}
               {view === 'roster' && navActive && effSportsPage === 'share' && <SportsSharePage athletes={athletes} isMobile={isMobile} staff={sportsStaff} user={currentUser} />}
               {view === 'roster' && navActive && effSportsPage === 'usage' && <UsagePage isMobile={isMobile} staff={sportsStaff} user={currentUser} />}
+              {view === 'roster' && navActive && effSportsPage === 'plans' && isUsageOwner(currentUser) && <PlansPage isMobile={isMobile} athletes={athletes} onOpenAthlete={(a) => setView('detail', a)} />}
               {!error && athletesLoaded && view === 'roster' && rosterControlsOn && (
                 <div style={{ padding: isMobile ? "0 0 80px" : "20px 24px 48px" }}>
                   {sportsLevelBar}
