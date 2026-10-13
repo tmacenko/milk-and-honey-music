@@ -9363,6 +9363,7 @@ function PlayerPage({ pid, isMobile, user, athletes, staff }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 24 }}>
           <div style={{ ...card, display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: "20px 16px" }}>{facts.map(([k, v]) => fact(k, v))}</div>
           {ops && ops.data && <div style={{ maxWidth: 640 }}><RecruitBlock p={p} ops={ops} staff={staff} user={user} /></div>}
+          {isUsageOwner(user) && <div style={{ maxWidth: 640 }}><PlanBlock p={{ id: p.id, name: p.name, photo: photo || '' }} isMobile={isMobile} style={{ marginTop: 0 }} /></div>}
           <PxValueCard p={p} data={data} isMobile={isMobile} />
           {!p.isHs && <ProductionReport p={p} data={data} narrow={isMobile} />}
         </div>
