@@ -10,7 +10,6 @@ img{display:block}
 .frame{position:relative;background:#000;overflow:hidden;container-type:inline-size}
 .u{text-transform:uppercase}
 .ph{object-fit:cover;object-position:var(--pos,50% 50%)}
-.logo{overflow:hidden;aspect-ratio:2.24/1}
 .logo img{width:100%;height:auto}
 .ic{color:var(--green)}
 .ic svg{width:100%;height:100%;display:block;fill:currentColor}
@@ -54,8 +53,9 @@ body.preview .nav{display:none}
   .section ul{list-style:none;margin-top:1.1cqw}
   .section li{font:var(--light) 1.45cqw/1.5 var(--body);position:relative;padding-left:1.3cqw;margin-top:.9cqw}
   .section li::before{content:"•";position:absolute;left:0}
-  .section .logos{margin-top:auto;padding-top:2cqw;display:flex;align-items:center;gap:4cqw}
-  .section .logos img{height:5.4cqw;max-width:16cqw;object-fit:contain}
+  .section .logos{margin-top:auto;padding-top:2cqw;display:flex;align-items:center;gap:3cqw;max-width:100%}
+  .section .logos img{height:5.4cqw;max-width:16cqw;min-width:0;flex:0 1 auto;object-fit:contain}
+  .section .logos img.sq{height:9cqw}
 }
 
 @media (max-width:899px){
@@ -85,6 +85,7 @@ body.preview .nav{display:none}
   .section li::before{content:"•";position:absolute;left:0}
   .section .logos{margin-top:8cqw;display:flex;flex-wrap:wrap;align-items:center;gap:6cqw 8cqw}
   .section .logos img{height:9cqw;max-width:32cqw;object-fit:contain}
+  .section .logos img.sq{height:15cqw}
 }
 
 /* Entrance animations — .in is added by plan.js when a slide enters view */

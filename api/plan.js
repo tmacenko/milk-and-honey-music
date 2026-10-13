@@ -134,12 +134,12 @@ function pageHtml({ title, description, image, deck, preview, gone }) {
 <meta property="og:site_name" content="Milk &amp; Honey Sports" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="stylesheet" href="${TYPEKIT}" />
-<link rel="stylesheet" href="/plan.css?v=2" />
+<link rel="stylesheet" href="/plan.css?v=3" />
 </head>
 <body>
 <div id="deck"></div>
 <script>window.__PLAN__=${preview ? 'null' : JSON.stringify(data).replace(/</g, '\\u003c').replace(new RegExp(String.fromCharCode(0x2028), "g"), "\\u2028").replace(new RegExp(String.fromCharCode(0x2029), "g"), "\\u2029")};window.__PREVIEW__=${preview ? 'true' : 'false'};</script>
-<script src="/plan.js?v=2"></script>
+<script src="/plan.js?v=3"></script>
 </body>
 </html>`;
 }
