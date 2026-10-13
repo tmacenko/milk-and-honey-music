@@ -10075,7 +10075,7 @@ function PlanEditor({ p, isMobile, initial, onClose, onSaved, onDeleted }) {
   const pick = async (file, field, max, keepPng, name) => {
     if (!file) return;
     setUploading(field);
-    try { const url = await planUpload(file, name, max, keepPng); if (field === 'logo') update({ logos: [...(cur.logos || []), { url, name: file.name.replace(/\.[^.]+$/, '') }] }); else update({ photo: url }); }
+    try { const url = await planUpload(file, name, max, keepPng); if (field === 'logo') update({ logos: [...(cur.logos || []), { url, name: file.name.replace(/\.[^.]+$/, '') }] }); else if (field.startsWith('icon')) { const k = parseInt(field.slice(4), 10); update({ items: cur.items.map((x, i) => (i === k ? { ...x, image: url } : x)) }); } else update({ photo: url }); }
     catch (e) { say(e.message); }
     finally { setUploading(''); }
   };
@@ -10119,7 +10119,9 @@ function PlanEditor({ p, isMobile, initial, onClose, onSaved, onDeleted }) {
         {label('Items')}
         {(cur.items || []).map((it, i) => (
           <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            {select(it.icon, v => update({ items: cur.items.map((x, k) => (k === i ? { ...x, icon: v } : x)) }), PLAN_ICONS.map(k => [k, k[0].toUpperCase() + k.slice(1)]))}
+            {it.image
+              ? <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><img src={it.image} alt="" style={{ width: 28, height: 28, objectFit: "contain", background: "#080809", borderRadius: 6, padding: 3 }} /><button onClick={() => update({ items: cur.items.map((x, k) => (k === i ? { ...x, image: '' } : x)) })} title="Use a drawn icon instead" style={{ ...planBtn('ghost'), padding: "2px 4px", color: G.textTertiary }}>✕</button></span>
+              : <>{select(it.icon, v => update({ items: cur.items.map((x, k) => (k === i ? { ...x, icon: v } : x)) }), PLAN_ICONS.map(k => [k, k[0].toUpperCase() + k.slice(1)]))}{fileBtn(`icon${i}`, 400, true, 'Image')}</>}
             <input value={it.label} onChange={e => update({ items: cur.items.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)) })} style={inputBase} onFocus={e => e.currentTarget.style.borderColor = G.green} onBlur={e => e.currentTarget.style.borderColor = G.surfaceBorder} />
             <button onClick={() => update({ items: cur.items.filter((_, k) => k !== i) })} title="Remove" style={{ ...planBtn('ghost'), color: G.textTertiary }}>✕</button>
           </div>
