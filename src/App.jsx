@@ -10150,6 +10150,10 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
   const [agent, setAgent] = useCachedState('recruiting.agent', 'All');
   const [klass, setKlass] = useCachedState('recruiting.klass', 'All');
   const [stageF, setStageF] = useCachedState('recruiting.stagef', 'All');
+  // "Hide signed" — per person, remembered on this device.
+  const hideKey = `mh_rec_hide_signed:${String(user?.name || 'house').toLowerCase()}`;
+  const [hideSigned, setHideSignedState] = useState(() => { try { return localStorage.getItem(hideKey) === '1'; } catch { return false; } });
+  const setHideSigned = (v) => { setHideSignedState(v); try { localStorage.setItem(hideKey, v ? '1' : '0'); } catch { /* ignore */ } };
   const [sortCol, setSortCol] = useCachedState('recruiting.sortCol', 'rating');
   const [sortDir, setSortDir] = useCachedState('recruiting.sortDir', 'desc');
   const hFind = (re) => headers.findIndex(h => re.test(h));
@@ -10218,6 +10222,8 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
     .filter(r => agent === 'All' || String(agentCol >= 0 ? (r.cells[agentCol] || '') : '').toLowerCase().includes(agent.toLowerCase()))
     .filter(r => klass === 'All' || cellOf(r, classI).trim() === klass)
     .filter(r => stageF === 'All' || cellOf(r, stageI).trim() === stageF)
+    // Signed players are clients now; most agents don't want them on the board.
+    .filter(r => !hideSigned || stageF === 'Signed' || !(cellOf(r, stageI).trim() === 'Signed' || isClient(cellOf(r, nameI))))
     .sort((a, b) => {
       // Default view floats the logged-in agent's own recruits to the top.
       if (sortCol === 'rating' && user?.agentKey && agentCol >= 0) {
@@ -10267,6 +10273,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
     },
   ].filter(Boolean);
   const filterActive = agent !== 'All' || side !== 'All' || klass !== 'All' || stageF !== 'All';
+  const recSel = (on) => ({ ...inputBase, padding: "7px 28px 7px 10px", fontSize: 12.5, cursor: "pointer", width: "auto", color: on ? G.green : G.text, borderColor: on ? G.green : G.surfaceBorder, fontWeight: on ? 700 : 500 });
   const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, klass !== 'All' ? klass : null, stageF !== 'All' ? stageF : null].filter(Boolean).join(', ') || 'All';
   return (
     <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
@@ -10279,8 +10286,32 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         {['High School', 'College'].map(lv => levelChipBtn(recTab === lv, lv, () => { if (recTab !== lv) { setRecTab(lv); setKlass('All'); } }))}
         <div style={{ width: 10 }} />
-        <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
-          onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); setStageF('All'); }} />
+        {isMobile ? (
+          <FilterMenu compact sections={sections} active={filterActive} label={filterLabel}
+            onAll={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); setStageF('All'); }} />
+        ) : (
+          // Filters in the open on desktop — no menu to click into.
+          <>
+            {(staff || []).length > 0 && (
+              <select value={agent} onChange={e => setAgent(e.target.value)} style={recSel(agent !== 'All')} aria-label="Agent">
+                <option value="All">All agents</option>{(staff || []).map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            )}
+            <select value={stageF} onChange={e => setStageF(e.target.value)} style={recSel(stageF !== 'All')} aria-label="Stage">
+              <option value="All">All stages</option>{REC_STAGES.map(st => <option key={st} value={st}>{st}</option>)}
+            </select>
+            <select value={klass} onChange={e => setKlass(e.target.value)} style={recSel(klass !== 'All')} aria-label="Class">
+              <option value="All">All classes</option>{classes.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={side === 'All' ? 'All' : group !== 'All' ? `${side}|${group}` : side} onChange={e => { const [sd, g] = e.target.value.split('|'); setSide(sd); setGroup(g || 'All'); }} style={recSel(side !== 'All')} aria-label="Position">
+              <option value="All">All positions</option>
+              {Object.keys(POS_SIDES).flatMap(sd => [<option key={sd} value={sd}>{sd}</option>, ...(POS_SIDES[sd].length > 1 ? POS_SIDES[sd].map(g => <option key={`${sd}|${g}`} value={`${sd}|${g}`}>{`${sd} · ${g}`}</option>) : [])])}
+            </select>
+            {filterActive && <button onClick={() => { setAgent('All'); setSide('All'); setGroup('All'); setKlass('All'); setStageF('All'); }} style={{ background: "none", border: "none", color: G.textSecondary, fontSize: 12.5, cursor: "pointer", fontFamily: ff, padding: "4px 6px" }}>Clear</button>}
+          </>
+        )}
+        <div style={{ flex: 1 }} />
+        {levelChipBtn(hideSigned, 'Hide signed', () => setHideSigned(!hideSigned))}
       </div>
       <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
         {loading ? <div style={{ padding: 40, textAlign: "center", color: G.textTertiary, fontSize: 13 }}>Loading…</div>
