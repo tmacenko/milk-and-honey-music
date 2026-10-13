@@ -12769,6 +12769,10 @@ function parseNflTeams(data) {
 // send it to /api/usage every two minutes and when the tab is hidden. Only
 // the owner (USAGE_OWNERS, checked again on the server) sees the Usage page.
 const USAGE_OWNERS = ['tyler@milkhoneyla.com'];
+// Staff who keep the classic roster Export menu (PDF + share link, as on the
+// music side) on sports instead of the Share players page.
+const CLASSIC_EXPORT_USERS = ['keller@milkhoneyla.com'];
+const isClassicExport = (u) => !!(u && u.email && CLASSIC_EXPORT_USERS.includes(String(u.email).toLowerCase()));
 // Division access (Staff tab → Division): Music-only people get the sports
 // side's Home + Roster (and Home's see-all pages); Sports-only people the
 // same on the music side. 'Both' (and anyone not in the directory) sees all.
@@ -14440,7 +14444,7 @@ function App() {
       onAll={() => { clearCustomGroup(); setFilterTypes([]); setFilterContacts([]); }}
       customCount={customGroup.length} onOpenCustom={() => setCustomGroupOpen(true)} />
   );
-  const exportControl = (iconOnly = false) => (domain === 'sports' && isAdmin && !sportsLimited ? (
+  const exportControl = (iconOnly = false) => (domain === 'sports' && isAdmin && !sportsLimited && !isClassicExport(currentUser) ? (
     <button onClick={() => goSportsPage('share')} title="Share players"
       onMouseEnter={e => { e.currentTarget.style.borderColor = G.surfaceBorderLight; }} onMouseLeave={e => { e.currentTarget.style.borderColor = G.surfaceBorder; }}
       style={iconOnly
