@@ -40,7 +40,7 @@ body.preview .nav{display:none}
   .cover .logo{width:13.5cqw;margin-top:3.6cqw}
   /* Focus areas */
   .focus .band{position:absolute;top:0;left:0;width:100%;height:25%;overflow:hidden}
-  .focus .band img{width:100%;height:100%;filter:saturate(.5) brightness(.95)}
+  .focus .band img{width:100%;height:100%}
   .focus .title{position:absolute;left:6.5%;right:6%;top:34%;font:700 6.6cqw/.98 var(--disp)}
   .focus .items{position:absolute;left:6.5%;right:6.5%;top:63%;display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:3cqw}
   .focus .ic{width:6.4cqw;height:6.4cqw}
@@ -60,7 +60,7 @@ body.preview .nav{display:none}
   .section .logos img.sq{height:9cqw}
   /* band layout: photo strip on top, title + intro left, groups right, logos across the bottom */
   .section.band .band{position:absolute;top:0;left:0;width:100%;height:24%;overflow:hidden}
-  .section.band .band img{width:100%;height:100%;filter:saturate(.5) brightness(.95)}
+  .section.band .band img{width:100%;height:100%}
   .section.band .body{left:6.5%;right:6%;top:30%;bottom:7%;display:grid;grid-template-columns:40% 1fr;column-gap:4cqw;grid-template-rows:1fr auto}
   .section.band .col-l{grid-column:1}
   .section.band .col-r{grid-column:2;margin-top:1.2cqw}
@@ -70,12 +70,21 @@ body.preview .nav{display:none}
   .section.band .logos{grid-column:1/-1;margin-top:auto;padding-top:1.6cqw}
   /* columns layout: header row, then one column per idea with its own logos */
   .section.cols .body{left:6.5%;right:6.5%;top:10%;bottom:10%;display:flex;flex-direction:column}
+  .section.cols.has-ph>.ph{left:auto;right:0;width:30%}
+  .section.cols.has-ph .body{right:35%}
+  .section.cols.has-ph .head{grid-template-columns:1fr;row-gap:1.6cqw;align-items:start}
+  .section.cols.has-ph .intro{max-width:44cqw}
+  .section.cols.has-ph .colgrid{gap:2.8cqw}
+  .section.cols.has-ph .col .txt{font-size:1.38cqw}
+  .section.cols.has-ph .glogos{gap:1.4cqw}
+  .section.cols.has-ph .glogos img{max-width:9cqw}
+  .section.cols.has-ph .col .hd{font-size:1.8cqw}
   .section.cols .head{display:grid;grid-template-columns:1fr 1fr;column-gap:5cqw;align-items:end}
   .section.cols .title{font-size:5.6cqw}
   .section.cols .intro{max-width:none;margin-top:0;padding-bottom:.6cqw}
-  .section.cols .colgrid{display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:3.5cqw;margin:auto 0;padding-top:3.4cqw;border-top:1px solid rgba(255,255,255,.14)}
+  .section.cols .colgrid{display:grid;grid-template-columns:repeat(var(--n,3),minmax(0,1fr));gap:3.5cqw;margin:auto 0;padding-top:3.4cqw;border-top:1px solid rgba(255,255,255,.14)}
   .section.cols .head{margin-bottom:3cqw}
-  .section.cols .glogos{display:flex;align-items:center;gap:2cqw;height:7cqw;margin-bottom:2.2cqw}
+  .section.cols .glogos{display:flex;align-items:center;gap:2cqw;height:7cqw;margin-bottom:2.2cqw;min-width:0}
   .section.cols .glogos img{height:5cqw;max-width:12cqw;min-width:0;flex:0 1 auto;object-fit:contain}
   .section.cols .glogos img.sq{height:7cqw}
   .section.cols .col .hd{font:var(--light) 2cqw/1.15 var(--wide);color:var(--green);letter-spacing:.02em}
@@ -110,13 +119,14 @@ body.preview .nav{display:none}
   .cover .sub{font:var(--light) 3.8cqw/1.2 var(--wide);margin-top:4cqw;letter-spacing:.04em}
   .cover .logo{width:30cqw;margin-top:7cqw}
   /* Focus areas */
-  .focus .band img{width:100%;height:52cqw;filter:saturate(.5) brightness(.95)}
+  .focus .band img{width:100%;height:52cqw}
   .focus .title{padding:9cqw 6cqw 0;font:700 11cqw/.98 var(--disp)}
   .focus .items{padding:8cqw 6cqw 12cqw;display:grid;gap:7cqw}
   .focus .ic{width:11cqw;height:11cqw}
   .focus .lbl{font:var(--light) 5.2cqw/1.08 var(--wide);margin-top:3cqw}
   /* Section */
   .section>.ph{height:72cqw}
+  .section>.ph.tall{height:130cqw}
   .section .body{padding:8cqw 6cqw 12cqw}
   .section .title{font:700 10.5cqw/.95 var(--disp)}
   .section .intro{font:var(--light) 3.9cqw/1.5 var(--body);margin-top:3.5cqw}
@@ -128,7 +138,7 @@ body.preview .nav{display:none}
   .section .logos{margin-top:8cqw;display:flex;flex-wrap:wrap;align-items:center;gap:6cqw 8cqw}
   .section .logos img{height:9cqw;max-width:32cqw;object-fit:contain}
   .section .logos img.sq{height:15cqw}
-  .section.band .band img{width:100%;height:52cqw;filter:saturate(.5) brightness(.95)}
+  .section.band .band img{width:100%;height:52cqw}
   .section.cols .head .intro{margin-top:3.5cqw}
   .section.cols .colgrid{display:grid;gap:7cqw;margin-top:7cqw;padding-top:6cqw;border-top:1px solid rgba(255,255,255,.14)}
   .section.cols .glogos{display:flex;align-items:center;gap:5cqw;margin-bottom:4cqw;flex-wrap:wrap}

@@ -24,7 +24,7 @@
 
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
   function anim(n, d) { n.classList.add('a'); n.style.setProperty('--d', String(d || 0)); return n; }
-  function photo(src, pos, cls) { var i = el('img', cls || 'ph'); i.alt = ''; i.decoding = 'async'; if (src) i.src = src; i.style.setProperty('--pos', pos || '50% 50%'); return i; }
+  function photo(src, pos, cls) { var i = el('img', cls || 'ph'); i.alt = ''; i.decoding = 'async'; var tall = function () { if (i.naturalHeight > i.naturalWidth) i.classList.add('tall'); }; i.onload = tall; if (src) i.src = src; if (i.complete) tall(); i.style.setProperty('--pos', pos || '50% 50%'); return i; }
   function logo() { var w = el('div', 'logo'); var i = el('img'); i.alt = 'Milk & Honey'; i.src = '/plans/mh-logo.png'; w.appendChild(i); return w; }
   function icon(key, image) { var w = el('div', 'ic'); if (image) { var i = el('img'); i.alt = ''; i.src = image; w.appendChild(i); return w; } w.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[key] || ICONS.star) + '</svg>'; return w; }
   function twoLine(s) { s = String(s || ''); return s.indexOf('\n') >= 0 ? s : s.replace(' ', '\n'); }
@@ -88,7 +88,8 @@
   }
   function logoImg(l) { var i = el('img', l.white ? 'wh' : ''); i.alt = l.name || ''; var sq = function () { if (i.naturalWidth && i.naturalWidth / i.naturalHeight < 1.4) i.classList.add('sq'); }; i.onload = sq; i.src = l.url; if (i.complete) sq(); return i; }
   function columns(s) {
-    var f = el('div', 'frame section cols');
+    var f = el('div', 'frame section cols' + (s.photo ? ' has-ph' : ''));
+    if (s.photo) f.appendChild(photo(s.photo, s.photoPos));
     var b = el('div', 'body');
     var head = el('div', 'head');
     head.appendChild(anim(el('div', 'title u pre', s.title), 0));

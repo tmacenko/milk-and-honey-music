@@ -10146,7 +10146,7 @@ function PlanEditor({ p, isMobile, initial, onClose, onSaved, onDeleted }) {
       {cur.type === 'section' && (<>
         {label('Title')}{area(cur.title, v => update({ title: v }))}
         {label('Intro')}{area(cur.intro || '', v => update({ intro: v }))}
-        {label('Layout')}{select(cur.layout || '', v => update({ layout: v }), [['', 'Photo left'], ['band', 'Photo band on top'], ['columns', 'Columns, no photo']])}
+        {label('Layout')}{select(cur.layout || '', v => update({ layout: v }), [['', 'Photo left'], ['band', 'Photo band on top'], ['columns', 'Columns, photo right']])}
         {(cur.groups || []).map((g, i) => (
           <div key={i} style={{ marginTop: 16, padding: 12, borderRadius: 10, border: `1px solid ${G.surfaceBorder}` }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
