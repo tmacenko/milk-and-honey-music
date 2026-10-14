@@ -12170,7 +12170,34 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
   const results = ql.length >= 2 ? pool.filter(a => !pickedSet.has(a.name) && (a.name.toLowerCase().includes(ql) || String(a.nflTeam || a.college || '').toLowerCase().includes(ql))).slice(0, 8) : [];
   const byName = new Map(pool.map(a => [a.name, a]));
   const pickedList = picked.map(n => byName.get(n)).filter(Boolean);
-  const move = (i, d) => setPicked(p => { const n = [...p]; const j = i + d; if (j < 0 || j >= n.length) return p; [n[i], n[j]] = [n[j], n[i]]; return n; });
+  // Drag to reorder (pointer events, so mouse and touch both work): the grip
+  // captures the pointer; the drop slot is the count of other rows whose
+  // midpoint the pointer has passed.
+  const rowRefs = useRef([]), listRef = useRef(null), dragRef = useRef({ from: -1, pos: -1 });
+  const [dragFrom, setDragFrom] = useState(-1), [dropAt, setDropAt] = useState(-1);
+  const dropPos = (y) => {
+    const from = dragRef.current.from;
+    return rowRefs.current.filter((el, k) => el && k !== from && y > el.getBoundingClientRect().top + el.offsetHeight / 2).length;
+  };
+  const gripDown = (i) => (e) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { from: i, pos: i }; setDragFrom(i); setDropAt(i);
+  };
+  const gripMove = (e) => {
+    if (dragRef.current.from < 0) return;
+    const box = listRef.current;
+    if (box) { const r = box.getBoundingClientRect(); if (e.clientY < r.top + 28) box.scrollTop -= 8; else if (e.clientY > r.bottom - 28) box.scrollTop += 8; }
+    const pos = dropPos(e.clientY);
+    if (pos !== dragRef.current.pos) { dragRef.current.pos = pos; setDropAt(pos); }
+  };
+  const gripUp = () => {
+    const { from, pos } = dragRef.current;
+    if (from >= 0 && pos >= 0 && pos !== from) { setPicked(p => { const n = [...p]; const [it] = n.splice(from, 1); n.splice(pos, 0, it); return n; }); setLink(null); }
+    dragRef.current = { from: -1, pos: -1 }; setDragFrom(-1); setDropAt(-1);
+  };
+  // Where the drop line sits in the full list (pos counts other rows only).
+  const dropLineBefore = dragFrom < 0 || dropAt === dragFrom ? -1 : (dropAt >= dragFrom ? dropAt + 1 : dropAt);
   // One-time reorder of the list (it's also the link's default order).
   const YEAR_RANK = { Freshman: 1, Sophomore: 2, Junior: 3, Senior: 4 };
   const sortBy = (k) => {
@@ -12320,16 +12347,18 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
                   <div style={eyebrow}>{pickedList.length} player{pickedList.length === 1 ? '' : 's'}</div>
                   {pickedList.length > 1 && <select value="" onChange={e => { if (e.target.value) sortBy(e.target.value); }} style={{ ...sel, padding: "4px 8px", fontSize: 12 }} aria-label="Sort players"><option value="">Sort by…</option><option value="name">Name</option><option value="position">Position</option><option value="team">School / team</option><option value="level">Level</option><option value="year">Year</option><option value="reach">Reach</option></select>}
                 </div>
-                <div style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, maxHeight: 460, overflowY: "auto" }}>
+                <div ref={listRef} style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, maxHeight: 460, overflowY: "auto" }}>
                   {pickedList.map((a, i) => (
-                    <div key={a.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: i % 2 ? G.surfaceRaised : "transparent" }}>
+                    <div key={a.name} ref={el => { rowRefs.current[i] = el; }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: i % 2 ? G.surfaceRaised : "transparent", opacity: dragFrom === i ? 0.4 : 1, boxShadow: dropLineBefore === i ? `inset 0 2px 0 ${G.green}` : (dropLineBefore === pickedList.length && i === pickedList.length - 1 ? `inset 0 -2px 0 ${G.green}` : 'none') }}>
+                      <span onPointerDown={gripDown(i)} onPointerMove={gripMove} onPointerUp={gripUp} onPointerCancel={gripUp} aria-label="Drag to reorder" title="Drag to reorder"
+                        style={{ display: "flex", alignItems: "center", padding: "6px 4px", margin: "-6px 0", color: G.textTertiary, cursor: dragFrom === i ? "grabbing" : "grab", touchAction: "none", userSelect: "none", flexShrink: 0 }}>
+                        <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor"><circle cx="3.5" cy="3" r="1.5"/><circle cx="8.5" cy="3" r="1.5"/><circle cx="3.5" cy="8" r="1.5"/><circle cx="8.5" cy="8" r="1.5"/><circle cx="3.5" cy="13" r="1.5"/><circle cx="8.5" cy="13" r="1.5"/></svg>
+                      </span>
                       <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: G.text }}>{a.name}{a.board && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: G.textTertiary }}>Board</span>}</div>
                         <div style={{ fontSize: 11.5, color: G.textTertiary }}>{[a.position, a.nflTeam || a.college, a.level].filter(Boolean).join(' · ')}</div>
                       </div>
-                      <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" style={{ ...btn(false, i === 0), padding: "4px 8px" }}>↑</button>
-                      <button onClick={() => move(i, 1)} disabled={i === pickedList.length - 1} aria-label="Move down" style={{ ...btn(false, i === pickedList.length - 1), padding: "4px 8px" }}>↓</button>
                       <button onClick={() => { setPicked(p => p.filter(n => n !== a.name)); setLink(null); }} aria-label={`Remove ${a.name}`} style={{ ...btn(false, false), padding: "4px 8px" }}>×</button>
                     </div>
                   ))}
