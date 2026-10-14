@@ -102,13 +102,15 @@
       if (!g || (!g.heading && !(g.bullets || []).length)) return;
       var c = anim(el('div', 'col'), k++);
       var gl = (g.logos || []).filter(function (l) { return l && l.url; });
-      var row = el('div', 'glogos'); gl.forEach(function (l) { row.appendChild(logoImg(l)); }); c.appendChild(row);
+      if (gl.length) { var row = el('div', 'glogos'); gl.forEach(function (l) { row.appendChild(logoImg(l)); }); c.appendChild(row); }
       if (g.heading) c.appendChild(el('div', 'hd u', g.heading));
       (g.bullets || []).forEach(function (t) { if (t) c.appendChild(el('p', 'txt', t)); });
       grid.appendChild(c);
     });
     grid.style.setProperty('--n', String(Math.max(1, grid.children.length)));
     b.appendChild(grid);
+    var bottom = (s.logos || []).filter(function (l) { return l && l.url; });
+    if (bottom.length) { var lrow = anim(el('div', 'logos' + (bottom.length >= 5 ? ' n5' : '')), k); bottom.forEach(function (l) { lrow.appendChild(logoImg(l)); }); b.appendChild(lrow); }
     f.appendChild(b);
     return f;
   }
