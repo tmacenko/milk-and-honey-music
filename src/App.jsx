@@ -10145,6 +10145,8 @@ function PlanEditor({ p, isMobile, initial, onClose, onSaved, onDeleted }) {
       </>)}
       {cur.type === 'section' && (<>
         {label('Title')}{area(cur.title, v => update({ title: v }))}
+        {label('Intro')}{area(cur.intro || '', v => update({ intro: v }))}
+        {label('Layout')}{select(cur.layout || '', v => update({ layout: v }), [['', 'Photo left'], ['band', 'Photo band on top'], ['columns', 'Columns, no photo']])}
         {(cur.groups || []).map((g, i) => (
           <div key={i} style={{ marginTop: 16, padding: 12, borderRadius: 10, border: `1px solid ${G.surfaceBorder}` }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -10160,7 +10162,7 @@ function PlanEditor({ p, isMobile, initial, onClose, onSaved, onDeleted }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {(cur.logos || []).map((l, i) => (
             <div key={i} style={{ position: "relative", background: "#080809", borderRadius: 8, padding: 8 }}>
-              <img src={l.url} alt={l.name} style={{ height: 28, maxWidth: 90, objectFit: "contain", display: "block" }} />
+              <img src={l.url} alt={l.name} style={{ height: 28, maxWidth: 90, objectFit: "contain", display: "block", filter: l.white ? "brightness(0) invert(1)" : "none" }} onClick={() => update({ logos: cur.logos.map((x, k) => (k === i ? { ...x, white: !x.white } : x)) })} title="Click to show in white" />
               <button onClick={() => update({ logos: cur.logos.filter((_, k) => k !== i) })} title="Remove" style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 99, border: `1px solid ${G.surfaceBorderLight}`, background: G.surface, color: G.textSecondary, fontSize: 10, cursor: "pointer", fontFamily: ff, padding: 0 }}>✕</button>
             </div>
           ))}

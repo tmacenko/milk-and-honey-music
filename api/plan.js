@@ -103,9 +103,9 @@ function cleanSlide(s) {
   if (s.type === 'cover') return { ...base, name: str(s.name, 60), subtitle: str(s.subtitle, 80), showLogo: s.showLogo !== false };
   if (s.type === 'focus') return { ...base, title: str(s.title, 60), items: (Array.isArray(s.items) ? s.items : []).slice(0, 4).map(it => ({ icon: ICONS.includes(it?.icon) ? it.icon : 'star', image: url(it?.image), label: str(it?.label, 40) })) };
   if (s.type === 'section') return {
-    ...base, title: str(s.title, 60),
-    groups: (Array.isArray(s.groups) ? s.groups : []).slice(0, 4).map(g => ({ heading: str(g?.heading, 60), bullets: (Array.isArray(g?.bullets) ? g.bullets : []).slice(0, 8).map(b => str(b, 240)).filter(Boolean) })),
-    logos: (Array.isArray(s.logos) ? s.logos : []).slice(0, 6).map(l => ({ url: url(l?.url), name: str(l?.name, 40) })).filter(l => l.url),
+    ...base, title: str(s.title, 60), intro: str(s.intro, 240), layout: ['band', 'columns'].includes(s.layout) ? s.layout : '',
+    groups: (Array.isArray(s.groups) ? s.groups : []).slice(0, 4).map(g => ({ heading: str(g?.heading, 60), bullets: (Array.isArray(g?.bullets) ? g.bullets : []).slice(0, 8).map(b => str(b, 240)).filter(Boolean), logos: (Array.isArray(g?.logos) ? g.logos : []).slice(0, 4).map(l => ({ url: url(l?.url), name: str(l?.name, 40), white: !!l?.white })).filter(l => l.url) })),
+    logos: (Array.isArray(s.logos) ? s.logos : []).slice(0, 6).map(l => ({ url: url(l?.url), name: str(l?.name, 40), white: !!l?.white })).filter(l => l.url),
   };
   if (s.type === 'media') return {
     ...base, title: str(s.title, 60), heading: str(s.heading, 60), text: str(s.text, 400),
@@ -115,7 +115,7 @@ function cleanSlide(s) {
 }
 function cleanDeck(d) {
   const slides = (Array.isArray(d?.slides) ? d.slides : []).map(cleanSlide).filter(Boolean).slice(0, 20);
-  return { v: 1, slides };
+  return { v: 1, og: url(d?.og), slides };
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -138,12 +138,12 @@ function pageHtml({ title, description, image, deck, preview, gone }) {
 <meta property="og:site_name" content="Milk &amp; Honey Sports" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="stylesheet" href="${TYPEKIT}" />
-<link rel="stylesheet" href="/plan.css?v=5" />
+<link rel="stylesheet" href="/plan.css?v=8" />
 </head>
 <body>
 <div id="deck"></div>
 <script>window.__PLAN__=${preview ? 'null' : JSON.stringify(data).replace(/</g, '\\u003c').replace(new RegExp(String.fromCharCode(0x2028), "g"), "\\u2028").replace(new RegExp(String.fromCharCode(0x2029), "g"), "\\u2029")};window.__PREVIEW__=${preview ? 'true' : 'false'};</script>
-<script src="/plan.js?v=5"></script>
+<script src="/plan.js?v=8"></script>
 </body>
 </html>`;
 }
@@ -181,7 +181,7 @@ module.exports = async (req, res) => {
         if (vi >= 0) sheetBatchUpdate(token, [{ range: `'${TAB}'!${colLetter(vi)}${r._row}`, values: [[String(n + 1)]] }]).catch(() => {});
       }
       res.setHeader('Cache-Control', 'no-store');
-      return res.send(pageHtml({ title, description: 'Milk & Honey Sports', image: (cover && cover.photo) || `${APP_URL}/share-image.jpg`, deck }));
+      return res.send(pageHtml({ title, description: 'Milk & Honey Sports', image: deck.og || (cover && cover.photo) || `${APP_URL}/share-image.jpg`, deck }));
     } catch (err) {
       console.error('Plan page error:', err.message);
       return res.status(500).send('Could not load this plan.');

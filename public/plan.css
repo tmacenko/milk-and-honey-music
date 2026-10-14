@@ -14,6 +14,7 @@ img{display:block}
 .ic{color:var(--green)}
 .ic svg{width:100%;height:100%;display:block;fill:currentColor}
 .ic img{width:100%;height:100%;display:block;object-fit:contain;object-position:left center}
+.logos img.wh,.glogos img.wh{filter:brightness(0) invert(1)}
 .pre{white-space:pre-line}
 .gone{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:32px;text-align:center}
 .gone .logo{width:180px}
@@ -48,6 +49,7 @@ body.preview .nav{display:none}
   .section>.ph{width:36%;right:auto}
   .section .body{position:absolute;left:41%;right:5%;top:9%;bottom:8%;display:flex;flex-direction:column}
   .section .title{font:700 6.2cqw/.95 var(--disp)}
+  .section .intro{font:var(--light) 1.5cqw/1.45 var(--body);margin-top:1.8cqw;max-width:50cqw}
   .section .grp{margin-top:2.4cqw}
   .section .hd{font:var(--light) 2.1cqw/1.1 var(--wide);color:var(--green);letter-spacing:.02em}
   .section ul{list-style:none;margin-top:1.1cqw}
@@ -56,6 +58,31 @@ body.preview .nav{display:none}
   .section .logos{margin-top:auto;padding-top:2cqw;display:flex;align-items:center;gap:3cqw;max-width:100%}
   .section .logos img{height:5.4cqw;max-width:16cqw;min-width:0;flex:0 1 auto;object-fit:contain}
   .section .logos img.sq{height:9cqw}
+  /* band layout: photo strip on top, title + intro left, groups right, logos across the bottom */
+  .section.band .band{position:absolute;top:0;left:0;width:100%;height:24%;overflow:hidden}
+  .section.band .band img{width:100%;height:100%;filter:saturate(.5) brightness(.95)}
+  .section.band .body{left:6.5%;right:6%;top:30%;bottom:7%;display:grid;grid-template-columns:40% 1fr;column-gap:4cqw;grid-template-rows:1fr auto}
+  .section.band .col-l{grid-column:1}
+  .section.band .col-r{grid-column:2;margin-top:1.2cqw}
+  .section.band .col-r .grp:first-child{margin-top:0}
+  .section.band .title{font-size:5.6cqw}
+  .section.band .intro{max-width:none}
+  .section.band .logos{grid-column:1/-1;margin-top:auto;padding-top:1.6cqw}
+  /* columns layout: header row, then one column per idea with its own logos */
+  .section.cols .body{left:6.5%;right:6.5%;top:10%;bottom:10%;display:flex;flex-direction:column}
+  .section.cols .head{display:grid;grid-template-columns:1fr 1fr;column-gap:5cqw;align-items:end}
+  .section.cols .title{font-size:5.6cqw}
+  .section.cols .intro{max-width:none;margin-top:0;padding-bottom:.6cqw}
+  .section.cols .colgrid{display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:3.5cqw;margin:auto 0;padding-top:3.4cqw;border-top:1px solid rgba(255,255,255,.14)}
+  .section.cols .head{margin-bottom:3cqw}
+  .section.cols .glogos{display:flex;align-items:center;gap:2cqw;height:7cqw;margin-bottom:2.2cqw}
+  .section.cols .glogos img{height:5cqw;max-width:12cqw;min-width:0;flex:0 1 auto;object-fit:contain}
+  .section.cols .glogos img.sq{height:7cqw}
+  .section.cols .col .hd{font:var(--light) 2cqw/1.15 var(--wide);color:var(--green);letter-spacing:.02em}
+  .section.cols .col .txt{font:var(--light) 1.5cqw/1.5 var(--body);margin-top:1.1cqw;color:#fff}
+  .section .logos.n5{gap:2cqw}
+  .section .logos.n5 img{height:4.2cqw;max-width:11cqw}
+  .section .logos.n5 img.sq{height:6.4cqw}
   /* Media / logo wall */
   .media>.ph{width:36%;left:auto;right:0}
   .media .body{position:absolute;left:6.5%;right:6.5%;top:9%;bottom:9%;display:flex;flex-direction:column}
@@ -92,6 +119,7 @@ body.preview .nav{display:none}
   .section>.ph{height:72cqw}
   .section .body{padding:8cqw 6cqw 12cqw}
   .section .title{font:700 10.5cqw/.95 var(--disp)}
+  .section .intro{font:var(--light) 3.9cqw/1.5 var(--body);margin-top:3.5cqw}
   .section .grp{margin-top:6cqw}
   .section .hd{font:var(--light) 4.3cqw/1.1 var(--wide);color:var(--green);letter-spacing:.02em}
   .section ul{list-style:none;margin-top:2.5cqw}
@@ -100,6 +128,14 @@ body.preview .nav{display:none}
   .section .logos{margin-top:8cqw;display:flex;flex-wrap:wrap;align-items:center;gap:6cqw 8cqw}
   .section .logos img{height:9cqw;max-width:32cqw;object-fit:contain}
   .section .logos img.sq{height:15cqw}
+  .section.band .band img{width:100%;height:52cqw;filter:saturate(.5) brightness(.95)}
+  .section.cols .head .intro{margin-top:3.5cqw}
+  .section.cols .colgrid{display:grid;gap:7cqw;margin-top:7cqw;padding-top:6cqw;border-top:1px solid rgba(255,255,255,.14)}
+  .section.cols .glogos{display:flex;align-items:center;gap:5cqw;margin-bottom:4cqw;flex-wrap:wrap}
+  .section.cols .glogos img{height:9cqw;max-width:30cqw;object-fit:contain}
+  .section.cols .glogos img.sq{height:14cqw}
+  .section.cols .col .hd{font:var(--light) 4.3cqw/1.15 var(--wide);color:var(--green)}
+  .section.cols .col .txt{font:var(--light) 3.8cqw/1.5 var(--body);margin-top:2.5cqw;color:#fff}
   /* Media / logo wall */
   .media>.ph{height:72cqw}
   .media .body{padding:8cqw 6cqw 12cqw}
