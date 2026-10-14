@@ -92,6 +92,12 @@ body.preview .nav{display:none}
   .section .logos.n5{gap:2cqw}
   .section .logos.n5 img{height:4.2cqw;max-width:11cqw}
   .section .logos.n5 img.sq{height:6.4cqw}
+  /* Closing */
+  .closing .dim{position:absolute;inset:0;background:rgba(0,0,0,.72)}
+  .closing .wrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 10%}
+  .closing .logo{width:21cqw;margin-bottom:4cqw}
+  .closing .title{font:700 5.6cqw/1 var(--disp);letter-spacing:-.005em}
+  .closing .txt{font:var(--light) 1.7cqw/1.4 var(--wide);text-transform:uppercase;letter-spacing:.04em;margin-top:2.4cqw;color:#fff}
   /* Media / logo wall */
   .media>.ph{width:36%;left:auto;right:0}
   .media .body{position:absolute;left:6.5%;right:6.5%;top:9%;bottom:9%;display:flex;flex-direction:column}
@@ -99,7 +105,7 @@ body.preview .nav{display:none}
   .media .title{font:700 6.2cqw/.95 var(--disp)}
   .media .grp{margin-top:2.2cqw;max-width:60cqw}
   .media .hd{font:var(--light) 2.1cqw/1.1 var(--wide);color:var(--green);letter-spacing:.02em}
-  .media .txt{font:var(--light) 1.45cqw/1.5 var(--body);margin-top:1cqw;color:#fff}
+  .media .txt{font:var(--light) 1.45cqw/1.5 var(--body);margin-top:1cqw;color:#fff;white-space:pre-line}
   .media .wall{margin-top:auto;display:flex;flex-wrap:wrap;gap:1.4cqw}
   .media .cell{width:11cqw;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border-radius:1.4cqw;overflow:hidden}
   .media.has-ph .wall{gap:1.2cqw}
@@ -146,13 +152,21 @@ body.preview .nav{display:none}
   .section.cols .glogos img.sq{height:14cqw}
   .section.cols .col .hd{font:var(--light) 4.3cqw/1.15 var(--wide);color:var(--green)}
   .section.cols .col .txt{font:var(--light) 3.8cqw/1.5 var(--body);margin-top:2.5cqw;color:#fff}
+  /* Closing */
+  .closing{min-height:120cqw;display:flex}
+  .closing>.ph{position:absolute;inset:0;height:100%}
+  .closing .dim{position:absolute;inset:0;background:rgba(0,0,0,.72)}
+  .closing .wrap{position:relative;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:22cqw 8cqw}
+  .closing .logo{width:48cqw;margin-bottom:9cqw}
+  .closing .title{font:700 11cqw/1 var(--disp)}
+  .closing .txt{font:var(--light) 4cqw/1.4 var(--wide);text-transform:uppercase;letter-spacing:.04em;margin-top:5cqw;color:#fff}
   /* Media / logo wall */
   .media>.ph{height:72cqw}
   .media .body{padding:8cqw 6cqw 12cqw}
   .media .title{font:700 10.5cqw/.95 var(--disp)}
   .media .grp{margin-top:6cqw}
   .media .hd{font:var(--light) 4.3cqw/1.1 var(--wide);color:var(--green);letter-spacing:.02em}
-  .media .txt{font:var(--light) 3.8cqw/1.5 var(--body);margin-top:2.5cqw;color:#fff}
+  .media .txt{font:var(--light) 3.8cqw/1.5 var(--body);margin-top:2.5cqw;color:#fff;white-space:pre-line}
   .media .wall{margin-top:8cqw;display:flex;flex-wrap:wrap;gap:3cqw}
   .media .cell{width:26.5cqw;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border-radius:3.5cqw;overflow:hidden}
   .media .cell img{width:100%;height:100%;object-fit:cover}
@@ -173,3 +187,10 @@ body.preview .nav{display:none}
 .frame::before{content:"";position:absolute;inset:-25%;pointer-events:none;z-index:0;background:radial-gradient(38% 46% at 72% 30%,rgba(63,211,154,.13),rgba(63,211,154,0) 70%);animation:glowDrift 22s ease-in-out infinite alternate}
 @keyframes glowDrift{from{transform:translate(0,0) scale(1)}to{transform:translate(-9%,12%) scale(1.08)}}
 @media (prefers-reduced-motion:reduce){.frame::before{animation:none}}
+
+/* Grid lines: faint green hairlines in the empty parts of text-led slides,
+   masked away from photos and dense copy. */
+.gridbg{position:absolute;inset:0;pointer-events:none;z-index:0;background-image:linear-gradient(rgba(63,211,154,.085) 1px,transparent 1px),linear-gradient(90deg,rgba(63,211,154,.085) 1px,transparent 1px);background-size:10cqw 10cqw;background-position:center}
+.closing .gridbg{-webkit-mask-image:radial-gradient(ellipse 55% 60% at 50% 50%,transparent 30%,#000 75%);mask-image:radial-gradient(ellipse 55% 60% at 50% 50%,transparent 30%,#000 75%)}
+.focus .gridbg{-webkit-mask-image:linear-gradient(180deg,transparent 30%,#000 62%);mask-image:linear-gradient(180deg,transparent 30%,#000 62%)}
+.section.cols .gridbg{-webkit-mask-image:linear-gradient(180deg,transparent 12%,rgba(0,0,0,.6) 45%,#000 70%);mask-image:linear-gradient(180deg,transparent 12%,rgba(0,0,0,.6) 45%,#000 70%)}

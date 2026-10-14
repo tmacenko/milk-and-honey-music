@@ -107,6 +107,7 @@ function cleanSlide(s) {
     groups: (Array.isArray(s.groups) ? s.groups : []).slice(0, 4).map(g => ({ heading: str(g?.heading, 60), bullets: (Array.isArray(g?.bullets) ? g.bullets : []).slice(0, 8).map(b => str(b, 240)).filter(Boolean), logos: (Array.isArray(g?.logos) ? g.logos : []).slice(0, 4).map(l => ({ url: url(l?.url), name: str(l?.name, 40), white: !!l?.white })).filter(l => l.url) })),
     logos: (Array.isArray(s.logos) ? s.logos : []).slice(0, 6).map(l => ({ url: url(l?.url), name: str(l?.name, 40), white: !!l?.white })).filter(l => l.url),
   };
+  if (s.type === 'closing') return { ...base, title: str(s.title, 60), text: str(s.text, 200), showLogo: s.showLogo !== false };
   if (s.type === 'media') return {
     ...base, title: str(s.title, 60), heading: str(s.heading, 60), text: str(s.text, 400),
     logos: (Array.isArray(s.logos) ? s.logos : []).slice(0, 12).map(l => ({ url: url(l?.url), name: str(l?.name, 40) })).filter(l => l.url || l.name),
@@ -138,12 +139,12 @@ function pageHtml({ title, description, image, deck, preview, gone }) {
 <meta property="og:site_name" content="Milk &amp; Honey Sports" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="stylesheet" href="${TYPEKIT}" />
-<link rel="stylesheet" href="/plan.css?v=10" />
+<link rel="stylesheet" href="/plan.css?v=12" />
 </head>
 <body>
 <div id="deck"></div>
 <script>window.__PLAN__=${preview ? 'null' : JSON.stringify(data).replace(/</g, '\\u003c').replace(new RegExp(String.fromCharCode(0x2028), "g"), "\\u2028").replace(new RegExp(String.fromCharCode(0x2029), "g"), "\\u2029")};window.__PREVIEW__=${preview ? 'true' : 'false'};</script>
-<script src="/plan.js?v=10"></script>
+<script src="/plan.js?v=12"></script>
 </body>
 </html>`;
 }

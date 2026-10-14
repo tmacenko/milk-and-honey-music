@@ -9889,13 +9889,14 @@ function RecruitBlock({ p, ops, staff, user, onEditRecord }) {
 // The preview is the real public page (/plan-preview) fed by postMessage, so
 // what Tyler sees in the editor is exactly what the link shows.
 const PLAN_ICONS = ['handshake', 'megaphone', 'community', 'camera', 'trophy', 'star', 'chart', 'mic', 'heart', 'globe', 'calendar', 'dollar', 'shirt', 'phone'];
-const PLAN_TYPES = { cover: 'Cover', focus: 'Focus areas', section: 'Section', media: 'Logo wall' };
+const PLAN_TYPES = { cover: 'Cover', focus: 'Focus areas', section: 'Section', media: 'Logo wall', closing: 'Closing' };
 const PLAN_URL = (id) => `https://www.milkandhoneyfamily.com/plan/${id}`;
 function planNewSlide(type, p) {
   const photo = (p && p.photo) || '';
   if (type === 'cover') return { type, photo, photoPos: '50% 50%', name: (p && p.name) || '', subtitle: 'In season marketing plan', showLogo: true };
   if (type === 'focus') return { type, photo, photoPos: '50% 20%', title: 'Three key\nfocus areas', items: [{ icon: 'handshake', label: 'Brand\npartnerships' }, { icon: 'megaphone', label: 'Media\nopportunities' }, { icon: 'community', label: 'Community\ninvolvement' }] };
   if (type === 'media') return { type, photo, photoPos: '50% 30%', title: 'Media\nopportunities', heading: '', text: '', logos: [] };
+  if (type === 'closing') return { type, photo: '', photoPos: '50% 50%', title: `Ready to work\nfor ${((p && p.name) || '').split(' ')[0]}`, text: '', showLogo: true };
   return { type: 'section', photo, photoPos: '50% 30%', title: '', groups: [{ heading: '', bullets: [] }], logos: [] };
 }
 function planTemplate(p) {
@@ -10128,6 +10129,13 @@ function PlanEditor({ p, isMobile, initial, onClose, onSaved, onDeleted }) {
           </div>
         ))}
         {(cur.items || []).length < 4 && <button onClick={() => update({ items: [...(cur.items || []), { icon: 'star', label: '' }] })} style={{ ...planBtn('ghost'), color: G.green, padding: "6px 0" }}>+ Add item</button>}
+      </>)}
+      {cur.type === 'closing' && (<>
+        {label('Headline')}{area(cur.title, v => update({ title: v }))}
+        {label('Line under it')}{text(cur.text || '', v => update({ text: v }))}
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, fontSize: 13, color: G.text, cursor: "pointer" }}>
+          <input type="checkbox" checked={cur.showLogo !== false} onChange={e => update({ showLogo: e.target.checked })} style={{ accentColor: G.green }} /> Show logo
+        </label>
       </>)}
       {cur.type === 'media' && (<>
         {label('Title')}{area(cur.title, v => update({ title: v }))}
