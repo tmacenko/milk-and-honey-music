@@ -41,10 +41,26 @@ const spGet = async (path) => {
 // titles as-is; the email convention is the parenthesised form).
 const tidyTitle = (t) => String(t || '').replace(/\s+-\s+([^-]*\b(remix|edit|mix|version|dub|bootleg|flip|rework)\b[^-]*)$/i, ' ($1)').trim();
 const cleanLink = (u) => String(u || '').replace(/[?#].*$/, '');
+// Spotify's embed page as a second route (no key needed): its page data
+// carries the entity with name and artists for tracks and albums.
+async function lookupPage(kind, id) {
+  try {
+    const r = await fetch(`https://open.spotify.com/embed/${kind}/${id}`, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'en' } });
+    if (!r.ok) return null;
+    const html = await r.text();
+    const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (!m) return null;
+    const e = JSON.parse(m[1]).props?.pageProps?.state?.data?.entity;
+    if (!e || !e.name) return null;
+    const artist = (e.artists || []).map(a => a.name).filter(Boolean).join(', ') || String(e.subtitle || '');
+    if (!artist) return null;
+    return { artist, title: tidyTitle(e.name), link: `https://open.spotify.com/${kind}/${id}` };
+  } catch { return null; }
+}
 async function lookup(kind, id) {
-  const d = await spGet(`/${kind}s/${id}`);
-  if (!d) return null;
-  return { artist: (d.artists || []).map(a => a.name).join(', '), title: tidyTitle(d.name), link: `https://open.spotify.com/${kind}/${id}` };
+  const d = await spGet(`/${kind}s/${id}`).catch(() => null);
+  if (d && d.name) return { artist: (d.artists || []).map(a => a.name).join(', '), title: tidyTitle(d.name), link: `https://open.spotify.com/${kind}/${id}` };
+  return lookupPage(kind, id);
 }
 async function search(artist, title) {
   const q = encodeURIComponent(`${title} ${artist}`.trim());
@@ -95,6 +111,7 @@ Rules:
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!req.body) return res.status(400).json({ error: 'No body' });
   const st = authState(req);
   if (!st.user || !OWNERS.includes(String(st.user.email || '').toLowerCase())) return res.status(403).json({ error: 'Not authorized' });
   if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'AI is not configured on the server.' });
@@ -146,3 +163,5 @@ module.exports = async (req, res) => {
     return res.status(err.status || 500).json({ error: err.message || 'Clean-up failed' });
   }
 };
+
+module.exports.lookup = lookup;
