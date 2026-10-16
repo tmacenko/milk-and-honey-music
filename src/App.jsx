@@ -4446,7 +4446,7 @@ function NotesPage({ isMobile, user }) {
                         {r.done ? '✓' : ''}
                       </button>
                     </td>
-                    <td style={{ ...td, color: r.done ? G.textTertiary : G.text, textDecoration: r.done ? "line-through" : "none" }}>{r.text}</td>
+                    <td style={td}><NoteText text={r.text} done={r.done} onSave={(v) => post({ action: 'tab-update', tab: 'todos', row: r.row, values: { text: v } })} /></td>
                     <td style={{ ...td, color: G.textSecondary, whiteSpace: "nowrap" }}>{fmtDay(r.at)}</td>
                     <td style={{ ...td, whiteSpace: "nowrap" }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: r.done ? G.textTertiary : G.green, background: r.done ? G.surfaceRaised : G.greenSubtle, borderRadius: 6, padding: "3px 9px" }}>
@@ -5530,7 +5530,26 @@ function CarouselRow({ children }) {
 // Drag-to-reorder notes list shared by both dashboards. Items carry a
 // fractional `ord`; a drop writes ONE sortOrder cell (midpoint between the
 // new neighbors) via onReorder(row, ord).
-function TodoNotesList({ items, onComplete, onReorder }) {
+// Click a note to edit it in place: Enter or clicking away saves, Escape cancels.
+function NoteText({ text, onSave, style, done, onEditing }) {
+  const [editing, setEditingState] = useState(false);
+  const setEditing = (v) => { setEditingState(v); if (onEditing) onEditing(v); };
+  const [val, setVal] = useState(text);
+  useEffect(() => { if (!editing) setVal(text); }, [text, editing]);
+  const commit = () => { const t = val.trim(); setEditing(false); if (t && t !== text) onSave(t); else setVal(text); };
+  if (editing) return (
+    <input autoFocus value={val} onChange={e => setVal(e.target.value)} onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setVal(text); setEditing(false); } }}
+      onClick={e => e.stopPropagation()}
+      style={{ ...inputBase, padding: "4px 8px", fontSize: 13, minWidth: 0, flex: 1 }} />
+  );
+  return (
+    <span onClick={e => { if (onSave) { e.stopPropagation(); setEditing(true); } }} title={onSave ? 'Click to edit' : undefined}
+      style={{ fontSize: 13, color: done ? G.textTertiary : G.text, textDecoration: done ? "line-through" : "none", cursor: onSave ? "text" : "default", ...style }}>{text}</span>
+  );
+}
+function TodoNotesList({ items, onComplete, onReorder, onEdit }) {
+  const [editRow, setEditRow] = useState(null);     // row being edited — not draggable meanwhile
   const [drag, setDrag] = useState(null);          // sheet row being dragged
   const [over, setOver] = useState(null);          // { row, after } — insertion target
   const finish = () => { setDrag(null); setOver(null); };
@@ -5547,7 +5566,7 @@ function TodoNotesList({ items, onComplete, onReorder }) {
     onReorder(drag, ord);
   };
   return items.map(t => (
-    <div key={t.row} draggable={items.length > 1}
+    <div key={t.row} draggable={items.length > 1 && editRow !== t.row}
       onDragStart={e => { setDrag(t.row); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'note'); /* Firefox/Safari need non-empty data */ }}
       onDragEnd={finish}
       onDragOver={e => {
@@ -5563,7 +5582,7 @@ function TodoNotesList({ items, onComplete, onReorder }) {
         borderBottom: `2px solid ${over && over.row === t.row && over.after ? G.green : 'transparent'}` }}>
       <button onClick={() => onComplete(t.row)} title="Mark complete"
         style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${G.textTertiary}`, background: "transparent", cursor: "pointer", flexShrink: 0, padding: 0 }} />
-      <span style={{ fontSize: 13, color: G.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
+      <NoteText text={t.text} onSave={onEdit ? (v) => onEdit(t.row, v) : undefined} onEditing={(on) => setEditRow(on ? t.row : null)} style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} />
     </div>
   ));
 }
@@ -5708,6 +5727,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
     postTodos({ action: 'tab-append', tab: 'todos', values: { text: t, createdBy: (user?.name || 'Team'), createdAt: new Date().toISOString().slice(0, 10), done: '' } });
   };
   const completeTodo = (row) => postTodos({ action: 'tab-update', tab: 'todos', row, values: { done: 'TRUE' } });
+  const editTodo = (row, text) => postTodos({ action: 'tab-update', tab: 'todos', row, values: { text } });
   const reorderTodo = (row, ord) => {
     setTodoOrd(p => ({ ...p, [row]: ord })); // show the new order immediately
     postTodos({ action: 'tab-update', tab: 'todos', row, values: { sortOrder: String(ord) } });
@@ -5856,7 +5876,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
               Hidden athletes ({hiddenAthletes.length})
             </div>
           )}
-          <TodoNotesList items={todoItems} onComplete={completeTodo} onReorder={reorderTodo} />
+          <TodoNotesList items={todoItems} onComplete={completeTodo} onReorder={reorderTodo} onEdit={editTodo} />
           {s.incomplete.length === 0 && (!adminRole || (newOnboards === 0 && hiddenAthletes.length === 0)) && todoItems.length === 0 && !addingTodo && (
             <div style={{ fontSize: 13, color: G.green, padding: "6px 0" }}>All clear ✓</div>
           )}
@@ -6264,6 +6284,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
     postTodos({ action: 'tab-append', tab: 'todos', values: { text: t, createdBy: (user?.name || 'Team'), createdAt: new Date().toISOString().slice(0, 10), done: '' } });
   };
   const completeTodo = (row) => postTodos({ action: 'tab-update', tab: 'todos', row, values: { done: 'TRUE' } });
+  const editTodo = (row, text) => postTodos({ action: 'tab-update', tab: 'todos', row, values: { text } });
   const reorderTodo = (row, ord) => {
     setTodoOrd(p => ({ ...p, [row]: ord })); // show the new order immediately
     postTodos({ action: 'tab-update', tab: 'todos', row, values: { sortOrder: String(ord) } });
@@ -6390,7 +6411,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
               Incomplete profiles: {s.incomplete.length} clients
             </div>
           )}
-          <TodoNotesList items={todoItems} onComplete={completeTodo} onReorder={reorderTodo} />
+          <TodoNotesList items={todoItems} onComplete={completeTodo} onReorder={reorderTodo} onEdit={editTodo} />
           {s.incomplete.length === 0 && todoItems.length === 0 && !addingTodo && (
             <div style={{ fontSize: 13, color: G.green, padding: "6px 0" }}>All clear ✓</div>
           )}
