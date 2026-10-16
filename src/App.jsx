@@ -8289,10 +8289,10 @@ function pxModelOdds(M, setX, share, team) {
   return { play: Math.round(pf), prod: Math.round(qf), base: Math.round(pb), room: Math.round(pr) - Math.round(pb), school: Math.round(pf) - Math.round(pr), n: sc[0], o: sc[3], e: sc[4] };
 }
 const pxBand = (M, k, v) => Math.max(0, M.bands[k].findIndex(([a, b]) => v >= a && v < b));
-function pxTransferOdds(P, yr, grp, lvDiff, share, team) {
+function pxTransferOdds(P, yr, grp, lvDiff, share, team, stars) {
   const M = PX_TM;
   if (!M || !M.coef || !M.groups.includes(grp)) return null;
-  return { kind: 'tr', ...pxModelOdds(M, (set) => { set(`prod${pxBand(M, 'prod', P)}`); set(`lv${pxBand(M, 'lv', lvDiff)}`); set(`yr${pxBand(M, 'yr', yr || 0)}`); set(grp); }, share, team) };
+  return { kind: 'tr', ...pxModelOdds(M, (set) => { set(`prod${pxBand(M, 'prod', P)}`); set(`lv${pxBand(M, 'lv', lvDiff)}`); set(`yr${pxBand(M, 'yr', yr || 0)}`); set(grp); if (stars === 4) set('star4'); if (stars >= 5) set('star5'); }, share, team) };
 }
 // Freshman outlook — scripts/freshman-model.js, fitted on every high school
 // signee found on a roster since the 2021 class (OL excluded): the chance
@@ -8326,7 +8326,17 @@ function pxFitRank(data, p, prefs, notes) {
   const offerPct = offerPcts.length ? offerPcts[Math.min(2, offerPcts.length - 1)] : 0;
   const n = p.natRank || 0;
   const rankD = !n ? 0 : n <= 50 ? 97 : n <= 150 ? 90 : n <= 300 ? 82 : n <= 500 ? 74 : 0;
-  const auto = p.isHs ? Math.max(starsD[p.stars] || 45, rankD, commitPct, offerPct) : P ? Math.max(3, Math.min(99, C + (P - 50))) : C;
+  // College players with no production haven't earned their school's level:
+  // use the lower of the school and their recruiting profile, a step down for
+  // sitting deep on the depth chart. (Backtest 2026-10-16: buried 3★s play
+  // ~45% wherever they go; buried 4★s 62% at the same level, 45% stepping up.)
+  const recLvl = p.stars || p.natRank ? Math.max(starsD[p.stars] || 45, rankD) : null;
+  // Off the two-deep (or third string) when depth charts exist = buried.
+  const dr0 = data.depthTs ? pxDepthRank(p) : -1;
+  const depthStep = dr0 < 0 ? 0 : dr0 === 2 ? 4 : dr0 === 1 ? 0 : 8;
+  const auto = p.isHs ? Math.max(starsD[p.stars] || 45, rankD, commitPct, offerPct)
+    : P ? Math.max(3, Math.min(99, C + (P - 50)))
+    : Math.max(3, Math.round(Math.min(C, recLvl == null ? C : recLvl) - depthStep));
   // D = the level the player has earned; reaches above it get discounted
   // (Aim sets how much).
   const D = auto;
@@ -8403,7 +8413,7 @@ function pxFitRank(data, p, prefs, notes) {
     // so it keeps the room-based score.
     const outlook = isCur ? null : p.isHs
       ? pxFreshmanOdds(p.stars, p.natRank, grp, tPct(ti), Math.round((t.share || 0) * 100), t.name)
-      : pxTransferOdds(P, p.yr, grp, Math.round(tPct(ti) - D), Math.round((t.share || 0) * 100), t.name);
+      : pxTransferOdds(P, p.yr, grp, Math.round(tPct(ti) - D), Math.round((t.share || 0) * 100), t.name, p.stars);
     if (outlook && PX_OPP_MODE === 'model') f.opp[0] = outlook.play;
     if (outlook && PX_OPP_MODE === 'blend') f.opp[0] = 0.5 * f.opp[0] + 0.5 * outlook.play;
     // Level
@@ -8414,7 +8424,7 @@ function pxFitRank(data, p, prefs, notes) {
     // Recruits need an offer, so theirs starts sooner and falls faster than
     // a productive transfer's; Stretch allows 10 (recruits) / 15 more points;
     // Anything none.
-    const reachAt = p.isHs ? 15 : 25;
+    const reachAt = 15;
     // Recruits with an offer list: anything clearly above their best offer is a reach.
     const aboveOffers = p.isHs && offerPcts.length >= 3 && !offered.has(t.name) && T > offerPcts[0] + 5;
     const label = isCur ? 'Current' : aboveOffers || diff > reachAt ? 'Reach' : diff < -12 ? 'Safe' : 'Match';
@@ -8423,7 +8433,7 @@ function pxFitRank(data, p, prefs, notes) {
     // sooner and falls faster than it used to.
     // (Backups with no production record keep the gentler curve — their
     // "earned level" is only their current team.)
-    const free = (p.isHs ? 8 : P ? 5 : 15) + (aim === 'stretch' ? (p.isHs ? 10 : 15) : 0);
+    const free = (p.isHs ? 8 : 5) + (aim === 'stretch' ? (p.isHs ? 10 : 15) : 0);
     const mark = (notes || {})[t.name];
     const isOffer = offered.has(t.name) || (mark && mark.status === 'interested');
     // A recruit with a real offer list: offering schools are realistic by
@@ -8433,7 +8443,7 @@ function pxFitRank(data, p, prefs, notes) {
     const over = T - Math.max(D, offerPcts[0] || 0) - (aim === 'stretch' ? 10 : 0);
     const realism = aim === 'any' || isOffer || isCur ? 1
       : byOffers ? (over <= 0 ? 1 : Math.max(0.35, Math.exp(-((over / 10) ** 2))))
-      : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : P ? 22 : 30)) ** 2)));
+      : Math.max(0.35, Math.exp(-((Math.max(0, diff - free) / (p.isHs ? 14 : 22)) ** 2)));
     if (avail.nfl) { const n = (ti.draft || {})[grp] || 0; f.nfl = [100 * (1 - Math.exp(-n / 2.2)), n ? `${n} ${grp} drafted in 5 yrs` : `No ${grp} drafted in 5 yrs`]; }
     // Distance score is a smooth curve: 25 mi ≈ 93, 145 ≈ 66, 250 ≈ 49, 500 ≈ 24, 1,000 ≈ 6.
     if (avail.home) {
@@ -8476,7 +8486,10 @@ function pxFitRank(data, p, prefs, notes) {
     const fitRaw = den ? (num / den) * gate * realism * (isOffer ? 1.1 : 1) * stay : 0;
     // Factors that are only a placeholder for this team (no data behind them).
     const thin = PX_FIT_FACTORS.filter(([fk]) => f[fk] && ((prefs.w || {})[fk] || 0) > 0 && (!f[fk][1] || f[fk][1] === 'Location unknown')).map(([, l]) => l);
-    return { ...t, fit: Math.min(100, Math.round(fitRaw)), f, outlook, label, slot, realism, value, current: isCur, offered: offered.has(t.name), interested: !!(mark && mark.status === 'interested'), mark: mark || null, thin };
+    // The tested odds temper the whole score: at a 30% chance to play the
+    // row scores ×0.8, so it can't read Good fit; 60%+ leaves it alone.
+    const oddsK = outlook ? 0.6 + 0.4 * Math.min(1, outlook.play / 60) : 1;
+    return { ...t, fit: Math.min(100, Math.round(fitRaw * oddsK)), f, outlook, label, slot, realism, value, current: isCur, offered: offered.has(t.name), interested: !!(mark && mark.status === 'interested'), mark: mark || null, thin };
   }).sort((x, y) => y.fit - x.fit || (x.sp || 999) - (y.sp || 999));
   const ruledOut = allRows.filter(t => t.mark && t.mark.status === 'notfit');
   const rows = allRows.filter(t => !(t.mark && t.mark.status === 'notfit'));

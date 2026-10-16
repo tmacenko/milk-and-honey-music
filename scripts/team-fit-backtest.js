@@ -94,7 +94,7 @@ if (require.main === module) (async () => {
       const inAll = rivals.length, inProd = rivals.filter(a => a.pct >= 40).length, inBetter = rivals.filter(a => a.pct > (p.prodPct || 0)).length;
       const use = su != null && sch.sorted[p.grp] ? Math.round(pxMidPct(sch.sorted[p.grp], su)) : null;
       out.push({ Y, name: e.name, pos: p.pos, from: e.origin, to: e.dest, prodBefore: p.prodPct || 0,
-        use, inAll, inProd, inBetter, fit: d.fit, pct: Math.round(100 * (1 - i / res.rows.length)), opp: Math.round(d.f.opp[0]), slot: d.slot || 0, label: d.label,
+        use, inAll, inProd, inBetter, stars: p.stars || 0, natRank: p.natRank || 0, fit: d.fit, pct: Math.round(100 * (1 - i / res.rows.length)), opp: Math.round(d.f.opp[0]), slot: d.slot || 0, label: d.label,
         share: Math.round((d.share || 0) * 100), S0: PX_STARTERS[pxFitGroup(p.pos) || p.grp] || 1, lvDiff: Math.round((pxProgram(before).pct[e.dest] || 5) - res.D), stayW: d.stayW, portalOut: d.portalOut, commits: d.commits,
         fromTier: (before.teamInfo[e.origin] || {}).tier || '', toTier: (before.teamInfo[e.dest] || {}).tier || '', yr: p.yr, usageBefore: p.usage ? p.usage[0] : 0,
         found: !!nxt, played: !!(nxt && nxt.prodPct), prodAfter: nxt ? nxt.prodPct || 0 : 0, usageAfter: nxt && nxt.usage ? nxt.usage[0] : 0 });

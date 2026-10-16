@@ -29,11 +29,11 @@ const GRP_LIST = ['QB', 'RB', 'WR', 'TE', 'DL', 'LB', 'DB', 'ATH'];
 const bandOf = (k, v) => Math.max(0, BANDS[k].findIndex(([a, b]) => v >= a && v < b));
 // One-hot design (first band of each = reference).
 const NAMES = ['int', ...BANDS.prod.slice(1).map((_, i) => `prod${i + 1}`), ...BANDS.lv.slice(1).map((_, i) => `lv${i + 1}`),
-  'room', ...(process.env.USE ? ['use'] : []), ...(process.env.COMP ? ['better', 'arrivals'] : []), ...BANDS.yr.slice(1).map((_, i) => `yr${i + 1}`), ...GRP_LIST.slice(1)];
+  'room', ...(process.env.USE ? ['use'] : []), ...(process.env.COMP ? ['better', 'arrivals'] : []), 'star4', 'star5', ...BANDS.yr.slice(1).map((_, i) => `yr${i + 1}`), ...GRP_LIST.slice(1)];
 function feats(r) {
   const x = new Array(NAMES.length).fill(0); x[0] = 1;
   const set = (n) => { const i = NAMES.indexOf(n); if (i > 0) x[i] = 1; };
-  set(`prod${bandOf('prod', r.prodBefore)}`); set(`lv${bandOf('lv', r.lvDiff)}`); x[NAMES.indexOf('room')] = Math.min(100, r.share || 0) / 100; if (process.env.USE) x[NAMES.indexOf('use')] = r.use == null ? 0.5 : r.use / 100; if (process.env.COMP) { x[NAMES.indexOf('better')] = Math.min(3, r.inBetter || 0); x[NAMES.indexOf('arrivals')] = Math.min(4, r.inAll || 0); } set(`yr${bandOf('yr', r.yr || 0)}`); set(r.grp);
+  set(`prod${bandOf('prod', r.prodBefore)}`); set(`lv${bandOf('lv', r.lvDiff)}`); x[NAMES.indexOf('room')] = Math.min(100, r.share || 0) / 100; if (process.env.USE) x[NAMES.indexOf('use')] = r.use == null ? 0.5 : r.use / 100; if (process.env.COMP) { x[NAMES.indexOf('better')] = Math.min(3, r.inBetter || 0); x[NAMES.indexOf('arrivals')] = Math.min(4, r.inAll || 0); } x[NAMES.indexOf('star4')] = r.stars === 4 ? 1 : 0; x[NAMES.indexOf('star5')] = r.stars >= 5 ? 1 : 0; set(`yr${bandOf('yr', r.yr || 0)}`); set(r.grp);
   return x;
 }
 const sig = (z) => 1 / (1 + Math.exp(-z));
@@ -77,9 +77,11 @@ function auc(ps, ys) {
 const logloss = (ps, ys) => -ps.reduce((s, p, i) => s + (ys[i] ? Math.log(Math.max(p, 1e-9)) : Math.log(Math.max(1 - p, 1e-9))), 0) / ps.length;
 
 const all = [...load('bt-2122.json'), ...load('backtest-results.json')]
-  .filter(r => r.found).map(r => ({ ...r, grp: grpOf(r.pos) })).filter(r => r.grp && (!process.env.OFFENSE || ['QB', 'RB', 'WR', 'TE'].includes(r.grp))); // OL has no production stats to judge
-// Analysis switches: OFFENSE=1 (skill positions only), USE=1 (add how much
-// the destination fed the position the season before), DRY=1 (don't write).
+  .filter(r => r.found).map(r => ({ ...r, grp: grpOf(r.pos) })).filter(r => r.grp && (!process.env.OFFENSE || ['QB', 'RB', 'WR', 'TE'].includes(r.grp)) && (!process.env.NOPROD || !r.prodBefore)); // OL has no production stats to judge
+// Analysis switches: OFFENSE=1 (skill positions only), NOPROD=1 (no production
+// score before the move), USE=1 (destination's usage of the position), COMP=1
+// (same-cycle arrivals), DRY=1 (don't write). Recruiting stars are a standard
+// feature (2026-10-16): buried 4★s play more than buried 3★s at the same level.
 const Y = { played: (r) => (r.played ? 1 : 0), produced: (r) => (r.prodAfter >= 50 ? 1 : 0) };
 const cycles = [...new Set(all.map(r => r.Y))].sort();
 console.log(`transfers ${all.length} (OL excluded), cycles ${cycles.join(',')}`);
