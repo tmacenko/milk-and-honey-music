@@ -3125,6 +3125,15 @@ function useClientFitPlayer(a) {
   const ready = (!!px || pxFailed) && !hist.loading;
   return { px, p, hist, ready };
 }
+// "Mar 4, 2005 (21)" from the sheet's MM/DD/YYYY (or YYYY-MM-DD); other text as-is.
+const fmtBirthday = (v) => {
+  const m = String(v || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/) || String(v || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return v;
+  const [y, mo, d] = m[0].includes('/') ? [+m[3], +m[1], +m[2]] : [+m[1], +m[2], +m[3]];
+  const dt = new Date(y, mo - 1, d), now = new Date();
+  let age = now.getFullYear() - y; if (now < new Date(now.getFullYear(), mo - 1, d)) age--;
+  return `${dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} (${age})`;
+};
 const pxDealNum = (v) => { const n = parseFloat(String(v || '').replace(/[$,\s]/g, '')); return Number.isFinite(n) ? n : 0; };
 
 function ClientDealTab({ a, isMobile, pad }) {
@@ -3774,6 +3783,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
     companyView && a.address && ['Address', a.address],
     companyView && a.email && ['Email', a.email],
     companyView && a.phone && ['Phone', a.phone],
+    companyView && a.birthday && ['Birthday', fmtBirthday(a.birthday)],
     a.hometown && ['Hometown', a.hometown],
     companyView && a.positionCoach && !isFreeAgent(a) && ['Position coach', a.positionCoach],
     a.classOf && ['Class of', a.classOf],
