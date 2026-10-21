@@ -230,6 +230,7 @@ module.exports = async (req, res) => {
       return res.status(307).end();
     }
     let title = 'Brand Deal — Milk & Honey Sports';
+    let ogImage = '';
     if (/^[A-Za-z0-9_-]{8,32}$/.test(tok)) {
       try {
         const token = await getToken();
@@ -238,13 +239,15 @@ module.exports = async (req, res) => {
           const player = found.invite ? cell(found.invite.cells, found.ic('player')) : '';
           const company = cell(found.deal.cells, found.dc('company'));
           if (company) title = player ? `${player} — Brand Deal Offer from ${company}` : `Brand Deal Offer from ${company}`;
+          const bi = cell(found.deal.cells, found.dc('brandImage'));
+          if (/^https:\/\/[^\s"'<>]+$/.test(bi)) ogImage = bi;
         }
       } catch { /* generic title is fine */ }
     }
     const escH = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const t = escH(title);
     const html = PAGE_CACHE.html.replace(/<title>[^<]*<\/title>/,
-      `<title>${t}</title>\n  <meta property="og:title" content="${t}" />\n  <meta property="og:description" content="View your offer and sign in one tap." />\n  <meta property="og:image" content="https://${req.headers.host}/share-image-brand-deal.jpg" />\n  <meta name="twitter:card" content="summary_large_image" />`);
+      `<title>${t}</title>\n  <meta property="og:title" content="${t}" />\n  <meta property="og:description" content="View your offer and sign in one tap." />\n  <meta property="og:image" content="${ogImage || `https://${req.headers.host}/share-image-brand-deal.jpg`}" />\n  <meta name="twitter:card" content="summary_large_image" />`);
     res.setHeader('content-type', 'text/html; charset=utf-8');
     res.setHeader('cache-control', 'no-store');
     return res.status(200).send(html);
@@ -276,6 +279,13 @@ module.exports = async (req, res) => {
       generic,
       company: cell(deal.cells, dc('company')),
       collectionName: cell(deal.cells, dc('collectionName')),
+      // Brand intro and gift details — written by staff for this page, so
+      // they're part of the deal's public face.
+      brandImage: cell(deal.cells, dc('brandImage')),
+      brandAbout: cell(deal.cells, dc('brandAbout')),
+      brandAsk: cell(deal.cells, dc('brandAsk')),
+      giftText: cell(deal.cells, dc('giftText')),
+      giftImage: cell(deal.cells, dc('giftImage')),
       value: cell(deal.cells, dc('value')),
       deliverables: cell(deal.cells, dc('deliverables')),
       dealType,
@@ -301,7 +311,7 @@ module.exports = async (req, res) => {
     if (info.expired) return res.status(410).json({ error: 'This deal has closed.' });
     if (info.signed) return res.status(409).json({ error: 'Already signed.' });
     const signature = String(req.body?.signature || '').trim().slice(0, 120);
-    const product = String(req.body?.product || '').trim().slice(0, 500);
+    const product = dealType === 'gift' ? String(cell(deal.cells, dc('giftText')) || 'Gift').slice(0, 120) : String(req.body?.product || '').trim().slice(0, 500);
     if (!signature) return res.status(400).json({ error: 'Type your full name to sign.' });
     if (dealType === 'product' && (products.length || storedCards.length) && !product) return res.status(400).json({ error: 'Pick a product first.' });
     // Multi-pick: titles arrive joined with " + " — cap at the deal's count
@@ -423,3 +433,6 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'Something went wrong — try again.' });
   }
 };
+
+// Shared with api/athletes.js (deal form preview of product cards).
+module.exports.resolveProducts = resolveProducts;

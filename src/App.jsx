@@ -9952,9 +9952,9 @@ function planTemplate(p) {
     sec('Community\ninvolvement', ['']),
   ] };
 }
-// Resize in the browser, then host in public Blob via api/plan (owner-only).
-async function planUpload(file, name, max, keepPng) {
-  const dataUrl = await new Promise((resolve, reject) => {
+// Resize an image in the browser → data URL (JPEG, or PNG when asked).
+function readImageDataUrl(file, max, keepPng) {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
@@ -9968,6 +9968,10 @@ async function planUpload(file, name, max, keepPng) {
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
     img.src = url;
   });
+}
+// Host in public Blob via api/plan (owner-only).
+async function planUpload(file, name, max, keepPng) {
+  const dataUrl = await readImageDataUrl(file, max, keepPng);
   const r = await fetch('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'upload', data: dataUrl, name }) });
   const j = await r.json();
   if (!r.ok || !j.url) throw new Error(j.error || 'Upload failed');
@@ -11145,7 +11149,7 @@ const dealMoney = (v) => {
 const parseDeals = (d) => {
   if (!d) return [];
   const hi = (n) => d.headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
-  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget'), resolvedCards: hi('resolvedCards'), openToken: hi('openToken'), collectionName: hi('collectionName'), archived: hi('archived') };
+  const c = { company: hi('company'), clients: hi('clients'), category: hi('category'), value: hi('value'), deliverables: hi('deliverables'), date: hi('dateSubmitted'), fileId: hi('fileId'), fileName: hi('fileName'), open: hi('open'), dealType: hi('dealType'), brandImage: hi('brandImage'), brandAbout: hi('brandAbout'), brandAsk: hi('brandAsk'), giftText: hi('giftText'), giftImage: hi('giftImage'), dealId: hi('dealId'), products: hi('products'), stipulations: hi('stipulations'), levels: hi('levels'), minFollowers: hi('minFollowers'), expires: hi('expires'), pickCount: hi('pickCount'), pickBudget: hi('pickBudget'), resolvedCards: hi('resolvedCards'), openToken: hi('openToken'), collectionName: hi('collectionName'), archived: hi('archived') };
   return d.rows.map(r => ({
     _row: r._row,
     company: c.company >= 0 ? r.cells[c.company] || '' : '',
@@ -11169,6 +11173,11 @@ const parseDeals = (d) => {
     resolvedCards: (() => { try { const j = JSON.parse((c.resolvedCards >= 0 && r.cells[c.resolvedCards]) || '[]'); return Array.isArray(j) ? j : []; } catch { return []; } })(),
     openToken: c.openToken >= 0 ? r.cells[c.openToken] || '' : '',
     collectionName: c.collectionName >= 0 ? r.cells[c.collectionName] || '' : '',
+    brandImage: c.brandImage >= 0 ? r.cells[c.brandImage] || '' : '',
+    brandAbout: c.brandAbout >= 0 ? r.cells[c.brandAbout] || '' : '',
+    brandAsk: c.brandAsk >= 0 ? r.cells[c.brandAsk] || '' : '',
+    giftText: c.giftText >= 0 ? r.cells[c.giftText] || '' : '',
+    giftImage: c.giftImage >= 0 ? r.cells[c.giftImage] || '' : '',
     pickBudget: c.pickBudget >= 0 ? parseInt(String(r.cells[c.pickBudget] || '').replace(/[^\d]/g, ''), 10) || 0 : 0,
     expires: c.expires >= 0 ? r.cells[c.expires] || '' : '',
   })).filter(x => x.company || x.clients.length);
@@ -11252,10 +11261,52 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
     pickBudget: initial?.pickBudget ? String(initial.pickBudget) : '',
     levels: initial?.levels || [], minFollowers: initial?.minFollowers ? String(initial.minFollowers) : '',
     hasExpiry: !!initial?.expires, expires: initial?.expires || '',
+    brandImage: initial?.brandImage || '', brandAbout: initial?.brandAbout || '', brandAsk: initial?.brandAsk || '',
+    giftText: initial?.giftText || '', giftImage: initial?.giftImage || '',
   }));
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState('');
+  const [loadingCards, setLoadingCards] = useState(false);
   const fileRef = useRef();
+  // Brand / gift / product images → public Blob through api/athletes.
+  const uploadImage = async (f, field, onUrl) => {
+    if (!f) return;
+    setUploading(field);
+    try {
+      const data = await readImageDataUrl(f, 1600, f.type === 'image/png');
+      const r = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'upload-image', data, name: `${form.company || 'deal'}-${field}` }) });
+      const j = await r.json();
+      if (!r.ok || !j.url) throw new Error(j.error || 'Upload failed');
+      onUrl(j.url);
+    } catch (e) { alert(e.message); }
+    finally { setUploading(''); }
+  };
+  const imgBtn = (field, label, onUrl) => (
+    <label style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", fontSize: 12.5, fontWeight: 600, color: G.text, cursor: uploading ? "default" : "pointer", fontFamily: ff, display: "inline-block", opacity: uploading === field ? 0.6 : 1 }}>
+      {uploading === field ? 'Uploading…' : label}
+      <input type="file" accept="image/*" disabled={!!uploading} style={{ display: "none" }} onChange={e => { uploadImage(e.target.files && e.target.files[0], field, onUrl); e.target.value = ''; }} />
+    </label>
+  );
+  const imgRow = (url, field, onUrl, onClear) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      {url && <img src={url} alt="" style={{ width: 72, height: 44, objectFit: "cover", borderRadius: 6, background: G.surfaceRaised }} />}
+      {imgBtn(field, url ? 'Replace' : 'Upload', onUrl)}
+      {url && <button onClick={onClear} style={{ background: "none", border: "none", color: G.red, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, padding: "4px 6px" }}>Remove</button>}
+    </div>
+  );
+  const loadCards = async () => {
+    const links = form.productLinks.map(l => l.trim()).filter(Boolean);
+    if (!links.length) return;
+    setLoadingCards(true);
+    try {
+      const j = await post({ action: 'resolve-products', links });
+      if (j.error) throw new Error(j.error);
+      if (!(j.cards || []).length) alert('No products found at those links — paste the collection page below instead.');
+      else set('resolvedCards', j.cards);
+    } catch (e) { alert(e.message); }
+    finally { setLoadingCards(false); }
+  };
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -11287,6 +11338,9 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           levels: form.levels.join(', '),
           minFollowers: String(form.minFollowers).trim(),
           expires: form.hasExpiry ? form.expires : '',
+          brandImage: form.brandImage, brandAbout: form.brandAbout.trim(), brandAsk: form.brandAsk.trim(),
+          giftText: form.dealType === 'gift' ? form.giftText.trim() : '',
+          giftImage: form.dealType === 'gift' ? form.giftImage : '',
         });
       }
       if (!editing) {
@@ -11377,7 +11431,7 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           {form.open && (
             <Field label="Deal type">
               <div style={{ display: "flex", gap: 8 }}>
-                {[['product', 'Product deal'], ['cash', 'Cash deal']].map(([val, label]) => {
+                {[['product', 'Product deal'], ['gift', 'Gift — no choice'], ['cash', 'Cash deal']].map(([val, label]) => {
                   const on = form.dealType === val;
                   return <button key={val} onClick={() => set('dealType', val)}
                     style={{ flex: 1, padding: "9px 12px", border: `1px solid ${on ? G.green : G.surfaceBorder}`, borderRadius: 9, background: on ? G.greenSubtle : G.surfaceRaised, color: on ? G.green : G.textSecondary, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>
@@ -11390,6 +11444,15 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
           {form.open && form.dealType === 'cash' && (
             <Field label="Cash amount"><Input value={form.cashAmount} onChange={e => set('cashAmount', e.target.value)} placeholder="$500" /></Field>
           )}
+          {form.open && <>
+            <Field label="Brand image">{imgRow(form.brandImage, 'brand', u => set('brandImage', u), () => set('brandImage', ''))}</Field>
+            <Field label="About the brand"><Textarea value={form.brandAbout} onChange={e => set('brandAbout', e.target.value)} rows={3} placeholder="Who they are, in two or three lines" /></Field>
+            <Field label="What they're looking for"><Textarea value={form.brandAsk} onChange={e => set('brandAsk', e.target.value)} rows={3} placeholder="Why they want our players and what showing them love does for you" /></Field>
+            {form.dealType === 'gift' && <>
+              <Field label="What they're sending"><Textarea value={form.giftText} onChange={e => set('giftText', e.target.value)} rows={2} placeholder="One Q-Collar, sized to the player" /></Field>
+              <Field label="Gift image">{imgRow(form.giftImage, 'gift', u => set('giftImage', u), () => set('giftImage', ''))}</Field>
+            </>}
+          </>}
           <Field label="Deliverables"><Textarea value={form.deliverables} onChange={e => set('deliverables', e.target.value)} rows={3} placeholder="2 IG posts + 1 appearance at store opening" /></Field>
           {form.open && <>
             {form.dealType === 'product' && (
@@ -11413,13 +11476,28 @@ function BrandDealForm({ initial, athleteNames, user, onDone, onCancel }) {
                   </button>
                   <div style={{ marginTop: 10 }}>
                     {form.resolvedCards.length ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, color: G.green, fontWeight: 600 }}>
-                        ✓ {form.resolvedCards.length} products imported — players will see these cards
-                        <button onClick={() => set('resolvedCards', [])}
-                          style={{ background: "transparent", border: "none", color: G.textTertiary, fontSize: 12, cursor: "pointer", fontFamily: ff, textDecoration: "underline", padding: 0 }}>Clear</button>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, color: G.green, fontWeight: 600, marginBottom: 8 }}>
+                          ✓ {form.resolvedCards.length} products — players see these cards
+                          <button onClick={() => set('resolvedCards', [])}
+                            style={{ background: "transparent", border: "none", color: G.textTertiary, fontSize: 12, cursor: "pointer", fontFamily: ff, textDecoration: "underline", padding: 0 }}>Clear</button>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
+                          {form.resolvedCards.map((c, i) => (
+                            <div key={i} style={{ border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden", background: G.surfaceRaised }}>
+                              {c.image ? <img src={c.image} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", display: "block" }} /> : <div style={{ aspectRatio: "1 / 1", display: "flex", alignItems: "center", justifyContent: "center", color: G.textTertiary, fontSize: 11.5 }}>No image</div>}
+                              <div style={{ padding: "6px 8px", fontSize: 11.5, fontWeight: 600, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.title}</div>
+                              <div style={{ padding: "0 8px 8px" }}>{imgBtn(`card${i}`, c.image ? 'Replace image' : 'Add image', u => set('resolvedCards', form.resolvedCards.map((x, k) => (k === i ? { ...x, image: u } : x))))}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <div>
+                        <button onClick={loadCards} disabled={loadingCards || !form.productLinks.some(l => l.trim())}
+                          style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 13px", color: G.text, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, marginBottom: 10, opacity: loadingCards ? 0.6 : 1 }}>
+                          {loadingCards ? 'Loading…' : 'Load products'}
+                        </button>
                         <div style={{ fontSize: 11.5, color: G.textTertiary, marginBottom: 5 }}>
                           Store blocks auto-loading? Open the collection page, select all (⌘A), copy (⌘C), then paste here:
                         </div>

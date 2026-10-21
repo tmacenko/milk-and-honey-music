@@ -19,6 +19,9 @@
     .brand { font-size: 27px; font-weight: 800; color: #fff; letter-spacing: -0.025em; line-height: 1.1; }
     .for { font-size: 13px; color: #888; margin-top: 6px; }
     .for b { color: #f0f0f0; font-weight: 700; }
+    .bimg { width: 100%; max-height: 220px; object-fit: cover; border-radius: 14px; margin-top: 16px; display: block; background: #161616; }
+    .gift { display: flex; gap: 14px; align-items: flex-start; }
+    .gift img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; background: #161616; flex-shrink: 0; }
     .sec { margin-top: 22px; }
     .sec-label { font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
     .sec-body { font-size: 14px; color: #ddd; line-height: 1.55; white-space: pre-line; }
@@ -135,19 +138,27 @@
 
   function render() {
     var i = state.info;
-    var needsPick = i.dealType !== 'cash' && (((i.productCards || []).length) || i.products.length);
+    var needsPick = i.dealType !== 'cash' && i.dealType !== 'gift' && (((i.productCards || []).length) || i.products.length);
     var hasPick = state.picked.length || filledTexts().length;
     var canSign = state.name.trim() && state.agree && (!needsPick || hasPick) && !state.busy;
     var html = '<div class="card">' +
       '<div class="eyebrow">Brand deal</div>' +
       '<div class="brand">' + esc(i.company) + '</div>' +
       (i.generic ? '<div class="for">For Milk &amp; Honey clients</div>' : '<div class="for">For <b>' + esc(i.player) + '</b> \u00b7 via Milk &amp; Honey Sports</div>');
+    if (i.brandImage) html += '<img class="bimg" src="' + esc(i.brandImage) + '" alt="" />';
+    if (i.brandAbout) html += '<div class="sec"><div class="sec-label">About ' + esc(i.company) + '</div><div class="sec-body">' + esc(i.brandAbout) + '</div></div>';
+    if (i.brandAsk) html += '<div class="sec"><div class="sec-label">What they\u2019re looking for</div><div class="sec-body">' + esc(i.brandAsk) + '</div></div>';
     if (i.deliverables) html += '<div class="sec"><div class="sec-label">Deal terms</div><div class="sec-body">' + esc(i.deliverables) + '</div></div>';
-    var allCards = i.productCards || [];
+    if (i.dealType === 'gift' && (i.giftText || i.giftImage)) {
+      html += '<div class="sec"><div class="sec-label">What you\u2019ll get</div><div class="gift">' +
+        (i.giftImage ? '<img src="' + esc(i.giftImage) + '" alt="" />' : '') +
+        '<div class="sec-body">' + esc(i.giftText || 'Gifted product') + '</div></div></div>';
+    }
+    var allCards = i.dealType === 'gift' ? [] : (i.productCards || []);
     var browseCards = allCards.filter(function (c) { return c.browse; });
     var cards = allCards.filter(function (c) { return !c.browse; });
     var maxN = i.pickBudget ? 0 : (i.pickCount || 1);
-    var offer = i.dealType === 'cash' ? i.value : (i.value || (cards.length || i.products.length
+    var offer = i.dealType === 'cash' ? i.value : i.dealType === 'gift' ? '' : (i.value || (cards.length || i.products.length
       ? (cards.length === 1 ? 'Free product'
         : i.pickBudget ? 'Free product \u2014 pick up to $' + i.pickBudget + ' worth below'
         : maxN > 1 ? 'Free product \u2014 pick up to ' + maxN + ' below'
@@ -188,7 +199,7 @@
         '<div id="pickinputs" style="margin-top:8px">' + pickInputsHtml(i, 'Type the exact product you want from the collection') + '</div>' +
         '</div>';
     }
-    if (!cards.length && !browseCards.length && i.dealType !== 'cash' && i.products.length) {
+    if (!cards.length && !browseCards.length && i.dealType !== 'cash' && i.dealType !== 'gift' && i.products.length) {
       html += '<div class="sec"><div class="sec-label">Pick your product</div>' + i.products.map(function (p, j) {
         return '<div class="opt' + (state.picked.indexOf(p) >= 0 ? ' on' : '') + '" data-p="' + j + '"><div class="opt-dot"></div><div class="opt-name">' + esc(p) + '</div></div>';
       }).join('') + '</div>';
@@ -197,7 +208,7 @@
     html += '<div class="sec"><div class="sec-label">Sign to accept</div>' +
       '<input type="text" id="sig" autocomplete="name" placeholder="Type your full name" value="' + esc(state.name) + '" />' +
 
-      '<label class="agree"><input type="checkbox" id="agree"' + (state.agree ? ' checked' : '') + ' /><span>By checking this box I agree to complete the deliverables outlined above in exchange for my selected goods.</span></label>' +
+      '<label class="agree"><input type="checkbox" id="agree"' + (state.agree ? ' checked' : '') + ' /><span>By checking this box I agree to complete the deliverables outlined above in exchange for ' + (i.dealType === 'gift' ? 'the gift above' : i.dealType === 'cash' ? 'the payment above' : 'my selected goods') + '.</span></label>' +
       '<button class="btn" id="go"' + (canSign ? '' : ' disabled') + '>' + (state.busy ? 'Signing\u2026' : 'Count me in') + '</button>' +
       (state.err ? '<div class="err">' + esc(state.err) + '</div>' : '') +
       '</div></div>';

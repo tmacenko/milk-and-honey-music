@@ -7,6 +7,9 @@ const crypto = require('crypto');
 const { authState } = require('../lib/auth');
 
 const SHEET_ID = process.env.SPORTS_SHEET_ID;
+// Public Blob for deal images (brand, gift, product photos the stores won't give us).
+const BLOB_API = 'https://blob.vercel-storage.com';
+const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
 function b64url(str) { return Buffer.from(str).toString('base64url'); }
 
@@ -690,7 +693,9 @@ const ADMIN_TABS = {
     // open=TRUE flags one, dealId joins DealInvites rows, products is a
     // newline list players pick from, levels/minFollowers gate eligibility,
     // expires closes the links.
-    ensureCols: ['open', 'dealId', 'products', 'stipulations', 'levels', 'minFollowers', 'expires', 'dealType', 'pickCount', 'pickBudget', 'resolvedCards', 'openToken', 'collectionName', 'archived'] },
+    // brandImage/About/Ask = the brand intro on the player's page; dealType
+    // 'gift' = product sent with no choice (giftText + giftImage describe it).
+    ensureCols: ['open', 'dealId', 'products', 'stipulations', 'levels', 'minFollowers', 'expires', 'dealType', 'pickCount', 'pickBudget', 'resolvedCards', 'openToken', 'collectionName', 'archived', 'brandImage', 'brandAbout', 'brandAsk', 'giftText', 'giftImage'] },
   // One row per invited player per open deal; token is the signing link's
   // credential. Written by the deal-invite action + the public /api/deal sign.
   dealinvites: { title: 'DealInvites', writable: true, autoCreate: ['dealId', 'player', 'token', 'invitedBy', 'invitedAt', 'status', 'product', 'signature', 'signedAt', 'productUrls'],
@@ -807,6 +812,33 @@ module.exports = async (req, res) => {
     if ((req.body || {}).action !== 'recruit-search') clearSheetCache();
     try {
       const token = await getToken('https://www.googleapis.com/auth/spreadsheets');
+
+      // Deal images (brand, gift, product) → public Blob; returns the URL.
+      if ((req.body || {}).action === 'upload-image') {
+        if (!BLOB_TOKEN) return res.status(500).json({ error: 'Image storage not configured' });
+        const m = String(req.body.data || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+\/=]+)$/);
+        if (!m) return res.status(400).json({ error: 'Expected a JPEG, PNG, or WebP image' });
+        const buf = Buffer.from(m[2], 'base64');
+        if (buf.length > 4 * 1024 * 1024) return res.status(413).json({ error: 'Image too large (max 4MB)' });
+        const ext = m[1] === 'image/png' ? 'png' : m[1] === 'image/webp' ? 'webp' : 'jpg';
+        const slug = String(req.body.name || 'image').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'image';
+        const up = await fetch(`${BLOB_API}/deals/${slug}-${crypto.randomBytes(4).toString('hex')}.${ext}`, {
+          method: 'PUT',
+          headers: { authorization: `Bearer ${BLOB_TOKEN}`, 'x-api-version': '7', 'content-type': m[1], 'x-add-random-suffix': '0', 'x-cache-control-max-age': '31536000' },
+          body: buf,
+        });
+        const ud = await up.json().catch(() => ({}));
+        if (!up.ok || !ud.url) return res.status(502).json({ error: 'Upload failed' });
+        return res.json({ url: ud.url });
+      }
+      // Preview product cards for the deal form (same resolver the player's page uses).
+      if ((req.body || {}).action === 'resolve-products') {
+        const links = (Array.isArray(req.body.links) ? req.body.links : []).map(x => String(x || '').trim()).filter(Boolean).slice(0, 20);
+        if (!links.length) return res.json({ cards: [] });
+        const { resolveProducts } = require('./deal.js');
+        const cards = (await resolveProducts(links)).filter(c => c && !c.browse).slice(0, 60);
+        return res.json({ cards });
+      }
 
       // One-time/maintenance: mark every athlete on the current roster tabs as
       // Public in AppData (adding rows for those without one). AppData-only
