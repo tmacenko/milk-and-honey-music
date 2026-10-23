@@ -284,6 +284,9 @@ function espnHeadshot(espnId, espnSport) {
   // ESPN's resizing combiner -> ~30KB instead of ~300KB full-size headshots.
   return `https://a.espncdn.com/combiner/i?img=/i/headshots/${sport}/players/full/${espnId}.png&w=200`;
 }
+// Every FBS/FCS/D2/D3 program from CollegeFootballData (its team id = ESPN's
+// logo id), for schools the hand list above doesn't cover. Exact match only.
+const COLLEGE_LOGOS_ALL = require('../lib/college-logos.json');
 function teamLogoFor(level, nflTeam, college, override) {
   const team = (nflTeam || '').toLowerCase().trim();
   const col = (college || '').toLowerCase().trim();
@@ -293,6 +296,9 @@ function teamLogoFor(level, nflTeam, college, override) {
     if (COLLEGE_LOGOS[col]) return `https://a.espncdn.com/i/teamlogos/ncaa/500/${COLLEGE_LOGOS[col]}.png`;
     const key = Object.keys(COLLEGE_LOGOS).find(k => collegeKeyMatch(col, k));
     if (key) return `https://a.espncdn.com/i/teamlogos/ncaa/500/${COLLEGE_LOGOS[key]}.png`;
+    const plain = col.replace(/^the\s+/, '').replace(/\s+(university|univ\.?)$/, '').replace(/^university of\s+/, '').trim();
+    const all = COLLEGE_LOGOS_ALL[col] || COLLEGE_LOGOS_ALL[plain];
+    if (all) return `https://a.espncdn.com/i/teamlogos/ncaa/500/${all}.png`;
   }
   return override || '';
 }
@@ -1595,3 +1601,5 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
+module.exports.teamLogoFor = teamLogoFor;
