@@ -6961,6 +6961,30 @@ const PX_EMPTY = { q: '', team: '', groups: [], tiers: [], conf: '', classes: []
 //  • the final percentile is the rank of that blend within the position.
 // Offensive linemen have no individual stats in any free source — no score.
 const PX_BUCKET = { PRO: 'QB', DUAL: 'QB', APB: 'RB', SDE: 'EDGE', WDE: 'EDGE', IDL: 'DT', QB: 'QB', RB: 'RB', FB: 'RB', WR: 'WR', TE: 'TE', CB: 'CB', S: 'S', FS: 'S', SS: 'S', SAF: 'S', DB: 'DB', LB: 'LB', ILB: 'LB', MLB: 'LB', OLB: 'LB', DE: 'EDGE', EDGE: 'EDGE', DT: 'DT', NT: 'DT', DL: 'DL', K: 'K', PK: 'K', P: 'P', ATH: 'ATH' };
+// What a front-seven player actually does — edge rusher, interior lineman or
+// off-ball linebacker — whatever the roster calls him (ESPN lists 38% of its
+// "DL" and 17% of its "LB"s in edge slots on Ourlads' depth charts). The
+// depth-chart slot decides when there is one; otherwise weight: linemen under
+// 270 = edge, 280+ = interior (270–279 stays generic DL and counts toward
+// both rooms); linebackers 250+ = edge. Weight alone agrees with the depth
+// charts 92–94% of the time where both exist.
+const PX_ROLE_EDGE = /^(DE|LDE|RDE|JACK|RUSH|EDGE|LEO|BUCK|STUD|VYPER|VIPER|ROLB|LOLB|OLB|BAN|BANDIT)$/;
+const PX_ROLE_DT = /^(NT|DT|LDT|RDT)$/;
+const PX_ROLE_LB = /^(MLB|WLB|SLB|ILB|LILB|RILB|MAC|MACK|MIKE|WILL|SAM)$/;
+const pxRoleOf = (pos, wt, depth) => {
+  const b = PX_BUCKET[String(pos || '').toUpperCase()];
+  if (!['EDGE', 'DT', 'DL', 'LB'].includes(b)) return '';
+  const slot = depth && depth[1] !== 'RES' ? String(depth[1]).toUpperCase() : '';
+  if (PX_ROLE_EDGE.test(slot)) return 'EDGE';
+  if (PX_ROLE_DT.test(slot)) return 'DT';
+  if (PX_ROLE_LB.test(slot)) return 'LB';
+  const w = +wt || 0;
+  if (b === 'EDGE') return w >= 290 ? 'DT' : 'EDGE';
+  if (b === 'DT') return 'DT';
+  if (b === 'DL') return w && w < 270 ? 'EDGE' : w >= 280 ? 'DT' : 'DL';
+  return w >= 250 ? 'EDGE' : 'LB';
+};
+const PX_ROLE_NAME = { EDGE: 'edge', DT: 'interior DL', LB: 'off-ball LB' };
 const PX_BUCKET_LABEL = { QB: 'quarterbacks', RB: 'running backs', WR: 'receivers', TE: 'tight ends', CB: 'cornerbacks', S: 'safeties', DB: 'defensive backs', LB: 'linebackers', EDGE: 'edge rushers', DT: 'defensive tackles', DL: 'defensive linemen', K: 'kickers', P: 'punters', ATH: 'athletes' };
 const pxF1 = (v) => v.toFixed(1), pxF2 = (v) => v.toFixed(2), pxPctF = (v) => `${Math.round(v * 100)}%`;
 const pxPerG = (k) => (p, s, gp) => s(k) / gp;
@@ -6991,7 +7015,7 @@ function pxScoreAll(players, S, teamInfo) {
   const buckets = {};
   players.forEach(p => {
     if (p.isHs) return;
-    const b = PX_BUCKET[String(p.pos || '').toUpperCase()];
+    const b = p.role || PX_BUCKET[String(p.pos || '').toUpperCase()];
     if (!b) { p.scoreNote = p.grp === 'OL' ? 'No production score for offensive linemen — no individual line stats are published.' : ''; return; }
     p.scoreBucket = b;
     const def = PX_SCORE_DEFS[b];
@@ -7098,7 +7122,7 @@ function pxTeamShare(data, p) {
     if (pl.isHs || pl.team !== p.team) return;
     const v = val(pl);
     if (pl === p) me = v;
-    else if (PX_BUCKET[String(pl.pos || '').toUpperCase()] === p.scoreBucket) room += v;
+    else if (pl.scoreBucket === p.scoreBucket) room += v;
     else rest += v;
     if (pl !== p && v > mine) better++;
   });
@@ -7357,7 +7381,7 @@ function pxTeamNeeds(data, grp, h = 1, fg = grp) {
   // (75th+ percentile) weigh extra as competition.
   const bw = (pl) => 1 + ((pl.stars || 0) >= 4 ? 0.5 : 0) + ((pl.prodPct || 0) >= 75 ? 0.5 : 0);
   data.players.forEach(pl => {
-    if (pl.grp !== grp || (fg !== grp && !pxSameRoom(fg, pl))) return;
+    if (!pxSameRoom(fg, pl)) return;
     if (pl.isHs) { if (pl.commit) { const t = get(pl.commit); t.commits++; t.commitsW += bw(pl); } return; }
     if (pl.team) get(pl.team).room.push(pl);
   });
@@ -7467,6 +7491,7 @@ function loadProspectData(canBuild, onBuilding) {
         ppa: C.ppa !== undefined && p[C.ppa] ? p[C.ppa] : null,
         recClass: p[C.recClass] || 0, recType: p[C.recType] || '',
         depth: C.depth !== undefined && p[C.depth] ? p[C.depth] : null, // Ourlads [rank, pos]
+        role: pxRoleOf(p[C.pos], p[C.wt], C.depth !== undefined ? p[C.depth] : null),
       };
     });
     const hsCount = {};
@@ -7981,11 +8006,19 @@ const PX_STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, DB: 4, 'K
 // The room a player actually competes in: edge rushers vs interior linemen,
 // corners vs safeties. Teams that list everyone as a generic DL / DB count
 // toward both.
-const pxFitGroup = (pos) => { const b = PX_BUCKET[String(pos || '').toUpperCase()]; return ['EDGE', 'DT', 'CB', 'S'].includes(b) ? b : pxGroupOf(pos); };
+const pxFitGroup = (p) => {
+  if (typeof p === 'string') p = { pos: p };
+  if (p.role) return p.role;
+  const b = PX_BUCKET[String(p.pos || '').toUpperCase()];
+  return ['EDGE', 'DT', 'CB', 'S'].includes(b) ? b : pxGroupOf(p.pos);
+};
 const pxSameRoom = (fg, pl) => {
-  if (!['EDGE', 'DT', 'CB', 'S'].includes(fg)) return pl.grp === fg || (fg === 'DL' && pl.grp === 'DL') || (fg === 'DB' && pl.grp === 'DB');
-  const g = pxFitGroup(pl.pos);
-  return g === fg || (['EDGE', 'DT'].includes(fg) && g === 'DL') || (['CB', 'S'].includes(fg) && g === 'DB');
+  const g = pxFitGroup(pl);
+  if (fg === 'EDGE' || fg === 'DT') return g === fg || g === 'DL';
+  if (fg === 'CB' || fg === 'S') return g === fg || g === 'DB';
+  if (fg === 'DL') return g === 'DL' || g === 'EDGE' || g === 'DT';
+  if (fg === 'DB') return g === 'DB' || g === 'CB' || g === 'S';
+  return g === fg;
 };
 const PX_FIT_FACTORS = [
   ['opp', 'Playing time', 'Would they start: how their production compares with the players who return there, plus how much of the position’s production is leaving (net of commits)'],
@@ -8184,7 +8217,7 @@ const pxMoneyRange = (v) => `${pxMoney(v.lo)}–${pxMoney(v.hi)}`;
 function pxValue(data, p, team, role) {
   const grp = p.grp || pxGroupOf(p.pos);
   if (!grp) return null;
-  const fg = pxFitGroup(p.pos) || grp;
+  const fg = pxFitGroup(p) || grp;
   const anchor = PX_VALUE_ANCHOR[fg] || PX_VALUE_ANCHOR[grp];
   if (!anchor) return null;
   const ti = team ? data.teamInfo[team] || {} : { tier: 'P4' };
@@ -8356,10 +8389,10 @@ function pxFitRank(data, p, prefs, notes) {
   const h = p.isHs && p.hsClass ? Math.max(1, p.hsClass - data.season) : 1;
   const pk = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
   const nextOut = new Set((data.portal || []).filter(e => e.cycle === data.season + 1).map(e => `${e.origin}|${pk(e.name)}`));
-  const fg = pxFitGroup(p.pos) || grp;
+  const fg = pxFitGroup(p) || grp;
   const returners = {};
   data.players.forEach(pl => {
-    if (pl.isHs || pl.grp !== grp || !pl.team || pl === p || !pxSameRoom(fg, pl)) return;
+    if (pl.isHs || !pl.team || pl === p || !pxSameRoom(fg, pl)) return;
     if ((pl.yr || 0) >= 5 - h || nextOut.has(`${pl.team}|${pk(pl.name)}`)) return;
     (returners[pl.team] = returners[pl.team] || []).push({ pct: pl.prodPct || 0, dr: pxDepthRank(pl) });
   });
@@ -9365,7 +9398,7 @@ function PlayerPage({ pid, isMobile, user, athletes, staff }) {
   const offers = pxParseOffers(a.offers247).filter(o => o[1]).length;
   const facts = p.isHs
     ? [['Position', p.pos], ['High school', p.hs || a.college], ['Class', p.hsClass ? `${p.hsClass}` : ''], ['Hometown', p.city ? `${p.city}, ${p.st}` : a.hometown], ['247', [p.stars ? `${p.stars}★` : '', p.natRank ? `#${p.natRank} national` : ''].filter(Boolean).join(' · ')], ['Offers', offers ? String(offers) : ''], ['Committed', p.commit || 'Uncommitted'], ['Height / weight', [pxHt(p.ht), p.wt ? `${p.wt} lbs` : ''].filter(Boolean).join(' · ')]]
-    : [['Position', p.pos], ['Team', p.team], ['Class', PX_CLASS[Math.min(p.yr || 0, 5)]], ['Hometown', p.city ? `${p.city}, ${p.st}` : ''], ['Height / weight', [pxHt(p.ht), p.wt ? `${p.wt} lbs` : ''].filter(Boolean).join(' · ')], ['Team SP+', p.sp ? `#${p.sp}` : ''], ['Depth chart', p.depth ? (p.depth[1] === 'RES' ? 'Reserve' : `${p.depth[1]} ${p.depth[0]}`) : ''], ['Recruited', p.stars ? `${p.stars}★${p.natRank ? ` · #${p.natRank} natl` : ''}` : '']];
+    : [['Position', p.role && p.role !== PX_BUCKET[String(p.pos || '').toUpperCase()] ? `${p.pos} · ${PX_ROLE_NAME[p.role] || p.role}` : p.pos], ['Team', p.team], ['Class', PX_CLASS[Math.min(p.yr || 0, 5)]], ['Hometown', p.city ? `${p.city}, ${p.st}` : ''], ['Height / weight', [pxHt(p.ht), p.wt ? `${p.wt} lbs` : ''].filter(Boolean).join(' · ')], ['Team SP+', p.sp ? `#${p.sp}` : ''], ['Depth chart', p.depth ? (p.depth[1] === 'RES' ? 'Reserve' : `${p.depth[1]} ${p.depth[0]}`) : ''], ['Recruited', p.stars ? `${p.stars}★${p.natRank ? ` · #${p.natRank} natl` : ''}` : '']];
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20 };
   const linkBtn = (href, label) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "7px 12px", color: G.text, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>{label}</a>;
   return (
