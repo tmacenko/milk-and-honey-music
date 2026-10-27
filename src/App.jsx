@@ -7469,7 +7469,7 @@ function loadProspectData(canBuild, onBuilding) {
     // File predates newer fields (portal, usage, efficiency, team location
     // and draft…) — rebuild quietly in the background; open pages swap in the
     // new file when it's ready.
-    PROSPECTS.stale = (raw.v || 0) < 2 || !raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('recPrev') || !(raw.cols || []).includes('depth') || !raw.pathways;
+    PROSPECTS.stale = (raw.v || 0) < 3 || !raw.teamCols || !(raw.cols || []).includes('ppa') || !(raw.teamCols || []).includes('recPrev') || !(raw.cols || []).includes('depth') || !raw.pathways;
     if (canBuild) pxRefreshIfStale();
     const C = {}; raw.cols.forEach((c, i) => { C[c] = i; });
     const S = {}; raw.stats.forEach((c, i) => { S[c] = i; });
