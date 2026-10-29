@@ -12310,9 +12310,9 @@ function BrandDealsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                 <div key={d._row} onClick={() => setOpenDeal(d)}
                   onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                   onMouseLeave={e => e.currentTarget.style.background = G.surface}
-                  style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, cursor: "pointer" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: G.text, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</span>
+                  style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16, cursor: "pointer", minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: G.text, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{d.company}</span>
                     {closed
                       ? <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.red, flexShrink: 0 }}>Closed</span>
                       : dealIsNew(d) && <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#0a0a0a", background: G.green, borderRadius: 99, padding: "2px 7px", flexShrink: 0 }}>New</span>}
@@ -14970,7 +14970,7 @@ function App() {
                 onPdf={() => domain === 'sports' ? downloadAthletePdf(selected) : downloadClientPdf(selected)}
                 isAdmin={isAdmin} linkUrl={shareDetailUrl} linkLoading={shareDetailLoading}
                 onLink={generateDetailShareLink} onClearLink={() => setShareDetailUrl(null)} />}
-              {authBtn}
+              {!isAdmin && authBtn}
               {isAdmin && selected && canEditSide(domain) && <button onClick={() => domain === 'sports' ? setEditingAthlete(selected) : setEditing(selected)} style={{ background: G.surfaceRaised, color: G.text, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Edit</button>}
               <button onClick={() => setView('roster')} style={{ background: G.surfaceRaised, color: G.textSecondary, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: ff }}>✕</button>
             </div>
