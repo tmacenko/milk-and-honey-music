@@ -9538,9 +9538,7 @@ function ConnectionsPage({ isMobile, user }) {
   const { data } = V;
   const tab = useAdminTab('connections');
   const [q, setQ] = useState('');
-  const [tiers, setTiers] = useCachedState('conn.tiers', ['P4', 'G5', 'FCS']);
   const [conf, setConf] = useCachedState('conn.conf', '');
-  const [onlyLinked, setOnlyLinked] = useCachedState('conn.linked', false);
   const [sort, setSort] = useCachedState('conn.sort', { col: 'count', dir: 'desc' });
   const [open, setOpen] = useState('');
   const [form, setForm] = useState({ contact: '', role: '', notes: '' });
@@ -9566,7 +9564,7 @@ function ConnectionsPage({ isMobile, user }) {
     : [], [data, links]);
   const confs = useMemo(() => [...new Set(rows.map(r => r.conf).filter(Boolean))].sort(), [rows]);
   const ql = q.trim().toLowerCase();
-  const shown = pxSortTable(rows.filter(r => tiers.includes(r.tier) && (!conf || r.conf === conf) && (!onlyLinked || r.links.length)
+  const shown = pxSortTable(rows.filter(r => (!conf || r.conf === conf)
     && (!ql || r.name.toLowerCase().includes(ql) || r.links.some(l => l.agent.toLowerCase().includes(ql) || l.contact.toLowerCase().includes(ql) || l.role.toLowerCase().includes(ql)))), sort,
     (r, c) => c === 'count' ? r.links.length : c === 'agents' ? r.links.map(l => l.agent).join(', ') : r[c]);
   const linked = rows.filter(r => r.links.length).length;
@@ -9594,9 +9592,7 @@ function ConnectionsPage({ isMobile, user }) {
       {V.status}
       {data && (<>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "16px 0 12px" }}>
-          {['P4', 'G5', 'FCS'].map(t => pxPill(tiers.includes(t), PX_TIER_NAME[t], () => setTiers(tiers.includes(t) ? tiers.filter(x => x !== t) : [...tiers, t]), t))}
-          {pxPill(onlyLinked, 'Connected only', () => setOnlyLinked(!onlyLinked), 'linked')}
-          <select value={conf} onChange={e => setConf(e.target.value)} style={{ ...inputBase, width: 200, padding: "7px 10px", fontSize: 12.5, cursor: "pointer" }}>
+          <select value={conf} onChange={e => setConf(e.target.value)} style={{ ...inputBase, width: isMobile ? "100%" : 200, padding: "7px 10px", fontSize: 12.5, cursor: "pointer" }}>
             <option value="">All conferences</option>
             {confs.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
