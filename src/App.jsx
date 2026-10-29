@@ -9608,10 +9608,10 @@ function ConnectionsPage({ isMobile, user }) {
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
                 {pxHeadCell(sort, setSort, 'name', 'Team', false, 'asc')}{pxHeadCell(sort, setSort, 'conf', 'Conference', false, 'asc')}{pxHeadCell(sort, setSort, 'tier', 'Level', false, 'asc')}
-                {pxHeadCell(sort, setSort, 'agents', 'Connections', false, 'asc')}{pxHeadCell(sort, setSort, 'count', '#', true)}
+                {pxHeadCell(sort, setSort, 'agents', 'Connections', false, 'asc')}
               </tr></thead>
               <tbody>
-                {shown.length === 0 && <tr><td colSpan={5} style={{ padding: "28px 16px", color: G.textTertiary, fontSize: 13, textAlign: "center" }}>No teams match.</td></tr>}
+                {shown.length === 0 && <tr><td colSpan={4} style={{ padding: "28px 16px", color: G.textTertiary, fontSize: 13, textAlign: "center" }}>No teams match.</td></tr>}
                 {shown.map(r => {
                   const none = !r.links.length, isOpen = open === r.name;
                   const mine = r.links.find(l => me && l.agent.toLowerCase() === me.toLowerCase());
@@ -9634,11 +9634,10 @@ function ConnectionsPage({ isMobile, user }) {
                           </span>
                         )}
                       </td>
-                      <td style={td({ textAlign: "right", fontVariantNumeric: "tabular-nums", color: none ? G.textTertiary : G.green, fontWeight: 700 })}>{r.links.length || '—'}</td>
                     </tr>
                     {isOpen && (
                       <tr>
-                        <td colSpan={5} style={{ padding: 0, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised }}>
+                        <td colSpan={4} style={{ padding: 0, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised }}>
                           <div style={{ padding: isMobile ? "12px 16px 16px" : "12px 20px 16px 48px", display: "flex", flexDirection: "column", gap: 12 }}>
                             {r.links.map(l => (
                               <div key={l.row} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
