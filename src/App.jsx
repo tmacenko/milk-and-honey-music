@@ -14889,6 +14889,12 @@ function App() {
                 <img src="/mh-logo.png" alt="Milk & Honey" onClick={() => setView('roster')} style={{ height: 28, objectFit: "contain", flexShrink: 0, cursor: "pointer" }} />
                 {isAdmin && <img src="/targa-logo.png" alt="Targa" style={{ height: 15, objectFit: "contain", flexShrink: 0 }} />}
                 <div style={{ flex: 1 }} />
+                {rosterControlsOn && !mobileSearchOpen && (
+                  <button onClick={() => setMobileSearchOpen(true)} title="Search" aria-label="Search"
+                    style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "7px 9px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  </button>
+                )}
                 {rosterControlsOn && exportControl(true)}
                 {authBtnMobile}
               </div>
@@ -14902,7 +14908,9 @@ function App() {
                     <button onClick={() => { setMobileSearchOpen(false); setSearch(''); }} style={{ background: "none", border: "none", color: G.textSecondary, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: ff }}>✕</button>
                   </div>
                 ) : (
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  // Scrolls sideways when the toggles outgrow the phone; search
+                  // lives in row 1 so it can never be pushed off-screen.
+                  <div className="mh-hscroll" style={{ display: "flex", gap: 4, alignItems: "center", overflowX: "auto", margin: "0 -16px", padding: "0 16px" }}>
                     {domainToggle}
                     {isAdmin && domain !== 'all' && (
                       <button onClick={() => domain === 'sports' ? goSportsPage('home') : goMusicPage('home')} title="Home"
@@ -14914,11 +14922,6 @@ function App() {
                     {domain !== 'all' && <ClientSortDropdown clientSort={clientSort} setClientSort={setClientSort} compact domain={domain} />}
                     {domain !== 'all' && viewToggle}
                     {domain === 'all' && allSortToggle}
-                    <div style={{ flex: 1, minWidth: 0 }} />
-                    <button onClick={() => setMobileSearchOpen(true)} title="Search"
-                      style={{ background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "8px 11px", cursor: "pointer", color: G.textSecondary, display: "flex", alignItems: "center", flexShrink: 0 }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                    </button>
                   </div>
                 )}
               </div>
