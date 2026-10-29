@@ -9543,6 +9543,9 @@ function ConnectionsPage({ isMobile, user }) {
   const [open, setOpen] = useState('');
   const [form, setForm] = useState({ contact: '', role: '', notes: '' });
   const [busy, setBusy] = useState(false);
+  const [quick, setQuick] = useState(false);       // + button modal
+  const [teamQ, setTeamQ] = useState('');
+  const [pickTeam, setPickTeam] = useState('');
   const me = String(user?.name || '').trim();
   const isAdmin = user?.userRole === 'admin';
   const links = useMemo(() => {
@@ -9580,10 +9583,58 @@ function ConnectionsPage({ isMobile, user }) {
   };
   const today = () => new Date().toISOString().slice(0, 10);
   const add = (team) => {
-    if (!me) return;
+    if (!me || !team) return;
     post({ action: 'tab-append', tab: 'connections', values: { team, agent: me, contact: form.contact.trim(), role: form.role.trim(), notes: form.notes.trim(), updatedAt: today() } });
     setForm({ contact: '', role: '', notes: '' });
+    setQuick(false); setPickTeam(''); setTeamQ('');
   };
+  const tq = teamQ.trim().toLowerCase();
+  const teamMatches = tq ? rows.filter(r => r.name.toLowerCase().includes(tq)).slice(0, 8) : [];
+  const fieldLabel = (t) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, marginBottom: 4 }}>{t}</div>;
+  const quickModal = quick ? (
+    <div onClick={() => setQuick(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 2000, padding: isMobile ? 0 : 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, borderRadius: isMobile ? "16px 16px 0 0" : 16, boxShadow: G.shadowLg, width: isMobile ? "100%" : 440, maxWidth: "100%", padding: isMobile ? "18px 16px 28px" : 20, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>Add connection</div>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setQuick(false)} style={{ background: "none", border: "none", color: G.textSecondary, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: ff }}>✕</button>
+        </div>
+        <div>
+          {fieldLabel('Team')}
+          {pickTeam ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, ...inputBase, padding: "7px 10px" }}>
+              {(data.teamInfo[pickTeam] || {}).logo && <TeamLogo url={data.teamInfo[pickTeam].logo} size={20} />}
+              <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>{pickTeam}</span>
+              <button onClick={() => { setPickTeam(''); setTeamQ(''); }} style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: ff }}>Change</button>
+            </div>
+          ) : (<>
+            <input autoFocus value={teamQ} onChange={e => setTeamQ(e.target.value)} placeholder="Search a school…" style={{ ...inputBase, padding: "8px 10px", fontSize: 13 }} />
+            {teamMatches.length > 0 && (
+              <div style={{ marginTop: 4, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
+                {teamMatches.map(t => (
+                  <div key={t.name} onClick={() => setPickTeam(t.name)}
+                    onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", fontSize: 13, color: G.text, fontWeight: 600 }}>
+                    {t.logo && <TeamLogo url={t.logo} size={20} />}<span style={{ flex: 1 }}>{t.name}</span><span style={{ fontSize: 11.5, color: G.textTertiary, fontWeight: 400 }}>{t.conf || ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>)}
+        </div>
+        {[['Contact', 'contact', 'Name'], ['Role', 'role', 'Title'], ['Notes', 'notes', 'Anything useful']].map(([label, key, ph]) => (
+          <div key={key}>
+            {fieldLabel(label)}
+            <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} placeholder={ph} onKeyDown={e => e.key === 'Enter' && add(pickTeam)} style={{ ...inputBase, padding: "8px 10px", fontSize: 13 }} />
+          </div>
+        ))}
+        <button onClick={() => add(pickTeam)} disabled={busy || !pickTeam}
+          style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: busy || !pickTeam ? "default" : "pointer", opacity: busy || !pickTeam ? 0.5 : 1, fontFamily: ff }}>
+          {busy ? 'Saving…' : 'Add'}
+        </button>
+      </div>
+    </div>
+  ) : null;
   const canEdit = (l) => isAdmin || (me && l.agent.toLowerCase() === me.toLowerCase());
   const td = (extra) => ({ padding: "9px 12px", fontSize: 13, color: G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", verticalAlign: "middle", ...extra });
   return (
@@ -9597,8 +9648,13 @@ function ConnectionsPage({ isMobile, user }) {
             {confs.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <div style={{ flex: 1 }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search team, agent, or contact…" style={{ ...inputBase, width: isMobile ? "100%" : 260, padding: "7px 11px", fontSize: 12.5 }} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search team, agent, or contact…" style={{ ...inputBase, width: isMobile ? "auto" : 260, flex: isMobile ? 1 : undefined, padding: "7px 11px", fontSize: 12.5 }} />
+          {me && (
+            <button onClick={() => { setQuick(true); setForm({ contact: '', role: '', notes: '' }); }} title="Add connection" aria-label="Add connection"
+              style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 9, width: 34, height: 34, fontSize: 20, lineHeight: 1, fontWeight: 700, cursor: "pointer", fontFamily: ff, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+          )}
         </div>
+        {quickModal}
         <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
           <div className="mh-hscroll" style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
