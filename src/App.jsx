@@ -9529,6 +9529,166 @@ function TeamsPage({ isMobile, user, athletes, staff }) {
 }
 
 // Transfer portal tracker; entries that match a roster player open his profile.
+// Connections — which agents know someone at each school (internal only;
+// never public). One Connections sheet row per agent × team; the contact
+// name is optional, notes free-form. Every team is listed; rows with no
+// connection are greyed so the gaps read at a glance.
+function ConnectionsPage({ isMobile, user }) {
+  const V = useProspectViewer({ user, athletes: [], staff: [], isMobile });
+  const { data } = V;
+  const tab = useAdminTab('connections');
+  const [q, setQ] = useState('');
+  const [tiers, setTiers] = useCachedState('conn.tiers', ['P4', 'G5', 'FCS']);
+  const [conf, setConf] = useCachedState('conn.conf', '');
+  const [onlyLinked, setOnlyLinked] = useCachedState('conn.linked', false);
+  const [sort, setSort] = useCachedState('conn.sort', { col: 'name', dir: 'asc' });
+  const [open, setOpen] = useState('');
+  const [form, setForm] = useState({ contact: '', notes: '' });
+  const [busy, setBusy] = useState(false);
+  const me = String(user?.name || '').trim();
+  const isAdmin = user?.userRole === 'admin';
+  const links = useMemo(() => {
+    const d = tab.data, by = {};
+    if (!d) return by;
+    const ix = (n) => d.headers.findIndex(h => String(h).trim().toLowerCase() === n);
+    const ti = ix('team'), ai = ix('agent'), ci = ix('contact'), ni = ix('notes'), ui = ix('updatedat');
+    if (ti < 0) return by;
+    d.rows.forEach(r => {
+      const team = String(r.cells[ti] || '').trim();
+      if (!team) return;
+      (by[team] = by[team] || []).push({ row: r._row, team, agent: String(ai >= 0 ? r.cells[ai] || '' : '').trim(), contact: String(ci >= 0 ? r.cells[ci] || '' : '').trim(), notes: String(ni >= 0 ? r.cells[ni] || '' : '').trim(), at: String(ui >= 0 ? r.cells[ui] || '' : '') });
+    });
+    Object.values(by).forEach(l => l.sort((a, b) => a.agent.localeCompare(b.agent)));
+    return by;
+  }, [tab.data]);
+  const rows = useMemo(() => data
+    ? Object.values(data.teamInfo).filter(t => ['P4', 'G5', 'FCS'].includes(t.tier)).map(t => ({ ...t, links: links[t.name] || [] }))
+    : [], [data, links]);
+  const confs = useMemo(() => [...new Set(rows.map(r => r.conf).filter(Boolean))].sort(), [rows]);
+  const ql = q.trim().toLowerCase();
+  const shown = pxSortTable(rows.filter(r => tiers.includes(r.tier) && (!conf || r.conf === conf) && (!onlyLinked || r.links.length)
+    && (!ql || r.name.toLowerCase().includes(ql) || r.links.some(l => l.agent.toLowerCase().includes(ql) || l.contact.toLowerCase().includes(ql)))), sort,
+    (r, c) => c === 'count' ? r.links.length : c === 'agents' ? r.links.map(l => l.agent).join(', ') : r[c]);
+  const linked = rows.filter(r => r.links.length).length;
+  const post = async (body) => {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || 'Save failed');
+      tab.reload();
+    } catch (e) { window.alert(e.message); }
+    finally { setBusy(false); }
+  };
+  const today = () => new Date().toISOString().slice(0, 10);
+  const add = (team) => {
+    if (!me) return;
+    post({ action: 'tab-append', tab: 'connections', values: { team, agent: me, contact: form.contact.trim(), notes: form.notes.trim(), updatedAt: today() } });
+    setForm({ contact: '', notes: '' });
+  };
+  const canEdit = (l) => isAdmin || (me && l.agent.toLowerCase() === me.toLowerCase());
+  const td = (extra) => ({ padding: "9px 12px", fontSize: 13, color: G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", verticalAlign: "middle", ...extra });
+  return (
+    <div style={pxPageWrap(isMobile)}>
+      {pxTitle(isMobile, 'Connections', data ? `${linked} of ${rows.length} teams` : '')}
+      {V.status}
+      {data && (<>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "16px 0 12px" }}>
+          {['P4', 'G5', 'FCS'].map(t => pxPill(tiers.includes(t), PX_TIER_NAME[t], () => setTiers(tiers.includes(t) ? tiers.filter(x => x !== t) : [...tiers, t]), t))}
+          {pxPill(onlyLinked, 'Connected only', () => setOnlyLinked(!onlyLinked), 'linked')}
+          <select value={conf} onChange={e => setConf(e.target.value)} style={{ ...inputBase, width: 200, padding: "7px 10px", fontSize: 12.5, cursor: "pointer" }}>
+            <option value="">All conferences</option>
+            {confs.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <div style={{ flex: 1 }} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search team, agent, or contact…" style={{ ...inputBase, width: isMobile ? "100%" : 260, padding: "7px 11px", fontSize: 12.5 }} />
+        </div>
+        <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
+          <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead><tr>
+                {pxHeadCell(sort, setSort, 'name', 'Team', false, 'asc')}{pxHeadCell(sort, setSort, 'conf', 'Conference', false, 'asc')}{pxHeadCell(sort, setSort, 'tier', 'Level', false, 'asc')}
+                {pxHeadCell(sort, setSort, 'agents', 'Connections', false, 'asc')}{pxHeadCell(sort, setSort, 'count', '#', true)}
+              </tr></thead>
+              <tbody>
+                {shown.length === 0 && <tr><td colSpan={5} style={{ padding: "28px 16px", color: G.textTertiary, fontSize: 13, textAlign: "center" }}>No teams match.</td></tr>}
+                {shown.map(r => {
+                  const none = !r.links.length, isOpen = open === r.name;
+                  const mine = r.links.find(l => me && l.agent.toLowerCase() === me.toLowerCase());
+                  return (<React.Fragment key={r.name}>
+                    <tr onClick={() => { setOpen(isOpen ? '' : r.name); setForm({ contact: '', notes: '' }); }} style={{ cursor: "pointer", background: isOpen ? G.surfaceRaised : "transparent", opacity: none && !isOpen ? 0.55 : 1 }}
+                      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = isOpen ? G.surfaceRaised : "transparent"}>
+                      <td style={td({ color: none ? G.textTertiary : G.text, fontWeight: 700 })}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{r.logo && <TeamLogo url={r.logo} size={20} />}{r.name}</span>
+                      </td>
+                      <td style={td()}>{r.conf || '—'}</td>
+                      <td style={td()}>{PX_TIER_NAME[r.tier] || '—'}</td>
+                      <td style={td({ whiteSpace: "normal" })}>
+                        {none ? <span style={{ color: G.textTertiary }}>—</span> : (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            {r.links.map(l => (
+                              <span key={l.row} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: G.text, fontWeight: 600 }}>
+                                <Avatar name={l.agent} size={20} />{l.agent}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </td>
+                      <td style={td({ textAlign: "right", fontVariantNumeric: "tabular-nums", color: none ? G.textTertiary : G.green, fontWeight: 700 })}>{r.links.length || '—'}</td>
+                    </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={5} style={{ padding: 0, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised }}>
+                          <div style={{ padding: isMobile ? "12px 16px 16px" : "12px 20px 16px 48px", display: "flex", flexDirection: "column", gap: 12 }}>
+                            {r.links.map(l => (
+                              <div key={l.row} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                                <Avatar name={l.agent} size={28} />
+                                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{l.agent}{l.at ? <span style={{ fontSize: 11.5, fontWeight: 400, color: G.textTertiary, marginLeft: 8 }}>{l.at}</span> : null}</div>
+                                  <div style={{ fontSize: 13, color: G.textSecondary, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>Contact</span>
+                                    {canEdit(l) ? <NoteText text={l.contact || 'Add a name'} style={{ color: l.contact ? G.text : G.textTertiary }} onSave={(v) => post({ action: 'tab-update', tab: 'connections', row: l.row, values: { contact: v === 'Add a name' ? '' : v, updatedAt: today() } })} /> : <span style={{ color: G.text }}>{l.contact || '—'}</span>}
+                                  </div>
+                                  <div style={{ fontSize: 13, color: G.textSecondary, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>Notes</span>
+                                    {canEdit(l) ? <NoteText text={l.notes || 'Add a note'} style={{ color: l.notes ? G.text : G.textTertiary, whiteSpace: "normal" }} onSave={(v) => post({ action: 'tab-update', tab: 'connections', row: l.row, values: { notes: v === 'Add a note' ? '' : v, updatedAt: today() } })} /> : <span style={{ color: G.text, whiteSpace: "normal" }}>{l.notes || '—'}</span>}
+                                  </div>
+                                </div>
+                                {canEdit(l) && (
+                                  <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove ${l.agent}'s ${r.name} connection?`)) post({ action: 'tab-delete', tab: 'connections', row: l.row }); }}
+                                    title="Remove" disabled={busy}
+                                    onMouseEnter={e => e.currentTarget.style.color = G.red} onMouseLeave={e => e.currentTarget.style.color = G.textTertiary}
+                                    style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 4px", fontFamily: ff }}>✕</button>
+                                )}
+                              </div>
+                            ))}
+                            {me && !mine && (
+                              <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", paddingTop: r.links.length ? 4 : 0 }}>
+                                <Avatar name={me} size={28} />
+                                <input value={form.contact} onChange={e => setForm(f => ({ ...f, contact: e.target.value }))} placeholder="Contact (optional)" style={{ ...inputBase, width: isMobile ? "100%" : 200, padding: "7px 10px", fontSize: 12.5 }} />
+                                <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notes" onKeyDown={e => e.key === 'Enter' && add(r.name)} style={{ ...inputBase, flex: 1, minWidth: 160, padding: "7px 10px", fontSize: 12.5 }} />
+                                <button onClick={() => add(r.name)} disabled={busy}
+                                  style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 8, padding: "7px 14px", fontWeight: 700, fontSize: 12.5, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, fontFamily: ff, whiteSpace: "nowrap" }}>
+                                  {busy ? 'Saving…' : 'Add my connection'}
+                                </button>
+                              </div>
+                            )}
+                            <div><button onClick={(e) => { e.stopPropagation(); V.setTeam(r.name); }} style={{ background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: ff }}>Team page →</button></div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>);
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 function PortalPage({ isMobile, user, athletes, staff }) {
   const V = useProspectViewer({ user, athletes, staff, isMobile });
   const { data } = V;
@@ -13021,7 +13181,7 @@ function usageStart() {
 const USAGE_PAGE_NAMES = {
   home: 'Home', roster: 'Roster', branddeals: 'Brand Deals', marketing: 'Social', gifting: 'Gifting', recruiting: 'Recruiting Board',
   prospects: 'Prospect Search', teams: 'Teams', team: 'Team page', player: 'Player page', portal: 'Transfer Portal', teamfit: 'Team Fit',
-  contracts: 'Contracts', resources: 'Resources', notes: 'Notes', schedule: 'Schedule', usage: 'Usage',
+  contracts: 'Contracts', connections: 'Connections', resources: 'Resources', notes: 'Notes', schedule: 'Schedule', usage: 'Usage',
 };
 const USAGE_TAB_NAMES = { overview: 'Overview', about: 'About', stats: 'Performance', recruiting: 'Recruiting', teamfit: 'Team Fit', deal: 'Deal', marketing: 'Marketing' };
 // Keys: 'sports/roster', 'music/home', 'profile:stats' (sports profile tab),
@@ -14396,6 +14556,7 @@ function App() {
       ],
     },
     ...(canContracts ? [{ key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' }] : []),
+    { key: 'connections', label: 'Connections', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
     { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
     ...(isUsageOwner(currentUser) ? [{ key: 'plans', label: 'Presentations', icon: 'M2 4h20v12H2zM8 20h8M12 16v4' }] : []),
@@ -14876,6 +15037,7 @@ function App() {
               {view === 'roster' && navActive && effSportsPage === 'contracts' && canContracts && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && effSportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && effSportsPage === 'prospects' && <ProspectSearch isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
+              {view === 'roster' && navActive && effSportsPage === 'connections' && <ConnectionsPage isMobile={isMobile} user={currentUser} />}
               {view === 'roster' && navActive && effSportsPage === 'teams' && <TeamsPage isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && effSportsPage === 'team' && <TeamPage team={teamParam} isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && effSportsPage === 'player' && <PlayerPage pid={playerParam} isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}

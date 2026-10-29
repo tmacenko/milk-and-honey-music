@@ -691,6 +691,9 @@ const ADMIN_TABS = {
   // Agents' marks on schools per player for Team Fit: status = interested
   // (school has shown interest — scored like an offer) | talked | notfit.
   fitnotes: { title: 'FitNotes', writable: true, autoCreate: ['playerId', 'name', 'team', 'status', 'note', 'updatedBy', 'updatedAt'] },
+  // Agent ↔ school relationships (Connections page): team = CFBD school
+  // name, agent = Staff name, contact optional.
+  connections: { title: 'Connections', writable: true, autoCreate: ['team', 'agent', 'contact', 'notes', 'updatedAt'] },
   // Brand deal tracker — one row per deal; clients is a comma list of roster
   // names; fileId/fileName point at the deal file in Box (copied into each
   // tagged player's folder at upload time).
