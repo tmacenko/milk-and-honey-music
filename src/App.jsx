@@ -14556,13 +14556,8 @@ function App() {
       ],
     },
     ...(canContracts ? [{ key: 'contracts', label: 'Contracts', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6' }] : []),
-    {
-      key: 'resources-group', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
-      children: [
-        { key: 'connections', label: 'Connections', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
-        { key: 'resources', label: 'NFL & Registrations', icon: 'M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z' },
-      ],
-    },
+    { key: 'connections', label: 'Connections', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
+    { key: 'resources', label: 'Resources', icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z' },
     { key: 'onboardlink', label: 'Onboard', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', modal: true },
     ...(isUsageOwner(currentUser) ? [{ key: 'plans', label: 'Presentations', icon: 'M2 4h20v12H2zM8 20h8M12 16v4' }] : []),
     ...(isUsageOwner(currentUser) ? [{ key: 'usage', label: 'Usage', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' }] : []),
