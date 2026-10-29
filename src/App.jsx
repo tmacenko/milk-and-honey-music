@@ -15041,7 +15041,7 @@ function App() {
           {(domain === 'sports' ? (!athletesLoaded || !authKnown) : domain === 'all' ? (!athletesLoaded || loading || !authKnown) : loading) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: 14 }}>
               <span style={{ fontSize: 24, animation: "spin 1s linear infinite", display: "inline-block", color: G.textTertiary }}>⟳</span>
-              <span style={{ fontSize: 13, color: G.textTertiary }}>Loading {domain === 'sports' ? 'athletes' : domain === 'all' ? 'everyone' : 'clients'}...</span>
+              <span style={{ fontSize: 13, color: G.textTertiary }}>{(domain === 'sports' ? sportsPage : domain === 'music' ? musicPage : 'roster') !== 'roster' && domain !== 'all' ? 'Loading…' : `Loading ${domain === 'sports' ? 'athletes' : domain === 'all' ? 'everyone' : 'clients'}...`}</span>
             </div>
           )}
           {error && (
