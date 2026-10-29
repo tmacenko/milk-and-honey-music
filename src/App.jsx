@@ -9638,44 +9638,65 @@ function ConnectionsPage({ isMobile, user }) {
                     {isOpen && (
                       <tr>
                         <td colSpan={4} style={{ padding: 0, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised }}>
-                          <div style={{ padding: isMobile ? "12px 16px 16px" : "12px 20px 16px 48px", display: "flex", flexDirection: "column", gap: 12 }}>
-                            {r.links.map(l => (
-                              <div key={l.row} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                                <Avatar name={l.agent} size={28} />
-                                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: G.text }}>{l.agent}{l.at ? <span style={{ fontSize: 11.5, fontWeight: 400, color: G.textTertiary, marginLeft: 8 }}>{l.at}</span> : null}</div>
-                                  <div style={{ fontSize: 13, color: G.textSecondary, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
-                                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>Contact</span>
-                                    {canEdit(l) ? <NoteText text={l.contact || 'Add a name'} style={{ color: l.contact ? G.text : G.textTertiary }} onSave={(v) => post({ action: 'tab-update', tab: 'connections', row: l.row, values: { contact: v === 'Add a name' ? '' : v, updatedAt: today() } })} /> : <span style={{ color: G.text }}>{l.contact || '—'}</span>}
-                                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, marginLeft: 6 }}>Role</span>
-                                    {canEdit(l) ? <NoteText text={l.role || 'Add a role'} style={{ color: l.role ? G.text : G.textTertiary }} onSave={(v) => post({ action: 'tab-update', tab: 'connections', row: l.row, values: { role: v === 'Add a role' ? '' : v, updatedAt: today() } })} /> : <span style={{ color: G.text }}>{l.role || '—'}</span>}
-                                  </div>
-                                  <div style={{ fontSize: 13, color: G.textSecondary, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
-                                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>Notes</span>
-                                    {canEdit(l) ? <NoteText text={l.notes || 'Add a note'} style={{ color: l.notes ? G.text : G.textTertiary, whiteSpace: "normal" }} onSave={(v) => post({ action: 'tab-update', tab: 'connections', row: l.row, values: { notes: v === 'Add a note' ? '' : v, updatedAt: today() } })} /> : <span style={{ color: G.text, whiteSpace: "normal" }}>{l.notes || '—'}</span>}
-                                  </div>
+                          <div style={{ padding: isMobile ? "12px 16px 16px" : "12px 20px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{r.links.length ? `${r.links.length} connection${r.links.length === 1 ? '' : 's'}` : 'No connections yet'}</div>
+                              <div style={{ flex: 1 }} />
+                              <button onClick={(e) => { e.stopPropagation(); V.setTeam(r.name); }}
+                                onMouseEnter={e => e.currentTarget.style.background = G.surface} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                                style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, color: G.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "5px 10px", fontFamily: ff }}>Team page</button>
+                            </div>
+                            {r.links.map(l => {
+                              const field = (label, val, key, ph) => (
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, marginBottom: 3 }}>{label}</div>
+                                  {canEdit(l)
+                                    ? <NoteText text={val || ph} style={{ fontSize: 14, fontWeight: val ? 700 : 400, color: val ? G.text : G.textTertiary, whiteSpace: "normal" }}
+                                        onSave={(v) => post({ action: 'tab-update', tab: 'connections', row: l.row, values: { [key]: v === ph ? '' : v, updatedAt: today() } })} />
+                                    : <div style={{ fontSize: 14, fontWeight: val ? 700 : 400, color: val ? G.text : G.textTertiary, whiteSpace: "normal" }}>{val || '—'}</div>}
                                 </div>
-                                {canEdit(l) && (
-                                  <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove ${l.agent}'s ${r.name} connection?`)) post({ action: 'tab-delete', tab: 'connections', row: l.row }); }}
-                                    title="Remove" disabled={busy}
-                                    onMouseEnter={e => e.currentTarget.style.color = G.red} onMouseLeave={e => e.currentTarget.style.color = G.textTertiary}
-                                    style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 4px", fontFamily: ff }}>✕</button>
-                                )}
-                              </div>
-                            ))}
+                              );
+                              return (
+                                <div key={l.row} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, borderRadius: 12, padding: isMobile ? "12px 14px" : "12px 16px", display: "grid", gridTemplateColumns: isMobile ? "1fr auto" : "220px 1fr 1fr 2fr auto", gap: isMobile ? 10 : 20, alignItems: "center" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                                    <Avatar name={l.agent} size={32} />
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: 14, fontWeight: 700, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.agent}</div>
+                                      {l.at && <div style={{ fontSize: 11.5, color: G.textTertiary }}>{l.at}</div>}
+                                    </div>
+                                  </div>
+                                  {isMobile && (canEdit(l) ? <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove ${l.agent}'s ${r.name} connection?`)) post({ action: 'tab-delete', tab: 'connections', row: l.row }); }} title="Remove" disabled={busy}
+                                    style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 4px", fontFamily: ff }}>✕</button> : <span />)}
+                                  {field('Contact', l.contact, 'contact', 'Add a name')}
+                                  {field('Role', l.role, 'role', 'Add a role')}
+                                  {field('Notes', l.notes, 'notes', 'Add a note')}
+                                  {!isMobile && (canEdit(l) ? (
+                                    <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove ${l.agent}'s ${r.name} connection?`)) post({ action: 'tab-delete', tab: 'connections', row: l.row }); }}
+                                      title="Remove" disabled={busy}
+                                      onMouseEnter={e => e.currentTarget.style.color = G.red} onMouseLeave={e => e.currentTarget.style.color = G.textTertiary}
+                                      style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 4px", fontFamily: ff, transition: "color 0.12s" }}>✕</button>
+                                  ) : <span />)}
+                                </div>
+                              );
+                            })}
                             {me && !mine && (
-                              <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", paddingTop: r.links.length ? 4 : 0 }}>
-                                <Avatar name={me} size={28} />
-                                <input value={form.contact} onChange={e => setForm(f => ({ ...f, contact: e.target.value }))} placeholder="Contact name" style={{ ...inputBase, width: isMobile ? "100%" : 180, padding: "7px 10px", fontSize: 12.5 }} />
-                                <input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} placeholder="Role" style={{ ...inputBase, width: isMobile ? "100%" : 160, padding: "7px 10px", fontSize: 12.5 }} />
-                                <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notes" onKeyDown={e => e.key === 'Enter' && add(r.name)} style={{ ...inputBase, flex: 1, minWidth: 160, padding: "7px 10px", fontSize: 12.5 }} />
+                              <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px dashed ${G.surfaceBorder}`, borderRadius: 12, padding: isMobile ? "12px 14px" : "12px 16px", display: "grid", gridTemplateColumns: isMobile ? "1fr" : "220px 1fr 1fr 2fr auto", gap: isMobile ? 10 : 20, alignItems: "end" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  <Avatar name={me} size={32} />
+                                  <div style={{ fontSize: 14, fontWeight: 700, color: G.text }}>{me}</div>
+                                </div>
+                                {[['Contact', 'contact', 'Name'], ['Role', 'role', 'Title'], ['Notes', 'notes', 'Anything useful']].map(([label, key, ph]) => (
+                                  <div key={key}>
+                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, marginBottom: 4 }}>{label}</div>
+                                    <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} placeholder={ph} onKeyDown={e => e.key === 'Enter' && add(r.name)} style={{ ...inputBase, padding: "7px 10px", fontSize: 13 }} />
+                                  </div>
+                                ))}
                                 <button onClick={() => add(r.name)} disabled={busy}
-                                  style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 8, padding: "7px 14px", fontWeight: 700, fontSize: 12.5, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, fontFamily: ff, whiteSpace: "nowrap" }}>
-                                  {busy ? 'Saving…' : 'Add my connection'}
+                                  style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 12.5, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, fontFamily: ff, whiteSpace: "nowrap", height: 34 }}>
+                                  {busy ? 'Saving…' : 'Add'}
                                 </button>
                               </div>
                             )}
-                            <div><button onClick={(e) => { e.stopPropagation(); V.setTeam(r.name); }} style={{ background: "none", border: "none", color: G.green, fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: ff }}>Team page →</button></div>
                           </div>
                         </td>
                       </tr>
