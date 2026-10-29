@@ -9643,12 +9643,16 @@ function ConnectionsPage({ isMobile, user }) {
       {V.status}
       {data && (<>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "16px 0 12px" }}>
-          <select value={conf} onChange={e => setConf(e.target.value)} style={{ ...inputBase, width: isMobile ? "100%" : 200, padding: "7px 10px", fontSize: 12.5, cursor: "pointer" }}>
+          {!isMobile && <select value={conf} onChange={e => setConf(e.target.value)} style={{ ...inputBase, width: 200, padding: "7px 10px", fontSize: 12.5, cursor: "pointer" }}>
             <option value="">All conferences</option>
             {confs.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <div style={{ flex: 1 }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search team, agent, or contact…" style={{ ...inputBase, width: isMobile ? "auto" : 260, flex: isMobile ? 1 : undefined, padding: "7px 11px", fontSize: 12.5 }} />
+          </select>}
+          {!isMobile && <div style={{ flex: 1 }} />}
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder={isMobile ? "Search…" : "Search team, agent, or contact…"} style={{ ...inputBase, width: isMobile ? "auto" : 260, flex: isMobile ? 1 : undefined, minWidth: 0, padding: "7px 11px", fontSize: 12.5 }} />
+          {isMobile && <select value={conf} onChange={e => setConf(e.target.value)} style={{ ...inputBase, width: "auto", flex: 1, minWidth: 0, padding: "7px 10px", fontSize: 12.5, cursor: "pointer" }}>
+            <option value="">All conferences</option>
+            {confs.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>}
           {me && (
             <button onClick={() => { setQuick(true); setForm({ contact: '', role: '', notes: '' }); }} title="Add connection" aria-label="Add connection"
               style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 9, width: 34, height: 34, fontSize: 20, lineHeight: 1, fontWeight: 700, cursor: "pointer", fontFamily: ff, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
@@ -9682,12 +9686,13 @@ function ConnectionsPage({ isMobile, user }) {
                       {!isMobile && <td style={td()}>{r.conf || '—'}</td>}
                       <td style={td({ whiteSpace: "normal" })}>
                         {none ? <span style={{ color: G.textTertiary }}>—</span> : isMobile ? (
-                          <span style={{ display: "inline-flex", alignItems: "center" }}>
-                            {agents.slice(0, 4).map((l, i) => (
-                              <span key={l.row} style={{ marginLeft: i ? -6 : 0, borderRadius: "50%", boxShadow: `0 0 0 2px ${G.surface}` }}><Avatar name={l.agent} size={24} /></span>
+                          <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {agents.slice(0, 3).map(l => (
+                              <span key={l.row} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: G.text, fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap" }}>
+                                <Avatar name={l.agent} size={20} />{l.agent.split(' ')[0]}
+                              </span>
                             ))}
-                            {agents.length === 1 && <span style={{ marginLeft: 8, color: G.text, fontWeight: 600, fontSize: 12.5 }}>{agents[0].agent.split(' ')[0]}</span>}
-                            {agents.length > 4 && <span style={{ marginLeft: 6, color: G.textSecondary, fontSize: 12 }}>+{agents.length - 4}</span>}
+                            {agents.length > 3 && <span style={{ color: G.textSecondary, fontSize: 12, paddingLeft: 26 }}>+{agents.length - 3} more</span>}
                           </span>
                         ) : (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
