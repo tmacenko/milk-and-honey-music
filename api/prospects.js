@@ -4,7 +4,7 @@
 //                       gzipped search file (staff sessions only). The browser
 //                       downloads it straight from Blob and unzips it itself.
 // GET ?build=1        → rebuild from CollegeFootballData (admin session, or
-//                       the weekly cron via `Authorization: Bearer CRON_SECRET`).
+//                       the Sun/Thu cron via `Authorization: Bearer CRON_SECRET`).
 //
 // The file is public football data (rosters, recruiting, stats) — nothing
 // internal. "Is this our client / on our board" is computed in the browser
