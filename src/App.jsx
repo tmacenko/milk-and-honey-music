@@ -14786,6 +14786,13 @@ function App() {
         <div style={{ flex: 1, overflowY: "auto", padding: "4px 10px 24px", display: "flex", flexDirection: "column", gap: 2 }}>
           {navContent}
         </div>
+        <div style={{ borderTop: `1px solid ${G.surfaceBorder}`, padding: "10px 12px 18px", display: "flex", alignItems: "center", gap: 10 }}>
+          <Avatar name={currentUser?.name || 'Staff'} size={28} />
+          <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentUser?.name || 'Staff'}</div>
+          <button onClick={doLogout}
+            onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+            style={{ background: "transparent", border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, color: G.textSecondary, cursor: "pointer", fontFamily: ff, flexShrink: 0 }}>Log out</button>
+        </div>
       </div>
     </div>
   ) : null;
@@ -14930,7 +14937,7 @@ function App() {
                   </button>
                 )}
                 {rosterControlsOn && exportControl(true)}
-                {authBtnMobile}
+                {!isAdmin && authBtnMobile}
               </div>
               {/* Row 2: domain + view + sort + layout + search — one line (scrolls if tight) */}
               {/* Staff on a sidebar page: the ☰ drawer already holds the
