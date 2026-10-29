@@ -9543,7 +9543,7 @@ function ConnectionsPage({ isMobile, user }) {
   const [onlyLinked, setOnlyLinked] = useCachedState('conn.linked', false);
   const [sort, setSort] = useCachedState('conn.sort', { col: 'count', dir: 'desc' });
   const [open, setOpen] = useState('');
-  const [form, setForm] = useState({ contact: '', notes: '' });
+  const [form, setForm] = useState({ contact: '', role: '', notes: '' });
   const [busy, setBusy] = useState(false);
   const me = String(user?.name || '').trim();
   const isAdmin = user?.userRole === 'admin';
@@ -9551,12 +9551,12 @@ function ConnectionsPage({ isMobile, user }) {
     const d = tab.data, by = {};
     if (!d) return by;
     const ix = (n) => d.headers.findIndex(h => String(h).trim().toLowerCase() === n);
-    const ti = ix('team'), ai = ix('agent'), ci = ix('contact'), ni = ix('notes'), ui = ix('updatedat');
+    const ti = ix('team'), ai = ix('agent'), ci = ix('contact'), ri = ix('role'), ni = ix('notes'), ui = ix('updatedat');
     if (ti < 0) return by;
     d.rows.forEach(r => {
       const team = String(r.cells[ti] || '').trim();
       if (!team) return;
-      (by[team] = by[team] || []).push({ row: r._row, team, agent: String(ai >= 0 ? r.cells[ai] || '' : '').trim(), contact: String(ci >= 0 ? r.cells[ci] || '' : '').trim(), notes: String(ni >= 0 ? r.cells[ni] || '' : '').trim(), at: String(ui >= 0 ? r.cells[ui] || '' : '') });
+      (by[team] = by[team] || []).push({ row: r._row, team, agent: String(ai >= 0 ? r.cells[ai] || '' : '').trim(), contact: String(ci >= 0 ? r.cells[ci] || '' : '').trim(), role: String(ri >= 0 ? r.cells[ri] || '' : '').trim(), notes: String(ni >= 0 ? r.cells[ni] || '' : '').trim(), at: String(ui >= 0 ? r.cells[ui] || '' : '') });
     });
     Object.values(by).forEach(l => l.sort((a, b) => a.agent.localeCompare(b.agent)));
     return by;
@@ -9567,7 +9567,7 @@ function ConnectionsPage({ isMobile, user }) {
   const confs = useMemo(() => [...new Set(rows.map(r => r.conf).filter(Boolean))].sort(), [rows]);
   const ql = q.trim().toLowerCase();
   const shown = pxSortTable(rows.filter(r => tiers.includes(r.tier) && (!conf || r.conf === conf) && (!onlyLinked || r.links.length)
-    && (!ql || r.name.toLowerCase().includes(ql) || r.links.some(l => l.agent.toLowerCase().includes(ql) || l.contact.toLowerCase().includes(ql)))), sort,
+    && (!ql || r.name.toLowerCase().includes(ql) || r.links.some(l => l.agent.toLowerCase().includes(ql) || l.contact.toLowerCase().includes(ql) || l.role.toLowerCase().includes(ql)))), sort,
     (r, c) => c === 'count' ? r.links.length : c === 'agents' ? r.links.map(l => l.agent).join(', ') : r[c]);
   const linked = rows.filter(r => r.links.length).length;
   const post = async (body) => {
@@ -9583,8 +9583,8 @@ function ConnectionsPage({ isMobile, user }) {
   const today = () => new Date().toISOString().slice(0, 10);
   const add = (team) => {
     if (!me) return;
-    post({ action: 'tab-append', tab: 'connections', values: { team, agent: me, contact: form.contact.trim(), notes: form.notes.trim(), updatedAt: today() } });
-    setForm({ contact: '', notes: '' });
+    post({ action: 'tab-append', tab: 'connections', values: { team, agent: me, contact: form.contact.trim(), role: form.role.trim(), notes: form.notes.trim(), updatedAt: today() } });
+    setForm({ contact: '', role: '', notes: '' });
   };
   const canEdit = (l) => isAdmin || (me && l.agent.toLowerCase() === me.toLowerCase());
   const td = (extra) => ({ padding: "9px 12px", fontSize: 13, color: G.textSecondary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", verticalAlign: "middle", ...extra });
@@ -9616,7 +9616,7 @@ function ConnectionsPage({ isMobile, user }) {
                   const none = !r.links.length, isOpen = open === r.name;
                   const mine = r.links.find(l => me && l.agent.toLowerCase() === me.toLowerCase());
                   return (<React.Fragment key={r.name}>
-                    <tr onClick={() => { setOpen(isOpen ? '' : r.name); setForm({ contact: '', notes: '' }); }} style={{ cursor: "pointer", background: isOpen ? G.surfaceRaised : "transparent", opacity: none && !isOpen ? 0.55 : 1 }}
+                    <tr onClick={() => { setOpen(isOpen ? '' : r.name); setForm({ contact: '', role: '', notes: '' }); }} style={{ cursor: "pointer", background: isOpen ? G.surfaceRaised : "transparent", opacity: none && !isOpen ? 0.55 : 1 }}
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = isOpen ? G.surfaceRaised : "transparent"}>
                       <td style={td({ color: none ? G.textTertiary : G.text, fontWeight: 700 })}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{r.logo && <TeamLogo url={r.logo} size={20} />}{r.name}</span>
@@ -9647,6 +9647,8 @@ function ConnectionsPage({ isMobile, user }) {
                                   <div style={{ fontSize: 13, color: G.textSecondary, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
                                     <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>Contact</span>
                                     {canEdit(l) ? <NoteText text={l.contact || 'Add a name'} style={{ color: l.contact ? G.text : G.textTertiary }} onSave={(v) => post({ action: 'tab-update', tab: 'connections', row: l.row, values: { contact: v === 'Add a name' ? '' : v, updatedAt: today() } })} /> : <span style={{ color: G.text }}>{l.contact || '—'}</span>}
+                                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, marginLeft: 6 }}>Role</span>
+                                    {canEdit(l) ? <NoteText text={l.role || 'Add a role'} style={{ color: l.role ? G.text : G.textTertiary }} onSave={(v) => post({ action: 'tab-update', tab: 'connections', row: l.row, values: { role: v === 'Add a role' ? '' : v, updatedAt: today() } })} /> : <span style={{ color: G.text }}>{l.role || '—'}</span>}
                                   </div>
                                   <div style={{ fontSize: 13, color: G.textSecondary, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
                                     <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>Notes</span>
@@ -9664,7 +9666,8 @@ function ConnectionsPage({ isMobile, user }) {
                             {me && !mine && (
                               <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", paddingTop: r.links.length ? 4 : 0 }}>
                                 <Avatar name={me} size={28} />
-                                <input value={form.contact} onChange={e => setForm(f => ({ ...f, contact: e.target.value }))} placeholder="Contact (optional)" style={{ ...inputBase, width: isMobile ? "100%" : 200, padding: "7px 10px", fontSize: 12.5 }} />
+                                <input value={form.contact} onChange={e => setForm(f => ({ ...f, contact: e.target.value }))} placeholder="Contact name" style={{ ...inputBase, width: isMobile ? "100%" : 180, padding: "7px 10px", fontSize: 12.5 }} />
+                                <input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} placeholder="Role" style={{ ...inputBase, width: isMobile ? "100%" : 160, padding: "7px 10px", fontSize: 12.5 }} />
                                 <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notes" onKeyDown={e => e.key === 'Enter' && add(r.name)} style={{ ...inputBase, flex: 1, minWidth: 160, padding: "7px 10px", fontSize: 12.5 }} />
                                 <button onClick={() => add(r.name)} disabled={busy}
                                   style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 8, padding: "7px 14px", fontWeight: 700, fontSize: 12.5, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, fontFamily: ff, whiteSpace: "nowrap" }}>

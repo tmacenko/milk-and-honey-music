@@ -693,7 +693,7 @@ const ADMIN_TABS = {
   fitnotes: { title: 'FitNotes', writable: true, autoCreate: ['playerId', 'name', 'team', 'status', 'note', 'updatedBy', 'updatedAt'] },
   // Agent ↔ school relationships (Connections page): team = CFBD school
   // name, agent = Staff name, contact optional.
-  connections: { title: 'Connections', writable: true, autoCreate: ['team', 'agent', 'contact', 'notes', 'updatedAt'] },
+  connections: { title: 'Connections', writable: true, autoCreate: ['team', 'agent', 'contact', 'role', 'notes', 'updatedAt'], ensureCols: ['role'] },
   // Brand deal tracker — one row per deal; clients is a comma list of roster
   // names; fileId/fileName point at the deal file in Box (copied into each
   // tagged player's folder at upload time).
