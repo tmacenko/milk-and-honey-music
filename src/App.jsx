@@ -9607,24 +9607,37 @@ function ConnectionsPage({ isMobile, user }) {
           <div className="mh-hscroll" style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
-                {pxHeadCell(sort, setSort, 'name', 'Team', false, 'asc')}{pxHeadCell(sort, setSort, 'conf', 'Conference', false, 'asc')}{pxHeadCell(sort, setSort, 'tier', 'Level', false, 'asc')}
+                {pxHeadCell(sort, setSort, 'name', 'Team', false, 'asc')}{!isMobile && pxHeadCell(sort, setSort, 'conf', 'Conference', false, 'asc')}
                 {pxHeadCell(sort, setSort, 'agents', 'Connections', false, 'asc')}
               </tr></thead>
               <tbody>
-                {shown.length === 0 && <tr><td colSpan={4} style={{ padding: "28px 16px", color: G.textTertiary, fontSize: 13, textAlign: "center" }}>No teams match.</td></tr>}
+                {shown.length === 0 && <tr><td colSpan={isMobile ? 2 : 3} style={{ padding: "28px 16px", color: G.textTertiary, fontSize: 13, textAlign: "center" }}>No teams match.</td></tr>}
                 {shown.map(r => {
                   const none = !r.links.length, isOpen = open === r.name;
                   const mine = r.links.find(l => me && l.agent.toLowerCase() === me.toLowerCase());
                   return (<React.Fragment key={r.name}>
                     <tr onClick={() => { setOpen(isOpen ? '' : r.name); setForm({ contact: '', role: '', notes: '' }); }} style={{ cursor: "pointer", background: isOpen ? G.surfaceRaised : "transparent", opacity: none && !isOpen ? 0.55 : 1 }}
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = isOpen ? G.surfaceRaised : "transparent"}>
-                      <td style={td({ color: none ? G.textTertiary : G.text, fontWeight: 700 })}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{r.logo && <TeamLogo url={r.logo} size={20} />}{r.name}</span>
+                      <td style={td({ color: none ? G.textTertiary : G.text, fontWeight: 700, width: isMobile ? "60%" : undefined })}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          {r.logo && <TeamLogo url={r.logo} size={isMobile ? 24 : 20} />}
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</span>
+                            {isMobile && <span style={{ display: "block", fontSize: 11.5, fontWeight: 400, color: G.textTertiary }}>{r.conf || PX_TIER_NAME[r.tier] || ''}</span>}
+                          </span>
+                        </span>
                       </td>
-                      <td style={td()}>{r.conf || '—'}</td>
-                      <td style={td()}>{PX_TIER_NAME[r.tier] || '—'}</td>
+                      {!isMobile && <td style={td()}>{r.conf || '—'}</td>}
                       <td style={td({ whiteSpace: "normal" })}>
-                        {none ? <span style={{ color: G.textTertiary }}>—</span> : (
+                        {none ? <span style={{ color: G.textTertiary }}>—</span> : isMobile ? (
+                          <span style={{ display: "inline-flex", alignItems: "center" }}>
+                            {r.links.slice(0, 4).map((l, i) => (
+                              <span key={l.row} style={{ marginLeft: i ? -6 : 0, borderRadius: "50%", boxShadow: `0 0 0 2px ${G.surface}` }}><Avatar name={l.agent} size={24} /></span>
+                            ))}
+                            {r.links.length === 1 && <span style={{ marginLeft: 8, color: G.text, fontWeight: 600, fontSize: 12.5 }}>{r.links[0].agent.split(' ')[0]}</span>}
+                            {r.links.length > 4 && <span style={{ marginLeft: 6, color: G.textSecondary, fontSize: 12 }}>+{r.links.length - 4}</span>}
+                          </span>
+                        ) : (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                             {r.links.map(l => (
                               <span key={l.row} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: G.text, fontWeight: 600 }}>
@@ -9637,7 +9650,7 @@ function ConnectionsPage({ isMobile, user }) {
                     </tr>
                     {isOpen && (
                       <tr>
-                        <td colSpan={4} style={{ padding: 0, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised }}>
+                        <td colSpan={isMobile ? 2 : 3} style={{ padding: 0, borderBottom: `1px solid ${G.surfaceBorder}`, background: G.surfaceRaised }}>
                           <div style={{ padding: isMobile ? "12px 16px 16px" : "12px 20px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>{r.links.length ? `${r.links.length} connection${r.links.length === 1 ? '' : 's'}` : 'No connections yet'}</div>
@@ -9657,16 +9670,16 @@ function ConnectionsPage({ isMobile, user }) {
                                 </div>
                               );
                               return (
-                                <div key={l.row} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, borderRadius: 12, padding: isMobile ? "12px 14px" : "12px 16px", display: "grid", gridTemplateColumns: isMobile ? "1fr auto" : "220px 1fr 1fr 2fr auto", gap: isMobile ? 10 : 20, alignItems: "center" }}>
+                                <div key={l.row} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, borderRadius: 12, padding: isMobile ? "12px 14px" : "12px 16px", display: "grid", gridTemplateColumns: isMobile ? "1fr" : "220px 1fr 1fr 2fr auto", gap: isMobile ? 12 : 20, alignItems: "center" }}>
                                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                                     <Avatar name={l.agent} size={32} />
-                                    <div style={{ minWidth: 0 }}>
+                                    <div style={{ minWidth: 0, flex: 1 }}>
                                       <div style={{ fontSize: 14, fontWeight: 700, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.agent}</div>
                                       {l.at && <div style={{ fontSize: 11.5, color: G.textTertiary }}>{l.at}</div>}
                                     </div>
+                                    {isMobile && canEdit(l) && <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove ${l.agent}'s ${r.name} connection?`)) post({ action: 'tab-delete', tab: 'connections', row: l.row }); }} title="Remove" disabled={busy}
+                                      style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 4px", fontFamily: ff }}>✕</button>}
                                   </div>
-                                  {isMobile && (canEdit(l) ? <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove ${l.agent}'s ${r.name} connection?`)) post({ action: 'tab-delete', tab: 'connections', row: l.row }); }} title="Remove" disabled={busy}
-                                    style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 4px", fontFamily: ff }}>✕</button> : <span />)}
                                   {field('Contact', l.contact, 'contact', 'Add a name')}
                                   {field('Role', l.role, 'role', 'Add a role')}
                                   {field('Notes', l.notes, 'notes', 'Add a note')}
@@ -14063,8 +14076,10 @@ function App() {
   // Reflect the current view in the browser tab title.
   useEffect(() => {
     const brand = domain === 'all' ? 'Milk & Honey' : `Milk & Honey ${domain === 'sports' ? 'Sports' : 'Music'}`;
-    document.title = (view === 'detail' && selected) ? `${selected.name} — ${brand}` : brand;
-  }, [view, selected, domain]);
+    const pg = domain === 'sports' ? sportsPage : domain === 'music' ? musicPage : '';
+    const pageName = pg && pg !== 'home' && pg !== 'roster' ? USAGE_PAGE_NAMES[pg] : '';
+    document.title = (view === 'detail' && selected) ? `${selected.name} — ${brand}` : pageName ? `${pageName} — ${brand}` : brand;
+  }, [view, selected, domain, sportsPage, musicPage]);
   // Hosted share-link state (generated from the current filtered roster via the Export menu).
   const [shareRosterUrl, setShareRosterUrl] = useState(null);
   const [shareRosterLoading, setShareRosterLoading] = useState(false);

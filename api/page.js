@@ -99,7 +99,9 @@ module.exports = async (req, res) => {
   }
 
   // Crawlers: emit OG tags for the public client/athlete (defaults if not found/private).
-  const isSport = !!req.query.sport;
+  // Bare /sports (sidebar links like /sports?page=connections) lands here
+  // through the /:slug rewrite — it's the sports app, not a client page.
+  const isSport = !!req.query.sport || slug === 'sports';
   const siteName = isSport ? 'Milk & Honey Sports' : 'Milk & Honey Music';
   let title = siteName, description = `${siteName} roster`, image = OG_IMAGE;
   try {
