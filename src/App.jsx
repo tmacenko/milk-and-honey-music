@@ -9614,7 +9614,7 @@ function ConnectionsPage({ isMobile, user }) {
                 {shown.length === 0 && <tr><td colSpan={isMobile ? 2 : 3} style={{ padding: "28px 16px", color: G.textTertiary, fontSize: 13, textAlign: "center" }}>No teams match.</td></tr>}
                 {shown.map(r => {
                   const none = !r.links.length, isOpen = open === r.name;
-                  const mine = r.links.find(l => me && l.agent.toLowerCase() === me.toLowerCase());
+                  const agents = [...new Map(r.links.map(l => [l.agent.toLowerCase(), l])).values()];
                   return (<React.Fragment key={r.name}>
                     <tr onClick={() => { setOpen(isOpen ? '' : r.name); setForm({ contact: '', role: '', notes: '' }); }} style={{ cursor: "pointer", background: isOpen ? G.surfaceRaised : "transparent", opacity: none && !isOpen ? 0.55 : 1 }}
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = isOpen ? G.surfaceRaised : "transparent"}>
@@ -9631,17 +9631,17 @@ function ConnectionsPage({ isMobile, user }) {
                       <td style={td({ whiteSpace: "normal" })}>
                         {none ? <span style={{ color: G.textTertiary }}>—</span> : isMobile ? (
                           <span style={{ display: "inline-flex", alignItems: "center" }}>
-                            {r.links.slice(0, 4).map((l, i) => (
+                            {agents.slice(0, 4).map((l, i) => (
                               <span key={l.row} style={{ marginLeft: i ? -6 : 0, borderRadius: "50%", boxShadow: `0 0 0 2px ${G.surface}` }}><Avatar name={l.agent} size={24} /></span>
                             ))}
-                            {r.links.length === 1 && <span style={{ marginLeft: 8, color: G.text, fontWeight: 600, fontSize: 12.5 }}>{r.links[0].agent.split(' ')[0]}</span>}
-                            {r.links.length > 4 && <span style={{ marginLeft: 6, color: G.textSecondary, fontSize: 12 }}>+{r.links.length - 4}</span>}
+                            {agents.length === 1 && <span style={{ marginLeft: 8, color: G.text, fontWeight: 600, fontSize: 12.5 }}>{agents[0].agent.split(' ')[0]}</span>}
+                            {agents.length > 4 && <span style={{ marginLeft: 6, color: G.textSecondary, fontSize: 12 }}>+{agents.length - 4}</span>}
                           </span>
                         ) : (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                            {r.links.map(l => (
+                            {agents.map(l => (
                               <span key={l.row} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: G.text, fontWeight: 600 }}>
-                                <Avatar name={l.agent} size={20} />{l.agent}
+                                <Avatar name={l.agent} size={20} />{l.agent}{r.links.filter(x => x.agent === l.agent).length > 1 ? <span style={{ color: G.textTertiary, fontWeight: 500 }}>×{r.links.filter(x => x.agent === l.agent).length}</span> : null}
                               </span>
                             ))}
                           </span>
@@ -9692,7 +9692,7 @@ function ConnectionsPage({ isMobile, user }) {
                                 </div>
                               );
                             })}
-                            {me && !mine && (
+                            {me && (
                               <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px dashed ${G.surfaceBorder}`, borderRadius: 12, padding: isMobile ? "12px 14px" : "12px 16px", display: "grid", gridTemplateColumns: isMobile ? "1fr" : "220px 1fr 1fr 2fr auto", gap: isMobile ? 10 : 20, alignItems: "end" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                   <Avatar name={me} size={32} />
