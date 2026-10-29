@@ -9686,13 +9686,9 @@ function ConnectionsPage({ isMobile, user }) {
                       {!isMobile && <td style={td()}>{r.conf || '—'}</td>}
                       <td style={td({ whiteSpace: "normal" })}>
                         {none ? <span style={{ color: G.textTertiary }}>—</span> : isMobile ? (
-                          <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {agents.slice(0, 3).map(l => (
-                              <span key={l.row} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: G.text, fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap" }}>
-                                <Avatar name={l.agent} size={20} />{l.agent.split(' ')[0]}
-                              </span>
-                            ))}
-                            {agents.length > 3 && <span style={{ color: G.textSecondary, fontSize: 12, paddingLeft: 26 }}>+{agents.length - 3} more</span>}
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                            {agents.slice(0, 5).map(l => <Avatar key={l.row} name={l.agent} size={26} />)}
+                            {agents.length > 5 && <span style={{ color: G.textSecondary, fontSize: 12, marginLeft: 2 }}>+{agents.length - 5}</span>}
                           </span>
                         ) : (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
