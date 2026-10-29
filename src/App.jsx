@@ -14933,6 +14933,9 @@ function App() {
                 {authBtnMobile}
               </div>
               {/* Row 2: domain + view + sort + layout + search — one line (scrolls if tight) */}
+              {/* Staff on a sidebar page: the ☰ drawer already holds the
+                  division toggle and page list, so no second strip. */}
+              {!rosterControlsOn && (navActive || musicNavActive) && isAdmin ? <div style={{ height: 2 }} /> : (
               <div style={{ padding: "0 16px 12px" }}>
                 {!rosterControlsOn ? ((navActive || musicNavActive) ? mobileNavStrip : <div style={{ display: "flex", gap: 4, alignItems: "center" }}>{domainToggle}</div>) : mobileSearchOpen ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, background: G.surfaceRaised, border: `1px solid ${G.green}`, borderRadius: 12, padding: "10px 14px" }}>
@@ -14959,6 +14962,7 @@ function App() {
                   </div>
                 )}
               </div>
+              )}
               <div style={{ height: 1, background: G.surfaceBorder }} />
             </div>
           )
