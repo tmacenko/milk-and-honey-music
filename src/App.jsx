@@ -5237,16 +5237,16 @@ function ThisWeekendModule({ athletes, user, isMobile, onOpenAthlete, fullPage, 
         const done = ev.state === 'post';
         const day = ev.date.toDateString() === todayKey ? 'Today' : ev.date.toLocaleDateString('en-US', { weekday: 'short' });
         return (
-          <div key={ev.id} style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 12, padding: "10px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, flexDirection: isMobile ? "column" : "row" }}>
-            <div style={{ width: 92, flexShrink: 0 }}>
+          <div key={ev.id} style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 6 : 12, padding: "10px 0", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, flexDirection: isMobile ? "column" : "row" }}>
+            <div style={{ width: isMobile ? "auto" : 92, flexShrink: 0 }}>
               {live ? (
                 <div style={{ fontSize: 12, fontWeight: 700, color: G.yellow }}>LIVE · {ev.statusDetail}</div>
               ) : done ? (
                 <div style={{ fontSize: 12, fontWeight: 700, color: G.textTertiary }}>Final</div>
               ) : (
                 <>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: G.text }}>{day} · {ev.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</div>
-                  {ev.network && <div style={{ fontSize: 10.5, color: G.textTertiary, marginTop: 1 }}>{ev.network}</div>}
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: G.text, whiteSpace: "nowrap" }}>{day} · {ev.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}{isMobile && ev.network ? <span style={{ fontWeight: 500, color: G.textTertiary }}> · {ev.network}</span> : null}</div>
+                  {!isMobile && ev.network && <div style={{ fontSize: 10.5, color: G.textTertiary, marginTop: 1 }}>{ev.network}</div>}
                 </>
               )}
             </div>
@@ -5876,7 +5876,7 @@ function SportsDashboard({ athletes, isMobile, onOpenAthlete, onGoRoster, onShow
           )}
           {s.incomplete.length > 0 && (
             <div onClick={() => setShowIncomplete(true)}
-              style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
+              style={{ fontSize: 13, color: G.yellow, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
               Incomplete profiles: {s.incomplete.length} players
             </div>
           )}
@@ -6417,7 +6417,7 @@ function MusicDashboard({ clients, isMobile, user, onOpenClient, onGoRoster, onF
           )}
           {s.incomplete.length > 0 && (
             <div onClick={() => setShowIncomplete(true)}
-              style={{ fontSize: 13, color: G.red, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
+              style={{ fontSize: 13, color: G.yellow, fontWeight: 600, cursor: "pointer", padding: "6px 0" }}>
               Incomplete profiles: {s.incomplete.length} clients
             </div>
           )}
@@ -7882,12 +7882,16 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
           <div className="mh-hscroll" style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%" }}>
               <thead><tr>
+                {isMobile ? (<>
+                  {th('name', 'Player')}{th(hsOnly ? 'commit' : 'team', hsOnly ? 'Commit' : 'School', true)}{hsOnly ? th('stars', '★', true) : th('prod', 'Prod', true)}
+                </>) : (<>
                 {th('name', 'Player', false, { position: "sticky", left: 0, zIndex: 2 })}{th('pos', 'Pos')}{th('yr', 'Class')}{th('team', 'School')}
                 {th('ht', 'Ht', true)}{th('wt', 'Wt', true)}{th('home', 'Hometown')}{th('stars', '★', true)}
                 {showRank && th('rank', 'Natl rank', true)}
                 {!hsOnly && th('prod', 'Prod %ile', true)}
                 {hsOnly && th('commit', 'Committed to')}
                 {shownStatCols.map(k => th('stat:' + k, PX_COL[k] || k, true, { borderLeft: k === shownStatCols[0] ? `1px solid ${G.surfaceBorder}` : undefined }))}
+                </>)}
               </tr></thead>
               <tbody>
                 {results.slice(0, shown).map((p, i, arr) => {
@@ -7900,6 +7904,13 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
                     <tr key={p.id} onClick={() => setOpen(p)} style={{ cursor: "pointer" }}
                       onMouseEnter={e => { if (!isOpen) [...e.currentTarget.cells].forEach(c => { c.style.background = G.surfaceRaised; }); }}
                       onMouseLeave={e => { [...e.currentTarget.cells].forEach(c => { c.style.background = rowBg; }); }}>
+                      {isMobile ? (<>
+                        <td style={{ ...td, whiteSpace: "normal" }}>{mIdent({ name: p.name, caption: [p.pos, p.isHs ? `HS '${String(p.hsClass).slice(2)}` : PX_CLASS[Math.min(p.yr || 0, 5)], pxHt(p.ht), p.wt ? `${p.wt} lbs` : '', p.isHs && p.city ? `${p.city}, ${p.st}` : ''].filter(Boolean).join(' · '), photo: p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`, faceZoom: true, tag })}</td>
+                        <td style={{ ...td, textAlign: "right" }} title={p.isHs ? (p.commit || '') : (p.team || '')}>{(p.isHs ? p.commitLogo : p.logo) ? <TeamLogo url={p.isHs ? p.commitLogo : p.logo} size={26} /> : <span style={{ fontSize: 11.5, color: G.textTertiary }}>{p.isHs ? 'Open' : (p.team || '—')}</span>}</td>
+                        {hsOnly
+                          ? <td style={{ ...td, textAlign: "right", color: p.stars >= 4 ? G.green : G.textSecondary, fontWeight: p.stars ? 700 : 400 }}>{p.stars || '—'}</td>
+                          : <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: p.prodPct >= 90 ? G.green : p.prodPct ? G.text : G.textTertiary, fontWeight: p.prodPct ? 700 : 400 }}>{p.prodPct || '—'}</td>}
+                      </>) : (<>
                       <td style={{ ...td, color: G.text, fontWeight: 700, position: "sticky", left: 0, zIndex: 1 }}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
                           <Avatar name={p.name} photoUrl={p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`} size={26} faceZoom />
@@ -7925,6 +7936,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
                         const n = v ? fmtStat(v[data.S[k]]) : 0;
                         return <td key={k} style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: n ? G.text : G.textTertiary, fontWeight: n ? 700 : 400, borderLeft: ci === 0 ? `1px solid ${G.surfaceBorder}` : undefined }}>{n || '—'}</td>;
                       })}
+                      </>)}
                     </tr>
                   );
                 })}
@@ -9263,6 +9275,21 @@ function useProspectViewer({ user, athletes, staff, isMobile }) {
   return { data, ops, tagFor, open, setOpen, setTeam, overlays, status };
 }
 
+// Phone tables collapse to one identity cell (photo, name, caption) plus one
+// or two right-aligned values — everything else is a tap away on the profile.
+const mIdent = ({ name, caption, photo, faceZoom, tag }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+    <Avatar name={name} photoUrl={photo || null} size={32} faceZoom={faceZoom} />
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: G.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
+        {tag ? <span style={{ fontSize: 10, fontWeight: 700, color: G.green, background: G.greenSubtle, borderRadius: 99, padding: "2px 7px", flexShrink: 0 }}>{tag}</span> : null}
+      </div>
+      {caption ? <div style={{ fontSize: 11.5, color: G.textTertiary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{caption}</div> : null}
+    </div>
+  </div>
+);
+const mNum = { textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 const pxPageWrap = (isMobile) => ({ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "20px 16px 80px" : "28px 28px 60px" });
 const pxTitle = (isMobile, text, sub) => (
   <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
@@ -9495,15 +9522,29 @@ function TeamsPage({ isMobile, user, athletes, staff }) {
           <div className="mh-hscroll" style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
+                {isMobile ? (<>
+                  {pxHeadCell(sort, setSort, 'name', 'Team', false, 'asc')}{pxHeadCell(sort, setSort, 'sp', 'SP+', true, 'asc')}{pxHeadCell(sort, setSort, 'retPct', 'Ret. prod', true)}
+                </>) : (<>
                 {pxHeadCell(sort, setSort, 'name', 'Team', false, 'asc')}{pxHeadCell(sort, setSort, 'conf', 'Conference', false, 'asc')}{pxHeadCell(sort, setSort, 'tier', 'Level', false, 'asc')}
                 {pxHeadCell(sort, setSort, 'sp', 'SP+', true, 'asc')}{pxHeadCell(sort, setSort, 'talentRank', 'Talent', true, 'asc')}{pxHeadCell(sort, setSort, 'retPct', 'Returning prod.', true)}
                 {pxHeadCell(sort, setSort, 'roster', 'Roster', true)}{pxHeadCell(sort, setSort, 'commits', `'${String(data.hsClass).slice(2)} commits`, true)}
                 {pxHeadCell(sort, setSort, 'pin', 'Portal in', true)}{pxHeadCell(sort, setSort, 'pout', 'Portal out', true)}{pxHeadCell(sort, setSort, 'coach', 'Head coach', false, 'asc')}
+                </>)}
               </tr></thead>
               <tbody>
                 {shown.map(r => (
                   <tr key={r.name} onClick={() => V.setTeam(r.name)} style={{ cursor: "pointer" }}
                     onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    {isMobile ? (<>
+                      <td style={td(false, { color: G.text, fontWeight: 700 })}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                          {r.logo && <TeamLogo url={r.logo} size={26} />}
+                          <span><span style={{ display: "block" }}>{r.name}</span><span style={{ display: "block", fontSize: 11.5, fontWeight: 400, color: G.textTertiary }}>{[r.conf, r.coach].filter(Boolean).join(' · ')}</span></span>
+                        </span>
+                      </td>
+                      <td style={td(true, { color: G.text, fontWeight: r.sp ? 700 : 400 })}>{r.sp ? `#${r.sp}` : '—'}</td>
+                      <td style={td(true)}>{r.retPct ? `${r.retPct}%` : '—'}</td>
+                    </>) : (<>
                     <td style={td(false, { color: G.text, fontWeight: 700 })}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{r.logo && <TeamLogo url={r.logo} size={20} />}{r.name}</span></td>
                     <td style={td()}>{r.conf || '—'}</td>
                     <td style={td()}>{PX_TIER_NAME[r.tier] || '—'}</td>
@@ -9515,6 +9556,7 @@ function TeamsPage({ isMobile, user, athletes, staff }) {
                     <td style={td(true)}>{r.pin || '—'}</td>
                     <td style={td(true)}>{r.pout || '—'}</td>
                     <td style={td()}>{r.coach ? `${r.coach}${r.record ? ` (${r.record})` : ''}` : '—'}</td>
+                    </>)}
                   </tr>
                 ))}
               </tbody>
@@ -9829,9 +9871,13 @@ function PortalPage({ isMobile, user, athletes, staff }) {
         <div className="mh-hscroll" style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead><tr>
+              {isMobile ? (<>
+                {pxHeadCell(sort, setSort, 'name', 'Player', false, 'asc')}{pxHeadCell(sort, setSort, 'origin', 'From', true, 'asc')}{pxHeadCell(sort, setSort, 'dest', 'To', true, 'asc')}
+              </>) : (<>
               {pxHeadCell(sort, setSort, 'name', 'Player', false, 'asc')}{pxHeadCell(sort, setSort, 'pos', 'Pos', false, 'asc')}{pxHeadCell(sort, setSort, 'origin', 'From', false, 'asc')}
               {pxHeadCell(sort, setSort, 'dest', 'To', false, 'asc')}{pxHeadCell(sort, setSort, 'stars', '★', true)}{pxHeadCell(sort, setSort, 'prod', 'Prod %ile', true)}
               {pxHeadCell(sort, setSort, 'date', 'Entered', false)}{pxHeadCell(sort, setSort, 'elig', 'Eligibility', false, 'asc')}
+              </>)}
             </tr></thead>
             <tbody>
               {sorted.slice(0, limit).map((e, i) => {
@@ -9839,6 +9885,11 @@ function PortalPage({ isMobile, user, athletes, staff }) {
                 return (
                   <tr key={i} onClick={() => e.pl && V.setOpen(e.pl)} style={{ cursor: e.pl ? "pointer" : "default" }} title={e.pl ? 'Open profile' : 'Not matched to a current roster player'}
                     onMouseEnter={ev => { if (e.pl) ev.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={ev => { ev.currentTarget.style.background = "transparent"; }}>
+                    {isMobile ? (<>
+                      <td style={td(false, { whiteSpace: "normal" })}>{mIdent({ name: e.name, caption: [e.pos, e.stars ? `${e.stars}★` : '', e.prod ? `${e.prod} %ile` : ''].filter(Boolean).join(' · '), photo: e.pl ? `https://a.espncdn.com/i/headshots/college-football/players/full/${e.pl.id}.png` : null, faceZoom: true, tag })}</td>
+                      <td style={td(true)} title={e.origin || ''}>{e.fromLogo ? <TeamLogo url={e.fromLogo} size={26} /> : <span style={{ color: G.textTertiary }}>—</span>}</td>
+                      <td style={td(true)} title={e.dest || ''}>{e.elig === 'Withdrawn' ? <span style={{ fontSize: 11.5, color: G.textTertiary }}>Withdrew</span> : e.toLogo ? <TeamLogo url={e.toLogo} size={26} /> : <span style={{ fontSize: 11.5, color: G.textTertiary }}>{e.dest || 'Open'}</span>}</td>
+                    </>) : (<>
                     <td style={td(false, { color: G.text, fontWeight: 700 })}>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                         <Avatar name={e.name} photoUrl={e.pl ? `https://a.espncdn.com/i/headshots/college-football/players/full/${e.pl.id}.png` : null} size={24} faceZoom />
@@ -9853,6 +9904,7 @@ function PortalPage({ isMobile, user, athletes, staff }) {
                     <td style={td(true, { color: e.prod >= 90 ? G.green : e.prod ? G.text : G.textTertiary, fontWeight: e.prod ? 700 : 400 })} title={e.pl ? pxScoreTitle(e.pl) : ''}>{e.prod || '—'}</td>
                     <td style={td()}>{e.date ? new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
                     <td style={td()}>{e.elig || '—'}</td>
+                    </>)}
                   </tr>
                 );
               })}
@@ -9987,7 +10039,8 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
           prod: r.p.prodPct || 0, sp: !r.p.isHs && r.p.sp ? r.p.sp : 999, prefs: prefBy[r.p.id] || '', status: statusRank(r.p),
         })[c]) : base;
         const isClients = listTab === 'clients';
-        const heads = [['name', 'Player', false, 'asc'], ['pos', 'Pos', false, 'asc'], ['class', 'Class'], ['school', 'School', false, 'asc'], ...(isClients ? [['agent', 'Agent(s)', false, 'asc']] : []), ['prod', 'Prod %ile', true], ['sp', 'Team SP+', true, 'asc'], ['prefs', 'Priorities'], ['status', 'Status']];
+        const heads = isMobile ? [['name', 'Player', false, 'asc'], ['school', 'School', true, 'asc'], ['prod', 'Prod', true]]
+          : [['name', 'Player', false, 'asc'], ['pos', 'Pos', false, 'asc'], ['class', 'Class'], ['school', 'School', false, 'asc'], ...(isClients ? [['agent', 'Agent(s)', false, 'asc']] : []), ['prod', 'Prod %ile', true], ['sp', 'Team SP+', true, 'asc'], ['prefs', 'Priorities'], ['status', 'Status']];
         return (
           <div style={{ marginTop: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -10015,6 +10068,11 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
                         return (
                           <tr key={p.id} onClick={() => choose(p)} style={{ cursor: "pointer" }}
                             onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                            {isMobile ? (<>
+                              <td style={{ ...td, whiteSpace: "normal" }}>{mIdent({ name: p.name, caption: [p.pos, classOf(p), inPortal(p) ? 'In portal' : pxLeaving(p) ? 'Final year' : ''].filter(Boolean).join(' · '), photo: (a && a.photoUrl) || photo(p), faceZoom: true })}</td>
+                              <td style={{ ...td, textAlign: "right" }} title={schoolOf(p) || ''}>{logo ? <TeamLogo url={logo} size={26} /> : <span style={{ color: G.textTertiary }}>—</span>}</td>
+                              <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: p.prodPct >= 90 ? G.green : p.prodPct ? G.text : G.textTertiary, fontWeight: p.prodPct ? 700 : 400 }}>{p.prodPct || '—'}</td>
+                            </>) : (<>
                             <td style={{ ...td, color: G.text, fontWeight: 700 }}>
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}><Avatar name={p.name} photoUrl={(a && a.photoUrl) || photo(p)} size={26} faceZoom />{p.name}</span>
                             </td>
@@ -10026,6 +10084,7 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
                             <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{!p.isHs && p.sp ? `#${p.sp}` : '—'}</td>
                             <td style={{ ...td, color: prefBy[p.id] ? G.text : G.textTertiary }}>{prefBy[p.id] ? `Set by ${prefBy[p.id]}` : 'Defaults'}</td>
                             <td style={td}>{inPortal(p) ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.red }}>In portal</span> : pxLeaving(p) ? <span style={{ fontSize: 11.5, fontWeight: 700, color: G.yellow }}>Final year</span> : <span style={{ color: G.textTertiary }}>—</span>}</td>
+                            </>)}
                           </tr>
                         );
                       })}
@@ -11139,7 +11198,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead><tr>
-                  {[['player', 'Player'], ['position', 'Position'], ['school', 'School'], ['class', 'Class'], ['agent', 'Agent'], ['rating', 'Rating'], ['profile', recTab === 'College' && px ? `${px.season} production` : 'Profile'], ['stage', 'Stage']].map(([key, h]) => (
+                  {(isMobile ? [['player', 'Player'], ['stage', 'Stage']] : [['player', 'Player'], ['position', 'Position'], ['school', 'School'], ['class', 'Class'], ['agent', 'Agent'], ['rating', 'Rating'], ['profile', recTab === 'College' && px ? `${px.season} production` : 'Profile'], ['stage', 'Stage']]).map(([key, h]) => (
                     <th key={key}
                       onClick={() => { if (key === 'profile') return; if (sortCol === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(key === 'rating' ? 'desc' : 'asc'); } }}
                       style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
@@ -11154,6 +11213,9 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                       <tr key={r._row} onClick={() => setPanelRow(r)} style={{ cursor: "pointer" }}
                         onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                        {isMobile ? (
+                          <td style={{ ...td, maxWidth: "none" }}>{mIdent({ name: cellOf(r, nameI), caption: [cellOf(r, posI).toUpperCase(), cellOf(r, schoolI), prettyRating(cellOf(r, rankI))].filter(Boolean).join(' · '), photo: cellOf(r, photoI) })}</td>
+                        ) : (<>
                         <td style={{ ...td, color: G.text, fontWeight: 600 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <Avatar name={cellOf(r, nameI)} photoUrl={cellOf(r, photoI)} size={28} />
@@ -11182,7 +11244,8 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                             return pxKeyLine(m, m.season, px.S) || <span style={{ color: G.textTertiary }}>No stats yet</span>;
                           })()}
                         </td>
-                        <td style={{ ...td, overflow: "visible", maxWidth: "none" }} onClick={e => e.stopPropagation()}>
+                        </>)}
+                        <td style={{ ...td, overflow: "visible", maxWidth: "none", textAlign: isMobile ? "right" : "left" }} onClick={e => e.stopPropagation()}>
                           {(() => {
                             const stage = cellOf(r, stageI).trim();
                             const busy = stageBusy === r._row || promoting === cellOf(r, nameI).trim();
@@ -12936,10 +12999,10 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
           <div className="mh-hscroll" style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
-                {[['player', 'Player'], ['position', 'Position'], ['team', 'Team'], ['yearly', '$ / Year'], ['years', 'Years'], ['total', 'Total'], ['gtd', 'Guaranteed']].map(([key, h]) => (
+                {(isMobile ? [['player', 'Player'], ['yearly', '$ / Year']] : [['player', 'Player'], ['position', 'Position'], ['team', 'Team'], ['yearly', '$ / Year'], ['years', 'Years'], ['total', 'Total'], ['gtd', 'Guaranteed']]).map(([key, h]) => (
                   <th key={key}
                     onClick={() => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(['yearly', 'total', 'gtd'].includes(key) ? 'desc' : 'asc'); } }}
-                    style={{ textAlign: "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
+                    style={{ textAlign: isMobile && key === 'yearly' ? "right" : "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
                     {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
                   </th>
                 ))}
@@ -12953,6 +13016,10 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
                     <tr key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      {isMobile ? (<>
+                        <td style={{ ...td, maxWidth: "none" }}>{mIdent({ name: a.name, caption: [a.position, d.team].filter(Boolean).join(' · '), photo: a.photoUrl })}</td>
+                        <td style={{ ...td, ...mNum, color: G.green, fontWeight: 700, fontSize: 14 }}>{fmt(d.yearly)}</td>
+                      </>) : (<>
                       <td style={{ ...td, color: G.text, fontWeight: 600 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <Avatar name={a.name} photoUrl={a.photoUrl} size={30} />
@@ -12965,6 +13032,7 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
                       <td style={td}>{d.manual ? '—' : (a.contractYears || '—')}</td>
                       <td style={td}>{tot ? fmt(tot) : '—'}</td>
                       <td style={td}>{gtd ? fmt(gtd) : '—'}</td>
+                      </>)}
                     </tr>
                   );
                 })}
@@ -13168,9 +13236,9 @@ function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
           <div className="mh-hscroll" style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
-                {COLS.map(([key, h]) => (
+                {(isMobile ? [['player', 'Player'], ['sizes', 'Sizes']] : COLS).map(([key, h]) => (
                   <th key={key}
-                    onClick={() => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir('asc'); } }}
+                    onClick={() => { if (key === 'sizes') return; if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir('asc'); } }}
                     style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
                     {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
                   </th>
@@ -13183,6 +13251,19 @@ function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
                     <tr key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      {isMobile ? (<>
+                        <td style={{ ...td, width: "40%" }}>{mIdent({ name: a.name, caption: a.position || '', photo: a.photoUrl })}</td>
+                        <td style={{ ...td, padding: "8px 14px" }}>
+                          <div style={{ display: "flex", gap: 12 }}>
+                            {COLS.slice(1, 6).map(([key, h, fn]) => (
+                              <div key={key} style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{h}</div>
+                                <div style={{ fontSize: 12.5, fontWeight: 700, color: String(fn(a) || '').trim() ? G.text : G.textTertiary }}>{String(fn(a) || '').trim() || '—'}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </>) : (<>
                       <td style={{ ...td, color: G.text, fontWeight: 600, maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <Avatar name={a.name} photoUrl={a.photoUrl} size={28} />
@@ -13191,6 +13272,7 @@ function GiftingPage({ isMobile, athletes, staff, onOpenAthlete }) {
                       </td>
                       {COLS.slice(1, 8).map(([key, , fn]) => <td key={key} style={td}>{String(fn(a) || '').trim() || '—'}</td>)}
                       <td style={{ ...td, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }} title={a.address || ''}>{String(a.address || '').trim() || '—'}</td>
+                      </>)}
                     </tr>
                   );
                 })}
