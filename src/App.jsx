@@ -11214,7 +11214,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                         onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         {isMobile ? (
-                          <td style={{ ...td, maxWidth: "none" }}>{mIdent({ name: cellOf(r, nameI), caption: [cellOf(r, posI).toUpperCase(), cellOf(r, schoolI), prettyRating(cellOf(r, rankI))].filter(Boolean).join(' · '), photo: cellOf(r, photoI) })}</td>
+                          <td style={{ ...td, width: "100%", maxWidth: 0 }}>{mIdent({ name: cellOf(r, nameI), caption: [cellOf(r, posI).toUpperCase(), cellOf(r, schoolI), prettyRating(cellOf(r, rankI))].filter(Boolean).join(' · '), photo: cellOf(r, photoI) })}</td>
                         ) : (<>
                         <td style={{ ...td, color: G.text, fontWeight: 600 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -11245,7 +11245,7 @@ function RecruitingBoard({ isMobile, user, athletes, staff, onPromoted }) {
                           })()}
                         </td>
                         </>)}
-                        <td style={{ ...td, overflow: "visible", maxWidth: "none", textAlign: isMobile ? "right" : "left" }} onClick={e => e.stopPropagation()}>
+                        <td style={{ ...td, overflow: "visible", maxWidth: "none", textAlign: isMobile ? "right" : "left", paddingRight: isMobile ? 12 : 16 }} onClick={e => e.stopPropagation()}>
                           {(() => {
                             const stage = cellOf(r, stageI).trim();
                             const busy = stageBusy === r._row || promoting === cellOf(r, nameI).trim();
