@@ -7905,7 +7905,7 @@ function ProspectSearch({ isMobile, user, athletes, staff }) {
                       onMouseEnter={e => { if (!isOpen) [...e.currentTarget.cells].forEach(c => { c.style.background = G.surfaceRaised; }); }}
                       onMouseLeave={e => { [...e.currentTarget.cells].forEach(c => { c.style.background = rowBg; }); }}>
                       {isMobile ? (<>
-                        <td style={{ ...td, whiteSpace: "normal" }}>{mIdent({ name: p.name, caption: [p.pos, p.isHs ? `HS '${String(p.hsClass).slice(2)}` : PX_CLASS[Math.min(p.yr || 0, 5)], pxHt(p.ht), p.wt ? `${p.wt} lbs` : '', p.isHs && p.city ? `${p.city}, ${p.st}` : ''].filter(Boolean).join(' · '), photo: p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`, faceZoom: true, tag })}</td>
+                        <td style={{ ...td, whiteSpace: "normal", width: "100%", maxWidth: 0 }}>{mIdent({ name: p.name, caption: [p.pos, p.isHs ? `HS '${String(p.hsClass).slice(2)}` : PX_CLASS[Math.min(p.yr || 0, 5)], pxHt(p.ht), p.wt ? `${p.wt} lbs` : '', p.isHs && p.city ? `${p.city}, ${p.st}` : ''].filter(Boolean).join(' · '), photo: p.isHs ? null : `https://a.espncdn.com/i/headshots/college-football/players/full/${p.id}.png`, faceZoom: true, tag })}</td>
                         <td style={{ ...td, textAlign: "right" }} title={p.isHs ? (p.commit || '') : (p.team || '')}>{(p.isHs ? p.commitLogo : p.logo) ? <TeamLogo url={p.isHs ? p.commitLogo : p.logo} size={26} /> : <span style={{ fontSize: 11.5, color: G.textTertiary }}>{p.isHs ? 'Open' : (p.team || '—')}</span>}</td>
                         {hsOnly
                           ? <td style={{ ...td, textAlign: "right", color: p.stars >= 4 ? G.green : G.textSecondary, fontWeight: p.stars ? 700 : 400 }}>{p.stars || '—'}</td>
@@ -9886,7 +9886,7 @@ function PortalPage({ isMobile, user, athletes, staff }) {
                   <tr key={i} onClick={() => e.pl && V.setOpen(e.pl)} style={{ cursor: e.pl ? "pointer" : "default" }} title={e.pl ? 'Open profile' : 'Not matched to a current roster player'}
                     onMouseEnter={ev => { if (e.pl) ev.currentTarget.style.background = G.surfaceRaised; }} onMouseLeave={ev => { ev.currentTarget.style.background = "transparent"; }}>
                     {isMobile ? (<>
-                      <td style={td(false, { whiteSpace: "normal" })}>{mIdent({ name: e.name, caption: [e.pos, e.stars ? `${e.stars}★` : '', e.prod ? `${e.prod} %ile` : ''].filter(Boolean).join(' · '), photo: e.pl ? `https://a.espncdn.com/i/headshots/college-football/players/full/${e.pl.id}.png` : null, faceZoom: true, tag })}</td>
+                      <td style={td(false, { whiteSpace: "normal", width: "100%", maxWidth: 0 })}>{mIdent({ name: e.name, caption: [e.pos, e.stars ? `${e.stars}★` : '', e.prod ? `${e.prod} %ile` : ''].filter(Boolean).join(' · '), photo: e.pl ? `https://a.espncdn.com/i/headshots/college-football/players/full/${e.pl.id}.png` : null, faceZoom: true, tag })}</td>
                       <td style={td(true)} title={e.origin || ''}>{e.fromLogo ? <TeamLogo url={e.fromLogo} size={26} /> : <span style={{ color: G.textTertiary }}>—</span>}</td>
                       <td style={td(true)} title={e.dest || ''}>{e.elig === 'Withdrawn' ? <span style={{ fontSize: 11.5, color: G.textTertiary }}>Withdrew</span> : e.toLogo ? <TeamLogo url={e.toLogo} size={26} /> : <span style={{ fontSize: 11.5, color: G.textTertiary }}>{e.dest || 'Open'}</span>}</td>
                     </>) : (<>
@@ -10069,7 +10069,7 @@ function TeamFitPage({ isMobile, user, athletes, staff }) {
                           <tr key={p.id} onClick={() => choose(p)} style={{ cursor: "pointer" }}
                             onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                             {isMobile ? (<>
-                              <td style={{ ...td, whiteSpace: "normal" }}>{mIdent({ name: p.name, caption: [p.pos, classOf(p), inPortal(p) ? 'In portal' : pxLeaving(p) ? 'Final year' : ''].filter(Boolean).join(' · '), photo: (a && a.photoUrl) || photo(p), faceZoom: true })}</td>
+                              <td style={{ ...td, whiteSpace: "normal", width: "100%", maxWidth: 0 }}>{mIdent({ name: p.name, caption: [p.pos, classOf(p), inPortal(p) ? 'In portal' : pxLeaving(p) ? 'Final year' : ''].filter(Boolean).join(' · '), photo: (a && a.photoUrl) || photo(p), faceZoom: true })}</td>
                               <td style={{ ...td, textAlign: "right" }} title={schoolOf(p) || ''}>{logo ? <TeamLogo url={logo} size={26} /> : <span style={{ color: G.textTertiary }}>—</span>}</td>
                               <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: p.prodPct >= 90 ? G.green : p.prodPct ? G.text : G.textTertiary, fontWeight: p.prodPct ? 700 : 400 }}>{p.prodPct || '—'}</td>
                             </>) : (<>
@@ -13017,7 +13017,7 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
                       onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       {isMobile ? (<>
-                        <td style={{ ...td, maxWidth: "none" }}>{mIdent({ name: a.name, caption: [a.position, d.team].filter(Boolean).join(' · '), photo: a.photoUrl })}</td>
+                        <td style={{ ...td, width: "100%", maxWidth: 0 }}>{mIdent({ name: a.name, caption: [a.position, d.team].filter(Boolean).join(' · '), photo: a.photoUrl })}</td>
                         <td style={{ ...td, ...mNum, color: G.green, fontWeight: 700, fontSize: 14 }}>{fmt(d.yearly)}</td>
                       </>) : (<>
                       <td style={{ ...td, color: G.text, fontWeight: 600 }}>
