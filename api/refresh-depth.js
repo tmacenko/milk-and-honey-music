@@ -317,6 +317,7 @@ module.exports = async (req, res) => {
     const fetchErrors = [];
     let timedOut = false;
     let cellsWritten = 0;
+    const psKeys = new Set(); // practice-squad players seen on Ourlads this run
     if (wants('depth')) {
     for (const p of nflPlayers) {
       const team = String(p['Team'] || '').toLowerCase().trim();
@@ -338,13 +339,15 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Fetch each depth chart and collect matches.
+    // Fetch each depth chart and collect matches. Practice-squad players
+    // get rank 0 / pos PS (no depth tag); the ESPN module below turns that
+    // into the "Practice squad" roster status since ESPN reports them Active.
     const tasks = Object.entries(byUrl).map(([url, players]) => async () => {
       try {
         const chart = parseDepthChart(await fetchText(url));
         for (const p of players) {
           const hit = chart[p.key];
-          if (hit) matches.push({ name: p.name, rank: hit.rank, pos: hit.pos });
+          if (hit) { matches.push({ name: p.name, rank: hit.rank, pos: hit.pos }); if (hit.ps) psKeys.add(p.key); }
           else unmatched.push(p.name);
         }
       } catch (e) {
@@ -455,6 +458,12 @@ module.exports = async (req, res) => {
           const injStatus = String(((a.injuries || [])[0] || {}).status || '');
           if (/injured reserve|physically unable|non-football/i.test(injStatus)) stName = injStatus;
           else if (/day-to-day|questionable|doubtful|^out$/i.test(stName)) stName = 'Active';
+          // ESPN lists practice-squad players as Active; Ourlads knows better
+          // (this run's parse, or the PS mark left in AutoSync by the last one).
+          if (t.league === 'nfl' && /^active$/i.test(stName)) {
+            const k = nameKey(t.name), ar = appRowByKey[k] ? autoRows[appRowByKey[k] - 1] : null;
+            if (psKeys.has(k) || (ar && String(ar[posCol] || '').trim() === 'PS')) stName = 'Practice Squad';
+          }
           // Reconcile the manual AppData status with what ESPN reports (NFL
           // only): cuts and retirements land automatically, and a re-signed
           // free agent flips back to Active. A deliberate 'Inactive' is never
