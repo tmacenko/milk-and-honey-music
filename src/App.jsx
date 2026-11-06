@@ -13878,6 +13878,7 @@ function App() {
   const [authKnown, setAuthKnown] = useState(!!cachedAuth);
   const [authConfigured, setAuthConfigured] = useState(cachedAuth ? !!cachedAuth.configured : false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   // Front-door gate (shared site password). No URL bypasses it — typing
   // /{anything} lands on the gate like everywhere else. External sharing goes
   // through unique hosted links (/roster/{id} · /share/{id}), which are static
@@ -14228,7 +14229,13 @@ function App() {
     // dashboard) is correct almost immediately even on a cold cache.
     fetch('/api/auth')
       .then(r => r.json())
-      .then(d => { setIsAdmin(!!d.isAdmin); setCurrentUser(d.user || null); setAuthConfigured(!!d.authConfigured); setAuthKnown(true); })
+      .then(d => {
+        // This browser remembered a staff login that the server no longer
+        // honors (30-day cookie lapsed, or the login was revoked): say so,
+        // instead of quietly showing the public roster.
+        if (cachedAuth?.isAdmin && d.authConfigured && !d.isAdmin) setSessionExpired(true);
+        setIsAdmin(!!d.isAdmin); setCurrentUser(d.user || null); setAuthConfigured(!!d.authConfigured); setAuthKnown(true);
+      })
       .catch(() => { /* the roster fetch below still answers auth */ });
     fetch('/api/sheets')
       .then(r => r.json())
@@ -15020,6 +15027,18 @@ function App() {
     <div style={{ display: "flex", minHeight: "100vh", background: G.bg, color: G.text, fontFamily: ff }}>
       <UpdateChip />
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
+      {sessionExpired && !loginOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 20 }}>
+          <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.shadowLg, borderRadius: 16, padding: 28, width: "100%", maxWidth: 380 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: G.text, marginBottom: 6, letterSpacing: "-0.02em" }}>You've been signed out</div>
+            <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.5, marginBottom: 20 }}>{cachedAuth?.user?.name ? `${cachedAuth.user.name}, your` : 'Your'} staff session ended. Log in again to get the dashboard back.</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setSessionExpired(false)} style={{ flex: 1, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, padding: "11px", color: G.textSecondary, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Not now</button>
+              <button onClick={() => { setSessionExpired(false); setLoginOpen(true); }} style={{ flex: 1, background: G.green, border: "none", borderRadius: 10, padding: "11px", color: "#0a0a0a", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff }}>Log in</button>
+            </div>
+          </div>
+        </div>
+      )}
       {onboardLinksOpen && <OnboardLinksModal onClose={() => setOnboardLinksOpen(false)} />}
       {mobileDrawer}
       <style>{`

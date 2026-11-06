@@ -184,6 +184,23 @@ module.exports = async (req, res) => {
   if (req.method === 'GET') {
     if (!secret) return res.json({ authConfigured: false, isAdmin: true, user: null });
     const st = authState(req);
+    // Sliding session: a staff cookie older than a day gets a fresh 30 days
+    // on each visit, so active people are never silently signed out. Renewal
+    // re-checks that the login still exists and the person isn't Former, so
+    // a revoked login still dies at its original expiry.
+    if (st.admin && st.user && st.user.name) {
+      try {
+        const payload = verify(parseCookies(req)[COOKIE], secret);
+        const now = Math.floor(Date.now() / 1000);
+        if (payload && payload.exp && payload.exp - now < THIRTY_DAYS - 86400) {
+          const key = String(payload.name).toLowerCase();
+          const [store, dir] = await Promise.all([loadAuthUsers(secret), staffDirectory()]);
+          const d = (dir || []).find(u => u.name.toLowerCase() === key);
+          const ok = !!(store && store.users && store.users[key] && store.users[key].hash) && !!d && !/former/i.test(d.status || '');
+          if (ok) res.setHeader('Set-Cookie', cookie(sign({ ...payload, exp: now + THIRTY_DAYS }, secret), THIRTY_DAYS));
+        }
+      } catch { /* renewal is best-effort; the current cookie still stands */ }
+    }
     return res.json({ authConfigured: true, isAdmin: st.admin, user: st.user });
   }
 
