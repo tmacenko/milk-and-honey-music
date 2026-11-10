@@ -132,6 +132,15 @@ function LogoBadge({ url, label, size = 32 }) {
 // ── Avatar ────────────────────────────────────────────────────────────────────
 function Avatar({ name, photoUrl, size = 44, faceZoom }) {
   const [err, setErr] = useState(false);
+  // ESPN's resizing combiner occasionally serves a stale miss for a headshot
+  // that exists — fall back to the full-size original before giving up.
+  const [alt, setAlt] = useState('');
+  useEffect(() => { setAlt(''); setErr(false); }, [photoUrl]);
+  const src = alt || photoUrl;
+  const onError = () => {
+    const m = String(photoUrl || '').match(/\/combiner\/i\?img=(\/i\/headshots\/[^&]+)/);
+    if (m && !alt) setAlt(`https://a.espncdn.com${m[1]}`); else setErr(true);
+  };
   const initials = (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const hash = (name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const hue = (hash * 47) % 360;
@@ -142,13 +151,13 @@ function Avatar({ name, photoUrl, size = 44, faceZoom }) {
     // crop toward the face for tight contexts like table rows.
     if (faceZoom) return (
       <span style={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0, display: "block" }}>
-        <img src={photoUrl} alt={name} onError={() => setErr(true)}
+        <img src={src} alt={name} onError={onError}
           referrerPolicy="no-referrer" crossOrigin="anonymous" loading="lazy" decoding="async"
           style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 10%", transform: "scale(1.4)", transformOrigin: "50% 20%", display: "block" }} />
       </span>
     );
     return (
-      <img src={photoUrl} alt={name} onError={() => setErr(true)}
+      <img src={src} alt={name} onError={onError}
         referrerPolicy="no-referrer" crossOrigin="anonymous" loading="lazy" decoding="async"
         style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0 }} />
     );
