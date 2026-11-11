@@ -3777,7 +3777,8 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
     ['socialhistory', 'stathistory', ...(a.level !== 'NFL' ? ['fitprefs', 'fitnotes'] : [])].forEach(k => prefetchAdminTab(k));
   }, [companyView, a.espnId, a.level]);
   const team = a.nflTeam || a.college || '';
-  const typeLine = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team].filter(Boolean).join('  ·  ');
+  const yearInSchool = a.level === 'College' ? (a.espnClass || a.yearInSchool || '') : '';
+  const typeLine = [a.position, a.jerseyNumber && `#${a.jerseyNumber}`, team, yearInSchool].filter(Boolean).join('  ·  ');
   const socialBtns = [
     a.instagram && { icon: <IgIcon size={isMobile ? 20 : 22} />, url: `https://instagram.com/${a.instagram}`, count: a.igFollowers },
     a.twitter && { icon: <TwIcon size={isMobile ? 18 : 20} />, url: `https://x.com/${a.twitter}`, count: a.twitterFollowers },
@@ -3839,7 +3840,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
                   : <TeamLogo url={a.teamLogo} size={26} />}
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: banner ? "#fff" : G.text, fontWeight: 500 }}>
                   {companyView && !limited && a.level === 'College' && a.college
-                    ? <>{[a.position, a.jerseyNumber && `#${a.jerseyNumber}`].filter(Boolean).join('  ·  ')}{(a.position || a.jerseyNumber) ? '  ·  ' : ''}<TeamLink name={a.college} onOpen={() => openTeamByName(a.college)} /></>
+                    ? <>{[a.position, a.jerseyNumber && `#${a.jerseyNumber}`].filter(Boolean).join('  ·  ')}{(a.position || a.jerseyNumber) ? '  ·  ' : ''}<TeamLink name={a.college} onOpen={() => openTeamByName(a.college)} />{yearInSchool ? `  ·  ${yearInSchool}` : ''}</>
                     : typeLine}
                 </span>}
                 {companyView && !isFreeAgent(a) && (rosterTagFor(a) || a.depthRank > 0) && (
