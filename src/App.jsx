@@ -3153,6 +3153,9 @@ function ClientDealTab({ a, isMobile, pad, user }) {
   const agCur = agMine.filter(x => x.year === agYear);
   const agMax = agCur.reduce((s, x) => s + x.max, 0);
   const [cModal, setCModal] = useState(false);
+  const agPayouts = agCur.flatMap(x => x.payouts.map(p => ({ ...p, party: x.party }))).sort((x, y) => (x.date || '9999').localeCompare(y.date || '9999'));
+  const agPaid = agPayouts.filter(p => p.paid).reduce((s, p) => s + p.amount, 0);
+  const agNext = agPayouts.find(p => !p.paid && p.date);
   const hs = a.level === 'High School';
   const deal = agCur.length ? agCur.reduce((s, x) => s + x.guaranteed, 0) : pxDealNum(a.contractYearly);
   const role = p ? pxCurrentRole(p) : '';
@@ -3180,23 +3183,49 @@ function ClientDealTab({ a, isMobile, pad, user }) {
           <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{value ? (verdict || `${PX_ROLE_LABEL[value.role].replace(/^\w/, c => c.toUpperCase())} · ${value.conf} confidence.`) : px ? 'Not enough on file to estimate.' : 'Player database unavailable right now.'}</div>
         </div>
       </div>
-      {p && px && <PxValueCard p={p} data={px} isMobile={isMobile} fitsOnly />}
-      <div style={card}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={eyebrow}>Contracts</div>
-          <div style={{ flex: 1 }} />
-          <button onClick={() => setCModal(true)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, color: G.green, cursor: "pointer", fontFamily: ff }}>+ Add contract</button>
-        </div>
-        {agMine.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 10 }}>No agreements uploaded yet.</div>
-          : [...new Set(agMine.map(x => x.year))].map(y => (
-            <div key={y} style={{ marginTop: 14 }}>
-              <div style={{ ...eyebrow, color: G.textSecondary, marginBottom: 8 }}>{y} · {usd(agMine.filter(x => x.year === y).reduce((s, x) => s + x.guaranteed, 0))} guaranteed</div>
-              <AgreementList items={agMine.filter(x => x.year === y)} onChanged={() => ctab.reload()} isMobile={isMobile} />
+      {agCur.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, minmax(0, 1fr))", gap: 20, marginTop: -4 }}>
+          <div style={card}>
+            <div style={eyebrow}>Next payout</div>
+            <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{agNext ? usd(agNext.amount) : '—'}</div>
+            <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{agNext ? `${fmtDay(agNext.date)} · ${agNext.party}` : 'Nothing scheduled.'}</div>
+          </div>
+          <div style={card}>
+            <div style={eyebrow}>Paid so far</div>
+            <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{usd(agPaid)}</div>
+            <div style={{ height: 4, borderRadius: 2, background: G.surfaceBorder, marginTop: 10, overflow: "hidden" }}><div style={{ width: `${deal ? Math.min(100, Math.round(agPaid / deal * 100)) : 0}%`, height: "100%", background: G.green }} /></div>
+            <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 6 }}>{deal ? `${Math.round(agPaid / deal * 100)}% of ${usd(deal)}` : ''}</div>
+          </div>
+          {!isMobile && (
+            <div style={card}>
+              <div style={eyebrow}>Incentives</div>
+              <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{agMax > deal ? usd(agMax - deal) : '—'}</div>
+              <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{agMax > deal ? agCur.flatMap(x => x.incentives).map(i => i.label).join(' · ') : 'None in these agreements.'}</div>
             </div>
-          ))}
+          )}
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 3fr) minmax(0, 2fr)", gap: 20, alignItems: "start" }}>
+        <div style={card}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={eyebrow}>Contracts</div>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => setCModal(true)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, color: G.green, cursor: "pointer", fontFamily: ff }}>+ Add contract</button>
+          </div>
+          {agMine.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 10 }}>No agreements uploaded yet.</div>
+            : [...new Set(agMine.map(x => x.year))].map(y => (
+              <div key={y} style={{ marginTop: 14 }}>
+                <div style={{ ...eyebrow, color: G.textSecondary, marginBottom: 8 }}>{y} · {usd(agMine.filter(x => x.year === y).reduce((s, x) => s + x.guaranteed, 0))} guaranteed</div>
+                <AgreementList items={agMine.filter(x => x.year === y)} onChanged={() => ctab.reload()} isMobile={isMobile} />
+              </div>
+            ))}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
+          {p && px && <PxValueCard p={p} data={px} isMobile={isMobile} fitsOnly />}
+          {BOX_DOCS_ENABLED && <DocsModule person={a.name} kind="sports" />}
+        </div>
       </div>
       {cModal && <ContractModal athletes={[]} athlete={a} user={user} isMobile={isMobile} onClose={() => setCModal(false)} onSaved={() => ctab.reload()} />}
-      {BOX_DOCS_ENABLED && <div style={{ maxWidth: isMobile ? "none" : 480 }}><DocsModule person={a.name} kind="sports" /></div>}
     </div>
   );
 }
@@ -3935,7 +3964,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
               ))}
             </div>
           )}
-          {companyView && (a.level === 'NFL' ? <SocialContractModules athlete={a} isMobile={isMobile} only={canContracts ? undefined : ['social', 'market', 'docs']} /> : <SocialContractModules athlete={a} isMobile={isMobile} only={['social', 'market']} />)}
+          {companyView && (a.level === 'NFL' ? <SocialContractModules athlete={a} isMobile={isMobile} only={canContracts ? undefined : ['social', 'market', 'docs']} /> : <SocialContractModules athlete={a} isMobile={isMobile} only={canContracts && !limited ? ['social', 'contract', 'market'] : ['social', 'market']} />)}
           {(() => {
             // Chip modules live on the Marketing tab for staff; the public
             // one-pager keeps its partner-visible pair here.
@@ -4897,9 +4926,17 @@ function GrowthBoardSection({ athletes, staff, onOpenAthlete, isMobile }) {
 // Side-by-side cards: per-platform follower rows with an up/down change arrow
 // (7-day window from SocialHistory), and the contract terms.
 function SocialContractModules({ athlete: a, isMobile, only }) {
-  const show = (k) => !only || only.includes(k);
+  const wants = (k) => !only || only.includes(k);
   const hist = useAdminTab('socialhistory');
   const hist247 = useAdminTab('stathistory');
+  // Signed agreements (college/HS) take over the contract card from the
+  // manual / Spotrac figure when the player has any on file.
+  const ctab = useAdminTab('contracts', 'athletes', wants('contract') && a.level !== 'NFL');
+  const agCur = useMemo(() => {
+    const mine = parseAgreements(ctab.data).filter(x => x.player.toLowerCase() === String(a.name || '').toLowerCase());
+    const y = mine.length ? Math.max(...mine.map(x => x.year)) : 0;
+    return mine.filter(x => x.year === y);
+  }, [ctab.data, a.name]);
   const key = String(a.name || '').toLowerCase().trim();
   const series = useMemo(() => seriesFromHistory(hist.data?.rows)[key] || [], [hist.data, key]);
   const s247 = useMemo(() => latest247From(hist247.data?.rows)[key], [hist247.data, key]);
@@ -4931,7 +4968,15 @@ function SocialContractModules({ athlete: a, isMobile, only }) {
     a.twitter && { icon: <TwIcon size={16} />, platform: 'X', user: `@${a.twitter}`, url: `https://x.com/${a.twitter}`, count: a.twitterFollowers, d: pd?.x },
     a.tiktok && { icon: <TkIcon size={16} />, platform: 'TikTok', user: `@${a.tiktok}`, url: `https://tiktok.com/@${a.tiktok}`, count: a.tiktokFollowers, d: pd?.tk },
   ].filter(Boolean);
-  const contract = a.contractYearly
+  const agGtd = agCur.reduce((t, x) => t + x.guaranteed, 0), agMax = agCur.reduce((t, x) => t + x.max, 0);
+  const agNext = agCur.flatMap(x => x.payouts.map(p => ({ ...p, party: x.party }))).filter(p => !p.paid && p.date).sort((x, y) => x.date.localeCompare(y.date))[0];
+  const contract = agCur.length
+    ? { main: usd(agGtd), rows: [
+        ['Year', `${agCur[0].year} · ${[...new Set(agCur.map(x => x.type))].join(' + ')}`],
+        agMax > agGtd && ['With incentives', usd(agMax)],
+        agNext && ['Next payout', `${fmtDay(agNext.date, { month: 'short', day: 'numeric' })} · ${usd(agNext.amount)}`],
+      ].filter(Boolean) }
+    : a.contractYearly
     ? { main: `${money(a.contractYearly)} / yr`, rows: [] }
     : a.contractAav
       ? { main: `${money(a.contractAav)} / yr`, rows: [
@@ -4940,6 +4985,7 @@ function SocialContractModules({ athlete: a, isMobile, only }) {
           a.contractGuaranteed && ['Guaranteed', money(a.contractGuaranteed)],
         ].filter(Boolean) }
       : null;
+  const show = (k) => wants(k) && (k !== 'contract' || a.level === 'NFL' || !!contract);
   const mod = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 };
   const head = (label, right) => (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
@@ -4987,7 +5033,7 @@ function SocialContractModules({ athlete: a, isMobile, only }) {
         })()}
       </div>}
       {show('contract') && <div style={mod}>
-        {head('Contract', contract && !a.contractYearly
+        {head('Contract', contract && !a.contractYearly && !agCur.length
           ? <a href={a.contractUrl || `https://www.spotrac.com/search?q=${encodeURIComponent(a.name)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: G.green, fontWeight: 600, textDecoration: "none" }}>View Spotrac page →</a>
           : '')}
         {!contract ? <div style={{ fontSize: 13, color: G.textTertiary, padding: "8px 0" }}>No contract on file yet.</div>
@@ -13212,11 +13258,14 @@ function AgreementList({ items, onChanged, canEdit = true, isMobile }) {
     setBusyRow(0);
   };
   const link = { background: "none", border: "none", color: G.green, cursor: "pointer", fontSize: 12, fontWeight: 600, padding: 0, fontFamily: ff };
+  // Long schedules start folded; the header line already says what's next.
+  const [openSched, setOpenSched] = useState({});
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {items.map(x => {
         const paid = x.payouts.filter(p => p.paid).reduce((s, p) => s + p.amount, 0);
         const next = x.payouts.find(p => !p.paid && p.date);
+        const folded = x.payouts.length > 4 && !openSched[x.row];
         return (
           <div key={x.row} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 14, opacity: busyRow === x.row ? 0.6 : 1 }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
@@ -13231,7 +13280,7 @@ function AgreementList({ items, onChanged, canEdit = true, isMobile }) {
                 {x.max > x.guaranteed && <div style={{ fontSize: 11.5, color: G.textTertiary, fontVariantNumeric: "tabular-nums" }}>up to {usd(x.max)}</div>}
               </div>
             </div>
-            {x.payouts.length > 0 && (
+            {x.payouts.length > 0 && !folded && (
               <div style={{ marginTop: 10, borderTop: `1px solid ${G.surfaceBorder}` }}>
                 {x.payouts.map((p, i) => (
                   <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "18px 1fr auto" : "18px 110px 1fr auto", gap: 10, alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${G.surfaceBorder}`, fontSize: 13 }}>
@@ -13255,8 +13304,10 @@ function AgreementList({ items, onChanged, canEdit = true, isMobile }) {
             )}
             {x.notes && <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 10 }}>{x.notes}</div>}
             <div style={{ display: "flex", gap: 14, marginTop: 10, alignItems: "center" }}>
+              {x.payouts.length > 4 && <button onClick={() => setOpenSched(o => ({ ...o, [x.row]: !o[x.row] }))} style={link}>{folded ? `Show ${x.payouts.length} payouts` : 'Hide payouts'}</button>}
               {x.fileId && <button onClick={() => setPreview({ id: x.fileId, name: x.fileName || 'Contract' })} style={link}>Open PDF</button>}
-              {x.createdBy && <span style={{ fontSize: 11.5, color: G.textTertiary }}>Added by {x.createdBy}{x.createdAt ? ` · ${fmtDay(x.createdAt)}` : ''}</span>}
+              {x.payouts.length > 0 && <span style={{ fontSize: 11.5, color: G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{usd(paid)} of {usd(x.payouts.reduce((t, p) => t + p.amount, 0))} paid</span>}
+              {!isMobile && x.createdBy && <span style={{ fontSize: 11.5, color: G.textTertiary }}>Added by {x.createdBy}{x.createdAt ? ` · ${fmtDay(x.createdAt)}` : ''}</span>}
               <div style={{ flex: 1 }} />
               {canEdit && <button onClick={() => remove(x)} style={{ ...link, color: G.textTertiary }}>Remove</button>}
             </div>
