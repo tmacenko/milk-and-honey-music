@@ -29,6 +29,9 @@
     "api/usage.js": {
       "maxDuration": 60
     },
+    "api/contract-parse.js": {
+      "maxDuration": 120
+    },
     "api/tool.js": {
       "includeFiles": "tools/**"
     }

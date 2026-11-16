@@ -3145,10 +3145,16 @@ const fmtBirthday = (v) => {
 };
 const pxDealNum = (v) => { const n = parseFloat(String(v || '').replace(/[$,\s]/g, '')); return Number.isFinite(n) ? n : 0; };
 
-function ClientDealTab({ a, isMobile, pad }) {
+function ClientDealTab({ a, isMobile, pad, user }) {
   const { px, p, ready } = useClientFitPlayer(a);
+  const ctab = useAdminTab('contracts');
+  const agMine = useMemo(() => parseAgreements(ctab.data).filter(x => x.player.toLowerCase() === String(a.name || '').toLowerCase()).sort((x, y) => y.year - x.year || x.type.localeCompare(y.type)), [ctab.data, a.name]);
+  const agYear = agMine.length ? agMine[0].year : 0;
+  const agCur = agMine.filter(x => x.year === agYear);
+  const agMax = agCur.reduce((s, x) => s + x.max, 0);
+  const [cModal, setCModal] = useState(false);
   const hs = a.level === 'High School';
-  const deal = pxDealNum(a.contractYearly);
+  const deal = agCur.length ? agCur.reduce((s, x) => s + x.guaranteed, 0) : pxDealNum(a.contractYearly);
   const role = p ? pxCurrentRole(p) : '';
   const value = p && px ? (hs ? pxValue(px, p, null, 'recruit') : p.team ? pxValue(px, p, p.team, role) : null) : null;
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 20, minWidth: 0 };
@@ -3165,8 +3171,8 @@ function ClientDealTab({ a, isMobile, pad }) {
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
         <div style={card}>
           <div style={eyebrow}>Current deal</div>
-          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{deal ? `${pxMoney(deal)} / yr` : '—'}</div>
-          <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{deal ? 'From the client record (edit it on their profile).' : 'No deal on file yet — add the yearly amount in the edit form.'}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{deal ? (agCur.length ? usd(deal) : `${pxMoney(deal)} / yr`) : '—'}</div>
+          <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{agCur.length ? `${agYear} · ${[...new Set(agCur.map(x => x.type))].join(' + ')}${agMax > deal ? ` · up to ${usd(agMax)} with incentives` : ''}` : deal ? 'From the client record (edit it on their profile).' : 'No contract on file yet — upload one below.'}</div>
         </div>
         <div style={card}>
           <div style={eyebrow}>{hs ? 'Est. freshman value' : `Est. market at ${p && p.team ? p.team : 'current school'}`}</div>
@@ -3175,6 +3181,21 @@ function ClientDealTab({ a, isMobile, pad }) {
         </div>
       </div>
       {p && px && <PxValueCard p={p} data={px} isMobile={isMobile} fitsOnly />}
+      <div style={card}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={eyebrow}>Contracts</div>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setCModal(true)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, color: G.green, cursor: "pointer", fontFamily: ff }}>+ Add contract</button>
+        </div>
+        {agMine.length === 0 ? <div style={{ fontSize: 13, color: G.textTertiary, marginTop: 10 }}>No agreements uploaded yet.</div>
+          : [...new Set(agMine.map(x => x.year))].map(y => (
+            <div key={y} style={{ marginTop: 14 }}>
+              <div style={{ ...eyebrow, color: G.textSecondary, marginBottom: 8 }}>{y} · {usd(agMine.filter(x => x.year === y).reduce((s, x) => s + x.guaranteed, 0))} guaranteed</div>
+              <AgreementList items={agMine.filter(x => x.year === y)} onChanged={() => ctab.reload()} isMobile={isMobile} />
+            </div>
+          ))}
+      </div>
+      {cModal && <ContractModal athletes={[]} athlete={a} user={user} isMobile={isMobile} onClose={() => setCModal(false)} onSaved={() => ctab.reload()} />}
       {BOX_DOCS_ENABLED && <div style={{ maxWidth: isMobile ? "none" : 480 }}><DocsModule person={a.name} kind="sports" /></div>}
     </div>
   );
@@ -3891,7 +3912,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
         ) : companyView && !limited && a.level !== 'NFL' && page === 'teamfit' ? (
           <ClientTeamFitTab a={a} isMobile={isMobile} pad={pad} user={user} />
         ) : companyView && canContracts && !limited && a.level !== 'NFL' && page === 'deal' ? (
-          <ClientDealTab a={a} isMobile={isMobile} pad={pad} />
+          <ClientDealTab a={a} isMobile={isMobile} pad={pad} user={user} />
         ) : (
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
           {a.bio && (
@@ -12893,7 +12914,306 @@ function SportsSharePage({ athletes, isMobile, staff, user }) {
   );
 }
 
-function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
+// ── Contracts (signed agreements) ─────────────────────────────────────────────
+// One Contracts-tab row per agreement per year (rev-share, NIL, other); a
+// player's number for a year is the sum of their agreements that year.
+// Guaranteed = fixed payouts; Max = guaranteed + incentives.
+const CONTRACT_TYPES = ['Rev-share', 'NIL', 'Other'];
+const usd = (n) => `$${Math.round(Number(n) || 0).toLocaleString('en-US')}`;
+const isoDay = (d) => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : ''; };
+const fmtDay = (iso, opts) => { const d = isoDay(iso); return d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', opts || { month: 'short', day: 'numeric', year: 'numeric' }) : ''; };
+const jsonArr = (s) => { try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; } };
+const numIn = (v) => Number(String(v == null ? '' : v).replace(/[^0-9.]/g, '')) || 0;
+function parseAgreements(tabData) {
+  if (!tabData) return [];
+  const ix = (n) => tabData.headers.findIndex(h => String(h).trim().toLowerCase() === n.toLowerCase());
+  const col = {};
+  ['player', 'level', 'type', 'party', 'year', 'start', 'end', 'guaranteed', 'incentives', 'payouts', 'fileId', 'fileName', 'notes', 'createdBy', 'createdAt'].forEach(k => { col[k] = ix(k); });
+  const cell = (r, k) => col[k] >= 0 ? String(r.cells[col[k]] ?? '').trim() : '';
+  return tabData.rows.map(r => {
+    const incentives = jsonArr(cell(r, 'incentives')).map(x => ({ label: String(x.label || ''), amount: numIn(x.amount) }));
+    const payouts = jsonArr(cell(r, 'payouts')).map(x => ({ date: isoDay(x.date), period: String(x.period || ''), amount: numIn(x.amount), paid: !!x.paid }));
+    const guaranteed = numIn(cell(r, 'guaranteed'));
+    return {
+      row: r._row, player: cell(r, 'player'), level: cell(r, 'level'), type: cell(r, 'type') || 'Other', party: cell(r, 'party'),
+      year: parseInt(cell(r, 'year'), 10) || 0, start: isoDay(cell(r, 'start')), end: isoDay(cell(r, 'end')),
+      guaranteed, incentives, payouts, max: guaranteed + incentives.reduce((s, x) => s + x.amount, 0),
+      fileId: cell(r, 'fileId'), fileName: cell(r, 'fileName'), notes: cell(r, 'notes'), createdBy: cell(r, 'createdBy'), createdAt: cell(r, 'createdAt'),
+    };
+  }).filter(x => x.player);
+}
+const postTab = async (body) => {
+  const r = await fetch('/api/athletes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) throw new Error(d.error || 'Save failed');
+  return d;
+};
+const cLabel = (t) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary, marginBottom: 4 }}>{t}</div>;
+const cInput = { ...inputBase, padding: "8px 10px", fontSize: 13, width: "100%", boxSizing: "border-box" };
+const typeChip = (t) => <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.green, background: G.greenSubtle, borderRadius: 6, padding: "3px 7px", whiteSpace: "nowrap" }}>{t}</span>;
+
+// Upload-a-contract form. Drop the PDF → the server reads the terms with AI →
+// staff check and save. Saving puts the PDF in the player's Box folder and
+// appends a Contracts row.
+function ContractModal({ athletes, athlete, user, isMobile, onClose, onSaved }) {
+  const [pick, setPick] = useState(athlete || null);
+  const [aq, setAq] = useState('');
+  const [file, setFile] = useState(null);
+  const [reading, setReading] = useState(false);
+  const [readMsg, setReadMsg] = useState('');
+  const [readOk, setReadOk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const fileRef = useRef();
+  const [f, setF] = useState({ type: 'NIL', party: '', year: String(new Date().getFullYear()), start: '', end: '', guaranteed: '', notes: '', incentives: [], payouts: [] });
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const setRow = (k, i, key, v) => setF(p => ({ ...p, [k]: p[k].map((r, j) => j === i ? { ...r, [key]: v } : r) }));
+  const addRow = (k, r) => setF(p => ({ ...p, [k]: [...p[k], r] }));
+  const delRow = (k, i) => setF(p => ({ ...p, [k]: p[k].filter((_, j) => j !== i) }));
+  const matches = useMemo(() => { const s = aq.trim().toLowerCase(); return s ? athletes.filter(a => a.name.toLowerCase().includes(s)).slice(0, 8) : []; }, [aq, athletes]);
+  const readPdf = async (fl) => {
+    if (!fl) return;
+    setFile(fl); setReadMsg(''); setReadOk(false);
+    if (!/\.pdf$/i.test(fl.name) && fl.type !== 'application/pdf') { setReadMsg('Only PDFs are read automatically — enter the terms below.'); return; }
+    if (fl.size > 4e6) { setReadMsg('Too large to read automatically — enter the terms below.'); return; }
+    setReading(true);
+    try {
+      const b64 = await new Promise((res, rej) => { const rd = new FileReader(); rd.onload = () => res(String(rd.result).split(',')[1] || ''); rd.onerror = rej; rd.readAsDataURL(fl); });
+      const r = await fetch('/api/contract-parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pdf: b64, name: fl.name }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || 'Read failed');
+      const t = d.terms || {};
+      setF(p => ({
+        ...p,
+        type: CONTRACT_TYPES.includes(t.type) ? t.type : p.type, party: t.party || p.party,
+        year: t.year ? String(t.year) : (isoDay(t.start) ? isoDay(t.start).slice(0, 4) : p.year),
+        start: isoDay(t.start) || p.start, end: isoDay(t.end) || p.end,
+        guaranteed: t.guaranteed ? String(Math.round(t.guaranteed)) : p.guaranteed, notes: t.notes || p.notes,
+        incentives: (t.incentives || []).map(x => ({ label: x.label || '', amount: x.amount ? String(Math.round(x.amount)) : '' })),
+        payouts: (t.payouts || []).map(x => ({ date: isoDay(x.date), period: x.period || '', amount: x.amount ? String(Math.round(x.amount)) : '' })),
+      }));
+      setReadOk(true);
+      setReadMsg(t.athlete ? `Read as ${t.athlete}. Check the terms, then save.` : 'Read. Check the terms, then save.');
+    } catch (e) { setReadMsg(`${e.message} Enter the terms below.`); }
+    setReading(false);
+  };
+  const payoutSum = f.payouts.reduce((s, p) => s + numIn(p.amount), 0);
+  const gtd = numIn(f.guaranteed);
+  const canSave = !!pick && !!f.party.trim() && gtd > 0 && !busy && !reading;
+  const save = async () => {
+    if (!canSave) return;
+    setBusy(true);
+    try {
+      let fileId = '', fileName = '';
+      if (file) {
+        const d = await (await fetch(`/api/box?person=${encodeURIComponent(pick.name)}&kind=sports`)).json();
+        if (d.error) throw new Error(d.error);
+        const form = new FormData();
+        form.append('attributes', JSON.stringify({ name: file.name, parent: { id: String(d.folderId) } }));
+        form.append('file', file);
+        let r = await fetch('https://upload.box.com/api/2.0/files/content', { method: 'POST', headers: { Authorization: `Bearer ${d.token}` }, body: form });
+        if (r.status === 409) {
+          const conflict = await r.json().catch(() => null);
+          const existingId = conflict?.context_info?.conflicts?.id;
+          if (existingId) {
+            const vf = new FormData();
+            vf.append('attributes', JSON.stringify({ name: file.name }));
+            vf.append('file', file);
+            r = await fetch(`https://upload.box.com/api/2.0/files/${existingId}/content`, { method: 'POST', headers: { Authorization: `Bearer ${d.token}` }, body: vf });
+          }
+        }
+        if (!r.ok) throw new Error('Upload to Box failed');
+        const up = await r.json().catch(() => ({}));
+        fileId = String(up?.entries?.[0]?.id || ''); fileName = file.name;
+      }
+      await postTab({ action: 'tab-append', tab: 'contracts', values: {
+        player: pick.name, level: pick.level || '', type: f.type, party: f.party.trim(), year: parseInt(f.year, 10) || new Date().getFullYear(),
+        start: f.start, end: f.end, guaranteed: gtd,
+        incentives: JSON.stringify(f.incentives.filter(x => x.label.trim() || numIn(x.amount)).map(x => ({ label: x.label.trim(), amount: numIn(x.amount) }))),
+        payouts: JSON.stringify(f.payouts.filter(x => x.date || x.period.trim() || numIn(x.amount)).map(x => ({ date: isoDay(x.date), period: x.period.trim(), amount: numIn(x.amount), paid: false }))),
+        fileId, fileName, notes: f.notes.trim(), createdBy: String(user?.name || '').trim(), createdAt: new Date().toISOString().slice(0, 10),
+      } });
+      onSaved && onSaved();
+      onClose();
+    } catch (e) { window.alert(e.message); }
+    setBusy(false);
+  };
+  const rowBtn = (label, onClick) => <button onClick={onClick} style={{ background: "none", border: "none", color: G.green, cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: "6px 0", fontFamily: ff }}>{label}</button>;
+  const xBtn = (onClick) => <button onClick={onClick} style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 13, padding: "0 4px", fontFamily: ff }}>✕</button>;
+  const ghost = { background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "8px 14px", fontSize: 13, fontWeight: 600, color: G.text, cursor: "pointer", fontFamily: ff };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 2000, padding: isMobile ? 0 : 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, borderRadius: isMobile ? "16px 16px 0 0" : 16, boxShadow: G.shadowLg, width: isMobile ? "100%" : 600, maxHeight: isMobile ? "92vh" : "90vh", overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>Upload contract</div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={{ background: "none", border: "none", color: G.textSecondary, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: ff }}>✕</button>
+        </div>
+        <div>
+          {cLabel('Athlete')}
+          {pick ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, ...inputBase, padding: "7px 10px" }}>
+              <Avatar name={pick.name} photoUrl={pick.photoUrl} size={22} />
+              <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>{pick.name}</span>
+              <span style={{ fontSize: 11.5, color: G.textTertiary }}>{[pick.position, pick.college || pick.committedTo || pick.nflTeam].filter(Boolean).join(' · ')}</span>
+              {!athlete && <button onClick={() => { setPick(null); setAq(''); }} style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: ff }}>Change</button>}
+            </div>
+          ) : (<>
+            <input autoFocus value={aq} onChange={e => setAq(e.target.value)} placeholder="Search a client…" style={cInput} />
+            {matches.length > 0 && (
+              <div style={{ marginTop: 4, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
+                {matches.map(a => (
+                  <div key={`${a.level}-${a.name}`} onClick={() => setPick(a)}
+                    onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", fontSize: 13, color: G.text, fontWeight: 600 }}>
+                    <Avatar name={a.name} photoUrl={a.photoUrl} size={22} /><span style={{ flex: 1 }}>{a.name}</span>
+                    <span style={{ fontSize: 11.5, color: G.textTertiary, fontWeight: 400 }}>{[a.level, a.position, a.college || a.committedTo || a.nflTeam].filter(Boolean).join(' · ')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>)}
+        </div>
+        <div>
+          {cLabel('Contract PDF')}
+          <div onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
+            onDrop={e => { e.preventDefault(); setDrag(false); readPdf(e.dataTransfer.files[0]); }}
+            onClick={() => !reading && fileRef.current?.click()}
+            style={{ border: `1px dashed ${drag || readOk ? G.green : G.surfaceBorder}`, borderRadius: 10, padding: 14, textAlign: "center", cursor: reading ? "default" : "pointer", background: drag ? G.greenSubtle : "transparent" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: file ? G.text : G.textSecondary }}>{file ? file.name : 'Drop the PDF here or click to choose'}</div>
+            <div style={{ fontSize: 11.5, color: reading ? G.yellow : readOk ? G.green : readMsg ? G.red : G.textTertiary, marginTop: 4 }}>
+              {reading ? 'Reading contract…' : readMsg || 'The terms below fill in automatically.'}
+            </div>
+          </div>
+          <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: "none" }} onChange={e => { readPdf(e.target.files[0]); e.target.value = ''; }} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 2fr 1fr 1fr", gap: 10 }}>
+          <div>{cLabel('Type')}<select value={f.type} onChange={e => set('type', e.target.value)} style={{ ...cInput, cursor: "pointer" }}>{CONTRACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+          <div>{cLabel('Paid by')}<input value={f.party} onChange={e => set('party', e.target.value)} placeholder="School, agency, brand" style={cInput} /></div>
+          <div>{cLabel('Year')}<input value={f.year} onChange={e => set('year', e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="2027" style={{ ...cInput, fontVariantNumeric: "tabular-nums" }} /></div>
+          <div>{cLabel('Guaranteed $')}<input value={f.guaranteed} onChange={e => set('guaranteed', e.target.value)} placeholder="300000" style={{ ...cInput, fontVariantNumeric: "tabular-nums" }} /></div>
+          <div>{cLabel('Start')}<input type="date" value={f.start} onChange={e => set('start', e.target.value)} style={cInput} /></div>
+          <div>{cLabel('End')}<input type="date" value={f.end} onChange={e => set('end', e.target.value)} style={cInput} /></div>
+          <div style={{ gridColumn: "1 / -1" }}>{cLabel('Notes')}<input value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="Exclusivity, buyout, conditions" style={cInput} /></div>
+        </div>
+        <div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            {cLabel('Payouts')}<div style={{ flex: 1 }} />
+            {f.payouts.length > 0 && <div style={{ fontSize: 11.5, color: gtd && payoutSum !== gtd ? G.yellow : G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{usd(payoutSum)} scheduled{gtd && payoutSum !== gtd ? ` · guaranteed is ${usd(gtd)}` : ''}</div>}
+          </div>
+          {f.payouts.map((p, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr auto" : "150px 1fr 130px auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
+              <input type="date" value={p.date} onChange={e => setRow('payouts', i, 'date', e.target.value)} style={cInput} />
+              {!isMobile && <input value={p.period} onChange={e => setRow('payouts', i, 'period', e.target.value)} placeholder="Period" style={cInput} />}
+              <input value={p.amount} onChange={e => setRow('payouts', i, 'amount', e.target.value)} placeholder="Amount" style={{ ...cInput, textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
+              {xBtn(() => delRow('payouts', i))}
+            </div>
+          ))}
+          {rowBtn('+ Add payout', () => addRow('payouts', { date: '', period: '', amount: '' }))}
+        </div>
+        <div>
+          {cLabel('Incentives')}
+          {f.incentives.map((p, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 130px auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
+              <input value={p.label} onChange={e => setRow('incentives', i, 'label', e.target.value)} placeholder="Condition" style={cInput} />
+              <input value={p.amount} onChange={e => setRow('incentives', i, 'amount', e.target.value)} placeholder="Amount" style={{ ...cInput, textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
+              {xBtn(() => delRow('incentives', i))}
+            </div>
+          ))}
+          {rowBtn('+ Add incentive', () => addRow('incentives', { label: '', amount: '' }))}
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={ghost}>Cancel</button>
+          <button onClick={save} disabled={!canSave}
+            style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 9, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: canSave ? "pointer" : "default", opacity: canSave ? 1 : 0.5, fontFamily: ff }}>
+            {busy ? 'Saving…' : 'Save contract'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Agreement cards with the payout schedule (Paid checkboxes write back).
+function AgreementList({ items, onChanged, canEdit = true, isMobile }) {
+  const [preview, setPreview] = useState(null);
+  const [busyRow, setBusyRow] = useState(0);
+  const togglePaid = async (x, i) => {
+    if (!canEdit || busyRow) return;
+    setBusyRow(x.row);
+    try {
+      const payouts = x.payouts.map((p, j) => j === i ? { ...p, paid: !p.paid } : p);
+      await postTab({ action: 'tab-update', tab: 'contracts', row: x.row, values: { payouts: JSON.stringify(payouts) } });
+      onChanged && onChanged();
+    } catch (e) { window.alert(e.message); }
+    setBusyRow(0);
+  };
+  const remove = async (x) => {
+    if (!canEdit || busyRow) return;
+    if (!window.confirm(`Remove the ${x.party} ${x.type} agreement for ${x.player}? The PDF stays in Box.`)) return;
+    setBusyRow(x.row);
+    try { await postTab({ action: 'tab-delete', tab: 'contracts', row: x.row }); onChanged && onChanged(); }
+    catch (e) { window.alert(e.message); }
+    setBusyRow(0);
+  };
+  const link = { background: "none", border: "none", color: G.green, cursor: "pointer", fontSize: 12, fontWeight: 600, padding: 0, fontFamily: ff };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {items.map(x => {
+        const paid = x.payouts.filter(p => p.paid).reduce((s, p) => s + p.amount, 0);
+        const next = x.payouts.find(p => !p.paid && p.date);
+        return (
+          <div key={x.row} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 12, padding: 14, opacity: busyRow === x.row ? 0.6 : 1 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{typeChip(x.type)}<span style={{ fontSize: 15, fontWeight: 700, color: G.text }}>{x.party || '—'}</span></div>
+                <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>
+                  {[x.start || x.end ? `${fmtDay(x.start) || '…'} – ${fmtDay(x.end) || '…'}` : `${x.year}`, next ? `Next ${fmtDay(next.date, { month: 'short', day: 'numeric' })} · ${usd(next.amount)}` : (x.payouts.length && paid >= x.guaranteed ? 'Fully paid' : '')].filter(Boolean).join('  ·  ')}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: G.text, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>{usd(x.guaranteed)}</div>
+                {x.max > x.guaranteed && <div style={{ fontSize: 11.5, color: G.textTertiary, fontVariantNumeric: "tabular-nums" }}>up to {usd(x.max)}</div>}
+              </div>
+            </div>
+            {x.payouts.length > 0 && (
+              <div style={{ marginTop: 10, borderTop: `1px solid ${G.surfaceBorder}` }}>
+                {x.payouts.map((p, i) => (
+                  <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "18px 1fr auto" : "18px 110px 1fr auto", gap: 10, alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${G.surfaceBorder}`, fontSize: 13 }}>
+                    <input type="checkbox" checked={p.paid} disabled={!canEdit} onChange={() => togglePaid(x, i)} title={p.paid ? 'Paid' : 'Mark paid'} style={{ margin: 0, cursor: canEdit ? "pointer" : "default", accentColor: G.green }} />
+                    <span style={{ color: p.paid ? G.textTertiary : G.text, fontVariantNumeric: "tabular-nums" }}>{p.date ? fmtDay(p.date) : (p.period || 'On signing')}</span>
+                    {!isMobile && <span style={{ color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.date ? p.period : ''}</span>}
+                    <span style={{ fontWeight: 600, color: p.paid ? G.textTertiary : G.text, textDecoration: p.paid ? "line-through" : "none", fontVariantNumeric: "tabular-nums" }}>{usd(p.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {x.incentives.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                {cLabel('Incentives')}
+                {x.incentives.map((p, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, padding: "3px 0" }}>
+                    <span style={{ color: G.textSecondary }}>{p.label}</span><span style={{ fontWeight: 600, color: G.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{usd(p.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {x.notes && <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 10 }}>{x.notes}</div>}
+            <div style={{ display: "flex", gap: 14, marginTop: 10, alignItems: "center" }}>
+              {x.fileId && <button onClick={() => setPreview({ id: x.fileId, name: x.fileName || 'Contract' })} style={link}>Open PDF</button>}
+              {x.createdBy && <span style={{ fontSize: 11.5, color: G.textTertiary }}>Added by {x.createdBy}{x.createdAt ? ` · ${fmtDay(x.createdAt)}` : ''}</span>}
+              <div style={{ flex: 1 }} />
+              {canEdit && <button onClick={() => remove(x)} style={{ ...link, color: G.textTertiary }}>Remove</button>}
+            </div>
+          </div>
+        );
+      })}
+      {preview && <BoxPreviewModal file={preview} onClose={() => setPreview(null)} />}
+    </div>
+  );
+}
+
+function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   const [levels, setLevels] = useCachedState('contracts.levels', ['NFL', 'College']);
   const toggleLevel = (l) => setLevels(prev => {
     const next = prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l];
@@ -12906,6 +13226,13 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
   const [q, setQ] = useCachedState('contracts.q', '');
   const [sortCol, setSortCol] = useCachedState('contracts.sortCol', 'yearly');
   const [sortDir, setSortDir] = useCachedState('contracts.sortDir', 'desc');
+  const [year, setYear] = useCachedState('contracts.year', new Date().getFullYear());
+  const [mode, setMode] = useCachedState('contracts.mode', 'contracts'); // contracts | payouts
+  const [openKey, setOpenKey] = useState('');
+  const [modal, setModal] = useState(null); // { athlete? } while the upload form is open
+  const tab = useAdminTab('contracts');
+  const agreements = useMemo(() => parseAgreements(tab.data), [tab.data]);
+  const years = useMemo(() => { const s = new Set(agreements.map(x => x.year).filter(Boolean)); s.add(new Date().getFullYear()); return [...s].sort(); }, [agreements]);
   const moneyNum = (v) => {
     const str = String(v == null ? '' : v).trim();
     if (!str) return 0;
@@ -12914,33 +13241,71 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
     return /m/i.test(str) ? n * 1e6 : /k/i.test(str) ? n * 1e3 : n;
   };
   const fmt = (n) => n >= 1e6 ? `$${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
-  const deals = useMemo(() => athletes
-    .map(a => {
+  // One row per player: agreements for the chosen year beat the Spotrac/manual
+  // figure on the client record (high schoolers with a signed deal sit under
+  // College — that's where the money lands).
+  const deals = useMemo(() => {
+    const byName = Object.fromEntries(athletes.map(a => [a.name.toLowerCase(), a]));
+    const agBy = {};
+    agreements.filter(x => x.year === year).forEach(x => { const k = x.player.toLowerCase(); (agBy[k] = agBy[k] || []).push(x); });
+    const out = Object.entries(agBy).map(([k, list]) => {
+      const a = byName[k] || { name: list[0].player, level: list[0].level || 'College', position: '', college: '' };
+      return {
+        a, key: `ag-${k}`, agreements: list,
+        yearly: list.reduce((s, x) => s + x.guaranteed, 0), max: list.reduce((s, x) => s + x.max, 0),
+        team: a.nflTeam || a.college || a.committedTo || '', levelFilter: a.level === 'NFL' ? 'NFL' : 'College',
+        terms: [...new Set(list.map(x => x.type))].join(' + '),
+      };
+    });
+    athletes.forEach(a => {
+      if (agBy[a.name.toLowerCase()]) return;
       const yearly = moneyNum(a.contractYearly) || moneyNum(a.contractAav);
-      if (!yearly) return null;
-      return { a, yearly, team: a.nflTeam || a.college || '', manual: !!moneyNum(a.contractYearly) };
-    })
-    .filter(Boolean)
-    .sort((x, y) => y.yearly - x.yearly), [athletes]);
+      if (!yearly) return;
+      const manual = !!moneyNum(a.contractYearly), gtd = moneyNum(a.contractGuaranteed), tot = moneyNum(a.contractTotal);
+      out.push({
+        a, key: `sp-${a.level}-${a.name}`, agreements: [], yearly, max: manual ? yearly : (tot || yearly), manual,
+        team: a.nflTeam || a.college || '', levelFilter: a.level,
+        terms: manual ? 'Manual' : [a.contractYears && `${a.contractYears} yrs`, gtd && `${fmt(gtd)} gtd`].filter(Boolean).join(' · ') || 'Spotrac',
+      });
+    });
+    return out.sort((x, y) => y.yearly - x.yearly);
+  }, [athletes, agreements, year]);
   const teams = useMemo(() => [...new Set(deals.map(d => d.team).filter(Boolean))].sort(), [deals]);
   const list = deals.filter(d => {
     const g = contractPosGroup(d.a.position);
-    return levels.includes(d.a.level) &&
+    return levels.includes(d.levelFilter) &&
       (agent === 'All' || agentMatch(d.a.agentAssigned, agent)) &&
       (side === 'All' || (POS_SIDES[side].includes(g) && (group === 'All' || g === group))) &&
       (team === 'All' || d.team === team) &&
-      (!q.trim() || athleteSearchMatch(d.a, q.trim().toLowerCase()));
+      (!q.trim() || athleteSearchMatch(d.a, q.trim().toLowerCase()) || d.agreements.some(x => x.party.toLowerCase().includes(q.trim().toLowerCase())));
   });
   const sum = list.reduce((s, d) => s + d.yearly, 0);
-  const numOf = { yearly: d => d.yearly, total: d => moneyNum(d.a.contractTotal), gtd: d => moneyNum(d.a.contractGuaranteed) };
+  const sumMax = list.reduce((s, d) => s + d.max, 0);
+  const numOf = { yearly: d => d.yearly, max: d => d.max };
   const sorted = [...list].sort((x, y) => {
     const cmp = (numOf[sortCol] ? numOf[sortCol](x) - numOf[sortCol](y)
       : sortCol === 'position' ? String(x.a.position || '').localeCompare(String(y.a.position || ''))
       : sortCol === 'team' ? x.team.localeCompare(y.team)
-      : sortCol === 'years' ? String(x.a.contractYears || '').localeCompare(String(y.a.contractYears || ''))
+      : sortCol === 'terms' ? x.terms.localeCompare(y.terms)
       : x.a.name.localeCompare(y.a.name)) || x.a.name.localeCompare(y.a.name);
     return sortDir === 'desc' ? -cmp : cmp;
   });
+  // Payouts view: every scheduled payment across the listed players, by date.
+  const payouts = useMemo(() => list.flatMap(d => d.agreements.flatMap(x => x.payouts.map((p, i) => ({ d, x, p, i }))))
+    .sort((a, b) => (a.p.date || '9999').localeCompare(b.p.date || '9999') || a.d.a.name.localeCompare(b.d.a.name)), [list]);
+  const owed = payouts.filter(r => !r.p.paid).reduce((s, r) => s + r.p.amount, 0);
+  const received = payouts.filter(r => r.p.paid).reduce((s, r) => s + r.p.amount, 0);
+  const nextPay = payouts.find(r => !r.p.paid && r.p.date);
+  const [payBusy, setPayBusy] = useState(0);
+  const togglePaid = async (x, i) => {
+    if (payBusy) return;
+    setPayBusy(x.row);
+    try {
+      await postTab({ action: 'tab-update', tab: 'contracts', row: x.row, values: { payouts: JSON.stringify(x.payouts.map((p, j) => j === i ? { ...p, paid: !p.paid } : p)) } });
+      tab.reload();
+    } catch (e) { window.alert(e.message); }
+    setPayBusy(0);
+  };
   const posValue = side === 'All' ? 'All' : (group !== 'All' ? group : side);
   const sections = [
     (staff || []).length > 0 && {
@@ -12972,85 +13337,159 @@ function ContractsPage({ isMobile, athletes, staff, onOpenAthlete }) {
   const filterLabel = [agent !== 'All' ? agent : null, posValue !== 'All' ? posValue : null, team !== 'All' ? team : null].filter(Boolean).join(', ') || 'All';
   const card = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, padding: 16 };
   const statLabel = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.green, marginTop: 7 };
+  const stat = (value, label) => (
+    <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
+      <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+      <div style={statLabel}>{label}</div>
+    </div>
+  );
+  const pill = (on, label, onClick) => (
+    <button key={label} onClick={onClick} style={{ background: on ? G.text : "transparent", color: on ? G.bg : G.textSecondary, border: `1px solid ${on ? G.text : G.surfaceBorder}`, borderRadius: 20, padding: "6px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>{label}</button>
+  );
+  const thStyle = (key, right) => ({ textAlign: right ? "right" : "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, cursor: "pointer", whiteSpace: "nowrap", userSelect: "none" });
+  const cols = isMobile ? [['player', 'Player'], ['yearly', '$ / Year', true]] : [['player', 'Player'], ['position', 'Position'], ['team', 'Team'], ['yearly', '$ / Year', true], ['max', 'Max', true], ['terms', 'Terms']];
+  const tableWrap = { background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" };
+  const empty = (msg) => <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>{msg}</div>;
   return (
     <div style={{ maxWidth: 1720, margin: "0 auto", padding: isMobile ? "18px 16px 80px" : "28px 28px 60px" }}>
-      <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginBottom: 18 }}>Contracts</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+        <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, letterSpacing: "-0.03em", color: G.text }}>Contracts</div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setModal({})}
+          style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 9, padding: isMobile ? "0 12px" : "8px 14px", height: isMobile ? 34 : "auto", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: ff, whiteSpace: "nowrap" }}>
+          {isMobile ? '+ Contract' : 'Upload contract'}
+        </button>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-        <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{sum ? `${fmt(sum)}` : '—'}</div>
-          <div style={statLabel}>Total / year</div>
-        </div>
-        <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{list.length}</div>
-          <div style={statLabel}>Deals</div>
-        </div>
-        {!isMobile && (
-          <div style={{ ...card, transition: `box-shadow 0.18s ${G.ease}` }} onMouseEnter={e => { e.currentTarget.style.boxShadow = G.cardShadowHover; }} onMouseLeave={e => { e.currentTarget.style.boxShadow = G.cardShadow; }}>
-            <div style={{ fontSize: 24, fontWeight: 700, color: G.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{list.length ? fmt(sum / list.length) : '—'}</div>
-            <div style={statLabel}>Average / year</div>
-          </div>
-        )}
+        {mode === 'payouts' ? (<>
+          {stat(owed ? fmt(owed) : '—', 'Still owed')}
+          {stat(received ? fmt(received) : '—', 'Received')}
+          {!isMobile && stat(nextPay ? `${fmtDay(nextPay.p.date, { month: 'short', day: 'numeric' })} · ${fmt(nextPay.p.amount)}` : '—', 'Next payout')}
+        </>) : (<>
+          {stat(sum ? fmt(sum) : '—', 'Total / year')}
+          {stat(sumMax && sumMax !== sum ? fmt(sumMax) : list.length, sumMax && sumMax !== sum ? 'Max' : 'Deals')}
+          {!isMobile && stat(list.length ? fmt(sum / list.length) : '—', 'Average / year')}
+        </>)}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
-        {['NFL', 'College'].map(lv => levelChipBtn(levels.includes(lv), lv, () => toggleLevel(lv)))}
+        {pill(mode === 'contracts', 'Contracts', () => setMode('contracts'))}
+        {pill(mode === 'payouts', 'Payouts', () => setMode('payouts'))}
         <div style={{ width: 10 }} />
+        {years.map(y => levelChipBtn(year === y, String(y), () => setYear(y)))}
+        {!isMobile && <div style={{ width: 10 }} />}
+        {['NFL', 'College'].map(lv => levelChipBtn(levels.includes(lv), lv, () => toggleLevel(lv)))}
         <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
           onAll={() => { setLevels(['NFL', 'College']); setAgent('All'); setSide('All'); setGroup('All'); setTeam('All'); }} />
         <div style={{ flex: 1 }} />
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search contracts..."
           style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
-      <div style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, boxShadow: G.cardShadow, borderRadius: 14, overflow: "hidden" }}>
-        {sorted.length === 0 ? (
-          <div style={{ padding: "34px 16px", textAlign: "center", color: G.textTertiary, fontSize: 13 }}>
-            No contracts match these filters.
-          </div>
-        ) : (
-          <div className="mh-hscroll" style={{ overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead><tr>
-                {(isMobile ? [['player', 'Player'], ['yearly', '$ / Year']] : [['player', 'Player'], ['position', 'Position'], ['team', 'Team'], ['yearly', '$ / Year'], ['years', 'Years'], ['total', 'Total'], ['gtd', 'Guaranteed']]).map(([key, h]) => (
-                  <th key={key}
-                    onClick={() => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(['yearly', 'total', 'gtd'].includes(key) ? 'desc' : 'asc'); } }}
-                    style={{ textAlign: isMobile && key === 'yearly' ? "right" : "left", padding: "10px 16px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: sortCol === key ? G.green : G.textTertiary, borderBottom: `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
-                    {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-                  </th>
-                ))}
-              </tr></thead>
-              <tbody>
-                {sorted.map((d, i) => {
-                  const a = d.a;
-                  const td = { padding: "10px 16px", fontSize: 13, color: G.textSecondary, borderBottom: i < sorted.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" };
-                  const tot = moneyNum(a.contractTotal), gtd = moneyNum(a.contractGuaranteed);
-                  return (
-                    <tr key={`${a.level || ''}-${a._rowIndex ?? ''}-${a.id || i}`} onClick={() => onOpenAthlete(a)} style={{ cursor: "pointer" }}
-                      onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      {isMobile ? (<>
-                        <td style={{ ...td, width: "100%", maxWidth: 0 }}>{mIdent({ name: a.name, caption: [a.position, d.team].filter(Boolean).join(' · '), photo: a.photoUrl })}</td>
-                        <td style={{ ...td, ...mNum, color: G.green, fontWeight: 700, fontSize: 14 }}>{fmt(d.yearly)}</td>
-                      </>) : (<>
-                      <td style={{ ...td, color: G.text, fontWeight: 600 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <Avatar name={a.name} photoUrl={a.photoUrl} size={30} />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
-                        </div>
-                      </td>
-                      <td style={td}>{a.position}</td>
-                      <td style={td}>{d.team}</td>
-                      <td style={{ ...td, color: G.text, fontWeight: 700 }}>{fmt(d.yearly)}</td>
-                      <td style={td}>{d.manual ? '—' : (a.contractYears || '—')}</td>
-                      <td style={td}>{tot ? fmt(tot) : '—'}</td>
-                      <td style={td}>{gtd ? fmt(gtd) : '—'}</td>
-                      </>)}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {mode === 'payouts' ? (
+        <div style={tableWrap}>
+          {payouts.length === 0 ? empty(`No payout schedules for ${year} yet.`) : (
+            <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr>
+                  {(isMobile ? [['Paid'], ['Player'], ['Amount', true]] : [['Paid'], ['Date'], ['Player'], ['Paid by'], ['Period'], ['Amount', true]]).map(([h, right]) => (
+                    <th key={h} style={{ ...thStyle('', right), cursor: "default" }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {payouts.map((r, i) => {
+                    const td = { padding: "10px 16px", fontSize: 13, color: r.p.paid ? G.textTertiary : G.textSecondary, borderBottom: i < payouts.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+                    const past = !r.p.paid && r.p.date && r.p.date < new Date().toISOString().slice(0, 10);
+                    return (
+                      <tr key={`${r.x.row}-${r.i}`} style={{ background: i % 2 ? G.surfaceRaised : "transparent", opacity: payBusy === r.x.row ? 0.6 : 1 }}>
+                        <td style={{ ...td, width: 20 }}><input type="checkbox" checked={r.p.paid} onChange={() => togglePaid(r.x, r.i)} style={{ margin: 0, cursor: "pointer", accentColor: G.green }} /></td>
+                        {isMobile ? (<>
+                          <td style={{ ...td, width: "100%", maxWidth: 0, whiteSpace: "normal" }}>{mIdent({ name: r.d.a.name, caption: [r.p.date ? fmtDay(r.p.date) : (r.p.period || 'On signing'), r.x.party].filter(Boolean).join(' · '), photo: r.d.a.photoUrl })}</td>
+                        </>) : (<>
+                          <td style={{ ...td, color: past ? G.red : td.color, fontWeight: past ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{r.p.date ? fmtDay(r.p.date) : (r.p.period || 'On signing')}</td>
+                          <td style={{ ...td, color: r.p.paid ? G.textTertiary : G.text, fontWeight: 600, cursor: "pointer" }} onClick={() => onOpenAthlete(r.d.a)}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar name={r.d.a.name} photoUrl={r.d.a.photoUrl} size={26} />{r.d.a.name}</div>
+                          </td>
+                          <td style={td}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{typeChip(r.x.type)}{r.x.party}</span></td>
+                          <td style={{ ...td, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{r.p.date ? r.p.period : ''}</td>
+                        </>)}
+                        <td style={{ ...td, ...mNum, fontWeight: 700, color: r.p.paid ? G.textTertiary : G.text, textDecoration: r.p.paid ? "line-through" : "none" }}>{usd(r.p.amount)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={tableWrap}>
+          {sorted.length === 0 ? empty('No contracts match these filters.') : (
+            <div className="mh-hscroll" style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr>
+                  {cols.map(([key, h, right]) => (
+                    <th key={key} onClick={() => { if (sortCol === key) setSortDir(dd => dd === 'asc' ? 'desc' : 'asc'); else { setSortCol(key); setSortDir(['yearly', 'max'].includes(key) ? 'desc' : 'asc'); } }} style={thStyle(key, right)}>
+                      {h}{sortCol === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                    </th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {sorted.map((d, i) => {
+                    const a = d.a, open = openKey === d.key, last = i === sorted.length - 1;
+                    const td = { padding: "10px 16px", fontSize: 13, color: G.textSecondary, borderBottom: last && !open ? "none" : `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", verticalAlign: "middle" };
+                    return (
+                      <React.Fragment key={d.key}>
+                        <tr onClick={() => setOpenKey(open ? '' : d.key)} style={{ cursor: "pointer", background: open ? G.surfaceRaised : "transparent" }}
+                          onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
+                          onMouseLeave={e => e.currentTarget.style.background = open ? G.surfaceRaised : "transparent"}>
+                          {isMobile ? (<>
+                            <td style={{ ...td, width: "100%", maxWidth: 0, whiteSpace: "normal" }}>{mIdent({ name: a.name, caption: [a.position, d.team, d.agreements.length ? d.terms : ''].filter(Boolean).join(' · '), photo: a.photoUrl })}</td>
+                            <td style={{ ...td, ...mNum, color: G.green, fontWeight: 700, fontSize: 14 }}>{fmt(d.yearly)}</td>
+                          </>) : (<>
+                            <td style={{ ...td, color: G.text, fontWeight: 600 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <Avatar name={a.name} photoUrl={a.photoUrl} size={30} />
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
+                              </div>
+                            </td>
+                            <td style={td}>{a.position || '—'}</td>
+                            <td style={td}>{d.team || '—'}</td>
+                            <td style={{ ...td, ...mNum, color: G.text, fontWeight: 700 }}>{fmt(d.yearly)}</td>
+                            <td style={{ ...td, ...mNum, color: d.max > d.yearly ? G.text : G.textTertiary }}>{d.max > d.yearly ? fmt(d.max) : '—'}</td>
+                            <td style={td}>{d.agreements.length ? <span style={{ display: "inline-flex", gap: 6 }}>{[...new Set(d.agreements.map(x => x.type))].map(t => <span key={t}>{typeChip(t)}</span>)}</span> : d.terms}</td>
+                          </>)}
+                        </tr>
+                        {open && (
+                          <tr><td colSpan={cols.length} style={{ padding: isMobile ? "12px 12px 16px" : "14px 16px 18px", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, background: G.surface }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: d.agreements.length ? 12 : 0, flexWrap: "wrap" }}>
+                              {d.agreements.length ? (
+                                <div style={{ fontSize: 13, color: G.textSecondary }}>
+                                  <b style={{ color: G.text }}>{usd(d.yearly)}</b> guaranteed{d.max > d.yearly ? <> · up to <b style={{ color: G.text }}>{usd(d.max)}</b> with incentives</> : ''} · {year}
+                                </div>
+                              ) : d.manual ? (
+                                <div style={{ fontSize: 13, color: G.textSecondary }}>Yearly amount entered on the profile. Upload the signed agreement to track payouts.</div>
+                              ) : (
+                                <div style={{ fontSize: 13, color: G.textSecondary }}>
+                                  {[a.contractYears && `${a.contractYears} years`, moneyNum(a.contractTotal) && `${fmt(moneyNum(a.contractTotal))} total`, moneyNum(a.contractGuaranteed) && `${fmt(moneyNum(a.contractGuaranteed))} guaranteed`].filter(Boolean).join(' · ') || 'Terms from Spotrac.'}
+                                  {' '}<a href={a.contractUrl || `https://www.spotrac.com/search?q=${encodeURIComponent(a.name)}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: G.green, fontWeight: 600, textDecoration: "none" }}>Spotrac</a>
+                                </div>
+                              )}
+                              <div style={{ flex: 1 }} />
+                              <button onClick={() => setModal({ athlete: a.name ? (athletes.find(x => x.name === a.name) || a) : a })} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, color: G.green, cursor: "pointer", fontFamily: ff }}>+ Add contract</button>
+                              <button onClick={() => onOpenAthlete(a)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, color: G.text, cursor: "pointer", fontFamily: ff }}>Profile →</button>
+                            </div>
+                            {d.agreements.length > 0 && <AgreementList items={d.agreements} onChanged={() => tab.reload()} isMobile={isMobile} />}
+                          </td></tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+      {modal && <ContractModal athletes={athletes} athlete={modal.athlete} user={user} isMobile={isMobile} onClose={() => setModal(null)} onSaved={() => tab.reload()} />}
     </div>
   );
 }
@@ -15250,7 +15689,7 @@ function App() {
                   <ThisWeekendModule athletes={athletes} user={currentUser} isMobile={isMobile} onOpenAthlete={(a) => setView('detail', a)} fullPage />
                 </div>
               )}
-              {view === 'roster' && navActive && effSportsPage === 'contracts' && canContracts && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} onOpenAthlete={(a) => setView('detail', a)} />}
+              {view === 'roster' && navActive && effSportsPage === 'contracts' && canContracts && <ContractsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && effSportsPage === 'branddeals' && <BrandDealsPage isMobile={isMobile} athletes={athletes} staff={sportsStaff} user={currentUser} onOpenAthlete={(a) => setView('detail', a)} />}
               {view === 'roster' && navActive && effSportsPage === 'prospects' && <ProspectSearch isMobile={isMobile} user={currentUser} athletes={athletes} staff={sportsStaff} />}
               {view === 'roster' && navActive && effSportsPage === 'connections' && <ConnectionsPage isMobile={isMobile} user={currentUser} />}

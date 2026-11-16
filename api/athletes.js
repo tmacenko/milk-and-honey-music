@@ -694,6 +694,11 @@ const ADMIN_TABS = {
   // Agent ↔ school relationships (Connections page): team = CFBD school
   // name, agent = Staff name, contact optional.
   connections: { title: 'Connections', writable: true, autoCreate: ['team', 'agent', 'contact', 'role', 'notes', 'updatedAt'], ensureCols: ['role'] },
+  // Signed agreements (college/HS rev-share + NIL, anything with a PDF): one
+  // row per agreement per year. incentives/payouts are JSON arrays —
+  // [{label, amount}] and [{date, period, amount, paid}]. fileId points at
+  // the PDF in the player's Box folder. Internal only (never PUBLIC_FIELDS).
+  contracts: { title: 'Contracts', writable: true, autoCreate: ['player', 'level', 'type', 'party', 'year', 'start', 'end', 'guaranteed', 'incentives', 'payouts', 'fileId', 'fileName', 'notes', 'createdBy', 'createdAt'] },
   // Brand deal tracker — one row per deal; clients is a comma list of roster
   // names; fileId/fileName point at the deal file in Box (copied into each
   // tagged player's folder at upload time).
