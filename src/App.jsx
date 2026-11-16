@@ -12952,58 +12952,84 @@ const cLabel = (t) => <div style={{ fontSize: 10, fontWeight: 700, textTransform
 const cInput = { ...inputBase, padding: "8px 10px", fontSize: 13, width: "100%", boxSizing: "border-box" };
 const typeChip = (t) => <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.green, background: G.greenSubtle, borderRadius: 6, padding: "3px 7px", whiteSpace: "nowrap" }}>{t}</span>;
 
-// Upload-a-contract form. Drop the PDF → the server reads the terms with AI →
-// staff check and save. Saving puts the PDF in the player's Box folder and
-// appends a Contracts row.
+// Upload-contracts form. Drop one or more PDFs → the server reads each with
+// AI (terms + the athlete's name, matched to the roster) → staff check each
+// one and save. Saving puts the PDF in the player's Box folder and appends a
+// Contracts row. With `athlete` set (profile), the player is fixed.
+const normName = (s) => String(s || '').toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+function matchAthlete(athletes, name) {
+  const n = normName(name);
+  if (!n) return null;
+  const exact = athletes.find(a => normName(a.name) === n);
+  if (exact) return exact;
+  const parts = n.split(' '), first = parts[0], last = parts[parts.length - 1];
+  if (parts.length < 2) return null;
+  const cands = athletes.filter(a => { const p = normName(a.name).split(' '); return p.length > 1 && p[p.length - 1] === last && p[0].slice(0, 3) === first.slice(0, 3); });
+  return cands.length === 1 ? cands[0] : null;
+}
 function ContractModal({ athletes, athlete, user, isMobile, onClose, onSaved }) {
-  const [pick, setPick] = useState(athlete || null);
+  const blank = () => ({ type: 'NIL', party: '', year: String(new Date().getFullYear()), start: '', end: '', guaranteed: '', notes: '', incentives: [], payouts: [] });
+  const [items, setItems] = useState([]); // { id, file, status: reading|done|manual, msg, pick, form, saved }
+  const [idx, setIdx] = useState(0);
   const [aq, setAq] = useState('');
-  const [file, setFile] = useState(null);
-  const [reading, setReading] = useState(false);
-  const [readMsg, setReadMsg] = useState('');
-  const [readOk, setReadOk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
   const fileRef = useRef();
-  const [f, setF] = useState({ type: 'NIL', party: '', year: String(new Date().getFullYear()), start: '', end: '', guaranteed: '', notes: '', incentives: [], payouts: [] });
-  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const setRow = (k, i, key, v) => setF(p => ({ ...p, [k]: p[k].map((r, j) => j === i ? { ...r, [key]: v } : r) }));
-  const addRow = (k, r) => setF(p => ({ ...p, [k]: [...p[k], r] }));
-  const delRow = (k, i) => setF(p => ({ ...p, [k]: p[k].filter((_, j) => j !== i) }));
+  const cur = items[idx];
+  const patch = (id, fn) => setItems(list => list.map(it => it.id === id ? { ...it, ...(typeof fn === 'function' ? fn(it) : fn) } : it));
+  const setF = (k, v) => patch(cur.id, it => ({ form: { ...it.form, [k]: v } }));
+  const setRow = (k, i, key, v) => patch(cur.id, it => ({ form: { ...it.form, [k]: it.form[k].map((r, j) => j === i ? { ...r, [key]: v } : r) } }));
+  const addRow = (k, r) => patch(cur.id, it => ({ form: { ...it.form, [k]: [...it.form[k], r] } }));
+  const delRow = (k, i) => patch(cur.id, it => ({ form: { ...it.form, [k]: it.form[k].filter((_, j) => j !== i) } }));
   const matches = useMemo(() => { const s = aq.trim().toLowerCase(); return s ? athletes.filter(a => a.name.toLowerCase().includes(s)).slice(0, 8) : []; }, [aq, athletes]);
-  const readPdf = async (fl) => {
-    if (!fl) return;
-    setFile(fl); setReadMsg(''); setReadOk(false);
-    if (!/\.pdf$/i.test(fl.name) && fl.type !== 'application/pdf') { setReadMsg('Only PDFs are read automatically — enter the terms below.'); return; }
-    if (fl.size > 4e6) { setReadMsg('Too large to read automatically — enter the terms below.'); return; }
-    setReading(true);
+  const readPdf = async (e) => {
+    const fl = e.file;
+    if (!/\.pdf$/i.test(fl.name) && fl.type !== 'application/pdf') { patch(e.id, { status: 'manual', msg: 'Only PDFs are read automatically — enter the terms.' }); return; }
+    if (fl.size > 4e6) { patch(e.id, { status: 'manual', msg: 'Too large to read automatically — enter the terms.' }); return; }
     try {
       const b64 = await new Promise((res, rej) => { const rd = new FileReader(); rd.onload = () => res(String(rd.result).split(',')[1] || ''); rd.onerror = rej; rd.readAsDataURL(fl); });
       const r = await fetch('/api/contract-parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pdf: b64, name: fl.name }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) throw new Error(d.error || 'Read failed');
       const t = d.terms || {};
-      setF(p => ({
-        ...p,
-        type: CONTRACT_TYPES.includes(t.type) ? t.type : p.type, party: t.party || p.party,
-        year: t.year ? String(t.year) : (isoDay(t.start) ? isoDay(t.start).slice(0, 4) : p.year),
-        start: isoDay(t.start) || p.start, end: isoDay(t.end) || p.end,
-        guaranteed: t.guaranteed ? String(Math.round(t.guaranteed)) : p.guaranteed, notes: t.notes || p.notes,
-        incentives: (t.incentives || []).map(x => ({ label: x.label || '', amount: x.amount ? String(Math.round(x.amount)) : '' })),
-        payouts: (t.payouts || []).map(x => ({ date: isoDay(x.date), period: x.period || '', amount: x.amount ? String(Math.round(x.amount)) : '' })),
+      const found = athlete || matchAthlete(athletes, t.athlete);
+      patch(e.id, it => ({
+        status: 'done', pick: it.pick || found,
+        msg: t.athlete ? (found ? `Read as ${found.name}.` : `Read as ${t.athlete} — pick the matching client.`) : 'Read. Check the terms, then save.',
+        form: {
+          ...it.form,
+          type: CONTRACT_TYPES.includes(t.type) ? t.type : it.form.type, party: t.party || it.form.party,
+          year: t.year ? String(t.year) : (isoDay(t.start) ? isoDay(t.start).slice(0, 4) : it.form.year),
+          start: isoDay(t.start) || it.form.start, end: isoDay(t.end) || it.form.end,
+          guaranteed: t.guaranteed ? String(Math.round(t.guaranteed)) : it.form.guaranteed, notes: t.notes || it.form.notes,
+          incentives: (t.incentives || []).map(x => ({ label: x.label || '', amount: x.amount ? String(Math.round(x.amount)) : '' })),
+          payouts: (t.payouts || []).map(x => ({ date: isoDay(x.date), period: x.period || '', amount: x.amount ? String(Math.round(x.amount)) : '' })),
+        },
       }));
-      setReadOk(true);
-      setReadMsg(t.athlete ? `Read as ${t.athlete}. Check the terms, then save.` : 'Read. Check the terms, then save.');
-    } catch (e) { setReadMsg(`${e.message} Enter the terms below.`); }
-    setReading(false);
+    } catch (err) { patch(e.id, { status: 'manual', msg: `${err.message} Enter the terms.` }); }
   };
-  const payoutSum = f.payouts.reduce((s, p) => s + numIn(p.amount), 0);
-  const gtd = numIn(f.guaranteed);
-  const canSave = !!pick && !!f.party.trim() && gtd > 0 && !busy && !reading;
+  const addFiles = (fls) => {
+    const list = [...(fls || [])].filter(Boolean);
+    if (!list.length) return;
+    const entries = list.map(fl => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file: fl, status: 'reading', msg: '', pick: athlete || null, form: blank(), saved: false }));
+    setItems(prev => [...prev, ...entries]);
+    entries.forEach(readPdf);
+  };
+  const addManual = () => setItems(prev => [...prev, { id: `${Date.now()}-m`, file: null, status: 'manual', msg: '', pick: athlete || null, form: blank(), saved: false }]);
+  const f = cur ? cur.form : null;
+  const gtd = f ? numIn(f.guaranteed) : 0;
+  const payoutSum = f ? f.payouts.reduce((s, p) => s + numIn(p.amount), 0) : 0;
+  const canSave = !!cur && !!cur.pick && !!f.party.trim() && gtd > 0 && !busy && cur.status !== 'reading';
+  const remaining = items.filter((it, i) => i !== idx && !it.saved);
+  const advance = () => {
+    const next = items.findIndex((it, i) => i !== idx && !it.saved);
+    if (next < 0) onClose(); else setIdx(next);
+  };
   const save = async () => {
     if (!canSave) return;
     setBusy(true);
     try {
+      const pick = cur.pick, file = cur.file;
       let fileId = '', fileName = '';
       if (file) {
         const d = await (await fetch(`/api/box?person=${encodeURIComponent(pick.name)}&kind=sports`)).json();
@@ -13033,102 +13059,128 @@ function ContractModal({ athletes, athlete, user, isMobile, onClose, onSaved }) 
         payouts: JSON.stringify(f.payouts.filter(x => x.date || x.period.trim() || numIn(x.amount)).map(x => ({ date: isoDay(x.date), period: x.period.trim(), amount: numIn(x.amount), paid: false }))),
         fileId, fileName, notes: f.notes.trim(), createdBy: String(user?.name || '').trim(), createdAt: new Date().toISOString().slice(0, 10),
       } });
+      patch(cur.id, { saved: true });
       onSaved && onSaved();
-      onClose();
+      advance();
     } catch (e) { window.alert(e.message); }
     setBusy(false);
   };
   const rowBtn = (label, onClick) => <button onClick={onClick} style={{ background: "none", border: "none", color: G.green, cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: "6px 0", fontFamily: ff }}>{label}</button>;
   const xBtn = (onClick) => <button onClick={onClick} style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 13, padding: "0 4px", fontFamily: ff }}>✕</button>;
   const ghost = { background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 9, padding: "8px 14px", fontSize: 13, fontWeight: 600, color: G.text, cursor: "pointer", fontFamily: ff };
+  const dropZone = (big) => (
+    <div onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
+      onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
+      onClick={() => fileRef.current?.click()}
+      style={{ border: `1px dashed ${drag ? G.green : G.surfaceBorder}`, borderRadius: 12, padding: big ? "36px 16px" : "10px 14px", textAlign: "center", cursor: "pointer", background: drag ? G.greenSubtle : "transparent" }}>
+      <div style={{ fontSize: big ? 15 : 13, fontWeight: 600, color: G.text }}>{big ? 'Drop contract PDFs here' : '+ Add more PDFs'}</div>
+      {big && <div style={{ fontSize: 12.5, color: G.textTertiary, marginTop: 6 }}>One or several. Each is read and matched to a client for you to check.</div>}
+    </div>
+  );
+  const reading = cur && cur.status === 'reading';
+  const statusColor = !cur ? G.textTertiary : cur.status === 'reading' ? G.yellow : cur.status === 'done' ? (cur.pick ? G.green : G.yellow) : G.red;
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 2000, padding: isMobile ? 0 : 20 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: G.surface, border: `1px solid ${G.cardBorder}`, borderRadius: isMobile ? "16px 16px 0 0" : 16, boxShadow: G.shadowLg, width: isMobile ? "100%" : 600, maxHeight: isMobile ? "92vh" : "90vh", overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>Upload contract</div>
+          <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em", color: G.text }}>{athlete ? `Add contract · ${athlete.name}` : 'Upload contracts'}</div>
+          {items.length > 1 && <span style={{ fontSize: 11.5, fontWeight: 700, color: G.textTertiary, background: G.surfaceRaised, borderRadius: 6, padding: "3px 7px" }}>{idx + 1} of {items.length}</span>}
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={{ background: "none", border: "none", color: G.textSecondary, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: ff }}>✕</button>
         </div>
-        <div>
-          {cLabel('Athlete')}
-          {pick ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, ...inputBase, padding: "7px 10px" }}>
-              <Avatar name={pick.name} photoUrl={pick.photoUrl} size={22} />
-              <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>{pick.name}</span>
-              <span style={{ fontSize: 11.5, color: G.textTertiary }}>{[pick.position, pick.college || pick.committedTo || pick.nflTeam].filter(Boolean).join(' · ')}</span>
-              {!athlete && <button onClick={() => { setPick(null); setAq(''); }} style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: ff }}>Change</button>}
+        <input ref={fileRef} type="file" multiple accept=".pdf,application/pdf" style={{ display: "none" }} onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+        {!cur ? (<>
+          {dropZone(true)}
+          <div style={{ textAlign: "center" }}>{rowBtn('Enter terms without a PDF', addManual)}</div>
+        </>) : (<>
+          {items.length > 1 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {items.map((it, i) => (
+                <button key={it.id} onClick={() => setIdx(i)} style={{ background: i === idx ? G.text : G.surfaceRaised, color: i === idx ? G.bg : it.saved ? G.textTertiary : G.text, border: `1px solid ${i === idx ? G.text : G.surfaceBorder}`, borderRadius: 20, padding: "4px 10px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: ff, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: it.saved ? "line-through" : "none" }}>
+                  {it.saved ? '✓ ' : it.status === 'reading' ? '… ' : ''}{it.pick ? it.pick.name : it.file ? it.file.name : 'Manual entry'}
+                </button>
+              ))}
             </div>
-          ) : (<>
-            <input autoFocus value={aq} onChange={e => setAq(e.target.value)} placeholder="Search a client…" style={cInput} />
-            {matches.length > 0 && (
-              <div style={{ marginTop: 4, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
-                {matches.map(a => (
-                  <div key={`${a.level}-${a.name}`} onClick={() => setPick(a)}
-                    onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", fontSize: 13, color: G.text, fontWeight: 600 }}>
-                    <Avatar name={a.name} photoUrl={a.photoUrl} size={22} /><span style={{ flex: 1 }}>{a.name}</span>
-                    <span style={{ fontSize: 11.5, color: G.textTertiary, fontWeight: 400 }}>{[a.level, a.position, a.college || a.committedTo || a.nflTeam].filter(Boolean).join(' · ')}</span>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: G.surfaceRaised, borderRadius: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: G.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur.file ? cur.file.name : 'No PDF — terms entered by hand'}</div>
+              <div style={{ fontSize: 11.5, color: statusColor, marginTop: 2 }}>{cur.saved ? 'Saved.' : reading ? 'Reading contract…' : cur.msg || (cur.file ? 'Check the terms, then save.' : '')}</div>
+            </div>
+            {items.length === 1 && !athlete && <button onClick={() => fileRef.current?.click()} style={{ ...ghost, padding: "6px 10px", fontSize: 12.5 }}>+ Add PDF</button>}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, opacity: reading || cur.saved ? 0.45 : 1, pointerEvents: reading || cur.saved ? "none" : "auto" }}>
+            <div>
+              {cLabel('Athlete')}
+              {cur.pick ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, ...inputBase, padding: "7px 10px" }}>
+                  <Avatar name={cur.pick.name} photoUrl={cur.pick.photoUrl} size={22} />
+                  <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>{cur.pick.name}</span>
+                  <span style={{ fontSize: 11.5, color: G.textTertiary }}>{[cur.pick.position, cur.pick.college || cur.pick.committedTo || cur.pick.nflTeam].filter(Boolean).join(' · ')}</span>
+                  {!athlete && <button onClick={() => { patch(cur.id, { pick: null }); setAq(''); }} style={{ background: "none", border: "none", color: G.textTertiary, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: ff }}>Change</button>}
+                </div>
+              ) : (<>
+                <input autoFocus value={aq} onChange={e => setAq(e.target.value)} placeholder="Search a client…" style={cInput} />
+                {matches.length > 0 && (
+                  <div style={{ marginTop: 4, border: `1px solid ${G.surfaceBorder}`, borderRadius: 10, overflow: "hidden" }}>
+                    {matches.map(a => (
+                      <div key={`${a.level}-${a.name}`} onClick={() => { patch(cur.id, { pick: a }); setAq(''); }}
+                        onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised} onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", fontSize: 13, color: G.text, fontWeight: 600 }}>
+                        <Avatar name={a.name} photoUrl={a.photoUrl} size={22} /><span style={{ flex: 1 }}>{a.name}</span>
+                        <span style={{ fontSize: 11.5, color: G.textTertiary, fontWeight: 400 }}>{[a.level, a.position, a.college || a.committedTo || a.nflTeam].filter(Boolean).join(' · ')}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+              </>)}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 2fr 1fr 1fr", gap: 10 }}>
+              <div>{cLabel('Type')}<select value={f.type} onChange={e => setF('type', e.target.value)} style={{ ...cInput, cursor: "pointer" }}>{CONTRACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+              <div>{cLabel('Paid by')}<input value={f.party} onChange={e => setF('party', e.target.value)} placeholder="School, agency, brand" style={cInput} /></div>
+              <div>{cLabel('Year')}<input value={f.year} onChange={e => setF('year', e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="2027" style={{ ...cInput, fontVariantNumeric: "tabular-nums" }} /></div>
+              <div>{cLabel('Guaranteed $')}<input value={f.guaranteed} onChange={e => setF('guaranteed', e.target.value)} placeholder="300000" style={{ ...cInput, fontVariantNumeric: "tabular-nums" }} /></div>
+              <div>{cLabel('Start')}<input type="date" value={f.start} onChange={e => setF('start', e.target.value)} style={cInput} /></div>
+              <div>{cLabel('End')}<input type="date" value={f.end} onChange={e => setF('end', e.target.value)} style={cInput} /></div>
+              <div style={{ gridColumn: "1 / -1" }}>{cLabel('Notes')}<input value={f.notes} onChange={e => setF('notes', e.target.value)} placeholder="Exclusivity, buyout, conditions" style={cInput} /></div>
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                {cLabel('Payouts')}<div style={{ flex: 1 }} />
+                {f.payouts.length > 0 && <div style={{ fontSize: 11.5, color: gtd && payoutSum !== gtd ? G.yellow : G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{usd(payoutSum)} scheduled{gtd && payoutSum !== gtd ? ` · guaranteed is ${usd(gtd)}` : ''}</div>}
               </div>
-            )}
-          </>)}
-        </div>
-        <div>
-          {cLabel('Contract PDF')}
-          <div onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
-            onDrop={e => { e.preventDefault(); setDrag(false); readPdf(e.dataTransfer.files[0]); }}
-            onClick={() => !reading && fileRef.current?.click()}
-            style={{ border: `1px dashed ${drag || readOk ? G.green : G.surfaceBorder}`, borderRadius: 10, padding: 14, textAlign: "center", cursor: reading ? "default" : "pointer", background: drag ? G.greenSubtle : "transparent" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: file ? G.text : G.textSecondary }}>{file ? file.name : 'Drop the PDF here or click to choose'}</div>
-            <div style={{ fontSize: 11.5, color: reading ? G.yellow : readOk ? G.green : readMsg ? G.red : G.textTertiary, marginTop: 4 }}>
-              {reading ? 'Reading contract…' : readMsg || 'The terms below fill in automatically.'}
+              {f.payouts.map((p, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr auto" : "150px 1fr 130px auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                  <input type="date" value={p.date} onChange={e => setRow('payouts', i, 'date', e.target.value)} style={cInput} />
+                  {!isMobile && <input value={p.period} onChange={e => setRow('payouts', i, 'period', e.target.value)} placeholder="Period" style={cInput} />}
+                  <input value={p.amount} onChange={e => setRow('payouts', i, 'amount', e.target.value)} placeholder="Amount" style={{ ...cInput, textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
+                  {xBtn(() => delRow('payouts', i))}
+                </div>
+              ))}
+              {rowBtn('+ Add payout', () => addRow('payouts', { date: '', period: '', amount: '' }))}
+            </div>
+            <div>
+              {cLabel('Incentives')}
+              {f.incentives.map((p, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 130px auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                  <input value={p.label} onChange={e => setRow('incentives', i, 'label', e.target.value)} placeholder="Condition" style={cInput} />
+                  <input value={p.amount} onChange={e => setRow('incentives', i, 'amount', e.target.value)} placeholder="Amount" style={{ ...cInput, textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
+                  {xBtn(() => delRow('incentives', i))}
+                </div>
+              ))}
+              {rowBtn('+ Add incentive', () => addRow('incentives', { label: '', amount: '' }))}
             </div>
           </div>
-          <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: "none" }} onChange={e => { readPdf(e.target.files[0]); e.target.value = ''; }} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 2fr 1fr 1fr", gap: 10 }}>
-          <div>{cLabel('Type')}<select value={f.type} onChange={e => set('type', e.target.value)} style={{ ...cInput, cursor: "pointer" }}>{CONTRACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-          <div>{cLabel('Paid by')}<input value={f.party} onChange={e => set('party', e.target.value)} placeholder="School, agency, brand" style={cInput} /></div>
-          <div>{cLabel('Year')}<input value={f.year} onChange={e => set('year', e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="2027" style={{ ...cInput, fontVariantNumeric: "tabular-nums" }} /></div>
-          <div>{cLabel('Guaranteed $')}<input value={f.guaranteed} onChange={e => set('guaranteed', e.target.value)} placeholder="300000" style={{ ...cInput, fontVariantNumeric: "tabular-nums" }} /></div>
-          <div>{cLabel('Start')}<input type="date" value={f.start} onChange={e => set('start', e.target.value)} style={cInput} /></div>
-          <div>{cLabel('End')}<input type="date" value={f.end} onChange={e => set('end', e.target.value)} style={cInput} /></div>
-          <div style={{ gridColumn: "1 / -1" }}>{cLabel('Notes')}<input value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="Exclusivity, buyout, conditions" style={cInput} /></div>
-        </div>
-        <div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            {cLabel('Payouts')}<div style={{ flex: 1 }} />
-            {f.payouts.length > 0 && <div style={{ fontSize: 11.5, color: gtd && payoutSum !== gtd ? G.yellow : G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{usd(payoutSum)} scheduled{gtd && payoutSum !== gtd ? ` · guaranteed is ${usd(gtd)}` : ''}</div>}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {items.length > 1 && !cur.saved && <button onClick={() => { patch(cur.id, { saved: true }); advance(); }} style={{ ...ghost, color: G.textSecondary }}>Skip</button>}
+            <div style={{ flex: 1 }} />
+            <button onClick={onClose} style={ghost}>{items.every(it => it.saved) ? 'Done' : 'Cancel'}</button>
+            {!cur.saved && <button onClick={save} disabled={!canSave}
+              style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 9, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: canSave ? "pointer" : "default", opacity: canSave ? 1 : 0.5, fontFamily: ff }}>
+              {busy ? 'Saving…' : remaining.length ? 'Save & next' : 'Save contract'}
+            </button>}
           </div>
-          {f.payouts.map((p, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr auto" : "150px 1fr 130px auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
-              <input type="date" value={p.date} onChange={e => setRow('payouts', i, 'date', e.target.value)} style={cInput} />
-              {!isMobile && <input value={p.period} onChange={e => setRow('payouts', i, 'period', e.target.value)} placeholder="Period" style={cInput} />}
-              <input value={p.amount} onChange={e => setRow('payouts', i, 'amount', e.target.value)} placeholder="Amount" style={{ ...cInput, textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
-              {xBtn(() => delRow('payouts', i))}
-            </div>
-          ))}
-          {rowBtn('+ Add payout', () => addRow('payouts', { date: '', period: '', amount: '' }))}
-        </div>
-        <div>
-          {cLabel('Incentives')}
-          {f.incentives.map((p, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 130px auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
-              <input value={p.label} onChange={e => setRow('incentives', i, 'label', e.target.value)} placeholder="Condition" style={cInput} />
-              <input value={p.amount} onChange={e => setRow('incentives', i, 'amount', e.target.value)} placeholder="Amount" style={{ ...cInput, textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
-              {xBtn(() => delRow('incentives', i))}
-            </div>
-          ))}
-          {rowBtn('+ Add incentive', () => addRow('incentives', { label: '', amount: '' }))}
-        </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={ghost}>Cancel</button>
-          <button onClick={save} disabled={!canSave}
-            style={{ background: G.green, color: "#0a0a0a", border: "none", borderRadius: 9, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: canSave ? "pointer" : "default", opacity: canSave ? 1 : 0.5, fontFamily: ff }}>
-            {busy ? 'Saving…' : 'Save contract'}
-          </button>
-        </div>
+        </>)}
       </div>
     </div>
   );
@@ -13226,13 +13278,21 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   const [q, setQ] = useCachedState('contracts.q', '');
   const [sortCol, setSortCol] = useCachedState('contracts.sortCol', 'yearly');
   const [sortDir, setSortDir] = useCachedState('contracts.sortDir', 'desc');
-  const [year, setYear] = useCachedState('contracts.year', new Date().getFullYear());
+  const [yearPick, setYear] = useCachedState('contracts.year', 0); // 0 = auto
   const [mode, setMode] = useCachedState('contracts.mode', 'contracts'); // contracts | payouts
   const [openKey, setOpenKey] = useState('');
   const [modal, setModal] = useState(null); // { athlete? } while the upload form is open
   const tab = useAdminTab('contracts');
   const agreements = useMemo(() => parseAgreements(tab.data), [tab.data]);
   const years = useMemo(() => { const s = new Set(agreements.map(x => x.year).filter(Boolean)); s.add(new Date().getFullYear()); return [...s].sort(); }, [agreements]);
+  // Auto: this year if it has agreements, else the next year that does, else
+  // the latest one on file.
+  const year = yearPick || (() => {
+    const now = new Date().getFullYear(), have = new Set(agreements.map(x => x.year));
+    if (have.has(now)) return now;
+    const later = years.find(y => y > now && have.has(y));
+    return later || (have.size ? Math.max(...have) : now);
+  })();
   const moneyNum = (v) => {
     const str = String(v == null ? '' : v).trim();
     if (!str) return 0;
@@ -13265,7 +13325,7 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
       out.push({
         a, key: `sp-${a.level}-${a.name}`, agreements: [], yearly, max: manual ? yearly : (tot || yearly), manual,
         team: a.nflTeam || a.college || '', levelFilter: a.level,
-        terms: manual ? 'Manual' : [a.contractYears && `${a.contractYears} yrs`, gtd && `${fmt(gtd)} gtd`].filter(Boolean).join(' · ') || 'Spotrac',
+        terms: manual ? 'Manual' : [a.contractYears && (/[–-]/.test(String(a.contractYears)) ? String(a.contractYears) : `${a.contractYears} yrs`), gtd && `${fmt(gtd)} gtd`].filter(Boolean).join(' · ') || 'Spotrac',
       });
     });
     return out.sort((x, y) => y.yearly - x.yearly);
@@ -13375,14 +13435,16 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
         {pill(mode === 'contracts', 'Contracts', () => setMode('contracts'))}
         {pill(mode === 'payouts', 'Payouts', () => setMode('payouts'))}
         <div style={{ width: 10 }} />
-        {years.map(y => levelChipBtn(year === y, String(y), () => setYear(y)))}
-        {!isMobile && <div style={{ width: 10 }} />}
         {['NFL', 'College'].map(lv => levelChipBtn(levels.includes(lv), lv, () => toggleLevel(lv)))}
         <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
           onAll={() => { setLevels(['NFL', 'College']); setAgent('All'); setSide('All'); setGroup('All'); setTeam('All'); }} />
         <div style={{ flex: 1 }} />
+        <select value={year} onChange={e => setYear(parseInt(e.target.value, 10))} title="Season year"
+          style={{ ...inputBase, width: "auto", padding: "7px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+          {[...years].reverse().map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search contracts..."
-          style={{ ...inputBase, width: isMobile ? 140 : 200, padding: "7px 11px", fontSize: 12 }} />
+          style={{ ...inputBase, width: isMobile ? 120 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
       {mode === 'payouts' ? (
         <div style={tableWrap}>
@@ -13454,7 +13516,7 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                             <td style={td}>{a.position || '—'}</td>
                             <td style={td}>{d.team || '—'}</td>
                             <td style={{ ...td, ...mNum, color: G.text, fontWeight: 700 }}>{fmt(d.yearly)}</td>
-                            <td style={{ ...td, ...mNum, color: d.max > d.yearly ? G.text : G.textTertiary }}>{d.max > d.yearly ? fmt(d.max) : '—'}</td>
+                            <td style={{ ...td, ...mNum, color: d.max > d.yearly ? G.text : G.textTertiary }}>{d.max ? fmt(d.max) : '—'}</td>
                             <td style={td}>{d.agreements.length ? <span style={{ display: "inline-flex", gap: 6 }}>{[...new Set(d.agreements.map(x => x.type))].map(t => <span key={t}>{typeChip(t)}</span>)}</span> : d.terms}</td>
                           </>)}
                         </tr>
