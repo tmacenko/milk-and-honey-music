@@ -3834,21 +3834,25 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
     a.twitter && { icon: <TwIcon size={isMobile ? 18 : 20} />, url: `https://x.com/${a.twitter}`, count: a.twitterFollowers },
     a.tiktok && { icon: <TkIcon size={isMobile ? 18 : 20} />, url: `https://tiktok.com/@${a.tiktok}`, count: a.tiktokFollowers },
   ].filter(Boolean);
-  // Facts that read as prose beneath the bio.
+  // Facts beneath the bio — label-over-value cells (the Apparel & gear grid
+  // pattern), contact details as their own group.
   const weightTxt = a.weight && (/^\d+(\.\d+)?$/.test(String(a.weight).trim()) ? `${a.weight} lbs` : a.weight);
   const meta = [
-    (a.height || weightTxt) && ['Height/Weight', [a.height, weightTxt].filter(Boolean).join(' · ')],
-    // Company view only — the API already strips address for public/b2b
-    // sessions, this guard just makes the intent explicit.
-    companyView && a.address && ['Address', a.address],
-    companyView && a.email && ['Email', a.email],
-    companyView && a.phone && ['Phone', a.phone],
-    companyView && a.birthday && ['Birthday', fmtBirthday(a.birthday)],
+    a.agentAssigned && ['Agent', a.agentAssigned],
+    (a.height || weightTxt) && ['Height / Weight', [a.height, weightTxt].filter(Boolean).join(' · ')],
     a.hometown && ['Hometown', a.hometown],
-    companyView && a.positionCoach && !isFreeAgent(a) && ['Position coach', a.positionCoach],
+    companyView && a.birthday && ['Birthday', fmtBirthday(a.birthday)],
     a.classOf && ['Class of', a.classOf],
     a.committedTo && ['Committed', a.committedTo],
     (a.draftYear || a.draftRound || a.draftPick) && ['Draft', [a.draftYear, a.draftRound && `R${a.draftRound}`, a.draftPick && `P${a.draftPick}`].filter(Boolean).join(' ')],
+    companyView && a.positionCoach && !isFreeAgent(a) && ['Position coach', a.positionCoach],
+  ].filter(Boolean);
+  // Company view only — the API already strips these for public/b2b
+  // sessions, this guard just makes the intent explicit.
+  const contact = [
+    companyView && a.phone && ['Phone', a.phone, `tel:${String(a.phone).replace(/[^+\d]/g, '')}`],
+    companyView && a.email && ['Email', a.email, `mailto:${a.email}`],
+    companyView && a.address && ['Address', a.address, `https://maps.apple.com/?q=${encodeURIComponent(a.address)}`],
   ].filter(Boolean);
   const banner = a.heroImageUrl;
   const bannerH = isMobile ? 200 : 340;
@@ -3899,6 +3903,11 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
                   </span>
                 )}
                 {companyView && a.level === 'High School' && <Rank247Chip name={a.name} position={a.position} />}
+                {a.level === 'High School' && a.committedTo && (
+                  <span title="Committed" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: G.text, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
+                    {a.committedTo} commit
+                  </span>
+                )}
               </div>
               {/* Company view keeps the icons but the counts live in the socials module below. */}
               {socialBtns.length > 0 && (
@@ -3950,20 +3959,23 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
               {isMobile && a.bio.length > BIO_LIMIT && <button onClick={() => setBioExp(v => !v)} style={{ background: "none", border: "none", color: G.green, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0 0", fontFamily: ff }}>{bioExp ? 'View less' : 'View more'}</button>}
             </div>
           )}
-          {(meta.length > 0 || a.agentAssigned) && (
-            <div style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, marginTop: a.bio ? -8 : 0 }}>
-              {a.agentAssigned && (
-                <div style={{ margin: "2px 0 10px" }}>
-                  <span style={{ display: "inline-block", fontSize: 12, fontWeight: 600, color: G.text, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "5px 11px" }}>
-                    <span style={{ color: G.textTertiary }}>Agent · </span>{a.agentAssigned}
-                  </span>
-                </div>
-              )}
-              {meta.map(([label, value], i) => (
-                <div key={i}><span style={{ color: G.textTertiary }}>{label} · </span>{value}</div>
-              ))}
-            </div>
-          )}
+          {(meta.length > 0 || contact.length > 0) && (() => {
+            const cell = ([label, value, href]) => (
+              <div key={label} style={{ minWidth: 0, gridColumn: label === 'Address' && !isMobile ? "span 2" : undefined }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
+                {href
+                  ? <a href={href} target={href.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer" style={{ display: "block", fontSize: 14, fontWeight: 700, color: G.text, marginTop: 3, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</a>
+                  : <div style={{ fontSize: 14, fontWeight: 700, color: G.text, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>}
+              </div>
+            );
+            const grid = { display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fill, minmax(150px, 1fr))", gap: "14px 16px" };
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: a.bio ? -4 : 0 }}>
+                {meta.length > 0 && <div style={grid}>{meta.map(cell)}</div>}
+                {contact.length > 0 && <div style={{ ...grid, paddingTop: 14, borderTop: `1px solid ${G.surfaceBorder}` }}>{contact.map(cell)}</div>}
+              </div>
+            );
+          })()}
           {companyView && (a.level === 'NFL' ? <SocialContractModules athlete={a} isMobile={isMobile} only={canContracts ? undefined : ['social', 'market', 'docs']} /> : <SocialContractModules athlete={a} isMobile={isMobile} only={canContracts && !limited ? ['social', 'contract', 'market'] : ['social', 'market']} />)}
           {(() => {
             // Chip modules live on the Marketing tab for staff; the public
