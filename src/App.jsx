@@ -12922,6 +12922,9 @@ const CONTRACT_TYPES = ['Rev-share', 'NIL', 'Other'];
 const usd = (n) => `$${Math.round(Number(n) || 0).toLocaleString('en-US')}`;
 const isoDay = (d) => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : ''; };
 const fmtDay = (iso, opts) => { const d = isoDay(iso); return d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', opts || { month: 'short', day: 'numeric', year: 'numeric' }) : ''; };
+// "2027-01-05 to 2027-01-31" → "Jan 5 – Jan 31, 2027"; other text passes through.
+const fmtPeriod = (t) => String(t || '').replace(/(\d{4}-\d{2}-\d{2})\s*(?:to|-|–|through)\s*(\d{4}-\d{2}-\d{2})/g, (m, a, b) => a.slice(0, 4) === b.slice(0, 4) ? `${fmtDay(a, { month: 'short', day: 'numeric' })} – ${fmtDay(b)}` : `${fmtDay(a)} – ${fmtDay(b)}`).replace(/\d{4}-\d{2}-\d{2}/g, d => fmtDay(d));
+const termText = (x) => x.start && x.end ? `${fmtDay(x.start)} – ${fmtDay(x.end)}` : x.end ? `Through ${fmtDay(x.end)}` : x.start ? `From ${fmtDay(x.start)}` : String(x.year || '');
 const jsonArr = (s) => { try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; } };
 const numIn = (v) => Number(String(v == null ? '' : v).replace(/[^0-9.]/g, '')) || 0;
 function parseAgreements(tabData) {
@@ -13220,7 +13223,7 @@ function AgreementList({ items, onChanged, canEdit = true, isMobile }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{typeChip(x.type)}<span style={{ fontSize: 15, fontWeight: 700, color: G.text }}>{x.party || '—'}</span></div>
                 <div style={{ fontSize: 11.5, color: G.textTertiary, marginTop: 4 }}>
-                  {[x.start || x.end ? `${fmtDay(x.start) || '…'} – ${fmtDay(x.end) || '…'}` : `${x.year}`, next ? `Next ${fmtDay(next.date, { month: 'short', day: 'numeric' })} · ${usd(next.amount)}` : (x.payouts.length && paid >= x.guaranteed ? 'Fully paid' : '')].filter(Boolean).join('  ·  ')}
+                  {[termText(x), next ? `Next ${fmtDay(next.date, { month: 'short', day: 'numeric' })} · ${usd(next.amount)}` : (x.payouts.length && paid >= x.guaranteed ? 'Fully paid' : '')].filter(Boolean).join('  ·  ')}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
@@ -13233,8 +13236,8 @@ function AgreementList({ items, onChanged, canEdit = true, isMobile }) {
                 {x.payouts.map((p, i) => (
                   <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "18px 1fr auto" : "18px 110px 1fr auto", gap: 10, alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${G.surfaceBorder}`, fontSize: 13 }}>
                     <input type="checkbox" checked={p.paid} disabled={!canEdit} onChange={() => togglePaid(x, i)} title={p.paid ? 'Paid' : 'Mark paid'} style={{ margin: 0, cursor: canEdit ? "pointer" : "default", accentColor: G.green }} />
-                    <span style={{ color: p.paid ? G.textTertiary : G.text, fontVariantNumeric: "tabular-nums" }}>{p.date ? fmtDay(p.date) : (p.period || 'On signing')}</span>
-                    {!isMobile && <span style={{ color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.date ? p.period : ''}</span>}
+                    <span style={{ color: p.paid ? G.textTertiary : G.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{p.date ? fmtDay(p.date) : 'On signing'}</span>
+                    {!isMobile && <span title={p.period} style={{ color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{fmtPeriod(p.period)}</span>}
                     <span style={{ fontWeight: 600, color: p.paid ? G.textTertiary : G.text, textDecoration: p.paid ? "line-through" : "none", fontVariantNumeric: "tabular-nums" }}>{usd(p.amount)}</span>
                   </div>
                 ))}
@@ -13464,14 +13467,14 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                       <tr key={`${r.x.row}-${r.i}`} style={{ background: i % 2 ? G.surfaceRaised : "transparent", opacity: payBusy === r.x.row ? 0.6 : 1 }}>
                         <td style={{ ...td, width: 20 }}><input type="checkbox" checked={r.p.paid} onChange={() => togglePaid(r.x, r.i)} style={{ margin: 0, cursor: "pointer", accentColor: G.green }} /></td>
                         {isMobile ? (<>
-                          <td style={{ ...td, width: "100%", maxWidth: 0, whiteSpace: "normal" }}>{mIdent({ name: r.d.a.name, caption: [r.p.date ? fmtDay(r.p.date) : (r.p.period || 'On signing'), r.x.party].filter(Boolean).join(' · '), photo: r.d.a.photoUrl })}</td>
+                          <td style={{ ...td, width: "100%", maxWidth: 0, whiteSpace: "normal" }}>{mIdent({ name: r.d.a.name, caption: [r.p.date ? fmtDay(r.p.date) : 'On signing', r.x.party].filter(Boolean).join(' · '), photo: r.d.a.photoUrl })}</td>
                         </>) : (<>
-                          <td style={{ ...td, color: past ? G.red : td.color, fontWeight: past ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{r.p.date ? fmtDay(r.p.date) : (r.p.period || 'On signing')}</td>
+                          <td style={{ ...td, color: past ? G.red : td.color, fontWeight: past ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{r.p.date ? fmtDay(r.p.date) : 'On signing'}</td>
                           <td style={{ ...td, color: r.p.paid ? G.textTertiary : G.text, fontWeight: 600, cursor: "pointer" }} onClick={() => onOpenAthlete(r.d.a)}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar name={r.d.a.name} photoUrl={r.d.a.photoUrl} size={26} />{r.d.a.name}</div>
                           </td>
                           <td style={td}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{typeChip(r.x.type)}{r.x.party}</span></td>
-                          <td style={{ ...td, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{r.p.date ? r.p.period : ''}</td>
+                          <td title={r.p.period} style={{ ...td, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{fmtPeriod(r.p.period)}</td>
                         </>)}
                         <td style={{ ...td, ...mNum, fontWeight: 700, color: r.p.paid ? G.textTertiary : G.text, textDecoration: r.p.paid ? "line-through" : "none" }}>{usd(r.p.amount)}</td>
                       </tr>

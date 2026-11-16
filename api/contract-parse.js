@@ -16,11 +16,12 @@ const SYSTEM = `You read athlete contracts for a sports agency and pull out the 
 Rules:
 - "guaranteed" is the total cash the athlete is owed if they simply stay in good standing for the term — sum every fixed payment, including any initial/signing payment. Do not include conditional money.
 - "incentives" are conditional payments (performance, playtime, milestones, enhancements). One entry each with the condition as the label.
-- "payouts" is the full schedule of fixed payments in order. Use ISO dates (YYYY-MM-DD). If a payment has no calendar date (e.g. "within 10 days of signing"), leave date empty and describe it in period.
+- "payouts" is the full schedule of fixed payments in order. Use ISO dates (YYYY-MM-DD). "period" is the span the payment covers, in words (e.g. "Jan 5 – Jan 31, 2027"), not ISO. If a payment has no calendar date (e.g. "within 10 days of signing"), leave date empty and keep period to a few words ("Initial payment on signing").
 - "type": "Rev-share" for a school/institution NIL license or revenue-share agreement; "NIL" for an agency, collective, or brand NIL/marketing agreement; "Other" otherwise.
 - "party" is the organization paying the athlete (school, agency, collective, brand) — short name, no "LLC" unless needed to tell it apart.
 - "year" is the calendar year the agreement mainly covers (the year most payments land).
-- "notes" is one short sentence on anything unusual (exclusivity, buyout, conditions). Empty if nothing notable.
+- "start"/"end": the term dates. If the start is not stated, use the first payment period's start date.
+- "notes": at most 15 words, only terms that change the money or obligations (exclusivity, buyout, clawback, conditions to pay). Skip spelling quirks and boilerplate. Empty if nothing notable.
 - Amounts are plain numbers in dollars, no symbols.
 - If the document is not a contract, set type to "Other" and leave the money fields empty.`;
 
