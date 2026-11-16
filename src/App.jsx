@@ -3423,6 +3423,7 @@ function SportsMarketingTab({ athlete: a, isMobile, pad }) {
   if (hist.loading || hist247.loading) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[[160, 160], 320]} />;
   return (
     <div style={{ padding: `20px ${pad}px`, background: G.bg, display: "flex", flexDirection: "column", gap: 14, ...REVEAL }}>
+      {a.bio && card('Bio', null, <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{a.bio}</p>)}
       <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "5fr 7fr", gap: 14, alignItems: "stretch" }}>
         {scoreCard}
         {chartCard}
@@ -3889,8 +3890,8 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, flexWrap: "wrap" }}>
-                {companyView && !limited && a.level === 'College' && a.college
-                  ? <button onClick={() => openTeamByName(a.college)} title={`Open ${a.college}'s team page`} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex" }}><TeamLogo url={a.teamLogo} size={26} /></button>
+                {companyView && !limited && ((a.level === 'College' && a.college) || (a.level === 'High School' && a.committedTo))
+                  ? <button onClick={() => openTeamByName(a.level === 'College' ? a.college : a.committedTo)} title={a.level === 'College' ? `Open ${a.college}'s team page` : `Committed to ${a.committedTo}`} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex" }}><TeamLogo url={a.teamLogo} size={26} /></button>
                   : <TeamLogo url={a.teamLogo} size={26} />}
                 {typeLine && <span style={{ fontSize: isMobile ? 14 : 15, color: banner ? "#fff" : G.text, fontWeight: 500 }}>
                   {companyView && !limited && a.level === 'College' && a.college
@@ -3903,11 +3904,6 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
                   </span>
                 )}
                 {companyView && a.level === 'High School' && <Rank247Chip name={a.name} position={a.position} />}
-                {a.level === 'High School' && a.committedTo && (
-                  <span title="Committed" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: G.text, background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
-                    {a.committedTo} commit
-                  </span>
-                )}
               </div>
               {/* Company view keeps the icons but the counts live in the socials module below. */}
               {socialBtns.length > 0 && (
@@ -3953,13 +3949,14 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
           <ClientDealTab a={a} isMobile={isMobile} pad={pad} user={user} />
         ) : (
         <div style={{ padding: `24px ${pad}px`, display: "flex", flexDirection: "column", gap: 20, background: G.bg }}>
-          {a.bio && (
+          {a.bio && !companyView && (
             <div>
               <p style={{ fontSize: isMobile ? 15 : 14, color: G.textSecondary, lineHeight: 1.7, margin: 0 }}>{isMobile ? bioText : a.bio}</p>
               {isMobile && a.bio.length > BIO_LIMIT && <button onClick={() => setBioExp(v => !v)} style={{ background: "none", border: "none", color: G.green, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0 0", fontFamily: ff }}>{bioExp ? 'View less' : 'View more'}</button>}
             </div>
           )}
           {(meta.length > 0 || contact.length > 0) && (() => {
+            const bioAbove = a.bio && !companyView;
             const cell = ([label, value, href]) => (
               <div key={label} style={{ minWidth: 0, gridColumn: label === 'Address' && !isMobile ? "span 2" : undefined }}>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: G.textTertiary }}>{label}</div>
@@ -3970,7 +3967,7 @@ function SportsDetail({ athlete: a, isMobile, hideContact, companyView, user, fr
             );
             const grid = { display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fill, minmax(150px, 1fr))", gap: "14px 16px" };
             return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: a.bio ? -4 : 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: bioAbove ? -4 : 0 }}>
                 {meta.length > 0 && <div style={grid}>{meta.map(cell)}</div>}
                 {contact.length > 0 && <div style={{ ...grid, paddingTop: 14, borderTop: `1px solid ${G.surfaceBorder}` }}>{contact.map(cell)}</div>}
               </div>

@@ -321,7 +321,10 @@ function mergeAthlete(row, ext, level) {
   const college = isNFL ? (ext['college'] || '') : team;
   // Photos: manual override > ESPN headshot (NFL/College) > 247 headshot (HS).
   const photoUrl = ext['photoUrl'] || espnHeadshot(ext['espnId'], ext['espnSport'] || (isNFL ? 'nfl' : 'college')) || ext['photo247'] || '';
-  const teamLogo = teamLogoFor(level, nflTeam, college, ext['teamLogo']);
+  // High schoolers carry their committed school's logo (same slot the
+  // college/NFL header uses for the team).
+  const commitTo = level === 'High School' ? (row['Committed'] || row['Commitment'] || ext['committedTo'] || '') : '';
+  const teamLogo = teamLogoFor(level, nflTeam, college, ext['teamLogo']) || (commitTo ? teamLogoFor('College', '', commitTo, '') : '');
   return {
     _rowIndex: row._rowIndex,
     id: slugOf(row['Name']),
