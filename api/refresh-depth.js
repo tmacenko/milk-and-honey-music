@@ -8,6 +8,7 @@
 const crypto = require('crypto');
 const { nameKey, parseDepthChart, parseCollegeIndex, collegeUrlFor } = require('../lib/ourlads');
 const { authState } = require('../lib/auth');
+const nflPay = require('../lib/nfl-pay');
 
 const SHEET_ID = process.env.SPORTS_SHEET_ID;
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -203,7 +204,12 @@ module.exports = async (req, res) => {
   // for offers / hometown / ranks) instead of waiting for the nightly runs.
   const boardName = String((req.query || {}).board || '').trim();
   const isBoardName = (n) => !boardName || nameKey(n) === nameKey(boardName);
-  const wants = (t) => task === 'all' || task === t || (boardOnly && t === 'hs');
+  // task=cash — Spotrac cash-by-year for NFL clients (own daily run: 24
+  // player pages at ~1.4MB each would eat the full run's budget).
+  // task=payweeks — Tuesday roster-lock snapshot; refreshes ESPN status for
+  // NFL players first so the week is judged on today's roster.
+  const payWeeksRun = task === 'payweeks';
+  const wants = (t) => task === 'all' || task === t || (boardOnly && t === 'hs') || (payWeeksRun && t === 'espn');
   const deadline = Date.now() + 52000;
 
   try {
@@ -218,7 +224,7 @@ module.exports = async (req, res) => {
     // for the ESPN/247 sync are appended to its header row on first run.
     const autoRows = auto.values || [];
     let autoHeaders = (autoRows[0] || []).map(h => String(h || '').trim());
-    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass', 'offers247'];
+    const AUTO_EXTRA = ['espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass', 'offers247', 'cashByYear', 'cashSynced'];
     const missingAuto = AUTO_EXTRA.filter(h => !autoHeaders.some(x => x.toLowerCase() === h.toLowerCase()));
     if (missingAuto.length && !dryRun) {
       // Widen the grid first if the tab is at its column limit.
@@ -377,6 +383,7 @@ module.exports = async (req, res) => {
     // AppData's espnId column). Manual values in AppData always win at display
     // time, and AppData's teamOverride beats the synced team entirely.
     const espn = { updated: 0, idsFound: 0, errors: [] };
+    const espnStatusNow = {}, espnTeamNow = {}; // this run's NFL statuses, for the pay-week snapshot
     if (wants('espn')) {
       const espnTeamCol = autoIdx('espnTeam'), espnHCol = autoIdx('espnHeight'),
         espnWCol = autoIdx('espnWeight'), espnJCol = autoIdx('espnJersey'),
@@ -386,7 +393,7 @@ module.exports = async (req, res) => {
       const appStatusUpdates = [];
       const targets = [
         ...nflPlayers.map(p => ({ name: p['Name'], league: 'nfl', school: p['Team'] || '' })),
-        ...colPlayers.map(p => ({ name: p['Name'], league: 'college-football', school: p['School'] || '' })),
+        ...(payWeeksRun ? [] : colPlayers.map(p => ({ name: p['Name'], league: 'college-football', school: p['School'] || '' }))),
       ].filter(t => t.name);
       espn.ambiguous = [];
       // "UCLA" vs ESPN's "UCLA Bruins": compare letters-only, containment.
@@ -488,6 +495,7 @@ module.exports = async (req, res) => {
           const put = (colI, v) => { if (colI >= 0 && String(v).trim()) espnUpdates.push({ range: `'AutoSync'!${colLetter(colI)}${rowNum}`, values: [[String(v)]] }); };
           put(espnTeamCol, teamVal); put(espnHCol, height); put(espnWCol, weight); put(espnJCol, jersey);
           put(espnStatusCol, stName);
+          if (t.league === 'nfl') { espnStatusNow[nameKey(t.name)] = stName; espnTeamNow[nameKey(t.name)] = teamVal; }
           // Class year (Freshman…Senior) only exists for college players.
           if (t.league === 'college-football') put(espnClassCol, String(a.displayExperience || ''));
           espn.updated++;
@@ -786,6 +794,7 @@ module.exports = async (req, res) => {
     // players on, rotating the order daily so the runtime deadline never starves
     // the same teams. Manual AppData values win at display time.
     const contracts = { teams: 0, matched: 0, errors: [] };
+    const spotracUrlNow = {}; // player links found this run (AutoSync copy lags a read)
     if (wants('contracts') || task === 'all') {
       const cTotCol = autoIdx('contractTotal'), cAavCol = autoIdx('contractAav'),
         cYrsCol = autoIdx('contractYears'), cGtdCol = autoIdx('contractGuaranteed'), cUrlCol = autoIdx('contractUrl');
@@ -828,6 +837,7 @@ module.exports = async (req, res) => {
               }
             }
             if (!hit) continue;
+            spotracUrlNow[nameKey(p['Name'])] = hit.url;
             const rowNum = await ensureAutoRow(p['Name']);
             if (!rowNum) continue;
             const put = (ci, v) => { if (ci >= 0 && String(v ?? '').trim()) cUpdates.push({ range: `'AutoSync'!${colLetter(ci)}${rowNum}`, values: [[String(v)]] }); };
@@ -838,6 +848,107 @@ module.exports = async (req, res) => {
       });
       await runTasks(cTasks, 3, deadline);
       if (!dryRun) for (let i = 0; i < cUpdates.length; i += 100) await sheetBatchUpdate(token, cUpdates.slice(i, i + 100));
+    }
+
+    // ── Module 4b: Spotrac cash by year (NFL) ───────────────────────────────
+    // One player page per NFL client with a Spotrac link → the active deal's
+    // cash table by year (base, signing, roster, option, workout, restructure,
+    // total), stored as JSON in AutoSync.cashByYear. Feeds the weekly game-
+    // check math (lib/nfl-pay). Runs on its own daily task, and for the one
+    // player when an onboarding run names them.
+    const cash = { fetched: 0, written: 0, errors: [] };
+    if (wants('cash') || (task === 'all' && onlyName)) {
+      const cUrlCol2 = autoIdx('contractUrl'), cashCol = autoIdx('cashByYear'), cashAtCol = autoIdx('cashSynced');
+      const urlOf = (name) => {
+        const k = nameKey(name);
+        if (spotracUrlNow[k]) return spotracUrlNow[k];
+        const r = appRowByKey[k] ? autoRows[appRowByKey[k] - 1] : null;
+        return r && cUrlCol2 >= 0 ? String(r[cUrlCol2] || '').trim() : '';
+      };
+      const cashUpdates = [];
+      const cashTasks = nflPlayers.filter(p => urlOf(p['Name'])).map(p => async () => {
+        const url = urlOf(p['Name']);
+        try {
+          let html;
+          try { html = await fetchText(url); } catch { html = await fetchText(url, true); }
+          cash.fetched++;
+          const byYear = nflPay.parseSpotracCash(html);
+          if (!byYear) { cash.errors.push(`${p['Name']}: no cash table`); return; }
+          const rowNum = await ensureAutoRow(p['Name']);
+          if (!rowNum || cashCol < 0) return;
+          cashUpdates.push({ range: `'AutoSync'!${colLetter(cashCol)}${rowNum}`, values: [[JSON.stringify(byYear)]] });
+          if (cashAtCol >= 0) cashUpdates.push({ range: `'AutoSync'!${colLetter(cashAtCol)}${rowNum}`, values: [[new Date().toISOString().slice(0, 10)]] });
+          cash.written++;
+          if (dryRun) cash.sample = [...(cash.sample || []), { name: p['Name'], cash: byYear }].slice(0, 5);
+        } catch (e) { cash.errors.push(`${p['Name']}: ${e.message}`); }
+      });
+      await runTasks(cashTasks, 3, deadline);
+      if (!dryRun) for (let i = 0; i < cashUpdates.length; i += 100) await sheetBatchUpdate(token, cashUpdates.slice(i, i + 100));
+    }
+
+    // ── Module 6: NFL pay weeks ──────────────────────────────────────────────
+    // Tuesdays after the 4 PM ET roster lock: one PayWeeks row per NFL client
+    // for the current pay week — status at the lock, team, and what the week
+    // earns (lib/nfl-pay.payWeekAmount). Rows already on the sheet are never
+    // rewritten, so staff corrections stick. ?backfill=1 also fills every
+    // earlier week of the season from today's status, marked 'estimate'.
+    const payweeks = { season: 0, week: 0, written: 0, skipped: 0, errors: [] };
+    if (payWeeksRun) {
+      try {
+        const now = new Date();
+        const season = nflPay.seasonFor(now);
+        const week1 = await nflPay.week1Tuesday(season);
+        const week = nflPay.currentWeek(week1, now);
+        const backfill = ['1', 'true'].includes(String((req.query || {}).backfill || ''));
+        Object.assign(payweeks, { season, week1, week });
+        if (!week) payweeks.note = 'offseason';
+        else if (now - nflPay.lockOf(week1, week) > 6 * 86400000 && !backfill) payweeks.note = 'season over';
+        else {
+          const PW_COLS = ['player', 'season', 'week', 'lockDate', 'status', 'team', 'amount', 'source', 'recordedAt', 'note'];
+          let pw;
+          try { pw = await sheetGet(token, "'PayWeeks'!A:J"); }
+          catch {
+            if (!dryRun) {
+              await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+                method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'PayWeeks', gridProperties: { rowCount: 1000, columnCount: PW_COLS.length } } } }] }),
+              });
+              await sheetBatchUpdate(token, [{ range: "'PayWeeks'!A1", values: [PW_COLS] }]);
+            }
+            pw = { values: [PW_COLS] };
+          }
+          const pwRows = pw.values || [];
+          const pwH = (pwRows[0] || []).map(h => String(h || '').trim().toLowerCase());
+          const pwI = (n) => pwH.indexOf(n);
+          const have = new Set(pwRows.slice(1).map(r => `${nameKey(r[pwI('player')])}|${r[pwI('season')]}|${r[pwI('week')]}`));
+          const cashCol2 = autoIdx('cashByYear'), stCol = autoIdx('espnStatus'), tmCol = autoIdx('espnTeam');
+          const weeks = backfill ? Array.from({ length: week }, (_, i) => i + 1) : [week];
+          const appendRows = [];
+          for (const p of nflPlayers) {
+            if (/retired|inactive/i.test(String(p['Status'] || ''))) continue; // former clients
+            const k = nameKey(p['Name']);
+            const ar = appRowByKey[k] ? autoRows[appRowByKey[k] - 1] : null;
+            const status = espnStatusNow[k] || (ar && stCol >= 0 ? String(ar[stCol] || '').trim() : '') || String(p['Status'] || '').trim() || 'Active';
+            const team = espnTeamNow[k] || (ar && tmCol >= 0 ? String(ar[tmCol] || '').trim() : '') || String(p['Team'] || '').trim();
+            let byYear = null;
+            try { byYear = ar && cashCol2 >= 0 && ar[cashCol2] ? JSON.parse(ar[cashCol2]) : null; } catch { byYear = null; }
+            const { amount, note } = nflPay.payWeekAmount(status, byYear && byYear[season], season);
+            for (const wk of weeks) {
+              const key = `${k}|${season}|${wk}`;
+              if (have.has(key)) { payweeks.skipped++; continue; }
+              appendRows.push([p['Name'], season, wk, nflPay.lockIso(week1, wk), status, team, amount == null ? '' : amount, wk === week ? 'auto' : 'estimate', now.toISOString(), note]);
+              have.add(key);
+            }
+          }
+          if (appendRows.length && !dryRun) {
+            await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'PayWeeks'!A:J")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+              method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: appendRows }),
+            });
+          }
+          payweeks.written = appendRows.length;
+          payweeks.sample = appendRows.slice(0, 6);
+        }
+      } catch (e) { payweeks.errors.push(e.message); }
     }
 
     // ── Module 5: Recruiting board sync ──────────────────────────────────────
@@ -1397,7 +1508,7 @@ module.exports = async (req, res) => {
     } } catch (e) { statHistory.error = e.message; }
 
     return res.json({
-      success: true, dryRun, task, timedOut, proxyActive: !!proxyDispatcher, statHistory, contracts,
+      success: true, dryRun, task, timedOut, proxyActive: !!proxyDispatcher, statHistory, contracts, cash, payweeks,
       teamsFetched: Object.keys(byUrl).length,
       matched: matches.length, unmatchedCount: unmatched.length,
       cellsWritten,

@@ -54,6 +54,14 @@
       "schedule": "40 10 * * *"
     },
     {
+      "path": "/api/refresh-depth?task=cash",
+      "schedule": "20 10 * * *"
+    },
+    {
+      "path": "/api/refresh-depth?task=payweeks",
+      "schedule": "30 21 * * 2"
+    },
+    {
       "path": "/api/refresh-music",
       "schedule": "0 6 * * 5"
     },

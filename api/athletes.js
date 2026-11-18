@@ -390,6 +390,9 @@ function mergeAthlete(row, ext, level) {
     contractYears: ext['contractYears'] || '',
     contractGuaranteed: ext['contractGuaranteed'] || '',
     contractUrl: ext['contractUrl'] || '',
+    // Spotrac cash by year (NFL) — {year: {base, signing, roster, option,
+    // workout, restructure, total}} — feeds the weekly game-check view.
+    cashByYear: (() => { try { const v = ext['cashByYear']; return v ? JSON.parse(v) : null; } catch { return null; } })(),
     // Highlight film (Hudl / YouTube) — high schoolers; shareable on coach links.
     filmUrl: ext['filmUrl'] || '',
     agentAssigned: row['Lead Agent'] || row['Agent'] || '',
@@ -526,7 +529,7 @@ async function refreshEspnAutoSync(token, name, espnId, level) {
 // Contracts are off-limits to Music-division staff (Staff tab: Division
 // column). These fields are dropped from what they're sent, and their saves
 // never touch them — so an edit from a music session can't blank a deal.
-const CONTRACT_FIELDS = ['contractYearly', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl'];
+const CONTRACT_FIELDS = ['contractYearly', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'cashByYear'];
 function divisionFrom(staffRows, user) {
   if (!user || !user.name) return '';
   const head = (staffRows[0] || []).map(h => String(h || '').trim().toLowerCase());
@@ -702,6 +705,11 @@ const ADMIN_TABS = {
   // [{label, amount}] and [{date, period, amount, paid}]. fileId points at
   // the PDF in the player's Box folder. Internal only (never PUBLIC_FIELDS).
   contracts: { title: 'Contracts', writable: true, autoCreate: ['player', 'level', 'type', 'party', 'year', 'start', 'end', 'guaranteed', 'incentives', 'payouts', 'fileId', 'fileName', 'notes', 'createdBy', 'createdAt'] },
+  // NFL game checks: one row per client per pay week, written by the Tuesday
+  // roster-lock cron (refresh-depth task=payweeks). amount = what the week
+  // earned ($0 off the roster); source auto | estimate (backfilled) | manual
+  // (staff correction — the cron never rewrites an existing row).
+  payweeks: { title: 'PayWeeks', writable: true, autoCreate: ['player', 'season', 'week', 'lockDate', 'status', 'team', 'amount', 'source', 'recordedAt', 'note'] },
   // Brand deal tracker — one row per deal; clients is a comma list of roster
   // names; fileId/fileName point at the deal file in Box (copied into each
   // tagged player's folder at upload time).
@@ -1574,7 +1582,7 @@ module.exports = async (req, res) => {
       const a = autoMap[k];
       if (!a) return base;
       const merged = { ...base };
-      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass', 'offers247']) {
+      for (const f of ['igFollowers', 'twitterFollowers', 'tiktokFollowers', 'depthRank', 'depthPos', 'espnTeam', 'espnHeight', 'espnWeight', 'espnJersey', 'photo247', 'growth7d', 'growth7dPct', 'growthDays', 'contractTotal', 'contractAav', 'contractYears', 'contractGuaranteed', 'contractUrl', 'positionCoach', 'espnStatus', 'espnClass', 'offers247', 'cashByYear']) {
         if (String(a[f] ?? '').trim() !== '') merged[f] = a[f];
       }
       return merged;
