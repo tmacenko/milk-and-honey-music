@@ -13594,6 +13594,7 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   const [sortDir, setSortDir] = useCachedState('contracts.sortDir', 'desc');
   const [yearPick, setYear] = useCachedState('contracts.year', 0); // 0 = auto
   const [mode, setMode] = useCachedState('contracts.mode', 'contracts'); // contracts | payouts
+  const [payScope, setPayScope] = useCachedState('contracts.payScope', 'upcoming'); // upcoming | paid
   const [openKey, setOpenKey] = useState('');
   const [modal, setModal] = useState(null); // { athlete? } while the upload form is open
   const tab = useAdminTab('contracts');
@@ -13720,6 +13721,8 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   const nextRow = allPay.find(r => !r.paid && r.date);
   const nextDate = nextRow ? nextRow.date : '';
   const nextAmt = allPay.filter(r => !r.paid && r.date === nextDate).reduce((s, r) => s + r.amount, 0);
+  // Upcoming (default) runs forward from the next payment; Paid runs back from the latest.
+  const payList = payScope === 'paid' ? allPay.filter(r => r.paid).sort((p, q) => (q.date || '0000').localeCompare(p.date || '0000') || p.a.name.localeCompare(q.a.name)) : allPay.filter(r => !r.paid);
   const posValue = side === 'All' ? 'All' : (group !== 'All' ? group : side);
   const sections = [
     (staff || []).length > 0 && {
@@ -13788,6 +13791,11 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         {pill(mode === 'contracts', 'Contracts', () => setMode('contracts'))}
         {pill(mode === 'payouts', 'Payouts', () => setMode('payouts'))}
+        {mode === 'payouts' && (<>
+          <div style={{ width: 10 }} />
+          {pill(payScope === 'upcoming', 'Upcoming', () => setPayScope('upcoming'))}
+          {pill(payScope === 'paid', 'Paid', () => setPayScope('paid'))}
+        </>)}
         <div style={{ width: 10 }} />
         {['NFL', 'College'].map(lv => levelChipBtn(levels.includes(lv), lv, () => toggleLevel(lv)))}
         <FilterMenu compact={isMobile} sections={sections} active={filterActive} label={filterLabel}
@@ -13802,7 +13810,7 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
       </div>
       {mode === 'payouts' ? (
         <div style={tableWrap}>
-          {allPay.length === 0 ? empty(`No payouts for ${year} yet.`) : (
+          {payList.length === 0 ? empty(payScope === 'paid' ? `Nothing paid out yet for ${year}.` : `Nothing scheduled for ${year}.`) : (
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead><tr>
@@ -13811,8 +13819,8 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {allPay.map((r, i) => {
-                    const td = { padding: "10px 16px", fontSize: 13, color: r.paid ? G.textTertiary : G.textSecondary, borderBottom: i < allPay.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+                  {payList.map((r, i) => {
+                    const td = { padding: "10px 16px", fontSize: 13, color: r.paid ? G.textTertiary : G.textSecondary, borderBottom: i < payList.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
                     const past = !r.paid && r.date && r.date < today;
                     const dateText = r.date ? fmtDay(r.date) : 'On signing';
                     return (
