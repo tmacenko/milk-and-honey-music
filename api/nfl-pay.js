@@ -2,7 +2,7 @@
 // which season we're in, the Tuesday of pay week 1, how many weeks have
 // locked, and the practice-squad weekly rate. Staff sessions only.
 //
-// GET → { season, week1, week, weeks, psRate, locks: ['YYYY-MM-DD' × 18] }
+// GET → { season, week1, week, weeks, psRate, locks: ['YYYY-MM-DD' × 18], paydays: [the Fridays] }
 const { authState } = require('../lib/auth');
 const nflPay = require('../lib/nfl-pay');
 
@@ -23,6 +23,7 @@ module.exports = async (req, res) => {
     return res.json({
       season, week1, weeks: nflPay.WEEKS, week: nflPay.currentWeek(week1, now), psRate: nflPay.psRateFor(season),
       locks: Array.from({ length: nflPay.WEEKS }, (_, i) => nflPay.lockIso(week1, i + 1)),
+      paydays: Array.from({ length: nflPay.WEEKS }, (_, i) => nflPay.payDayIso(week1, i + 1)),
     });
   } catch (e) {
     return res.status(502).json({ error: e.message });

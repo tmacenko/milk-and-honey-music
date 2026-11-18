@@ -4999,6 +4999,7 @@ function SocialContractModules({ athlete: a, isMobile, only }) {
           a.contractGuaranteed && ['Guaranteed', money(a.contractGuaranteed)],
           nflS && nflS.cash && ['Per game check', usd(nflS.weekly)],
           nflS && nflS.cash && ['Paid so far', `${usd(nflS.paidSoFar)} · ${nflS.paidWeeks} of ${NFL_WEEKS}`],
+          nflS && nflS.next && ['Next check', `${fmtDay(nflS.next.date, { month: 'short', day: 'numeric' })} · ${usd(nflS.next.amount)}`],
         ].filter(Boolean) }
       : null;
   const show = (k) => wants(k) && (k !== 'contract' || a.level === 'NFL' || !!contract);
@@ -13078,19 +13079,34 @@ function nflPaySummary(a, payRows, cal, season) {
   const mine = payRows.filter(r => r.player.toLowerCase() === nm && r.season === season).sort((x, y) => x.week - y.week);
   const byWeek = {}; mine.forEach(r => { byWeek[r.week] = r; });
   const earned = mine.reduce((s, r) => s + (r.amount || 0), 0);
-  const paidWeeks = mine.filter(r => (r.amount || 0) > 0).length;
   const last = mine[mine.length - 1];
   const status = last ? last.status : (a.rosterStatus || a.status || '');
   const psRate = (cal && cal.psRate) || 13750;
   const rateNow = nflOffRoster(status) ? 0 : /practice/i.test(status) ? psRate : weekly;
   const live = !!cal && cal.season === season;
   const curWeek = live ? cal.week : (cal && season < cal.season ? NFL_WEEKS : 0);
-  const done = Math.max(last ? last.week : 0, curWeek);
-  const remainingWeeks = Math.max(0, NFL_WEEKS - done);
-  const next = live && done < NFL_WEEKS ? { week: done + 1, date: cal.locks[done], amount: rateNow } : null;
-  const paidSoFar = earned + lumps;
-  return { season, cash, weekly, lumps, psRate, mine, byWeek, earned, paidWeeks, status, rateNow, curWeek, done, remainingWeeks, remaining: remainingWeeks * rateNow, next, paidSoFar, projected: paidSoFar + remainingWeeks * rateNow };
+  const today = new Date().toISOString().slice(0, 10);
+  // Every pay week, dated by its Friday: paid (Friday passed), pending (locked,
+  // pays this Friday), missed ($0 — off the roster), unknown (on the roster,
+  // no Spotrac cash), unrecorded (locked, cron hasn't logged it), ahead.
+  const schedule = [];
+  for (let w = 1; w <= NFL_WEEKS; w++) {
+    const r = byWeek[w];
+    const lock = r ? r.lockDate : live ? cal.locks[w - 1] : '';
+    const date = nflAddDays(lock, 3);
+    if (r) schedule.push({ week: w, row: r, lock, date, amount: r.amount || 0, status: r.status, team: r.team, source: r.source,
+      state: (r.amount || 0) > 0 ? (date && date <= today ? 'paid' : 'pending') : r.amount == null ? 'unknown' : 'missed' });
+    else schedule.push({ week: w, row: null, lock, date, amount: w <= curWeek ? 0 : rateNow, status, team: a.nflTeam || '', source: '', state: w <= curWeek ? 'unrecorded' : 'ahead' });
+  }
+  const sumOf = (st) => schedule.filter(x => x.state === st).reduce((s, x) => s + x.amount, 0);
+  const paid = sumOf('paid'), pending = sumOf('pending'), aheadSum = sumOf('ahead');
+  const remainingWeeks = schedule.filter(x => (x.state === 'pending' || x.state === 'ahead') && x.amount > 0).length;
+  const nx = schedule.find(x => (x.state === 'pending' || x.state === 'ahead') && x.amount > 0);
+  const paidSoFar = paid + lumps, remaining = pending + aheadSum;
+  return { season, cash, weekly, lumps, psRate, mine, byWeek, schedule, earned, paid, pending, paidWeeks: schedule.filter(x => x.state === 'paid').length, status, rateNow, curWeek,
+    remainingWeeks, remaining, next: nx ? { week: nx.week, date: nx.date, amount: nx.amount } : null, paidSoFar, projected: paidSoFar + remaining };
 }
+const nflAddDays = (iso, n) => { const d = isoDay(iso); if (!d) return ''; const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 // Flip one week between paid and missed, or record a locked week the cron
 // hasn't. Rows written here are 'manual' and the cron leaves them alone.
 async function nflSetWeek({ a, s, cal, week, row, user }) {
@@ -13122,8 +13138,8 @@ function NflWeekGrid({ a, s, cal, user, onChanged, isMobile, canEdit = true }) {
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${isMobile ? 9 : NFL_WEEKS}, minmax(0, 1fr))`, gap: 4 }}>
         {Array.from({ length: NFL_WEEKS }, (_, i) => i + 1).map(w => {
           const r = s.byWeek[w];
-          const paid = !!r && (r.amount || 0) > 0, missed = !!r && !paid, locked = !r && w <= s.curWeek;
-          const title = [`Week ${w}`, live ? fmtDay(cal.locks[w - 1], { month: 'short', day: 'numeric' }) : '', r ? r.status : locked ? 'Not recorded yet' : 'Ahead',
+          const paid = !!r && (r.amount || 0) > 0, missed = !!r && r.amount === 0, locked = !paid && !missed && w <= s.curWeek;
+          const title = [`Week ${w}`, live ? `pays ${fmtDay(cal.paydays[w - 1], { month: 'short', day: 'numeric' })}` : '', r ? r.status : locked ? 'Not recorded yet' : 'Ahead',
             r ? (r.amount == null ? 'No Spotrac data' : usd(r.amount)) : '', r && r.source === 'estimate' ? 'Estimated' : '', r && r.source === 'manual' ? 'Set by hand' : ''].filter(Boolean).join(' · ');
           const clickable = canEdit && (!!r || locked);
           return (
@@ -13157,6 +13173,7 @@ function NflDealTab({ a, isMobile, pad, user }) {
   const eyebrow = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary };
   const big = (v, size = 28) => <div style={{ fontSize: size, fontWeight: 800, letterSpacing: "-0.03em", color: G.text, marginTop: 8, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{v}</div>;
   const sub = (t) => <div style={{ fontSize: 12.5, color: G.textSecondary, marginTop: 8 }}>{t}</div>;
+  const [schedOpen, setSchedOpen] = useState(false);
   if (ptab.loading && !ptab.data) return <TabSkeleton pad={pad} isMobile={isMobile} blocks={[[124, 124], [124, 124, 124], 280]} />;
   const ahead = Object.keys(a.cashByYear || {}).map(Number).filter(y => y > season).sort();
   const breakdown = c ? [['Base salary', c.base], ['Roster bonus', c.roster], ['Workout bonus', c.workout], ['Signing bonus', c.signing], ['Option bonus', c.option], ['Restructure', c.restructure], ['Incentives', c.incentives]].filter(([, v]) => v > 0) : [];
@@ -13206,18 +13223,28 @@ function NflDealTab({ a, isMobile, pad, user }) {
             <span style={{ fontSize: 11.5, fontWeight: 600, color: nflStatusColor(s.status) }}>{s.status || '—'}</span>
           </div>
           <NflWeekGrid a={a} s={s} cal={cal} user={user} isMobile={isMobile} onChanged={() => ptab.reload()} />
-          {s.mine.length > 0 && (
-            <div style={{ marginTop: 14, borderTop: `1px solid ${G.surfaceBorder}` }}>
-              {[...s.mine].reverse().slice(0, 6).map(r => (
-                <div key={r.row} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr auto" : "80px 110px 1fr auto", gap: 10, padding: "7px 0", borderBottom: `1px solid ${G.surfaceBorder}`, fontSize: 13, alignItems: "center" }}>
-                  <span style={{ color: G.text, fontWeight: 600 }}>Week {r.week}</span>
-                  {!isMobile && <span style={{ color: G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{r.lockDate ? fmtDay(r.lockDate) : ''}</span>}
-                  {!isMobile && <span style={{ color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[r.status, r.team].filter(Boolean).join(' · ')}{r.source === 'estimate' ? ' · est.' : r.source === 'manual' ? ' · by hand' : ''}</span>}
-                  <span style={{ fontWeight: 600, color: r.amount > 0 ? G.text : G.textTertiary, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>{r.amount == null ? '—' : usd(r.amount)}</span>
+          {(() => {
+            // Dated schedule, folded like a college agreement's payouts.
+            const rows = s.schedule.filter(x => x.amount > 0 || x.state === 'missed');
+            if (!rows.length) return null;
+            return (<>
+              {schedOpen && (
+                <div style={{ marginTop: 14, borderTop: `1px solid ${G.surfaceBorder}` }}>
+                  {rows.map(x => (
+                    <div key={x.week} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr auto" : "110px 1fr auto", gap: 10, padding: "6px 0", borderBottom: `1px solid ${G.surfaceBorder}`, fontSize: 13, alignItems: "center" }}>
+                      <span style={{ color: x.state === 'paid' ? G.textTertiary : G.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{x.date ? fmtDay(x.date) : `Week ${x.week}`}</span>
+                      {!isMobile && <span style={{ color: G.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[`Week ${x.week}`, x.status, x.team, x.source === 'estimate' ? 'est.' : x.source === 'manual' ? 'by hand' : ''].filter(Boolean).join(' · ')}</span>}
+                      <span style={{ fontWeight: 600, color: x.state === 'paid' || x.state === 'missed' ? G.textTertiary : G.text, textDecoration: x.state === 'paid' ? "line-through" : "none", fontVariantNumeric: "tabular-nums" }}>{x.state === 'missed' ? 'Off roster' : usd(x.amount)}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              )}
+              <div style={{ display: "flex", gap: 14, marginTop: 10, alignItems: "center" }}>
+                <button onClick={() => setSchedOpen(o => !o)} style={{ background: "none", border: "none", color: G.green, cursor: "pointer", fontSize: 12, fontWeight: 600, padding: 0, fontFamily: ff }}>{schedOpen ? 'Hide schedule' : `Show ${rows.length} payouts`}</button>
+                <span style={{ fontSize: 11.5, color: G.textTertiary, fontVariantNumeric: "tabular-nums" }}>{usd(s.paid)} of {usd(s.paid + s.remaining)} paid</span>
+              </div>
+            </>);
+          })()}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           {c && (
@@ -13651,12 +13678,15 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
   // recorded week) roll into the Payouts stats beside the college schedules.
   const nflPay = useMemo(() => list.filter(d => d.levelFilter === 'NFL').map(d => ({ d, s: nflPaySummary(d.a, payRows, nflCal, year) }))
     .filter(x => x.s.cash || x.s.mine.length).sort((x, y) => y.s.paidSoFar - x.s.paidSoFar), [list, payRows, nflCal, year]);
-  const owedAll = owed + nflPay.reduce((s, x) => s + x.s.remaining, 0);
-  const receivedAll = received + nflPay.reduce((s, x) => s + x.s.paidSoFar, 0);
-  const nflNext = nflPay.filter(x => x.s.next && x.s.next.amount > 0);
-  const nextDate = [nextPay && nextPay.p.date, nflNext[0] && nflNext[0].s.next.date].filter(Boolean).sort()[0] || '';
-  const nextAmt = nextDate ? payouts.filter(r => !r.p.paid && r.p.date === nextDate).reduce((s, r) => s + r.p.amount, 0) + nflNext.filter(x => x.s.next.date === nextDate).reduce((s, x) => s + x.s.next.amount, 0) : 0;
-  const [openPay, setOpenPay] = useState('');
+  const nflByKey = useMemo(() => Object.fromEntries(nflPay.map(x => [x.d.key, x.s])), [nflPay]);
+  const [nflBusy, setNflBusy] = useState('');
+  const flipWeek = async (key, a, s, x) => {
+    if (nflBusy) return;
+    setNflBusy(key);
+    try { await nflSetWeek({ a, s, cal: nflCal, week: x.week, row: x.row, user }); ptab.reload(); }
+    catch (e) { window.alert(e.message); }
+    setNflBusy('');
+  };
   const [payBusy, setPayBusy] = useState(0);
   const togglePaid = async (x, i) => {
     if (payBusy) return;
@@ -13667,6 +13697,29 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
     } catch (e) { window.alert(e.message); }
     setPayBusy(0);
   };
+  // One dated list — college payouts and NFL game checks (each week lands the
+  // Friday after its Tuesday lock; signing-type lumps sit under "On signing").
+  const today = new Date().toISOString().slice(0, 10);
+  const allPay = useMemo(() => {
+    const rows = payouts.map(r => ({ key: `c-${r.x.row}-${r.i}`, a: r.d.a, date: r.p.date, payer: r.x.party, chip: r.x.type, period: fmtPeriod(r.p.period), rawPeriod: r.p.period,
+      amount: r.p.amount, paid: !!r.p.paid, canToggle: true, toggle: () => togglePaid(r.x, r.i), busy: payBusy === r.x.row }));
+    if (levels.includes('NFL')) for (const { d, s } of nflPay) {
+      if (s.lumps) rows.push({ key: `n-${d.key}-lump`, a: d.a, date: '', payer: d.team, chip: 'NFL', amount: s.lumps, paid: true, canToggle: false,
+        period: [s.cash.signing && 'Signing bonus', s.cash.option && 'Option bonus', s.cash.restructure && 'Restructure'].filter(Boolean).join(' + ') });
+      for (const x of s.schedule) {
+        if (!(x.amount > 0)) continue;
+        const key = `n-${d.key}-${x.week}`;
+        rows.push({ key, a: d.a, date: x.date, payer: x.team || d.team, chip: 'NFL', period: `Week ${x.week}${x.source === 'estimate' ? ' · est.' : ''}`, amount: x.amount, paid: x.state === 'paid', state: x.state,
+          canToggle: !!x.row && x.state === 'paid', toggle: () => flipWeek(key, d.a, s, x), busy: nflBusy === key });
+      }
+    }
+    return rows.sort((p, q) => (p.date || '9999').localeCompare(q.date || '9999') || p.a.name.localeCompare(q.a.name));
+  }, [payouts, nflPay, levels, payBusy, nflBusy]); // eslint-disable-line react-hooks/exhaustive-deps
+  const owedAll = allPay.filter(r => !r.paid).reduce((s, r) => s + r.amount, 0);
+  const receivedAll = allPay.filter(r => r.paid).reduce((s, r) => s + r.amount, 0);
+  const nextRow = allPay.find(r => !r.paid && r.date);
+  const nextDate = nextRow ? nextRow.date : '';
+  const nextAmt = allPay.filter(r => !r.paid && r.date === nextDate).reduce((s, r) => s + r.amount, 0);
   const posValue = side === 'All' ? 'All' : (group !== 'All' ? group : side);
   const sections = [
     (staff || []).length > 0 && {
@@ -13747,66 +13800,9 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search contracts..."
           style={{ ...inputBase, width: isMobile ? 120 : 200, padding: "7px 11px", fontSize: 12 }} />
       </div>
-      {mode === 'payouts' ? (<>
-        {levels.includes('NFL') && nflPay.length > 0 && (
-          <div style={{ ...tableWrap, marginBottom: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: `1px solid ${G.surfaceBorder}` }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: G.textTertiary }}>NFL game checks</div>
-              <div style={{ flex: 1 }} />
-              {nflCal && nflCal.season === year && <div style={{ fontSize: 11.5, color: G.textTertiary }}>{nflCal.week ? `Week ${nflCal.week} · locked ${fmtDay(nflCal.locks[nflCal.week - 1], { month: 'short', day: 'numeric' })}` : 'Season hasn\'t started'}</div>}
-            </div>
-            <div className="mh-hscroll" style={{ overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                <thead><tr>
-                  {(isMobile ? [['Player'], ['Paid so far', true]] : [['Player'], ['Team'], ['Status'], ['Per check', true], ['Checks', true], ['Paid so far', true], ['Remaining', true]]).map(([h, right]) => (
-                    <th key={h} style={{ ...thStyle('', right), cursor: "default" }}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {nflPay.map(({ d, s }, i) => {
-                    const a = d.a, open = openPay === d.key, last = i === nflPay.length - 1;
-                    const zebra = open || i % 2 ? G.surfaceRaised : "transparent";
-                    const td = { padding: "10px 16px", fontSize: 13, color: G.textSecondary, borderBottom: last && !open ? "none" : `1px solid ${G.surfaceBorder}`, whiteSpace: "nowrap", verticalAlign: "middle" };
-                    return (
-                      <React.Fragment key={d.key}>
-                        <tr onClick={() => setOpenPay(open ? '' : d.key)} style={{ cursor: "pointer", background: zebra }}
-                          onMouseEnter={e => e.currentTarget.style.background = G.surfaceRaised}
-                          onMouseLeave={e => e.currentTarget.style.background = zebra}>
-                          {isMobile ? (
-                            <td style={{ ...td, width: "100%", maxWidth: 0, whiteSpace: "normal" }}>{mIdent({ name: a.name, caption: [s.status, `${s.paidWeeks} of ${NFL_WEEKS} checks`].filter(Boolean).join(' · '), photo: a.photoUrl })}</td>
-                          ) : (<>
-                            <td style={{ ...td, color: G.text, fontWeight: 600 }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar name={a.name} photoUrl={a.photoUrl} size={26} />{a.name}</div></td>
-                            <td style={td}>{d.team || '—'}</td>
-                            <td style={{ ...td, color: nflStatusColor(s.status), fontWeight: 600 }}>{s.status || '—'}</td>
-                            <td style={{ ...td, ...mNum }}>{s.rateNow ? usd(s.rateNow) : '—'}</td>
-                            <td style={{ ...td, ...mNum }}>{s.paidWeeks} of {NFL_WEEKS}</td>
-                          </>)}
-                          <td style={{ ...td, ...mNum, fontWeight: 700, color: G.text }}>{usd(s.paidSoFar)}</td>
-                          {!isMobile && <td style={{ ...td, ...mNum, color: s.remaining ? G.text : G.textTertiary }}>{s.remaining ? usd(s.remaining) : '—'}</td>}
-                        </tr>
-                        {open && (
-                          <tr><td colSpan={isMobile ? 2 : 7} style={{ padding: isMobile ? "12px 12px 16px" : "14px 16px 18px", borderBottom: last ? "none" : `1px solid ${G.surfaceBorder}`, background: G.surface }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-                              <div style={{ fontSize: 13, color: G.textSecondary }}>
-                                {s.cash ? <><b style={{ color: G.text }}>{usd(s.cash.total)}</b> {year} cash · {usd(s.weekly)} per check{s.lumps ? ` · ${usd(s.lumps)} at signing` : ''}</> : 'No Spotrac cash on file yet.'}
-                              </div>
-                              <div style={{ flex: 1 }} />
-                              <button onClick={() => onOpenAthlete(a)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, color: G.text, cursor: "pointer", fontFamily: ff }}>Profile →</button>
-                            </div>
-                            <NflWeekGrid a={a} s={s} cal={nflCal} user={user} isMobile={isMobile} onChanged={() => ptab.reload()} />
-                          </td></tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-        {(levels.includes('College') || !nflPay.length) && (
+      {mode === 'payouts' ? (
         <div style={tableWrap}>
-          {payouts.length === 0 ? empty(`No payout schedules for ${year} yet.`) : (
+          {allPay.length === 0 ? empty(`No payouts for ${year} yet.`) : (
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead><tr>
@@ -13815,23 +13811,27 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {payouts.map((r, i) => {
-                    const td = { padding: "10px 16px", fontSize: 13, color: r.p.paid ? G.textTertiary : G.textSecondary, borderBottom: i < payouts.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
-                    const past = !r.p.paid && r.p.date && r.p.date < new Date().toISOString().slice(0, 10);
+                  {allPay.map((r, i) => {
+                    const td = { padding: "10px 16px", fontSize: 13, color: r.paid ? G.textTertiary : G.textSecondary, borderBottom: i < allPay.length - 1 ? `1px solid ${G.surfaceBorder}` : "none", whiteSpace: "nowrap", verticalAlign: "middle" };
+                    const past = !r.paid && r.date && r.date < today;
+                    const dateText = r.date ? fmtDay(r.date) : 'On signing';
                     return (
-                      <tr key={`${r.x.row}-${r.i}`} style={{ background: i % 2 ? G.surfaceRaised : "transparent", opacity: payBusy === r.x.row ? 0.6 : 1 }}>
-                        <td style={{ ...td, width: 20 }}><input type="checkbox" checked={r.p.paid} onChange={() => togglePaid(r.x, r.i)} style={{ margin: 0, cursor: "pointer", accentColor: G.green }} /></td>
-                        {isMobile ? (<>
-                          <td style={{ ...td, width: "100%", maxWidth: 0, whiteSpace: "normal" }}>{mIdent({ name: r.d.a.name, caption: [r.p.date ? fmtDay(r.p.date) : 'On signing', r.x.party].filter(Boolean).join(' · '), photo: r.d.a.photoUrl })}</td>
-                        </>) : (<>
-                          <td style={{ ...td, color: past ? G.red : td.color, fontWeight: past ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{r.p.date ? fmtDay(r.p.date) : 'On signing'}</td>
-                          <td style={{ ...td, color: r.p.paid ? G.textTertiary : G.text, fontWeight: 600, cursor: "pointer" }} onClick={() => onOpenAthlete(r.d.a)}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar name={r.d.a.name} photoUrl={r.d.a.photoUrl} size={26} />{r.d.a.name}</div>
+                      <tr key={r.key} style={{ background: i % 2 ? G.surfaceRaised : "transparent", opacity: r.busy ? 0.6 : 1 }}>
+                        <td style={{ ...td, width: 20 }}>
+                          {r.canToggle ? <input type="checkbox" checked={r.paid} onChange={r.toggle} style={{ margin: 0, cursor: "pointer", accentColor: G.green }} />
+                            : <span title={r.paid ? 'Paid' : r.state === 'pending' ? 'Roster locked · pays Friday' : 'Ahead'} style={{ display: "inline-block", width: 13, height: 13, borderRadius: 3, border: `1px solid ${r.paid ? G.green : G.surfaceBorder}`, background: r.paid ? G.greenSubtle : "transparent", verticalAlign: "middle" }} />}
+                        </td>
+                        {isMobile ? (
+                          <td style={{ ...td, width: "100%", maxWidth: 0, whiteSpace: "normal" }}>{mIdent({ name: r.a.name, caption: [dateText, r.payer].filter(Boolean).join(' · '), photo: r.a.photoUrl })}</td>
+                        ) : (<>
+                          <td style={{ ...td, color: past ? G.red : td.color, fontWeight: past ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{dateText}</td>
+                          <td style={{ ...td, color: r.paid ? G.textTertiary : G.text, fontWeight: 600, cursor: "pointer" }} onClick={() => onOpenAthlete(r.a)}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar name={r.a.name} photoUrl={r.a.photoUrl} size={26} />{r.a.name}</div>
                           </td>
-                          <td style={td}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{typeChip(r.x.type)}{r.x.party}</span></td>
-                          <td title={r.p.period} style={{ ...td, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{fmtPeriod(r.p.period)}</td>
+                          <td style={td}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{typeChip(r.chip)}{r.payer}</span></td>
+                          <td title={r.rawPeriod || r.period} style={{ ...td, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{r.period}</td>
                         </>)}
-                        <td style={{ ...td, ...mNum, fontWeight: 700, color: r.p.paid ? G.textTertiary : G.text, textDecoration: r.p.paid ? "line-through" : "none" }}>{usd(r.p.amount)}</td>
+                        <td style={{ ...td, ...mNum, fontWeight: 700, color: r.paid ? G.textTertiary : G.text, textDecoration: r.paid ? "line-through" : "none" }}>{usd(r.amount)}</td>
                       </tr>
                     );
                   })}
@@ -13840,8 +13840,7 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
             </div>
           )}
         </div>
-        )}
-      </>) : (
+      ) : (
         <div style={tableWrap}>
           {sorted.length === 0 ? empty('No contracts match these filters.') : (
             <div className="mh-hscroll" style={{ overflowX: "auto" }}>
@@ -13899,6 +13898,14 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                               <button onClick={() => onOpenAthlete(a)} style={{ background: G.surfaceRaised, border: `1px solid ${G.surfaceBorder}`, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, color: G.text, cursor: "pointer", fontFamily: ff }}>Profile →</button>
                             </div>
                             {d.agreements.length > 0 && <AgreementList items={d.agreements} onChanged={() => tab.reload()} isMobile={isMobile} />}
+                            {d.levelFilter === 'NFL' && nflByKey[d.key] && (() => { const s = nflByKey[d.key]; return (
+                              <div style={{ marginTop: 12 }}>
+                                <div style={{ fontSize: 13, color: G.textSecondary, marginBottom: 10 }}>
+                                  {s.cash ? <><b style={{ color: G.text }}>{usd(s.cash.total)}</b> {year} cash · {usd(s.weekly)} per check · <b style={{ color: G.text }}>{usd(s.paidSoFar)}</b> paid · {usd(s.remaining)} to come{s.next ? ` · next ${fmtDay(s.next.date, { month: 'short', day: 'numeric' })}` : ''}</> : 'No Spotrac cash on file yet.'}
+                                </div>
+                                <NflWeekGrid a={a} s={s} cal={nflCal} user={user} isMobile={isMobile} onChanged={() => ptab.reload()} />
+                              </div>
+                            ); })()}
                           </td></tr>
                         )}
                       </React.Fragment>
