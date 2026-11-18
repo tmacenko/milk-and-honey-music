@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
       cache = { season, week1: await nflPay.week1Tuesday(season), at: now.getTime() };
     }
     const week1 = cache.week1;
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Cache-Control', 'private, max-age=600');
     return res.json({
       season, week1, weeks: nflPay.WEEKS, week: nflPay.currentWeek(week1, now), psRate: nflPay.psRateFor(season),
       locks: Array.from({ length: nflPay.WEEKS }, (_, i) => nflPay.lockIso(week1, i + 1)),

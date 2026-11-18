@@ -13139,7 +13139,7 @@ function NflWeekGrid({ a, s, cal, user, onChanged, isMobile, canEdit = true }) {
         {Array.from({ length: NFL_WEEKS }, (_, i) => i + 1).map(w => {
           const r = s.byWeek[w];
           const paid = !!r && (r.amount || 0) > 0, missed = !!r && r.amount === 0, locked = !paid && !missed && w <= s.curWeek;
-          const title = [`Week ${w}`, live ? `pays ${fmtDay(cal.paydays[w - 1], { month: 'short', day: 'numeric' })}` : '', r ? r.status : locked ? 'Not recorded yet' : 'Ahead',
+          const title = [`Week ${w}`, live ? `pays ${fmtDay(nflAddDays(cal.locks[w - 1], 3), { month: 'short', day: 'numeric' })}` : '', r ? r.status : locked ? 'Not recorded yet' : 'Ahead',
             r ? (r.amount == null ? 'No Spotrac data' : usd(r.amount)) : '', r && r.source === 'estimate' ? 'Estimated' : '', r && r.source === 'manual' ? 'Set by hand' : ''].filter(Boolean).join(' · ');
           const clickable = canEdit && (!!r || locked);
           return (
@@ -13833,7 +13833,7 @@ function ContractsPage({ isMobile, athletes, staff, user, onOpenAthlete }) {
                           <td style={{ ...td, width: "100%", maxWidth: 0, whiteSpace: "normal" }}>{mIdent({ name: r.a.name, caption: [dateText, r.payer].filter(Boolean).join(' · '), photo: r.a.photoUrl })}</td>
                         ) : (<>
                           <td style={{ ...td, color: past ? G.red : td.color, fontWeight: past ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{dateText}</td>
-                          <td style={{ ...td, color: r.paid ? G.textTertiary : G.text, fontWeight: 600, cursor: "pointer" }} onClick={() => onOpenAthlete(r.a)}>
+                          <td style={{ ...td, color: r.paid ? G.textTertiary : G.text, fontWeight: 600, cursor: r.a.id ? "pointer" : "default" }} onClick={() => { if (r.a.id) onOpenAthlete(r.a); }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar name={r.a.name} photoUrl={r.a.photoUrl} size={26} />{r.a.name}</div>
                           </td>
                           <td style={td}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{typeChip(r.chip)}{r.payer}</span></td>
